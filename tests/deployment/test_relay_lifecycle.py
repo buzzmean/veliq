@@ -110,9 +110,15 @@ class RelayLifecycleTests(unittest.TestCase):
                     text = text.replace(old, new)
                 text = text.replace('[[ $EUID == 0', '[[ 1 == 1')
                 (scripts / name).write_text(text)
+            # Release uploads are regular files. Ubuntu 26.04's /bin/true
+            # is a symlink; update.sh intentionally rejects symlink inputs.
+            healthy_release = base / 'healthy-relay'
+            unhealthy_release = base / 'unhealthy-relay'
+            shutil.copy('/bin/true', healthy_release)
+            shutil.copy('/bin/false', unhealthy_release)
             binary = base / 'opt/neexitlag/bin/relay'
             binary.parent.mkdir(parents=True)
-            shutil.copy('/bin/true', binary)
+            shutil.copy(healthy_release, binary)
             unit_dir = base / 'etc/systemd/system'
             unit_dir.mkdir(parents=True)
             credentials = base / 'etc/neexitlag/relay'
@@ -129,26 +135,31 @@ class RelayLifecycleTests(unittest.TestCase):
                 'systemctl': 'exit 0',
                 'sleep': 'exit 0',
                 'id': 'exit 1',
-                'curl': 'if cmp -s "$TEST_RELAY_BINARY" /bin/false; then exit 1; fi; printf "neexitlag_relay_health 1\\n"'
+                'curl': 'if cmp -s "$TEST_RELAY_BINARY" "$TEST_UNHEALTHY_RELEASE"; then exit 1; fi; printf "neexitlag_relay_health 1\\n"'
             }.items():
                 stub = stubs / name
                 stub.write_text('#!/bin/sh\n' + body + '\n')
                 stub.chmod(0o755)
-            env = dict(os.environ, PATH=str(stubs) + ':' + os.environ['PATH'], TEST_RELAY_BINARY=str(binary))
+            env = dict(os.environ, PATH=str(stubs) + ':' + os.environ['PATH'], TEST_RELAY_BINARY=str(binary),
+                       TEST_UNHEALTHY_RELEASE=str(unhealthy_release))
             def invoke(name, *args):
                 return subprocess.run(['bash', str(scripts / name), *args], env=env, capture_output=True)
             for _ in range(2):
-                updated = invoke('update.sh', '/bin/true')
+                updated = invoke('update.sh', str(healthy_release))
                 self.assertEqual(updated.returncode, 0, updated.stderr.decode())
-            failed = invoke('update.sh', '/bin/false')
+            failed = invoke('update.sh', str(unhealthy_release))
             self.assertNotEqual(failed.returncode, 0)
-            self.assertEqual(binary.read_bytes(), Path('/bin/true').read_bytes())
+            self.assertEqual(binary.read_bytes(), healthy_release.read_bytes())
             self.assertEqual(trust.read_text(), 'fixture-public-trust')
             self.assertEqual(replay.read_text(), 'preserve-replay-fixture')
+            symlink_release = base / 'symlink-relay'
+            symlink_release.symlink_to(healthy_release)
+            self.assertNotEqual(invoke('update.sh', str(symlink_release)).returncode, 0)
+            self.assertEqual(binary.read_bytes(), healthy_release.read_bytes())
             invalid = base / 'not-an-elf'
             invalid.write_text('not a binary')
             self.assertNotEqual(invoke('update.sh', str(invalid)).returncode, 0)
-            self.assertEqual(binary.read_bytes(), Path('/bin/true').read_bytes())
+            self.assertEqual(binary.read_bytes(), healthy_release.read_bytes())
             self.assertEqual(invoke('uninstall.sh').returncode, 0)
             self.assertFalse(binary.exists())
             self.assertTrue(trust.exists())
