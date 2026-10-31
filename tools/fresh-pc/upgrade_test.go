@@ -185,7 +185,7 @@ func TestSchema2RemainsCompatibleWithBaselineMigrationPostgres(t *testing.T) {
 	if e = db.QueryRow(ctx, "SELECT hardware_salt FROM activation_policy").Scan(&after); e != nil {
 		t.Fatal(e)
 	}
-	if version != 3 || count != 3 || !revoked || string(salt) != string(after) {
+	if version != 4 || count != 3 || !revoked || string(salt) != string(after) {
 		t.Fatal("schema3 additive downgrade/retry lost security state")
 	}
 }

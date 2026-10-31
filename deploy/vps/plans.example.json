@@ -1,0 +1,4 @@
+[
+  {"id": "player-month", "kind": "player", "title": "Игрок", "price_per_seat_rub": 0, "period_days": 30, "max_seats": 1},
+  {"id": "club-month", "kind": "club", "title": "Клуб", "price_per_seat_rub": 0, "period_days": 30, "max_seats": 500}
+]

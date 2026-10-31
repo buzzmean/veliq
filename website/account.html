@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Личный кабинет — VELIQ</title>
+  <meta name="description" content="Вход в личный кабинет VELIQ: подписка, оплата, коды активации.">
+  <link rel="canonical" href="https://veliq.app/account.html">
+  <meta name="theme-color" content="#0A0A0B">
+  <meta name="color-scheme" content="light dark">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="VELIQ">
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:title" content="Личный кабинет — VELIQ">
+  <meta property="og:description" content="Вход в личный кабинет VELIQ: подписка, оплата, коды активации.">
+  <meta property="og:url" content="https://veliq.app/account.html">
+  <meta property="og:image" content="https://veliq.app/assets/img/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="VELIQ: нажал — работает.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://veliq.app/assets/img/og-image.png">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/img/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="assets/img/app-icon-180.png">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="preload" href="assets/fonts/Onest-var.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/components.css">
+  <link rel="stylesheet" href="assets/site.css">
+  <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="skip" href="#main">Перейти к содержанию</a>
+<header class="top">
+  <div class="wrap top__in">
+    <a class="logo" href="index.html" aria-label="VELIQ — на главную">
+      <img class="on-light" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" width="144" height="66">
+      <img class="on-dark" src="assets/img/veliq-wordmark-dark.svg" alt="" width="144" height="66">
+    </a>
+    <nav class="nav" id="nav" aria-label="Основное меню">
+      <a href="how.html">Как работает</a>
+      <a href="index.html#games">Игры</a>
+      <a href="clubs.html">Клубам</a>
+      <a href="pricing.html">Цены</a>
+      <a href="support.html">Помощь</a>
+    </nav>
+    <div class="top__tools">
+      <button class="btn btn--quiet btn--icon btn--sm theme-btn" type="button" data-theme-toggle aria-label="Сменить тему">
+        <svg class="i i-sun-use" aria-hidden="true"><use href="#i-sun"/></svg><svg class="i i-moon-use" aria-hidden="true"><use href="#i-moon"/></svg>
+      </button>
+      <a class="btn btn--sm top__cta" href="download.html">Скачать</a>
+      <button class="btn btn--quiet btn--icon btn--sm menu-btn" type="button" data-menu aria-expanded="false" aria-controls="nav" aria-label="Меню"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    </div>
+  </div>
+</header>
+<main id="main">
+
+<section class="page-head"><div class="wrap"><div class="crumbs"><a href="index.html">Главная</a> / Личный кабинет</div><h1 class="h1">Личный кабинет</h1><p class="lede">Подписка, оплата и коды активации — в одном месте.</p></div></section>
+<section class="sec sec--tight"><div class="wrap" data-account>
+  <div data-step="email">
+    <form class="acc-form" data-email-form novalidate>
+      <label class="field"><span>Почта</span><input class="input" type="email" name="email" autocomplete="email" required placeholder="you@example.ru"></label>
+      <button class="btn" type="submit">Получить код для входа</button>
+      <p class="acc-error" data-email-error hidden></p>
+      <p class="muted acc-small">Пароль не нужен: пришлём на почту код из шести цифр. Входя, вы принимаете <a href="terms.html">оферту</a> и <a href="privacy.html">политику конфиденциальности</a>.</p>
+    </form>
+  </div>
+  <div data-step="code" hidden>
+    <form class="acc-form" data-code-form novalidate>
+      <p>Код отправлен на <b data-sent-to></b>. Письмо может прийти через минуту, проверьте и «Спам».</p>
+      <label class="field"><span>Код из письма</span><input class="input mono" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+      <button class="btn" type="submit">Войти</button>
+      <button class="btn btn--quiet btn--sm" type="button" data-change-email>Другая почта</button>
+      <p class="acc-error" data-code-error hidden></p>
+    </form>
+  </div>
+  <div data-step="cabinet" hidden>
+    <div class="acc-head"><p class="muted" style="margin:0">Вы вошли как <b data-account-email></b></p><button class="btn btn--ghost btn--sm" type="button" data-logout>Выйти</button></div>
+    <h2 class="h2">Подписки</h2>
+    <p class="muted" data-subs-empty>Подписок пока нет. Выберите тариф ниже.</p>
+    <div class="acc-subs" data-subs></div>
+    <h2 class="h2">Оформить подписку</h2>
+    <div class="acc-plans" data-plans></div>
+    <h2 class="h2">Платежи</h2>
+    <p class="muted" data-payments-empty>Платежей пока не было.</p>
+    <ul class="acc-pays" data-payments></ul>
+    <p class="muted acc-small">Вопросы об оплате и возврате — <a href="mailto:support@veliq.app">support@veliq.app</a>. Условия — в <a href="pricing.html#refund">разделе о возврате</a>.</p>
+  </div>
+</div></section>
+<script src="assets/account.js"></script>
+
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__grid">
+      <div>
+        <a class="logo" href="index.html" aria-label="VELIQ — на главную">
+          <img class="on-light" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" width="144" height="66">
+          <img class="on-dark" src="assets/img/veliq-wordmark-dark.svg" alt="" width="144" height="66">
+        </a>
+        <p class="muted" style="max-width:34ch;margin:16px 0 0">Оптимальный маршрут для каждого соединения.</p>
+      </div>
+      <div>
+        <h2>Продукт</h2>
+        <ul><li><a href="download.html">Скачать</a></li><li><a href="how.html">Как работает</a></li><li><a href="index.html#privacy">Что видит сервер</a></li><li><a href="index.html#games">Для игр</a></li><li><a href="pricing.html">Цены</a></li><li><a href="roadmap.html">План развития</a></li></ul>
+      </div>
+      <div>
+        <h2>Клубам</h2>
+        <ul><li><a href="clubs.html">VELIQ для клубов</a></li><li><a href="clubs.html#calc">Расчёт выгоды</a></li><li><a href="clubs.html#setup">Установка в клубе</a></li></ul>
+      </div>
+      <div>
+        <h2>Помощь</h2>
+        <ul><li><a href="support.html">Вопросы и ответы</a></li><li><a href="support.html#errors">Ошибки и решения</a></li><li><a href="contacts.html">Контакты и реквизиты</a></li><li><a href="mailto:support@veliq.app">support@veliq.app</a></li></ul>
+      </div>
+    </div>
+    <div class="foot__bottom">
+      <span>© 2026 VELIQ</span>
+      <span><a href="privacy.html">Конфиденциальность</a>&nbsp;&nbsp;&nbsp;<a href="terms.html">Оферта</a>&nbsp;&nbsp;&nbsp;<a href="contacts.html">Контакты</a></span>
+    </div>
+  </div>
+</footer>
+<script src="assets/charts.js"></script>
+<script src="assets/site.js"></script>
+</body>
+</html>

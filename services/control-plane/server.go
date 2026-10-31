@@ -40,6 +40,13 @@ type Settings struct {
 	CA                   *x509.Certificate
 	CAKey                crypto.Signer
 	ServerCertificate    *x509.Certificate
+	// Accounts and subscriptions. The cabinet API stays off until AccountOrigin
+	// is set; subscription periods are only enforced with EnforceSubscription.
+	AccountOrigin       string
+	Mailer              Mailer
+	Plans               []Plan
+	Payments            PaymentProvider
+	EnforceSubscription bool
 }
 type API struct {
 	relayTrafficMu                            sync.Mutex
@@ -53,13 +60,14 @@ type API struct {
 	LatencyNS                                 atomic.Uint64
 	limit                                     *limiter
 	enrollIP, enrollCode                      *limiter
+	loginIP                                   *limiter
 }
 
 func New(s *Store, c Settings) (*API, error) {
 	if len(c.AdminToken) < 24 || len(c.SigningKey) != ed25519.PrivateKeySize || c.KeyID == "" || c.CA == nil || c.CAKey == nil {
 		return nil, errors.New("admin token, signing key and device CA required")
 	}
-	return &API{Store: s, Settings: c, limit: newLimiter(time.Now()), enrollIP: newEnrollmentLimiter(time.Now()), enrollCode: newEnrollmentLimiter(time.Now())}, nil
+	return &API{Store: s, Settings: c, limit: newLimiter(time.Now()), enrollIP: newEnrollmentLimiter(time.Now()), enrollCode: newEnrollmentLimiter(time.Now()), loginIP: newLoginLimiter(time.Now())}, nil
 }
 func (a *API) publish(ctx context.Context) ([]byte, error) {
 	pub := a.Settings.SigningKey.Public().(ed25519.PublicKey)
@@ -125,6 +133,17 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("POST /api/v1/relays/heartbeat", a.heartbeat)
 	m.HandleFunc("/api/v1/apps", a.apps)
 	m.HandleFunc("POST /api/v1/telemetry", a.telemetry)
+	m.HandleFunc("POST /api/v1/subscription/status", a.subscriptionStatus)
+	m.HandleFunc("POST /api/v1/account/login/start", a.loginStart)
+	m.HandleFunc("POST /api/v1/account/login/verify", a.loginVerify)
+	m.HandleFunc("POST /api/v1/account/logout", a.logout)
+	m.HandleFunc("GET /api/v1/account", a.accountView)
+	m.HandleFunc("POST /api/v1/account/subscriptions", a.subscriptionCreate)
+	m.HandleFunc("POST /api/v1/account/subscriptions/", a.subscriptionAction)
+	m.HandleFunc("POST /api/v1/payments/webhook", a.paymentWebhook)
+	m.HandleFunc("GET /api/v1/admin/subscriptions", a.adminSubscriptions)
+	m.HandleFunc("GET /api/v1/admin/subscriptions/cutoff", a.adminSubscriptions)
+	m.HandleFunc("POST /api/v1/admin/subscriptions/payments", a.adminSubscriptions)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		defer func() { a.LatencyNS.Add(uint64(time.Since(start))) }()
@@ -157,6 +176,18 @@ func (a *API) auth(w http.ResponseWriter, r *http.Request) {
 		a.AuthFailures.Add(1)
 		a.fail(w, 401, "invalid device proof")
 		return
+	}
+	if a.Settings.EnforceSubscription {
+		ent, err := a.Store.DeviceEntitlement(r.Context(), d.ID)
+		if err != nil {
+			a.fail(w, 503, "SUBSCRIPTION_UNAVAILABLE")
+			return
+		}
+		// The device keeps its identity and seat: paying again restores access.
+		if !ent.Active(time.Now()) {
+			a.fail(w, 402, "SUBSCRIPTION_EXPIRED")
+			return
+		}
 	}
 	relays, e := a.Store.Relays(r.Context())
 	if e != nil {

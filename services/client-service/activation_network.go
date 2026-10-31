@@ -10,7 +10,10 @@ import (
 // New/unconfigured controllers and valid legacy installations retain their
 // established behavior. Code-managed boot must validate binding/authentication
 // before any WinDivert handle or browser policy is activated.
-func (c *Controller) activationNetworkAllowed() bool { return !c.activation.networkBlocked.Load() }
+// An ended subscription blocks the same way until the next successful payment.
+func (c *Controller) activationNetworkAllowed() bool {
+	return !c.activation.networkBlocked.Load() && !c.subscription.suspended.Load()
+}
 func (c *Controller) activationHardware(ctx context.Context, salt []byte) (string, error) {
 	c.activation.mu.Lock()
 	hardware := c.activation.hardware

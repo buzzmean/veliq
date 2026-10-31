@@ -76,13 +76,13 @@ try:
     else:raise AssertionError('outer injection accepted')
 finally:release.diagnostics.run_process=real_run
 assert Path('/etc/neexitlag/control/server.pem').read_bytes()==before_outer
-assert sql('SELECT max(version) FROM schema_migrations')=='3'
+assert sql('SELECT max(version) FROM schema_migrations') in ('3','4')  # migration 4 is additive and may already be applied
 assert sql("SELECT count(*) FROM devices WHERE name='CA rotation health probe' AND NOT revoked")=='0'
 assert release.PROGRESS.rollback=='COMPLETE_SECURITY_STATE_PRESERVED'
 release.apply(stage,commit,'ACTIVATE-CODES-2.56.177.4')
 assert Path('/etc/neexitlag/control/ca.pem').read_bytes()==ca_before
 assert int(sql('SELECT count(*) FROM devices WHERE revoked'))>=revoked_before+2
-assert sql('SELECT max(version) FROM schema_migrations')=='3'
+assert sql('SELECT max(version) FROM schema_migrations')=='4'
 assert sql("SELECT count(*) FROM devices WHERE name='CA rotation health probe' AND NOT revoked")=='0'
 for name in ('neexitlag-control-plane','neexitlag-relay','veliq-certificate-renewal.timer'):
     leaf.command(['systemctl','is-active','--quiet',name])

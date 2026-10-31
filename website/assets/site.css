@@ -490,3 +490,25 @@
   .js .rm .rm__line { transition: none; }
 }
 @media print { .js .rm .rm__line { transform: none !important; } }
+
+/* ---------- Личный кабинет ---------- */
+.acc { max-width: 720px; }
+.acc-form { display: grid; gap: var(--sp-4); max-width: 420px; }
+.acc-error { color: var(--danger, #c0392b); font-size: var(--fs-sm); margin: 0; }
+.acc-head { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-6); }
+.acc-subs, .acc-plans { display: grid; gap: var(--sp-4); margin: var(--sp-4) 0 var(--sp-8); }
+.acc-plans { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.acc-plan { display: grid; gap: var(--sp-3); align-content: start; }
+.acc-plan .h3, .acc-sub .h3 { margin: 0; }
+.acc-plan p, .acc-sub p { margin: 0; }
+.acc-sub { display: grid; gap: var(--sp-3); }
+.acc-sub__head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; }
+.acc-badge { font-size: var(--fs-sm); padding: 2px 10px; border-radius: 999px; background: var(--bg-sunken); border: 1px solid var(--line); }
+.acc-badge--ok { border-color: currentColor; }
+.acc-actions { display: flex; gap: var(--sp-3); flex-wrap: wrap; }
+.acc-code { display: grid; gap: 6px; padding: var(--sp-4); border: 1px dashed var(--line); border-radius: var(--r-md); }
+.acc-code code { font-size: var(--fs-lg, 1.125rem); word-break: break-all; user-select: all; }
+.acc-auto { display: flex; gap: 8px; align-items: center; font-size: var(--fs-sm); }
+.acc-small { font-size: var(--fs-sm); }
+.acc-devices, .acc-pays { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.acc-devices li, .acc-pays li { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3); padding: 8px 0; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
