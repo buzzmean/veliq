@@ -51,7 +51,8 @@ internal static class Program
     static void SaveImage(FrameworkElement element, string name)
     {
         element.UpdateLayout();
-        Require(element.ActualWidth > 0 && element.ActualHeight > 0, "Empty visual: " + name);
+        Require(element.ActualWidth > 0 && element.ActualHeight > 0,
+            $"Empty visual: {name}; Visibility={element.Visibility}, IsVisible={element.IsVisible}, size={element.ActualWidth}x{element.ActualHeight}");
         var image = new RenderTargetBitmap((int)Math.Ceiling(element.ActualWidth), (int)Math.Ceiling(element.ActualHeight), 96, 96, PixelFormats.Pbgra32);
         image.Render(element);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(image));
@@ -146,23 +147,98 @@ internal static class Program
         live.Exit(); Pump();
         Pass("MinimizeToTray OFF"); Pass("MinimizeToTray ON"); Pass("StartMinimized combinations"); Pass("Save applies immediately and preferences persist");
     }
+    static void TechnicalDropdownsHidden(MainWindow main)
+    {
+        main.ShowPage("Applications"); Pump();
+        foreach (string name in new[] { "RelayChoice", "ProfileFallback", "AppAdvanced" })
+            Require(((FrameworkElement)main.FindName(name)).Visibility == Visibility.Collapsed, name + " exposed without technical preference");
+        Require(!((ComboBox)main.FindName("AppPreset")).IsVisible, "Preset visible through collapsed technical expander");
+        main.ShowPage("Diagnostics"); main.ShowDiagnosticsTab("LocalStrategies"); Pump();
+        Require(!((ComboBox)main.FindName("LocalMechanism")).IsVisible, "Local mechanism visible through collapsed technical container");
+    }
+    static void TechnicalPreference(MainWindow main, bool enabled)
+    {
+        main.ShowPage("Settings");
+        var toggle = (System.Windows.Controls.CheckBox)main.FindName("ShowTechnical");
+        toggle.BringIntoView(); Pump();
+        // Exercise the real user preference/Click handler, not local Visibility
+        // overrides or synthetic dimensions on the production controls.
+        toggle.SetCurrentValue(ToggleButton.IsCheckedProperty, enabled);
+        toggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); Pump();
+        Require(((DesktopViewModel)main.DataContext).ShowTechnical == enabled, "Technical preference did not reach bindings");
+        Require(LocalPreferences.Load(settings).ShowTechnical == enabled, "Technical preference was not persisted");
+    }
+    static void ActualDropdownKeyboard(ComboBox box, string name)
+    {
+        Require(box.IsEnabled && box.Items.Count >= 2, name + " needs an enabled production state with selectable fixture data");
+        int saved = box.SelectedIndex;
+        box.SelectedIndex = 0; Require(box.Focus(), name + " cannot receive keyboard focus"); Pump();
+        Key(box, System.Windows.Input.Key.Down); Require(box.SelectedIndex == 1, name + " arrow selection broken");
+        Key(box, System.Windows.Input.Key.F4); Require(box.IsDropDownOpen, name + " F4 open broken");
+        var popup = (Popup)box.Template.FindName("PART_Popup", box);
+        Require(popup.IsOpen, name + " production popup did not open");
+        var border = (Border)box.Template.FindName("PopupBorder", box);
+        Brush(border.Background, "#FF131417", name + " popup background");
+        var selected = box.ItemContainerGenerator.ContainerFromIndex(box.SelectedIndex) as ComboBoxItem;
+        Require(selected is not null, name + " selected item was not realized");
+        selected!.ApplyTemplate(); Brush(selected.Background, "#FF22252A", name + " selected background");
+        Brush(selected.Foreground, "#FFFFFFFF", name + " selected foreground");
+        SaveImage(border, "actual-popup-" + name);
+        Key(box, System.Windows.Input.Key.Escape); Require(!box.IsDropDownOpen, name + " Escape close broken");
+        Key(box, System.Windows.Input.Key.F4); Key(box, System.Windows.Input.Key.Enter);
+        Require(!box.IsDropDownOpen, name + " Enter close broken");
+        box.Focus(); Pump();
+        Require(box.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)), name + " Tab traversal failed"); Pump();
+        Require(!box.IsKeyboardFocusWithin, name + " Tab remained trapped in ComboBox");
+        box.SelectedIndex = saved; Pump();
+        Pass(name + " production ComboBox: natural layout, dark popup, selection, arrows/F4/Escape/Enter/Tab");
+    }
     static void Dropdowns()
     {
-        var main = Window(new() { MinimizeToTray = false }); main.Show(); Pump();
+        var main = Window(new() { MinimizeToTray = false }); main.Show(); main.Activate(); Pump();
+        TechnicalDropdownsHidden(main);
+        main.ShowPage("Settings"); Pump();
+        foreach (string name in new[] { "Fallback", "Channel" })
+        {
+            var offline = (ComboBox)main.FindName(name); offline.BringIntoView(); Pump(); offline.ApplyTemplate();
+            Require(offline.IsVisible && !offline.IsEnabled, name + " must be visible but disabled without service");
+            Brush(offline.Foreground, "#FF8E939C", name + " offline foreground");
+            SaveImage(offline, "actual-offline-" + name);
+        }
+        // Same DTO/application path as IPC polling, without a real service,
+        // driver, registry policy or network. Data permits real keyboard choices.
+        var model = (DesktopViewModel)main.DataContext;
+        model.Apply(new Snapshot { Connected = true, Backend = new() { Ready = true, Capabilities = new() { Tcp = true } },
+            Routes = [new() { Id = "native-fixture-a", Status = "healthy", ObservedAt = DateTimeOffset.UtcNow },
+                      new() { Id = "native-fixture-b", Status = "healthy", ObservedAt = DateTimeOffset.UtcNow }] });
+        ((ComboBox)main.FindName("AppPreset")).ItemsSource = new LocalStrategyPreset[] {
+            new() { Id = "native-fixture-a", Name = "Fixture A", Version = 1 },
+            new() { Id = "native-fixture-b", Name = "Fixture B", Version = 1 } };
+        TechnicalPreference(main, true);
         var style = (Style)Application.Current.FindResource(typeof(ComboBox));
         foreach (string name in new[] { "Mode", "RelayChoice", "ProfileFallback", "AppPreset", "LocalMechanism", "Fallback", "Channel" })
         {
             string section = name is "Fallback" or "Channel" ? "Settings" : name == "LocalMechanism" ? "Diagnostics" : "Applications";
             main.ShowPage(section);
             if (section == "Diagnostics") main.ShowDiagnosticsTab("LocalStrategies");
-            if(section=="Applications"){var advanced=(Expander)main.FindName("AppAdvanced");advanced.IsExpanded=true;}
+            if (section == "Applications") ((Expander)main.FindName("AppAdvanced")).IsExpanded = true;
+            var mode = (ComboBox)main.FindName("Mode");
+            if (name == "RelayChoice") { Require(!((ComboBox)main.FindName(name)).IsEnabled, "AUTO must not enable fixed relay"); mode.SelectedValue = "MANUAL"; }
             var box = (ComboBox)main.FindName(name); box.BringIntoView(); Pump(); box.ApplyTemplate();
+            Require(box.IsVisible, name + " hidden in its intended page/technical state");
             Require(box.Style == style, name + " does not use shared dark style");
             Require(box.Template.FindName("Chrome", box) is Border, name + " native light template still active");
             Require(box.Template.FindName("PART_Popup", box) is Popup, name + " missing popup");
-            if (!box.IsEnabled) { Brush(box.Foreground, "#FF8E939C", name + " disabled foreground"); }
             SaveImage(box, "actual-" + name);
+            ActualDropdownKeyboard(box, name);
+            if (name == "RelayChoice")
+            {
+                mode.SelectedValue = "AUTO"; Pump(); Require(!box.IsEnabled, "AUTO must disable fixed relay");
+                Brush(box.Foreground, "#FF8E939C", "RelayChoice AUTO disabled foreground");
+                SaveImage(box, "actual-disabled-RelayChoice");
+            }
         }
+        TechnicalPreference(main, false); TechnicalDropdownsHidden(main);
         main.Close(); Pump();
         var combo = new ComboBox { Width = 300, ItemsSource = new[] { "Normal / selected", "Hover / keyboard", "Third item" }, SelectedIndex = 0 };
         var next = new System.Windows.Controls.Button { Content = "Next focus target" };
