@@ -60,7 +60,7 @@ paid_until, grace_until}`. Никаких персональных данных.
 
 | Флаг | Назначение |
 |---|---|
-| `-account-origin https://veliq.app` | включает кабинет; пусто — API кабинета отвечает 503 |
+| `-account-origin https://veliqapp.ru` | включает кабинет; пусто — API кабинета отвечает 503 |
 | `-plans-file /etc/neexitlag/plans.json` | тарифы, пример — `deploy/vps/plans.example.json` (цена 0 = оплата закрыта) |
 | `-smtp-addr host:465`, `-smtp-from`, `-smtp-user`, `-smtp-password-file` | отправка кодов входа (465 — TLS сразу, иначе STARTTLS обязателен) |
 | `-platega-merchant-id`, `-platega-secret-file` | онлайн-оплата через Platega; webhook — `POST /api/v1/payments/webhook`, URL задаётся в кабинете Platega |

@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /account.html
 Disallow: /api/
-Sitemap: https://veliq.app/sitemap.xml
+Sitemap: https://veliqapp.ru/sitemap.xml
