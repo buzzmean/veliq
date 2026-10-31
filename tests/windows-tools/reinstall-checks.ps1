@@ -6,9 +6,12 @@ function Reject-Install([scriptblock]$Body,[string]$Pattern) {
  if($null -eq $message -or $message -notlike $Pattern){throw "Expected reinstall rejection ($Pattern), got: $message"}
 }
 function New-ReinstallCA([string]$Path) {
- $rsa=[Security.Cryptography.RSA]::Create();$rsa.KeySize=2048
+ # .NET Framework/PS5.1 exposes this provider's KeySize as read-only.
+ $rsa=[Security.Cryptography.RSACryptoServiceProvider]::new(2048)
  $cert=$null;$sha=$null
  try {
+  $rsa.PersistKeyInCsp=$false
+  if($rsa.KeySize -ne 2048 -or $rsa.PersistKeyInCsp){throw 'Fixture RSA must be 2048-bit and non-persistent'}
   $request=[Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=VELIQ-REINSTALL-TEST-ONLY',$rsa,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)
   $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true,$false,0,$true))
   $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new(([Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyCertSign -bor [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::CrlSign),$true))
