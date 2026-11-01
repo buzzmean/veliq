@@ -177,6 +177,13 @@ TEST-NET и остаются отдельными actual-capture FAIL.
 readiness enforcement и recovery не запускаются. Live-install оставляет policy
 на всё окно наблюдения; обычный native maintenance мог бы удалить её раньше.
 Поэтому этот опыт не сертифицирует весь продуктовый startup/lifecycle.
+В частности, используется исходный guarded PAC. При включённом readiness
+enforcement `reapplySilentLocked` преобразует его через `AvailabilityPAC`,
+добавляющий DIRECT в browser proxy fallback при недоступности proxy infrastructure.
+Это отказ от proxy, а не доказанный DIRECT egress: маршрут ещё зависит от native
+capture. Успех healthy
+guarded-PAC сценария не доказывает fail-closed этого режима при потере listener
+или capture; следующий outage gate должен учитывать обе фактические формы PAC.
 Фактическое удаление согласуется с текущим кодом, но расходится с историческим
 обещанием постоянного PAC guard: [уточнение области старого варианта A](BROWSER_SILENT_POLICY.md).
 После удаления `POLICY_OR_LISTENER_UNAVAILABLE` означает недоступную registry
@@ -189,6 +196,49 @@ PASS. Chrome policy/actual-driver, Game UDP и isolated upgrade PASS; C# 218 PAS
 Общий CI сохраняет прежние Python rollback (99/100), WPF `actual-RelayChoice`
 и Edge `verified CONNECT/PAC` failures. Эти результаты не закрывают три
 отрицательных browser gate и не являются приёмкой на ПК/ISP.
+
+## Свежий REQUIRED после удаления policy
+
+02.11.2026 MSK (01.11 UTC), Chrome `156.0.8078.48`, code
+`17f627350676e1455269fb8d90457309baad530e`:
+[run 41357412180/job 125000355256](https://github.com/buzzmean/veliq/actions/runs/41357412180/job/125000355256).
+Artifact `13103528800`, `browser-origin-reuse-evidence`, digest
+`sha256:be68e991e054f3ce83e1dbe9f474efc6a4d9c251558c57cd4811d2f0350a1e7d`.
+Baseline coalescing и pinned DLL filters PASS. Новый
+`FreshRequiredAfterPACWithdrawal` PASS; вся browser matrix — 5 PASS, 3 FAIL
+(live-install pending и два ранее подтверждённых native-only нарушения).
+
+После настоящего удаления owned registry value и повторного запроса по старому
+relay tunnel тот же browser process впервые запросил `api.openai.com`.
+До этого authority отсутствовал в native ledger. Его mapping на TEST-NET задан
+до запуска; ни proxy flags, ни DNS/transport mutation через CDP не добавлены.
+
+| Проверка | Фактический результат |
+|---|---|
+| Server connection / initial SNI | Новый connection 5 / api.openai.com; прежние connections не использованы |
+| Egress и полные body | Оба ответа source 127.0.0.2, HTTP/2, 47 и 53 bytes, browser nonce проверен |
+| Owner и policy | Новая owner-bound запись с PID/birth/profile, RELAY_REQUIRED + Required fallback |
+| Ingress | PAC_NATIVE_UPSTREAM: 1 exchange; NATIVE_TCP: 0 новых exchange для этого authority |
+| Новые capture/relay данные | TCP packets +42, reflected accepts +1, relay TCP +1, relay RX +2511 |
+| Registry | Owned policy отсутствует до и после fresh phase |
+
+Удаление registry value **не перевело этот браузер в native-only**: он продолжил
+пользоваться cached PAC и compatibility listener даже для нового authority.
+Это проверка свежего relay open с реальным capture, а не только старого pinned
+туннеля. Длительность сохранения cached PAC, произвольные будущие версии Chrome,
+отказ listener/capture/relay и режим AvailabilityPAC этим PASS не приняты.
+Счётчик relay RX не равен размеру HTTP body; metadata ring и полные application
+ledgers по-прежнему учитываются раздельно.
+
+Полные Go race/vet/build code 17f6273:
+[Windows 125000354999](https://github.com/buzzmean/veliq/actions/runs/41357412180/job/125000354999)
+и [Linux + PG17 125000354876](https://github.com/buzzmean/veliq/actions/runs/41357412150/job/125000354876)
+PASS; C# 218, Game UDP и isolated upgrade PASS. Общий CI красный: сохраняются
+Python rollback (99/100), WPF `actual-RelayChoice`, Edge `verified CONNECT/PAC`.
+Chrome policy PASS, но [отдельный actual-driver job 125000355273](https://github.com/buzzmean/veliq/actions/runs/41357412172/job/125000355273)
+снова завершился assertion `route leak` с пустой policy в
+`browser_native_windows_test.go:249`. Причина этого ранее наблюдавшегося сбоя
+не установлена; новый fresh-origin PASS его не исправляет.
 
 ## Граница readiness: следующий контракт
 
@@ -235,11 +285,12 @@ PASS. Chrome policy/actual-driver, Game UDP и isolated upgrade PASS; C# 218 PAS
 1. Разделение proxy identity по authority подтверждено для PAC и существующего
    `PAC_NATIVE_UPSTREAM` с native AUTO и фактическим capture/owner/egress accounting.
    Переход с owned PAC, существующей до браузера, теперь проверен; live-install
-   остаётся pending в измеренном 30-секундном окне. Следующий gate — свежий CONNECT
-   после native policy withdrawal, затем отказы/восстановление listener, capture
-   и relay. Для нового DIRECT нужен реально перехватываемый TEST-NET endpoint;
-   loopback сам по себе не подтверждает native защиту. Старые tunnels учитывать
-   отдельно. Полный startup/recovery/strict readiness ещё не приняты.
+   остаётся pending в измеренном 30-секундном окне. Свежий authority после policy
+   withdrawal теперь прошёл через cached PAC + native upstream. Следующий gate —
+   отказы и восстановление listener, capture и relay, отдельно для guarded PAC и
+   фактического AvailabilityPAC. Использовать новый TEST-NET authority, проверять
+   отсутствие REQUIRED DIRECT на сервере и отдельно учитывать старые tunnels.
+   Полный startup/recovery/strict readiness ещё не приняты.
 2. Явно разделить гарантии: native наблюдение SNI привязано к соединению;
    строгая изоляция каждого запроса требует подтверждённого браузерного
    transport-контекста. Нельзя объявлять gate закрытым по корректному первому

@@ -8,7 +8,10 @@
 > PAC guard и восстановлении policy на boot не являются гарантиями native AUTO.
 > Подхват, сохранение старых H2 и фактический egress проверяются отдельно в
 > [HTTP/2 origin gate](BROWSER_ORIGIN_REUSE.md). Запись registry и сохранённый
-> listener сами по себе не доказывают изоляцию каждого запроса.
+> listener сами по себе не доказывают изоляцию каждого запроса. На code `17f6273`
+> после удаления registry policy новый REQUIRED authority всё ещё прошёл через
+> cached PAC + native upstream; это не переход к native-only и не основание
+> считать compatibility listener ненужным.
 
 Решение владельца, 20.10.2026: независимый WFP guard отложен (вариант B в
 BROWSER_NATIVE_GUARD.md). PAC остаётся обязательным crash-guard. Пользователь
