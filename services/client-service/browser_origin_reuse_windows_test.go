@@ -4,8 +4,6 @@ package clientservice
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"net"
@@ -21,12 +19,8 @@ import (
 	"github.com/buzzmean/neexitlag/core/browserproxy"
 	"github.com/buzzmean/neexitlag/core/flowpolicy"
 	"github.com/buzzmean/neexitlag/core/profiles"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
 	"github.com/buzzmean/neexitlag/internal/browserfixture"
 	wp "github.com/buzzmean/neexitlag/platform/windows"
-	"github.com/buzzmean/neexitlag/services/relay"
-	"github.com/buzzmean/neexitlag/tools/labcert"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
@@ -54,7 +48,7 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		if err = os.WriteFile(child, raw, 0700); err != nil {
 			t.Fatal(err)
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 420*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, child, "-test.run=^TestWindowsBrowserOriginReuse$", "-test.v")
 		cmd.Env = append(os.Environ(), "NEEXITLAG_ORIGIN_REUSE_CHILD=1")
@@ -123,6 +117,12 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		{"OwnedPACBeforeNativeActivation", "policy-existing", false},
 		{"OwnedPACAppliedToRunningBrowser", "policy-live", false},
 		{"FreshRequiredAfterPACWithdrawal", "policy-withdrawal", false},
+		{"ListenerOutageGuarded", "outage-listener-guarded", false},
+		{"ListenerOutageAvailability", "outage-listener-availability", false},
+		{"CaptureOutageGuarded", "outage-capture-guarded", false},
+		{"CaptureOutageAvailability", "outage-capture-availability", false},
+		{"RelayOutageGuarded", "outage-relay-guarded", false},
+		{"RelayOutageAvailability", "outage-relay-availability", false},
 		{"NativeRequiredThenLocal", "native", true},
 		{"NativeLocalFirst", "native", false},
 	} {
@@ -131,8 +131,9 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 }
 
 func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst bool) {
+	outage := strings.HasPrefix(mode, "outage-")
 	freshAfterWithdrawal := mode == "policy-withdrawal"
-	livePolicy := mode == "policy-existing" || mode == "policy-live" || freshAfterWithdrawal
+	livePolicy := mode == "policy-existing" || mode == "policy-live" || freshAfterWithdrawal || outage
 	native := mode == "native" || mode == "pac-native" || livePolicy
 	usePAC := mode == "pac" || mode == "pac-native" || livePolicy
 	if !native && !usePAC {
@@ -157,48 +158,22 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	// This isolates authority reuse after a locally admitted connection. It does
 	// not fake a successful DPI transform or claim LOCAL selection/ISP acceptance.
 	p := profiles.Profile{ID: "origin-reuse", Name: "Origin reuse", Executables: []string{chrome}, Mode: profiles.Auto, Custom: true, Rules: []flowpolicy.Rule{{ID: "controlled-local", Protocol: "tcp", Domains: []string{browserfixture.ReuseLocalHost, browserfixture.ReuseSiblingHost}, Action: flowpolicy.Direct, Fallback: flowpolicy.FailBlock}}}
+	if outage {
+		p.Rules[0].Domains = append(p.Rules[0].Domains, browserfixture.OutageHosts[1], browserfixture.OutageHosts[3])
+	}
 	if native && !livePolicy {
 		p.BrowserTransport = "native"
 	}
 	if err = c.Profiles.Upsert(p); err != nil {
 		t.Fatal(err)
 	}
-	st, ct, err := labcert.Pair()
-	if err != nil {
-		t.Fatal(err)
-	}
-	pub, key, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r, err := relay.Listen("127.0.0.1:0", relay.Config{TLS: st, TicketVerifier: security.NewTicketVerifier(map[string]ed25519.PublicKey{"test": pub}, "VPS-01"), Allow: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}, Acceptance: &relay.AcceptanceConfig{LeaseDuration: 2 * time.Minute, OutboundSource: netip.MustParseAddr("127.0.0.2")}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { r.Close() })
-	peer := ct.Certificates[0].PrivateKey.(ed25519.PrivateKey).Public().(ed25519.PublicKey)
-	pool, err := transport.NewPool(c.ctx, transport.DefaultPoolConfig(), func(ctx context.Context) (*transport.Client, error) {
-		id, err := security.NewID()
-		if err != nil {
-			return nil, err
-		}
-		now := time.Now()
-		ticket, err := security.Sign("ticket", "test", key, security.Ticket{ID: id, DeviceID: "origin-reuse", DeviceKey: security.Fingerprint(peer), RelayID: "VPS-01", IssuedAt: now, ExpiresAt: now.Add(time.Minute)})
-		if err != nil {
-			return nil, err
-		}
-		return transport.DialWithTicket(ctx, r.Addr().String(), ct, ticket)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { pool.Close() })
-	c.Engine.SetRelay("VPS-01", pool)
+	r, pool := newOriginReuseRelay(t, c)
 	address := "127.0.0.1"
 	args := []string{"--no-proxy-server"}
 	var proxy *browserproxy.Server
 	var delegated *originReuseDelegatedBackend
-	var startCapture func()
+	var startCapture, stopCapture func()
+	var restartProxy func()
 	if native {
 		raw, err := os.ReadFile(filepath.Join(os.Getenv("NEEXITLAG_TEST_DRIVER_DIR"), "pins.json"))
 		if err != nil {
@@ -219,13 +194,26 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 		classify := func(id wp.ProcessIdentity, tuple wp.Tuple) wp.Decision {
 			// Contain unrelated browser bootstrap traffic in this disposable
 			// VM. The tested endpoint still uses the unmodified classifier.
-			if strings.EqualFold(id.Path, chrome) && (tuple.Protocol != "tcp" || tuple.Destination != controlled) {
+			allowed := tuple.Destination == controlled
+			if outage && tuple.Destination.Port() == f.Port() {
+				for _, address := range browserfixture.OutageAddresses {
+					if tuple.Destination.Addr().String() == address {
+						allowed = true
+					}
+				}
+			}
+			if strings.EqualFold(id.Path, chrome) && (tuple.Protocol != "tcp" || !allowed) {
 				return wp.Decision{Block: true, BlockOnFailure: true, Policy: flowpolicy.Result{Action: flowpolicy.Block, Fallback: flowpolicy.FailBlock}}
 			}
 			return c.Classify(id, tuple)
 		}
 		startCapture = func() {
 			if err := backend.Start(c.ctx, classify); err != nil {
+				t.Fatal(err)
+			}
+		}
+		stopCapture = func() {
+			if err := backend.Stop(); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -240,16 +228,34 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	if usePAC {
 		plan := func(ctx context.Context, q browserproxy.Request) (browserproxy.Plan, error) {
 			freshHost := freshAfterWithdrawal && q.Host == browserfixture.ReuseFreshRequiredHost
+			if outage {
+				for _, host := range browserfixture.OutageHosts {
+					if q.Host == host {
+						freshHost = true
+					}
+				}
+			}
 			if !q.Secure || q.Port != f.Port() || (!freshHost && q.Host != browserfixture.ReuseLocalHost && q.Host != browserfixture.ReuseSiblingHost && q.Host != browserfixture.ReuseRequiredHost) {
 				return browserproxy.Plan{}, errors.New("outside controlled origin reuse endpoint")
 			}
 			return c.browserPlan(ctx, q)
 		}
-		proxy, err = browserproxy.Listen(c.ctx, browserproxy.Config{TransportCheck: c.transportCheckSettings, RequireClientHelloReplay: true, Authorize: c.browserOwner, AuthorizeForwarded: c.browserRecoveryOwner, Plan: plan, Open: c.browserOpen, OpenPlan: c.browserOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered})
+		proxyConfig := browserproxy.Config{TransportCheck: c.transportCheckSettings, RequireClientHelloReplay: true, Authorize: c.browserOwner, AuthorizeForwarded: c.browserRecoveryOwner, Plan: plan, Open: c.browserOpen, OpenPlan: c.browserOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered}
+		proxy, err = browserproxy.Listen(c.ctx, proxyConfig)
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { proxy.Close() })
+		proxyConfig.Address = proxy.Address()
+		restartProxy = func() {
+			proxy, err = browserproxy.Listen(c.ctx, proxyConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c.browser.mu.Lock()
+			c.browser.server = proxy
+			c.browser.mu.Unlock()
+		}
 		// Exact production per-authority PAC, no policy installation/recovery bypass.
 		pacArgs, err := browserproxy.ChromeArguments(proxy.Address(), "unused-isolated-profile")
 		if err != nil {
@@ -266,6 +272,12 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			c.browser.server = proxy
 			c.browser.address = proxy.Address()
 			c.browser.expectedPAC = strings.TrimPrefix(pacArgs[1], "--proxy-pac-url=")
+			if outage && strings.HasSuffix(mode, "-availability") {
+				c.browser.expectedPAC, err = browserproxy.AvailabilityPAC(c.browser.expectedPAC)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 			c.browser.silent.Profiles = []string{p.ID}
 			// Exercise the real owned journal and writer. Readiness/SCM/recovery
 			// provisioning is deliberately outside this isolated transport gate.
@@ -310,7 +322,38 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 		var activatedAt time.Time
 		var beforeFresh nativeBrowserSnapshot
 		var beforeTCP, beforeRX uint64
+		var fault *originReuseOutage
+		if outage {
+			fault = &originReuseOutage{mode: mode, c: c, f: f, proxy: func() *browserproxy.Server { return proxy }, relay: func() (uint64, uint64) { return r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load() }}
+			fault.down = func() {
+				switch strings.Split(mode, "-")[1] {
+				case "listener":
+					proxy.Close()
+				case "capture":
+					stopCapture()
+				case "relay":
+					pool.Close()
+					r.Close()
+				}
+			}
+			fault.up = func() {
+				switch strings.Split(mode, "-")[1] {
+				case "listener":
+					restartProxy()
+				case "capture":
+					startCapture()
+				case "relay":
+					r, pool = newOriginReuseRelay(t, c)
+				}
+			}
+		}
 		run := f.RunPhased
+		if outage {
+			run = f.RunOutageSequence
+			if strings.Contains(mode, "-capture-") {
+				run = f.RunCaptureOutageSequence
+			}
+		}
 		if freshAfterWithdrawal {
 			run = f.RunFreshAfterSequence
 		}
@@ -364,6 +407,12 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			if stage == "required_again" {
 				t.Logf("ORIGIN_POLICY_WINDOW mode=%s after_activation_ms=%d same_pid_birth=true", mode, time.Since(activatedAt).Milliseconds())
 			}
+			if fault != nil {
+				if stage == "before_outage" {
+					verifyLiveOriginPolicy(t, c, f, proxy, delegated, mode, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
+				}
+				fault.phase(t, stage)
+			}
 			if stage == "before_fresh" {
 				verifyLiveOriginPolicy(t, c, f, proxy, delegated, mode, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
 				if c.chromePolicyActive() {
@@ -379,7 +428,9 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 				t.Log("ORIGIN_FRESH_BOUNDARY registry_active=false new_authority_unseen=true same_pid_birth=true destination=TEST-NET")
 			}
 		})
-		if freshAfterWithdrawal {
+		if outage {
+			fault.verifyFinal(t)
+		} else if freshAfterWithdrawal {
 			verifyFreshOriginAfterWithdrawal(t, c, f, proxy, beforeFresh, r.Metrics.TCPConnections.Load()-beforeTCP, r.Metrics.RXBytes.Load()-beforeRX)
 		} else {
 			verifyLiveOriginPolicy(t, c, f, proxy, delegated, mode, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())

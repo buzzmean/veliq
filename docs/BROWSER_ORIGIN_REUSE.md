@@ -317,3 +317,34 @@ Actions VM с pinned DLL и app-scoped firewall rule. Trust/capture opt-in
 преднамеренно не поддерживает запуск на установленном пользовательском ПК.
 Workflow также проверяет полный Windows Go race/vet/build и все WinDivert
 filters; Linux Go race/vet/build с PostgreSQL — `relay-release.yml` того же SHA.
+
+## Матрица одиночных отказов после withdrawal
+
+Новые `Listener/Capture/RelayOutage{Guarded,Availability}` выполняют исходную
+owned-policy последовательность, удаляют registry policy штатным maintenance,
+затем реально останавливают ровно один компонент. Listener закрывает свои
+соединения и возвращается на тот же port; capture выполняет Stop/Start;
+relay закрывает server и pool, после восстановления использует новые mTLS sessions
+и одноразовые tickets. Это управляемые lifecycle callbacks, не полный SCM/recovery.
+Availability-вариант использует точный `AvailabilityPAC` script; readiness enforcement
+не включается и его полный lifecycle этим не принимается.
+
+Браузер остаётся тем же, без reload/reset proxy state. По одному новому REQUIRED
+и ordinary authority запрашиваются во время отказа и после восстановления.
+TEST-NET адреса различаются, чтобы исключить coalescing со старым соединением.
+Исключение — capture outage: его две fault-authority заранее mapped на доступный
+loopback origin. При выключенном capture TEST-NET blackhole мог бы скрыть DIRECT
+fallback; reachable endpoint делает такое ложное доказательство невозможным.
+Recovery-authority опять требуют actual capture. Старые flows закрываются только
+как реальное следствие остановки компонента, специально для свежего запроса их
+не разрывают. Восстановление нового authority не доказывает очистку bad-proxy
+cache уже неудачного authority.
+
+Fetch имеет 6s deadline; исход браузера, серверные запросы до ответа, actual ingress,
+owner/floor, native/PAC ledgers и приращения relay/capture проверяются отдельно.
+Ожидаемый барьер: REQUIRED не достигает DIRECT; разрешённый DIRECT не отправляется
+в relay. Availability при потерянном listener проверяет native fallback; недоступность
+ordinary при остановленном capture/guarded listener учитывается явно. Ни error
+браузера, ни пустой серверный ledger по отдельности не дают PASS. Одновременная
+потеря listener+capture, crash guard, долгий lifecycle и повтор неудачного authority
+остаются отдельными gates. Результаты Windows появятся после выполнения этой матрицы.

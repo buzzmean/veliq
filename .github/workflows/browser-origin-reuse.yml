@@ -4,12 +4,12 @@ on:
     branches: ['test/r1-browser-origin-reuse-*']
     paths:
       - 'internal/browserfixture/origin_reuse*'
-      - 'services/client-service/browser_origin_reuse_windows_test.go'
+      - 'services/client-service/browser_origin_*windows_test.go'
       - '.github/workflows/browser-origin-reuse.yml'
   pull_request:
     paths:
       - 'internal/browserfixture/origin_reuse*'
-      - 'services/client-service/browser_origin_reuse_windows_test.go'
+      - 'services/client-service/browser_origin_*windows_test.go'
       - '.github/workflows/browser-origin-reuse.yml'
   workflow_dispatch:
 permissions:
@@ -44,7 +44,7 @@ jobs:
         run: |
           $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
           $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
-          & go test -v -count=1 -timeout 210s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$' 2>&1 | Tee-Object -FilePath origin-reuse-routing.log
+          & go test -v -count=1 -timeout 480s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$' 2>&1 | Tee-Object -FilePath origin-reuse-routing.log
           if ($LASTEXITCODE) { throw 'ORIGIN_REUSE_ROUTING_GATE_FAILED' }
       - uses: actions/upload-artifact@v4
         if: always()
@@ -72,4 +72,4 @@ jobs:
           if ($LASTEXITCODE) { throw 'WINDOWS_BUILD_FAILED' }
 # Linux race/vet/build with PostgreSQL is supplied by relay-release.yml.
 # A routing violation deliberately fails this gate. No continue-on-error,
-# production credentials, browser policy installation or owner PC acceptance.
+# production credentials or owner PC acceptance; policy/trust only on disposable VM.

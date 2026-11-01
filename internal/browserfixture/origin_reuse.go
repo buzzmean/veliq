@@ -29,6 +29,19 @@ const ReuseSiblingHost = "youtube.com"
 const ReuseRequiredHost = "chatgpt.com"
 const ReuseFreshRequiredHost = "api.openai.com"
 
+// Distinct TEST-NET addresses prevent an earlier H2 connection from satisfying
+// a fresh single-fault/recovery attempt. These names never resolve publicly.
+var OutageHosts = [...]string{"outage.openai.com", "ordinary-outage.example", "recovery.openai.com", "ordinary-recovery.example"}
+var OutageSteps = [...]string{"outage_required", "outage_direct", "recovery_required", "recovery_direct"}
+var OutageAddresses = [...]string{"192.0.2.251", "192.0.2.250", "192.0.2.249", "192.0.2.248"}
+
+type OriginOutcome struct {
+	Step     string
+	Complete bool
+	Error    string
+	Millis   int64
+}
+
 type OriginRequest struct {
 	Connection              uint64
 	Host, SNI, Source, Step string
@@ -44,6 +57,8 @@ type OriginReuse struct {
 	mu        sync.Mutex
 	requests  []OriginRequest
 	fresh     []OriginRequest
+	outage    []OriginRequest
+	outcomes  []OriginOutcome
 	bootstrap *OriginRequest
 	overflow  bool
 }
@@ -71,7 +86,8 @@ func NewOriginReuse(t testing.TB) *OriginReuse {
 	if err != nil {
 		t.Fatal(err)
 	}
-	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: []string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost, ReuseFreshRequiredHost}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour)}
+	names := append([]string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost, ReuseFreshRequiredHost}, OutageHosts[:]...)
+	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: names, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour)}
 	der, err := x509.CreateCertificate(rand.Reader, leaf, ca, &leafKey.PublicKey, key)
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +130,13 @@ func (f *OriginReuse) URL(host, path string) string {
 
 func (f *OriginReuse) serveReuse(w http.ResponseWriter, r *http.Request) {
 	host, _, _ := net.SplitHostPort(r.Host)
-	if host != ReuseLocalHost && host != ReuseSiblingHost && host != ReuseRequiredHost && host != ReuseFreshRequiredHost {
+	outageIndex := -1
+	for i, name := range OutageHosts {
+		if host == name {
+			outageIndex = i
+		}
+	}
+	if outageIndex < 0 && host != ReuseLocalHost && host != ReuseSiblingHost && host != ReuseRequiredHost && host != ReuseFreshRequiredHost {
 		http.Error(w, "unexpected host", 400)
 		return
 	}
@@ -144,14 +166,20 @@ func (f *OriginReuse) serveReuse(w http.ResponseWriter, r *http.Request) {
 	}
 	step := r.URL.Query().Get("step")
 	fresh := host == ReuseFreshRequiredHost && (step == "fresh_required" || step == "fresh_required_again")
-	if !fresh && (host == ReuseFreshRequiredHost || (step != "local" && step != "sibling" && step != "required" && step != "required_again")) {
+	if (outageIndex >= 0 && step != OutageSteps[outageIndex]) || (outageIndex < 0 && !fresh && (host == ReuseFreshRequiredHost || (step != "local" && step != "sibling" && step != "required" && step != "required_again"))) {
 		http.Error(w, "bad step", 400)
 		return
 	}
 	body := f.Nonce + ":" + step
 	record := reuseRequest(r, host, step, len(body))
 	f.mu.Lock()
-	if fresh {
+	if outageIndex >= 0 {
+		if len(f.outage) < 16 {
+			f.outage = append(f.outage, record)
+		} else {
+			f.overflow = true
+		}
+	} else if fresh {
 		if len(f.fresh) < 4 {
 			f.fresh = append(f.fresh, record)
 		} else {
@@ -166,6 +194,18 @@ func (f *OriginReuse) serveReuse(w http.ResponseWriter, r *http.Request) {
 	// Record before returning the response: a rejected request has already leaked
 	// its authority to this endpoint. Never use an origin 421/403 as route proof.
 	fmt.Fprint(w, body)
+}
+
+// OutageEvidence includes server requests even when the browser rejected or
+// aborted the response. A fetch error alone is never evidence of no leak.
+func (f *OriginReuse) OutageEvidence(t testing.TB) ([]OriginRequest, []OriginOutcome) {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.overflow {
+		t.Fatal("outage evidence overflow")
+	}
+	return append([]OriginRequest(nil), f.outage...), append([]OriginOutcome(nil), f.outcomes...)
 }
 
 // FreshRequests is separate from the four-request coalescing sequence. The

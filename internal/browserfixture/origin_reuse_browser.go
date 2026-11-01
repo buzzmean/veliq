@@ -30,16 +30,29 @@ func (f *OriginReuse) Run(t testing.TB, chrome, address, bootstrapHost string, a
 // controls. The caller can change the service/policy while the same browser and
 // warm H2 connections stay alive. Hooks must fit within the bounded lifetime.
 func (f *OriginReuse) RunPhased(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32)) {
-	f.runPhased(t, chrome, address, bootstrapHost, args, after, false)
+	f.runPhased(t, chrome, address, bootstrapHost, args, after, "")
 }
 
 // RunFreshAfterSequence adds a previously unused authority after the warm
 // sequence. Its TEST-NET mapping is fixed before launch, never via CDP mutation.
 func (f *OriginReuse) RunFreshAfterSequence(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32)) {
-	f.runPhased(t, chrome, address, bootstrapHost, args, after, true)
+	f.runPhased(t, chrome, address, bootstrapHost, args, after, "fresh")
 }
 
-func (f *OriginReuse) runPhased(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32), fresh bool) {
+// RunOutageSequence appends bounded, failure-capable attempts on new authorities.
+// Hooks alter only the service; browser proxy state and old connections are not reset.
+func (f *OriginReuse) RunOutageSequence(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32)) {
+	f.runPhased(t, chrome, address, bootstrapHost, args, after, "outage")
+}
+
+// With capture absent, a TEST-NET blackhole could hide DIRECT fallback. Map the
+// two fault attempts to the reachable origin; recovery still requires capture.
+func (f *OriginReuse) RunCaptureOutageSequence(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32)) {
+	f.runPhased(t, chrome, address, bootstrapHost, args, after, "outage-capture")
+}
+
+func (f *OriginReuse) runPhased(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32), variant string) {
+	fresh, outage := variant == "fresh", strings.HasPrefix(variant, "outage")
 	t.Helper()
 	if os.Getenv("NEEXITLAG_TEST_ORIGIN_REUSE") != "1" {
 		t.Fatal("explicit origin reuse fixture opt-in required")
@@ -47,7 +60,11 @@ func (f *OriginReuse) runPhased(t testing.TB, chrome, address, bootstrapHost str
 	if bootstrapHost != ReuseLocalHost && bootstrapHost != ReuseRequiredHost {
 		t.Fatal("invalid controlled bootstrap host")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
+	lifetime := 50 * time.Second
+	if outage {
+		lifetime = 80 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), lifetime)
 	defer cancel()
 	home := t.TempDir()
 	rootPath := filepath.Join(home, "root.cer")
@@ -109,6 +126,15 @@ func (f *OriginReuse) runPhased(t testing.TB, chrome, address, bootstrapHost str
 	}
 	if fresh {
 		rules = append(rules, "MAP "+ReuseFreshRequiredHost+" 192.0.2.254")
+	}
+	if outage {
+		for i, host := range OutageHosts {
+			mapped := OutageAddresses[i]
+			if variant == "outage-capture" && i < 2 {
+				mapped = "127.0.0.1"
+			}
+			rules = append(rules, "MAP "+host+" "+mapped)
+		}
 	}
 	// All other browser DNS fails locally. No public service/credential is used.
 	rules = append(rules, "MAP * ~NOTFOUND", "EXCLUDE localhost", "EXCLUDE *.localhost")
@@ -212,13 +238,48 @@ func (f *OriginReuse) runPhased(t testing.TB, chrome, address, bootstrapHost str
 		hosts = append(hosts, ReuseFreshRequiredHost, ReuseFreshRequiredHost)
 		steps = append(steps, "fresh_required", "fresh_required_again")
 	}
+	if outage {
+		hosts = append(hosts, OutageHosts[:]...)
+		steps = append(steps, OutageSteps[:]...)
+	}
 	for i, host := range hosts {
 		step := steps[i]
+		if outage && after != nil {
+			if i == 4 {
+				after("before_outage", uint32(cmd.Process.Pid))
+			}
+			if i == 6 {
+				after("before_recovery", uint32(cmd.Process.Pid))
+			}
+		}
 		if fresh && i == 4 && after != nil {
 			after("before_fresh", uint32(cmd.Process.Pid))
 		}
 		url, _ := json.Marshal(f.URL(host, "payload") + "&step=" + step)
 		expression := "fetch(" + string(url) + ",{cache:'no-store',credentials:'omit'}).then(async r=>{if(r.status!==200)throw Error('status '+r.status);return await r.text()})"
+		if outage && i >= 4 {
+			started := time.Now()
+			expression = "(async()=>{const c=new AbortController();const timer=setTimeout(()=>c.abort(),6000);try{const r=await fetch(" + string(url) + ",{cache:'no-store',credentials:'omit',signal:c.signal});if(r.status!==200)return {error:'HTTPStatus'};return {body:await r.text()};}catch(e){return {error:e.name==='AbortError'?'AbortError':'FetchError'};}finally{clearTimeout(timer);}})()"
+			var result struct {
+				Result           struct{ Value struct{ Body, Error string } }
+				ExceptionDetails json.RawMessage
+			}
+			if err := json.Unmarshal(call("Runtime.evaluate", map[string]any{"expression": expression, "awaitPromise": true, "returnByValue": true}), &result); err != nil || len(result.ExceptionDetails) > 0 {
+				t.Fatal("outage CDP result invalid", err)
+			}
+			value := result.Result.Value
+			complete := value.Error == "" && value.Body == f.Nonce+":"+step
+			if value.Error == "" && !complete {
+				t.Fatal("outage response body mismatch", step)
+			}
+			f.mu.Lock()
+			f.outcomes = append(f.outcomes, OriginOutcome{Step: step, Complete: complete, Error: value.Error, Millis: time.Since(started).Milliseconds()})
+			f.mu.Unlock()
+			if after != nil {
+				after(step, uint32(cmd.Process.Pid))
+			}
+			continue
+		}
 		var r struct {
 			Result           struct{ Value string }
 			ExceptionDetails json.RawMessage
