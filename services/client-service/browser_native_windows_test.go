@@ -235,22 +235,14 @@ func runNativeBrowserHotAttachFixture(t *testing.T, driver bool) {
 				})
 			}
 			visit("native-active", "127.0.0.3")
-			snap := c.nativeSnapshot()
-			if snap.NativeOnly.Accepted == 0 || snap.NativeOnly.Opened == 0 || snap.NativeOnly.Exchanges == 0 || snap.PACUpstream.Accepted != 0 {
-				t.Fatal("missing native-only or PAC contaminated", snap.NativeOnly, snap.PACUpstream)
-			}
-			controlled := 0
-			for _, record := range snap.Records {
-				if driver && record.Domain != "native-browser.test" {
-					continue
-				} // unrelated browser bootstrap is outside this controlled trial
-				controlled++
-				if record.Policy.Action != flowpolicy.RelayRequired || record.Policy.RelayID != "VPS-01" {
-					t.Fatal("route leak", record.Policy)
-				}
-			}
-			if controlled == 0 || snap.Truncated || snap.Lost != 0 {
-				t.Fatal("incomplete native route proof", controlled, snap.Truncated, snap.Lost)
+			// Тот же 5s бюджет, что у CDP-команды: ждём публикации plan, а не спим.
+			proofCtx, proofCancel := context.WithTimeout(c.ctx, 5*time.Second)
+			snap, proofErr := awaitNativeRouteProof(proofCtx, driver, func() (nativeBrowserSnapshot, <-chan struct{}) {
+				return observeNativeRouteProof(c)
+			})
+			proofCancel()
+			if proofErr != nil {
+				t.Fatal("native route proof", proofErr)
 			}
 			if c.browser.server != nil || c.browser.edge != nil && c.browser.edge.server != nil {
 				t.Fatal("fresh native opened PAC listener")
