@@ -55,6 +55,10 @@ ClientHello/SNI не определяет authority всех последующ�
   Неизменённый controller callback открывает настоящий loopback origin/relay;
   owner, пакеты, OPEN и счётчики не подменяются. Это проверка транспорта,
   не доказательство установки или подхвата PAC в пользовательском браузере.
+  `CaptureIngress.Lost` — вытеснение metadata samples из кольца на 24 записи,
+  не потеря пакетов: проверяются его lifetime atomic totals и число реальных
+  reflected accepts. Отдельные native/PAC журналы соединений обязаны оставаться
+  полными, с owner/policy и двусторонними байтами для каждого authority.
 
 Сервер учитывает запрос до ответа: даже ответ 421/403 не отменяет факт
 получения REQUIRED authority на неверном egress. `ORIGIN_ISOLATION_VIOLATION`
@@ -111,6 +115,46 @@ PASS. Linux workflow далее падает на прежнем Python rollback
 Chrome policy/actual-driver, Game UDP и isolated upgrade того же SHA прошли.
 Эти результаты отделены от красного origin routing gate: прохождение сборки
 не означает устранения нарушения.
+
+## Граница readiness: следующий контракт
+
+Текущие статусы отвечают на разные вопросы. Их нельзя объединять в одну
+гарантию изоляции каждого запроса:
+
+| Наблюдение в текущем коде | Что подтверждает | Чего не подтверждает |
+|---|---|---|
+| `NATIVE_READY_NEW_CONNECTIONS` | Capture готов, relay доступен | Был ли реальный browser exchange; authority позднейших H2 requests |
+| `NATIVE_ONLY_OBSERVED` | Реальные native-only двусторонние байты | Совпадение каждого authority с исходным SNI |
+| `PAC_NATIVE_UPSTREAM` exchange | Конкретный owner-validated CONNECT прошёл native worker | Подхват policy всеми работающими контекстами браузера |
+| `OWNED_PAC_PRESERVED` / запись registry | Сохранена принадлежащая службе конфигурация | Применение policy браузером, закрытие старых direct sockets |
+| Успех данного origin gate | В указанной версии/профиле разделены проверенные authority | Универсальная гарантия для Edge, будущих версий, ECH, IPv6 или старых connections |
+
+Источники: `browser_native_readiness.go`, `browser_policy_readiness.go`,
+`browser_native_compat.go`, `browser_native_pac.go` в `services/client-service/`.
+В частности, `browserPolicyHealth` для native profile использует `NativeOnly`,
+а не `PACUpstream`: успешный hybrid тест не должен искусственно повышать этот
+счётчик или превращаться в ложное native-only подтверждение.
+
+Перед реализацией отдельной strict-origin capability нужны следующие условия
+приёмки; это предлагаемый контракт, не новые поля API или уже включённый режим:
+
+1. Разделить capture readiness, наблюдённый ingress и изоляцию authority.
+   Ограничить доказательство конкретными browser/profile, живыми owner PID/birth/SID,
+   network/policy epoch, listener и per-authority proxy identity. Не выводить его
+   из одного успешного nonce, TLS handshake или исторического счётчика.
+2. В disposable Windows VM проверить сохранённую owned policy с браузером,
+   запущенным до активации. Сопоставить реальные CONNECT, capture и server egress
+   обоих порядков authority, сохранив PID/birth. Отдельно проверить отсутствие
+   policy, чужую/устаревшую policy и отсутствие uptake. Не заменять эти случаи
+   новым процессом с `--proxy-pac-url`, диалогом или принудительным reload.
+3. При потере relay/listener/capture либо смене owner/network/policy отозвать
+   соответствующее доказательство; REQUIRED не разрешать через DIRECT fallback.
+   Повторный READY требует нового наблюдения в актуальном контексте. Проверить
+   отзыв и восстановление фактическим egress, а не только строкой статуса.
+4. Явно учитывать старые pinned H2 connections: новый PAC не переписывает их
+   маршрут. Без доказательства их завершения/исключения нельзя обещать защиту
+   всех requests работающего браузера. Не разрывать их и не replay/migrate TLS.
+   Сохранить DIRECT/LOCAL для допустимого трафика и отдельный REQUIRED floor.
 
 ## Продолжение R1
 

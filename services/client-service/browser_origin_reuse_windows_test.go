@@ -296,14 +296,17 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	}
 	if native {
 		snap := c.nativeSnapshot()
-		if snap.Lost != 0 || snap.Truncated || snap.CaptureIngress == nil || snap.CaptureIngress.Lost != 0 || snap.CaptureIngress.TCPPackets == 0 || snap.CaptureIngress.ReflectedAccepts == 0 {
+		// CaptureIngress.Lost counts evicted metadata samples in a 24-record
+		// ring, not lost packets or the native application ledger. We use its
+		// lifetime atomic totals; the separate ledger must remain complete.
+		if snap.Lost != 0 || snap.Truncated || snap.CaptureIngress == nil || snap.CaptureIngress.TCPPackets == 0 || snap.CaptureIngress.ReflectedAccepts == 0 {
 			t.Fatal("actual capture evidence incomplete")
 		}
 		if usePAC {
-			if snap.NativeOnly.Accepted != 0 || snap.PACUpstream.Opened == 0 || snap.PACUpstream.Exchanges == 0 || delegated.connected.Load() == 0 {
+			if snap.NativeOnly.Accepted != 0 || snap.PACUpstream.Opened == 0 || snap.PACUpstream.Exchanges == 0 || delegated.connected.Load() == 0 || snap.CaptureIngress.ReflectedAccepts < delegated.connected.Load() {
 				t.Fatal("PAC_NATIVE_UPSTREAM proof missing or contaminated by native-only ingress")
 			}
-			t.Logf("ORIGIN_REUSE_HYBRID_PROOF delegated=%d connected=%d reflected=%d pac_opened=%d pac_exchanges=%d native_accepted=%d", delegated.attempted.Load(), delegated.connected.Load(), snap.CaptureIngress.ReflectedAccepts, snap.PACUpstream.Opened, snap.PACUpstream.Exchanges, snap.NativeOnly.Accepted)
+			t.Logf("ORIGIN_REUSE_HYBRID_PROOF delegated=%d connected=%d reflected=%d pac_opened=%d pac_exchanges=%d native_accepted=%d metadata_evicted=%d", delegated.attempted.Load(), delegated.connected.Load(), snap.CaptureIngress.ReflectedAccepts, snap.PACUpstream.Opened, snap.PACUpstream.Exchanges, snap.NativeOnly.Accepted, snap.CaptureIngress.Lost)
 		} else if snap.NativeOnly.Opened == 0 || snap.NativeOnly.Exchanges == 0 || snap.PACUpstream.Accepted != 0 || snap.CaptureIngress.NativeDeferredSYN == 0 {
 			t.Fatal("native-only ingress proof missing")
 		}
