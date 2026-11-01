@@ -8,11 +8,13 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -112,16 +114,25 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		}
 	}()
 	for _, tc := range []struct {
-		name                  string
-		native, requiredFirst bool
+		name, mode    string
+		requiredFirst bool
 	}{
-		{"PAC", false, false}, {"NativeRequiredThenLocal", true, true}, {"NativeLocalFirst", true, false},
+		{"PAC", "pac", false},
+		{"PACNativeLocalFirst", "pac-native", false},
+		{"PACNativeRequiredThenLocal", "pac-native", true},
+		{"NativeRequiredThenLocal", "native", true},
+		{"NativeLocalFirst", "native", false},
 	} {
-		t.Run(tc.name, func(t *testing.T) { runOriginReuseController(t, chrome, tc.native, tc.requiredFirst) })
+		t.Run(tc.name, func(t *testing.T) { runOriginReuseController(t, chrome, tc.mode, tc.requiredFirst) })
 	}
 }
 
-func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst bool) {
+func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst bool) {
+	native := mode == "native" || mode == "pac-native"
+	usePAC := mode == "pac" || mode == "pac-native"
+	if !native && !usePAC {
+		t.Fatal("unknown fixture transport")
+	}
 	f := browserfixture.NewOriginReuse(t)
 	c := New(context.Background())
 	t.Cleanup(c.Close)
@@ -181,6 +192,7 @@ func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst
 	address := "127.0.0.1"
 	args := []string{"--no-proxy-server"}
 	var proxy *browserproxy.Server
+	var delegated *originReuseDelegatedBackend
 	if native {
 		raw, err := os.ReadFile(filepath.Join(os.Getenv("NEEXITLAG_TEST_DRIVER_DIR"), "pins.json"))
 		if err != nil {
@@ -193,6 +205,10 @@ func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst
 		files.Directory = os.Getenv("NEEXITLAG_TEST_DRIVER_DIR")
 		backend := wp.NewWinDivert(files, c.Engine)
 		c.Backend = backend
+		if usePAC {
+			delegated = &originReuseDelegatedBackend{WinDivertBackend: backend, origin: f.Destination()}
+			c.Backend = delegated
+		}
 		controlled := netip.AddrPortFrom(netip.MustParseAddr("192.0.2.254"), f.Port())
 		classify := func(id wp.ProcessIdentity, tuple wp.Tuple) wp.Decision {
 			// Contain unrelated browser bootstrap traffic in this disposable
@@ -206,8 +222,11 @@ func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { backend.Stop() })
-		address = "192.0.2.254"
-	} else {
+		if !usePAC {
+			address = "192.0.2.254"
+		}
+	}
+	if usePAC {
 		plan := func(ctx context.Context, q browserproxy.Request) (browserproxy.Plan, error) {
 			if !q.Secure || q.Port != f.Port() || (q.Host != browserfixture.ReuseLocalHost && q.Host != browserfixture.ReuseSiblingHost && q.Host != browserfixture.ReuseRequiredHost) {
 				return browserproxy.Plan{}, errors.New("outside controlled origin reuse endpoint")
@@ -231,13 +250,30 @@ func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst
 			}
 		}
 	}
+	if native && usePAC {
+		t.Cleanup(func() {
+			if !t.Failed() {
+				return
+			}
+			snap := c.nativeSnapshot()
+			t.Logf("ORIGIN_REUSE_HYBRID_FAILURE attempted=%d connected=%d native=%+v pac=%+v", delegated.attempted.Load(), delegated.connected.Load(), snap.NativeOnly, snap.PACUpstream)
+			if snap.CaptureIngress != nil {
+				t.Logf("ORIGIN_REUSE_HYBRID_CAPTURE tcp=%d reflected=%d lost=%d", snap.CaptureIngress.TCPPackets, snap.CaptureIngress.ReflectedAccepts, snap.CaptureIngress.Lost)
+			}
+			for _, r := range proxy.Snapshot().Records {
+				if r.Domain == browserfixture.ReuseLocalHost || r.Domain == browserfixture.ReuseSiblingHost || r.Domain == browserfixture.ReuseRequiredHost {
+					t.Logf("ORIGIN_REUSE_HYBRID_OPEN host=%s result=%s failure=%s", r.Domain, r.Result, r.OpenFailure)
+				}
+			}
+		})
+	}
 	bootstrap := browserfixture.ReuseLocalHost
 	if requiredFirst {
 		bootstrap = browserfixture.ReuseRequiredHost
 	}
 	f.Run(t, chrome, address, bootstrap, args)
 	first := f.Bootstrap(t)
-	t.Logf("ORIGIN_REUSE_BOOTSTRAP native=%t %+v", native, first)
+	t.Logf("ORIGIN_REUSE_BOOTSTRAP transport=%s %+v", mode, first)
 	firstSource := "127.0.0.1"
 	if requiredFirst {
 		firstSource = "127.0.0.2"
@@ -247,9 +283,9 @@ func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst
 	}
 	requests := f.Requests(t)
 	for _, q := range requests {
-		t.Logf("ORIGIN_REUSE_REQUEST native=%t %+v", native, q)
+		t.Logf("ORIGIN_REUSE_REQUEST transport=%s %+v", mode, q)
 	}
-	if !requiredFirst && (requests[0].Source != "127.0.0.1" || requests[1].Source != "127.0.0.1") {
+	if (usePAC || !requiredFirst) && (requests[0].Source != "127.0.0.1" || requests[1].Source != "127.0.0.1") {
 		t.Fatal("local first-route precondition missing")
 	}
 	requiredDirect := 0
@@ -260,15 +296,38 @@ func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst
 	}
 	if native {
 		snap := c.nativeSnapshot()
-		if snap.Lost != 0 || snap.Truncated || snap.NativeOnly.Opened == 0 || snap.NativeOnly.Exchanges == 0 || snap.PACUpstream.Accepted != 0 || snap.CaptureIngress == nil || snap.CaptureIngress.NativeDeferredSYN == 0 || snap.CaptureIngress.ReflectedAccepts == 0 {
-			t.Fatal("actual native capture evidence incomplete")
+		if snap.Lost != 0 || snap.Truncated || snap.CaptureIngress == nil || snap.CaptureIngress.Lost != 0 || snap.CaptureIngress.TCPPackets == 0 || snap.CaptureIngress.ReflectedAccepts == 0 {
+			t.Fatal("actual capture evidence incomplete")
 		}
+		if usePAC {
+			if snap.NativeOnly.Accepted != 0 || snap.PACUpstream.Opened == 0 || snap.PACUpstream.Exchanges == 0 || delegated.connected.Load() == 0 {
+				t.Fatal("PAC_NATIVE_UPSTREAM proof missing or contaminated by native-only ingress")
+			}
+			t.Logf("ORIGIN_REUSE_HYBRID_PROOF delegated=%d connected=%d reflected=%d pac_opened=%d pac_exchanges=%d native_accepted=%d", delegated.attempted.Load(), delegated.connected.Load(), snap.CaptureIngress.ReflectedAccepts, snap.PACUpstream.Opened, snap.PACUpstream.Exchanges, snap.NativeOnly.Accepted)
+		} else if snap.NativeOnly.Opened == 0 || snap.NativeOnly.Exchanges == 0 || snap.PACUpstream.Accepted != 0 || snap.CaptureIngress.NativeDeferredSYN == 0 {
+			t.Fatal("native-only ingress proof missing")
+		}
+		witnessed := map[string]bool{}
 		for _, record := range snap.Records {
 			if record.Domain == browserfixture.ReuseLocalHost || record.Domain == browserfixture.ReuseRequiredHost || record.Domain == browserfixture.ReuseSiblingHost {
-				t.Logf("ORIGIN_REUSE_NATIVE domain=%s action=%s sent=%d received=%d", record.Domain, record.Policy.Action, record.Sent, record.Received)
+				t.Logf("ORIGIN_REUSE_NATIVE ingress=%s domain=%s action=%s sent=%d received=%d", record.Ingress, record.Domain, record.Policy.Action, record.Sent, record.Received)
+				if usePAC && record.Sent > 0 && record.Received > 0 {
+					expected := flowpolicy.Direct
+					if record.Domain == browserfixture.ReuseRequiredHost {
+						expected = flowpolicy.RelayRequired
+					}
+					if record.Ingress != "PAC_NATIVE_UPSTREAM" || record.Owner.Profile != p.ID || record.Owner.PID == 0 || record.Owner.Birth == 0 || record.Policy.Action != expected {
+						t.Fatal("hybrid origin/owner/route mismatch", record.Domain, record.Policy.Action, record.Ingress)
+					}
+					witnessed[record.Domain] = true
+				}
 			}
 		}
-	} else {
+		if usePAC && len(witnessed) != 3 {
+			t.Fatal("hybrid did not witness three separate authorities", witnessed)
+		}
+	}
+	if usePAC {
 		snap := proxy.Snapshot()
 		if snap.Lost != 0 || snap.Truncated {
 			t.Fatal("PAC evidence incomplete")
@@ -286,11 +345,36 @@ func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst
 			t.Error("required CONNECT with relay bytes missing")
 		}
 	}
-	t.Logf("ORIGIN_REUSE_ACCOUNTING native=%t required_direct_requests=%d relay_tcp=%d relay_rx=%d", native, requiredDirect, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
+	t.Logf("ORIGIN_REUSE_ACCOUNTING transport=%s required_direct_requests=%d relay_tcp=%d relay_rx=%d", mode, requiredDirect, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
 	if requiredDirect != 0 {
 		t.Error("ORIGIN_ISOLATION_VIOLATION: REQUIRED authority reached LOCAL egress; this is a controlled common-SAN endpoint, not evidence of a public-site leak")
 	}
 	if requiredDirect == 0 && (r.Metrics.TCPConnections.Load() == 0 || r.Metrics.RXBytes.Load() == 0) {
 		t.Error("authenticated relay accounting missing")
 	}
+}
+
+// Test-only network seam: an ordinary Windows loopback SYN never traverses the
+// production NETWORK filter. Only the reserved service-owned interception socket
+// targets TEST-NET; the immutable controller callback keeps the real loopback
+// origin/relay. No fake writer, injected packet, owner or OPEN callback is used.
+// This mirrors nativeDelegationDestination in the existing Windows test helper
+// without exposing a production switch or importing that package's _test API.
+type originReuseDelegatedBackend struct {
+	*wp.WinDivertBackend
+	origin               netip.AddrPort
+	attempted, connected atomic.Uint64
+}
+
+func (b *originReuseDelegatedBackend) OpenBrowserNativeTCP(ctx context.Context, id wp.ProcessIdentity, source, dest netip.AddrPort, decision wp.Decision) (net.Conn, error) {
+	if dest != b.origin {
+		return nil, errors.New("outside controlled delegation destination")
+	}
+	b.attempted.Add(1)
+	wire := netip.AddrPortFrom(netip.MustParseAddr("192.0.2.254"), dest.Port())
+	conn, err := b.WinDivertBackend.OpenBrowserNativeTCP(ctx, id, source, wire, decision)
+	if err == nil {
+		b.connected.Add(1)
+	}
+	return conn, err
 }

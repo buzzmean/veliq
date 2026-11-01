@@ -46,6 +46,15 @@ ClientHello/SNI не определяет authority всех последующ�
   Egress bootstrap учитывается отдельно: правильный первый REQUIRED relay не
   доказывает маршрут позднейшего запроса после открытия локального соединения.
   Существующие соединения не мигрируют, запросы не повторяются службой.
+- Те же два порядка отдельно проверяются с PAC и native AUTO. CONNECT authority
+  передаётся существующему `PAC_NATIVE_UPSTREAM`; требуются реальные capture,
+  owner PID/birth/profile, байты каждого authority, нулевой native-only ingress,
+  DIRECT для обоих локальных имён и RELAY для REQUIRED независимо от порядка.
+  Test-only wrapper меняет на TEST-NET только адрес зарезервированного службой
+  сокета перехвата: Windows loopback не проходит обычный NETWORK filter.
+  Неизменённый controller callback открывает настоящий loopback origin/relay;
+  owner, пакеты, OPEN и счётчики не подменяются. Это проверка транспорта,
+  не доказательство установки или подхвата PAC в пользовательском браузере.
 
 Сервер учитывает запрос до ответа: даже ответ 421/403 не отменяет факт
 получения REQUIRED authority на неверном egress. `ORIGIN_ISOLATION_VIOLATION`
