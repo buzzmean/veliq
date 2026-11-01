@@ -385,6 +385,13 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 		// A separate 5s CDP deadline cut navigation short, while resetting it on
 		// every evaluation could let the complete visit exceed its body budget.
 		end := started.Add(8 * time.Second)
+		if stage == "before-controller" {
+			// CDP availability precedes the first renderer/network load. CI has
+			// observed that load consume almost 8s before any controller exists.
+			// Give initial HTTP readiness the same 15s bound as DevTools startup;
+			// active/OFF/host-stopped retain their strict 8s end-to-end budget.
+			end = started.Add(15 * time.Second)
+		}
 		path := "/" + stage
 		// Each stage needs a NEW connection: a speculative socket accepted before
 		// controller activation is correctly pinned DIRECT. Connection: close on
@@ -400,6 +407,7 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 			url = fmt.Sprintf("http://127.0.0.2:%d%s", port, path)
 		}
 		raw := call("Page.navigate", map[string]any{"url": url}, end)
+		t.Logf("NATIVE_BROWSER_NAVIGATED stage=%s elapsed=%s", stage, time.Since(started))
 		var nav struct {
 			Error string `json:"errorText"`
 		}
