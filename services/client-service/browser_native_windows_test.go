@@ -339,11 +339,11 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 	ws.MaxPayloadBytes = 1 << 20
 	seq := 0
 	stage := "startup"
-	call := func(method string, params any) json.RawMessage {
+	call := func(method string, params any, deadline time.Time) json.RawMessage {
 		t.Helper()
 		seq++
 		started := time.Now()
-		if e := ws.SetDeadline(started.Add(5 * time.Second)); e != nil {
+		if e := ws.SetDeadline(deadline); e != nil {
 			t.Fatalf("CDP_DEADLINE_FAILED stage=%s method=%s: %v", stage, method, e)
 		}
 		if e := websocket.JSON.Send(ws, map[string]any{"id": seq, "method": method, "params": params}); e != nil {
@@ -374,12 +374,17 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 		t.Fatalf("CDP_EVENT_LIMIT stage=%s method=%s last_event=%s", stage, method, lastEvent)
 		return nil
 	}
-	call("Page.enable", map[string]any{})
+	call("Page.enable", map[string]any{}, time.Now().Add(5*time.Second))
 	// port is the controlled original destination port.
 	visit := func(nextStage, source string) {
 		t.Helper()
 		stage = nextStage
 		t.Logf("NATIVE_BROWSER_STAGE stage=%s", stage)
+		started := time.Now()
+		// Navigation and body observation now share one 8s visit budget.
+		// A separate 5s CDP deadline cut navigation short, while resetting it on
+		// every evaluation could let the complete visit exceed its body budget.
+		end := started.Add(8 * time.Second)
 		path := "/" + stage
 		url := fmt.Sprintf("http://native-browser.test:%d%s", port, path)
 		// The TEST-NET route exists only while the driver reflects it. Baseline/OFF
@@ -387,7 +392,7 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 		if address == "192.0.2.254" && stage != "native-active" {
 			url = fmt.Sprintf("http://127.0.0.2:%d%s", port, path)
 		}
-		raw := call("Page.navigate", map[string]any{"url": url})
+		raw := call("Page.navigate", map[string]any{"url": url}, end)
 		var nav struct {
 			Error string `json:"errorText"`
 		}
@@ -395,10 +400,9 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 		if nav.Error != "" {
 			t.Fatal(stage, nav.Error)
 		}
-		end := time.Now().Add(8 * time.Second)
 		observed := false
 		for time.Now().Before(end) {
-			raw = call("Runtime.evaluate", map[string]any{"expression": "document.body && document.body.textContent", "returnByValue": true})
+			raw = call("Runtime.evaluate", map[string]any{"expression": "document.body && document.body.textContent", "returnByValue": true}, end)
 			var result struct {
 				Result struct {
 					Value string `json:"value"`
@@ -417,6 +421,7 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 		if e != nil || after.CreationTime != identity.CreationTime {
 			t.Fatal("BROWSER_RESTARTED", stage)
 		}
+		t.Logf("NATIVE_BROWSER_BODY_OBSERVED stage=%s elapsed=%s", stage, time.Since(started))
 	}
 	return visit
 }
