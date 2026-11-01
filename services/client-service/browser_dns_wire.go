@@ -65,6 +65,7 @@ func (s *browserDNSRuntime) snapshot() map[string]any {
 func (c *Controller) browserDNSDecision(p profiles.Profile, id wp.ProcessIdentity, t wp.Tuple, d wp.Decision, network string) wp.Decision {
 	d.Deferred = false
 	d.ResolveDomain = nil
+	revision := c.policyRevision(p)
 	d.DNSExchange = func(ctx context.Context, query []byte) ([]byte, error) {
 		if !wp.IsCurrent(id) {
 			return nil, errors.New("BROWSER_DNS_OWNER_EXITED")
@@ -82,7 +83,10 @@ func (c *Controller) browserDNSDecision(p profiles.Profile, id wp.ProcessIdentit
 		if cur.network != network {
 			return nil, errors.New("BROWSER_DNS_NETWORK_CHANGED")
 		}
-		return c.exchangeBrowserDNS(ctx, cur, t, query, c.browserDNSRelayWire)
+		if !cur.enabled || cur.routingDisabled || c.policyRevision(cur.profile) != revision {
+			return nil, errors.New("BROWSER_DNS_PROFILE_CHANGED")
+		}
+		return c.exchangeBrowserDNSChecked(ctx, cur, t, query, c.browserDNSRelayWire, c.browserDNSScopeCheck(cur))
 	}
 	if t.Protocol == "tcp" {
 		d.NewConnectionsOnly = true
@@ -104,6 +108,21 @@ func (c *Controller) browserDNSDecision(p profiles.Profile, id wp.ProcessIdentit
 // Pure transaction boundary is fixture-testable. Runtime calls above revalidate
 // PID/birth/path/SID/profile and network before accepting each DNS message.
 func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult, t wp.Tuple, query []byte, relay func(context.Context, profilesResult, wp.Tuple, []byte) ([]byte, error)) ([]byte, error) {
+	return c.exchangeBrowserDNSChecked(ctx, cur, t, query, relay, nil)
+}
+
+// Проверка scope до I/O и перед доставкой: устаревший ответ не становится DNS hint.
+func (c *Controller) exchangeBrowserDNSChecked(ctx context.Context, cur profilesResult, t wp.Tuple, query []byte, relay func(context.Context, profilesResult, wp.Tuple, []byte) ([]byte, error), check func() error) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	if ctx.Err() != nil {
+		return nil, errors.New("BROWSER_DNS_TRANSACTION_FAILED")
+	}
+	if check != nil {
+		if err := check(); err != nil {
+			return nil, err
+		}
+	}
 	q, err := browserproxy.DNSQuestion(query)
 	if err != nil {
 		return nil, err
@@ -127,6 +146,12 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 	} else {
 		answer, err = browserproxy.ExchangeSystemDNS(ctx, t.Protocol+"4", t.Destination.String(), query)
 	}
+	scopeChanged := check != nil && check() != nil
+	if scopeChanged {
+		err = errors.New("BROWSER_DNS_SCOPE_CHANGED")
+	} else if ctx.Err() != nil {
+		err = ctx.Err()
+	}
 	var hints []browserproxy.DNSHint
 	invalidReply := false
 	if err == nil {
@@ -140,7 +165,9 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 	if err != nil {
 		result = "BROWSER_DNS_TRANSACTION_FAILED"
 		var timeout net.Error
-		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.As(err, &timeout) && timeout.Timeout() {
+		if scopeChanged {
+			result = "DNS_SCOPE_CHANGED"
+		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.As(err, &timeout) && timeout.Timeout() {
 			result = "DNS_TIMEOUT"
 		} else if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 			result = "DNS_CANCELED"
@@ -160,13 +187,47 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 	return answer, nil
 }
 
+// OS identity проверяется заново, а revision фиксируется до начала ожидания.
+func (c *Controller) browserDNSScopeCheck(before profilesResult) func() error {
+	revision := c.policyRevision(before.profile)
+	return func() error {
+		if !wp.IsCurrent(before.id) {
+			return errors.New("BROWSER_DNS_OWNER_EXITED")
+		}
+		if c.BrowserOwnerSID != "" {
+			sid, err := wp.ProcessUserSID(before.id)
+			if err != nil || sid != c.BrowserOwnerSID {
+				return errors.New("BROWSER_DNS_OWNER_SID_MISMATCH")
+			}
+		}
+		after, err := c.browserProfile(browserproxy.Owner{PID: before.id.PID, Birth: before.id.CreationTime, Exe: before.id.Path, Profile: before.profile.ID})
+		if err != nil || !browserDNSSameScope(before, after, revision, c.policyRevision(after.profile)) {
+			return errors.New("BROWSER_DNS_SCOPE_CHANGED")
+		}
+		return nil
+	}
+}
+
+func browserDNSSameScope(before, after profilesResult, revision, currentRevision string) bool {
+	return before.network == after.network && before.enabled == after.enabled && before.routingDisabled == after.routingDisabled && before.id == after.id && before.profile.ID == after.profile.ID && revision == currentRevision
+}
+
 func (c *Controller) browserDNSRelayWire(ctx context.Context, cur profilesResult, t wp.Tuple, query []byte) ([]byte, error) {
+	question, err := browserproxy.DNSQuestion(query)
+	if err != nil || !cur.enabled || c.browserOriginPolicy(browserproxy.DNSHost(question)).Kind == "" {
+		return nil, errors.New("BROWSER_DNS_RECOVERY_NOT_AUTHORIZED")
+	}
+	check := c.browserDNSScopeCheck(cur)
 	relay := cur.profile.RelayID
 	if relay == "" {
 		relay = "VPS-01"
 	}
 	owner := browserproxy.Owner{PID: cur.id.PID, Birth: cur.id.CreationTime, Exe: cur.id.Path, Profile: cur.profile.ID}
 	return browserproxy.NewDoHResolver().ExchangeWire(ctx, query, func(ctx context.Context, dst netip.AddrPort) (net.Conn, error) {
+		// Не дать cached-PAC DIRECT compatibility обойти fail-closed при OFF между попытками.
+		if err := check(); err != nil {
+			return nil, err
+		}
 		// A unique tuple per resolver query avoids Engine FlowExists collisions
 		// for parallel A/AAAA/HTTPS queries on one browser UDP source socket.
 		reserved, err := net.Listen("tcp4", "127.0.0.1:0")

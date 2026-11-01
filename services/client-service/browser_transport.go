@@ -192,6 +192,11 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 	// Cached PAC can still reach this listener after policy removal. Authenticated
 	// browser ownership was checked above; bypass the stopped engine/WinDivert.
 	if current.routingDisabled {
+		// Отменённый DNS recovery не является пользовательским cached-PAC CONNECT.
+		// Даже при OFF resolver-запрос нельзя перенести с authenticated relay на DIRECT.
+		if plan.Policy.Source == "browser_dns_wire_doh" {
+			return nil, errors.New("BROWSER_DNS_SCOPE_CHANGED")
+		}
 		return openBrowserDirectCompatibility(ctx, disabledBrowserPlan(plan))
 	}
 	if current.network != plan.Network || current.enabled != plan.Enabled {
