@@ -1,0 +1,71 @@
+name: Network Intelligence DNS recovery
+on:
+  push:
+    branches: [feat/network-intelligence-stage2-dns]
+  pull_request:
+    paths:
+      - 'core/browserproxy/**'
+      - 'services/client-service/browser_dns*'
+      - 'services/client-service/browser_transport.go'
+      - '.github/workflows/network-intelligence-dns.yml'
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: neexitlag
+          POSTGRES_DB: neexitlag
+          POSTGRES_PASSWORD: ci-only-test-password
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U neexitlag -d neexitlag"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      NEEXITLAG_TEST_DATABASE_URL: postgres://neexitlag:ci-only-test-password@127.0.0.1:5432/neexitlag?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - run: go test -race -timeout 180s ./...
+      - run: go vet ./...
+      - run: go build ./...
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: DNS faults, real TLS providers, process ownership and native UDP reply fixture
+        shell: pwsh
+        run: |
+          go test -p 1 -race -v -count=3 -timeout=120s ./core/browserproxy ./services/client-service ./platform/windows -run 'TestDNSWireRecovery|TestBrowserDNS|TestAlternativeDNS|TestDoH|TestDNSRecovery|TestPoisonedDNSRecovery|TestGooglevideoDNS|TestNetworkIntelligenceDNS|TestNativeSnapshotRetains|TestBrowserDNSNative'
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go vet ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go build ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Diagnostic fixtures in PowerShell 5.1
+        shell: powershell
+        run: |
+          & ./tests/windows-tools/browser-path-checks.ps1
+          & ./tests/windows-tools/local-probe-checks.ps1
+          & ./tests/windows-tools/layer-measurement-checks.ps1
+      - name: Diagnostic fixtures in PowerShell 7
+        shell: pwsh
+        run: |
+          & ./tests/windows-tools/browser-path-checks.ps1
+          & ./tests/windows-tools/local-probe-checks.ps1
+          & ./tests/windows-tools/layer-measurement-checks.ps1
+      - name: Every service filter compiled with pinned DLL without installing a driver
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          go test -c -o bin/ni2-filter-tests.exe ./platform/windows
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/ni2-filter-tests.exe')
