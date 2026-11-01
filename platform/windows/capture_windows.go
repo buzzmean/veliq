@@ -30,6 +30,7 @@ type queuedDatagram struct {
 type captureFlow struct {
 	game         *gameudp.Flow
 	quicNotified bool
+	quicOrigin   quicOriginCaptureState
 	recovering   atomic.Bool
 	policyEpoch  uint64
 	cancelOpen   context.CancelFunc
@@ -55,6 +56,7 @@ type WinDivertBackend struct {
 	gameReflect, gameReplies uintptr
 	gameEval                 *windows.Proc
 	ingress                  captureIngress
+	quicOrigins              quicOriginPool
 	testBrowserLoopback      bool // Set only from export_test.go, never production configuration.
 	policyEpoch              atomic.Uint64
 	policyMu                 sync.RWMutex
@@ -288,6 +290,7 @@ func (b *WinDivertBackend) stopLocked() error {
 	d.dll.Release()
 	b.mu.Lock()
 	b.flows = make(map[Tuple]*captureFlow)
+	b.quicOrigins.clear()
 	b.associations = NewAssociations(8192)
 	b.mu.Unlock()
 	return nil
@@ -582,7 +585,13 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 		b.mu.Lock()
 		notify := !f.quicNotified
 		f.quicNotified = true
+		// Passive metadata only: never change this flow's BLOCK decision,
+		// forward/hold originals or use a sample as browser LOCAL authority.
+		observed, publish := b.quicOrigins.observe(&f.quicOrigin, identity, tuple, decision, payload, notify, time.Now())
 		b.mu.Unlock()
+		if publish && IsCurrent(identity) {
+			b.ingress.recordQUICOrigin(identity, tuple, decision, observed)
+		}
 		b.evidence.RecordQuicFallback(identity, tuple, "native-tcp", "browser")
 		if notify {
 			if reply, err := RejectBrowserQUIC(packet); err == nil {

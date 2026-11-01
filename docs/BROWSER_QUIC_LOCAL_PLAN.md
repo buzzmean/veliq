@@ -1,9 +1,12 @@
 # QUIC LOCAL: собственная ограниченная HTTP/3-проба
 
 01.11.2026. Блок R1 для QUIC: пакетный план, собственный connected UDP socket
-и ограниченный менеджер authenticated HTTP/3-пробы службы. **Автоматический QUIC LOCAL
+и ограниченный менеджер authenticated HTTP/3-пробы службы. Дополнительно
+включено пассивное наблюдение ClientHello заблокированных Chrome/Edge UDP443. **Автоматический QUIC LOCAL
 браузера пока не включён.** Нет нового IPC, конфигурационного переключателя,
-автоматического запуска проб службой, изменения Classify, UDP443 capture или игровой политики.
+автоматического запуска HTTP3-проб службой, изменения Classify или игровой политики.
+В UDP capture добавлена только ограниченная диагностическая ветка; BLOCK/ICMP
+и существующая отправка пакетов сохраняются.
 
 Native Chrome/Edge по-прежнему получают UDP443→ICMP→TCP fallback, где действует
 существующая origin policy. Поддержка QUIC relay transport не равна поддержке
@@ -119,8 +122,65 @@ Byte counters считают обработанные UDP payloads, не NIC wir
 scope и committed witness именно своего сокета. Результат не авторизует
 браузерный flow, не создаёт LOCAL proof и не меняет established egress.
 
+## Пассивное наблюдение origin в захвате
+
+`localstrategy.QUICOriginObserver` читает только ClientHello нового QUIC v1
+Initial. QUIC Initial packet protection снимается по публичным salt/DCID из
+RFC9001: это не TLS session keys, TLS/application decryption, MITM или ECH
+inner-name extraction. Поля SNI/h3 описывают намерение клиента, а не проверенный
+сертификат сервера. Initial protection публична и не удостоверяет отправителя;
+PID/birth/tuple привязывает Windows capture, не AEAD Initial.
+
+На один разбор: UDP payload1200..1472bytes, до16datagrams и8192bytes CRYPTO,
+deadline2s; новый flight начинается с PN0, рассматриваются только PN<64,
+DCID8..20/SCID<=20, token пустой, все Initial имеют те же CIDs. Поддержаны
+PADDING/PING/CRYPTO и совпадающие повторные/переставленные CRYPTO chunks;
+конфликт overlap терминален. Весь coalesced datagram проверяется до публикации.
+Retry/token, v2/version negotiation, short header, Handshake/0-RTT, reserved bits,
+неизвестные frames, bad AEAD/lengths и превышение лимита не дают имени.
+
+ClientHello должен иметь один валидный SNI, TLS1.3/h3 и QUIC transport parameter
+initial_source_connection_id, совпадающий с SCID. Дубли extensions/parameters,
+дополнительные handshake bytes, PSK/early_data отвергаются. Любой ECH extension,
+включая GREASE, возвращает `QUIC_ORIGIN_ECH` без домена; inner name не угадывается.
+Раскрытый CRYPTO buffer очищается после завершения, отказа или таймера.
+
+В `processUDP` наблюдатель работает только для уже выбранного
+`browser_native_quic_tcp_fallback` у текущего Chrome/Edge PID/birth/path,
+точного tuple и непустых network/profile/revision. На backend не более32
+незавершённых разборов и64 новых попыток в секунду, без очереди; state изменения
+терминальны. Pending buffers очищаются таймером через2s даже без новых пакетов
+и при Stop. Capacity/rate failure прекращает только наблюдение.
+
+Результат идёт в существующую bounded ingress ring (24records) как
+`QUIC_ORIGIN_OBSERVATION`/`quic_origin`, вместе с network/policy_revision и
+имеющимися PID/birth/tuple/profile. Один historical incomplete и один terminal
+sample на flow; истечение таймера без следующих datagrams может оставить лишь
+исторический incomplete sample. Payload, CID, ClientHello и TLS secrets не
+выводятся. Snapshot копирует metadata, не предоставляет mutable alias.
+
+Оригиналы не удерживаются, не пересылаются и не воспроизводятся. Первый
+заблокированный datagram по-прежнему сразу вызывает один ICMP port-unreachable;
+последующие остаются blocked. Поэтому весь fragmented ClientHello не всегда
+успеет попасть в capture до TCP fallback. Отсутствие имени в диагностике —
+ожидаемый ограниченный результат, не основание задерживать fallback.
+
+Даже видимое protected SNI остаётся BLOCK. Наблюдение не записывает
+Decision.OriginDomain, DNS/probe cache, не запускает HTTP3 и не выдаёт LOCAL
+admission. Нужны отдельные current owner/SID/protocol lifecycle checks и proof
+для именно нового flow; прежний diagnostic sample не переносится на другой
+CID/tuple/epoch или возобновлённое/мигрировавшее соединение.
+
 ## Проверки
 
+- Независимый quic-go client с гибридным key share и настоящим UDP loopback:
+  fragmented ClientHello разбирается в scope; deadline/capacity/rate/epoch bounds.
+- Native Windows `processUDP`: настоящий test chrome.exe PID/birth/path,
+  видимые youtube/protected имена, исходные bytes неизменны, ровно1ICMP и0
+  forwarded originals. Classifier/association и финальная запись WinDivert —
+  seams; это не настоящее наблюдение Chrome/SOCKET событий или ISP-приёмка.
+- Malformed/ECH/PSK/0RTT/Retry/v2/CID/overlap отрицательные сценарии и два bounded
+  fuzz targets для Initial/ClientHello, по10000iterations.
 - RFC9001 A.1 known-answer для key/IV/header-protection key.
 - Раскрытие только сгенерированного нами Initial в тесте и обработка его
   ClientHello настоящим TLS parser: фиксированные SNI/ALPN, CRYPTO и padding.
@@ -151,9 +211,9 @@ race/vet/build и pinned DLL compiler проверяются CI отдельно
 ## Следующая граница R1
 
 Перед подключением к runtime нужны общий бюджет вместе с другими пробами,
-проверенная привязка origin к новому QUIC flow и current process/SID/profile/network,
+admission по видимому origin именно нового QUIC flow и current process/SID/profile/network,
 ограниченные positive/negative TTL и отдельный admission для browser flow.
-Собственная HTTP/3-проба и её socket witness этих условий не заменяют. Отмена не должна публиковать старый proof.
+Собственная HTTP/3-проба, её socket witness и пассивная ingress metadata этих условий не заменяют. Отмена не должна публиковать старый proof.
 QUIC v2, Retry, connection migration и short headers не получают разрешения
 по старому tuple или чужому CID. Protected/ambiguous остаются на существующем
 TCP fallback. Established flow не переводится на другой egress, application

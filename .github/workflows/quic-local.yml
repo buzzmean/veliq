@@ -35,8 +35,15 @@ jobs:
           & go test -c -o bin/filter-tests.exe ./platform/windows
           if ($LASTEXITCODE) { throw 'FILTER_TEST_BUILD_FAILED' }
           & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
-      - name: Owned HTTP3, QUIC bounds, Windows owner and certificate rejection
-        run: go test -race -v ./core/localstrategy ./core/browserproxy ./platform/windows -run 'QUICProbe|HTTP3Probe' -count 1 -timeout 90s
+      - name: Owned HTTP3, passive origin, native BLOCK and QUIC bounds
+        run: go test -race -v ./core/localstrategy ./core/browserproxy ./platform/windows -run 'QUICProbe|HTTP3Probe|QUICOrigin' -count 1 -timeout 90s
+      - name: Bounded QUIC Initial and ClientHello fuzzing
+        shell: powershell
+        run: |
+          & go test ./core/localstrategy '-run' '^$' '-fuzz' '^FuzzQUICOriginInitial$' '-fuzztime' '10000x' '-fuzzminimizetime' '1000x' '-parallel' '2' '-timeout' '90s'
+          if ($LASTEXITCODE) { throw 'QUIC_INITIAL_FUZZ_FAILED' }
+          & go test ./core/localstrategy '-run' '^$' '-fuzz' '^FuzzQUICOriginHello$' '-fuzztime' '10000x' '-fuzzminimizetime' '1000x' '-parallel' '2' '-timeout' '90s'
+          if ($LASTEXITCODE) { throw 'QUIC_HELLO_FUZZ_FAILED' }
       - name: Full Windows Go race regressions
         run: go test -race -p 1 -timeout 180s ./...
       - run: go vet ./...
