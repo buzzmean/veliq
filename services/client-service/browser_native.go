@@ -79,6 +79,7 @@ type nativeBrowserRecord struct {
 	Active          bool               `json:"active"`
 }
 type nativeBrowserSnapshot struct {
+	QUICProbe    map[string]any  `json:"quic_probe"`
 	YoutubeLocal youtubeSnapshot `json:"youtube_local_ladder"`
 	DNS          map[string]any  `json:"browser_dns"`
 
@@ -171,6 +172,7 @@ func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
 	s.RelayUsage = c.relayUsage().snapshot()
 	s.DomainCache = c.browser.domains.snapshot()
 	s.DNS = c.browser.dnsWire.snapshot()
+	s.QUICProbe = c.browser.quic.snapshot()
 	n := &c.browser.native
 	n.mu.Lock()
 	defer n.mu.Unlock()

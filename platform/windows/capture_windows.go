@@ -30,6 +30,8 @@ type queuedDatagram struct {
 type captureFlow struct {
 	game         *gameudp.Flow
 	quicNotified bool
+	quicOrigin   quicOriginCaptureState
+	quicPermit   *quicFlowPermit
 	recovering   atomic.Bool
 	policyEpoch  uint64
 	cancelOpen   context.CancelFunc
@@ -55,6 +57,8 @@ type WinDivertBackend struct {
 	gameReflect, gameReplies uintptr
 	gameEval                 *windows.Proc
 	ingress                  captureIngress
+	quicOrigins              quicOriginPool
+	quicFlows                quicFlowLedger
 	testBrowserLoopback      bool // Set only from export_test.go, never production configuration.
 	policyEpoch              atomic.Uint64
 	policyMu                 sync.RWMutex
@@ -288,6 +292,8 @@ func (b *WinDivertBackend) stopLocked() error {
 	d.dll.Release()
 	b.mu.Lock()
 	b.flows = make(map[Tuple]*captureFlow)
+	b.quicOrigins.clear()
+	b.quicFlows.clear()
 	b.associations = NewAssociations(8192)
 	b.mu.Unlock()
 	return nil
@@ -326,6 +332,7 @@ func (b *WinDivertBackend) track() {
 		endpoint := binary.LittleEndian.Uint64(data[:8])
 		event := address[9]
 		if event == 2 {
+			b.quicFlows.deleted(tuple, endpoint)
 			b.associations.Delete(tuple, endpoint)
 			b.mu.Lock()
 			if f := b.flows[tuple]; f != nil && f.endpoint == endpoint {
@@ -337,6 +344,9 @@ func (b *WinDivertBackend) track() {
 		}
 		identity, e := discovery.Lookup(pid)
 		if e == nil {
+			if event == 1 {
+				b.quicFlows.established(tuple, identity, endpoint, int64(binary.LittleEndian.Uint64(address[:8])), time.Now())
+			}
 			b.associations.Put(Association{identity, tuple, endpoint})
 			// FLOW can arrive after the first packet/owner fallback. Consume proof for
 			// an already-observed tuple instead of rearming it after packet-cache expiry.
@@ -429,8 +439,14 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 			return
 		}
 	}
+	var quicPermit *quicFlowPermit
 	if tuple.Destination.Port() == 443 {
 		b.ingress.udp443.Add(1)
+		quicPermit = b.quicFlows.packet(tuple, identity, int64(binary.LittleEndian.Uint64(address[:8])), time.Now())
+		if quicPermit != nil {
+			epoch := b.policyEpoch.Load()
+			quicPermit.current = func() bool { return b.policyEpoch.Load() == epoch }
+		}
 	}
 	b.mu.Lock()
 	f := b.flows[tuple]
@@ -543,7 +559,7 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 		if gameErr != nil {
 			b.evidence.RecordLifecycle(identity, tuple, gameErr.Error())
 		}
-		f = &captureFlow{policyEpoch: b.policyEpoch.Load(), decision: decision, game: game, dropCause: telemetry.Policy, identity: identity, endpoint: association.Endpoint, done: make(chan struct{}), address: address}
+		f = &captureFlow{quicPermit: quicPermit, policyEpoch: b.policyEpoch.Load(), decision: decision, game: game, dropCause: telemetry.Policy, identity: identity, endpoint: association.Endpoint, done: make(chan struct{}), address: address}
 		if (!decision.Route.Direct() || decision.ProbeDirect) && !decision.Block {
 			f.opening = true
 			f.queue = make(chan queuedDatagram, 32)
@@ -582,7 +598,16 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 		b.mu.Lock()
 		notify := !f.quicNotified
 		f.quicNotified = true
+		// Passive metadata only: never change this flow's BLOCK decision,
+		// forward/hold originals or use a sample as browser LOCAL authority.
+		observed, publish := b.quicOrigins.observe(&f.quicOrigin, identity, tuple, decision, payload, notify, time.Now())
 		b.mu.Unlock()
+		if publish && IsCurrent(identity) {
+			b.ingress.recordQUICOrigin(identity, tuple, decision, observed)
+			if observed.Complete && observed.Reason == "QUIC_ORIGIN_VISIBLE_SNI" && decision.QUICProbe != nil {
+				decision.QUICProbe(f.quicPermit.trigger(observed.Domain, decision))
+			}
+		}
 		b.evidence.RecordQuicFallback(identity, tuple, "native-tcp", "browser")
 		if notify {
 			if reply, err := RejectBrowserQUIC(packet); err == nil {

@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/buzzmean/neexitlag/core/localstrategy"
 )
 
 // Transport counters cover this backend lifetime, independently of Engine flows
@@ -27,19 +29,22 @@ type CaptureIngressSnapshot struct {
 	Lost              uint64                 `json:"lost"`
 }
 type CaptureIngressRecord struct {
-	At           time.Time `json:"at"`
-	Stage        string    `json:"stage"`
-	PID          uint32    `json:"pid"`
-	Birth        uint64    `json:"creation_time"`
-	Exe          string    `json:"exe,omitempty"`
-	Source       string    `json:"source"`
-	Destination  string    `json:"destination"`
-	Protocol     string    `json:"protocol"`
-	Profile      string    `json:"profile_id,omitempty"`
-	Decision     string    `json:"decision"`
-	PolicySource string    `json:"policy_source,omitempty"`
-	OwnerLookup  string    `json:"owner_lookup"`
-	Error        string    `json:"error,omitempty"`
+	Network        string                               `json:"network,omitempty"`
+	PolicyRevision string                               `json:"policy_revision,omitempty"`
+	QUICOrigin     *localstrategy.QUICOriginObservation `json:"quic_origin,omitempty"`
+	At             time.Time                            `json:"at"`
+	Stage          string                               `json:"stage"`
+	PID            uint32                               `json:"pid"`
+	Birth          uint64                               `json:"creation_time"`
+	Exe            string                               `json:"exe,omitempty"`
+	Source         string                               `json:"source"`
+	Destination    string                               `json:"destination"`
+	Protocol       string                               `json:"protocol"`
+	Profile        string                               `json:"profile_id,omitempty"`
+	Decision       string                               `json:"decision"`
+	PolicySource   string                               `json:"policy_source,omitempty"`
+	OwnerLookup    string                               `json:"owner_lookup"`
+	Error          string                               `json:"error,omitempty"`
 }
 type captureIngress struct {
 	tcp, udp443, ipv6, socket, unknown atomic.Uint64
@@ -83,6 +88,12 @@ func ingressDecision(id ProcessIdentity, d Decision, syn, self bool) string {
 	}
 }
 func (l *captureIngress) record(stage string, id ProcessIdentity, t Tuple, d Decision, decision, owner, code string) {
+	l.recordWithOrigin(stage, id, t, d, decision, owner, code, nil)
+}
+func (l *captureIngress) recordQUICOrigin(id ProcessIdentity, t Tuple, d Decision, o localstrategy.QUICOriginObservation) {
+	l.recordWithOrigin("QUIC_ORIGIN_OBSERVATION", id, t, d, "UDP443_BLOCK", "UDP_OWNER_OR_FLOW", "", &o)
+}
+func (l *captureIngress) recordWithOrigin(stage string, id ProcessIdentity, t Tuple, d Decision, decision, owner, code string, origin *localstrategy.QUICOriginObservation) {
 	// Samples are bounded separately; ordinary game packet processing only uses
 	// atomic totals. Keep unknown ownership and browser attribution, not all apps.
 	if !browserProcess(id) && id.PID != 0 && code == "" {
@@ -91,7 +102,11 @@ func (l *captureIngress) record(stage string, id ProcessIdentity, t Tuple, d Dec
 	if len(id.Path) > 2048 {
 		id.Path = id.Path[:2048]
 	}
-	v := CaptureIngressRecord{At: time.Now(), Stage: stage, PID: id.PID, Birth: id.CreationTime, Exe: id.Path, Source: t.Source.String(), Destination: t.Destination.String(), Protocol: t.Protocol, Profile: d.Flow.ApplicationID, Decision: decision, PolicySource: d.Policy.Source, OwnerLookup: owner, Error: code}
+	v := CaptureIngressRecord{QUICOrigin: origin, At: time.Now(), Stage: stage, PID: id.PID, Birth: id.CreationTime, Exe: id.Path, Source: t.Source.String(), Destination: t.Destination.String(), Protocol: t.Protocol, Profile: d.Flow.ApplicationID, Decision: decision, PolicySource: d.Policy.Source, OwnerLookup: owner, Error: code}
+	if origin != nil {
+		v.Network = d.Network
+		v.PolicyRevision = d.Revision
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	const limit = 24
@@ -108,6 +123,10 @@ func (l *captureIngress) snapshot(pid uint32) CaptureIngressSnapshot {
 	out := CaptureIngressSnapshot{Scope: "BACKEND_LIFETIME; totals global; records bounded metadata", TCPFilter: l.tcpFilter, UDPFilter: captureUDPFilter, SocketFilter: captureSocketFilter, IPv6Filter: captureIPv6Filter, NativeDeferredSYN: l.nativeSYN.Load(), ReflectedAccepts: l.accepted.Load(), TCPPackets: l.tcp.Load(), UDP443Packets: l.udp443.Load(), IPv6Packets: l.ipv6.Load(), SocketEvents: l.socket.Load(), UnknownTCPOwner: l.unknown.Load(), Records: []CaptureIngressRecord{}, Lost: l.lost}
 	for _, r := range l.records {
 		if pid == 0 || r.PID == pid {
+			if r.QUICOrigin != nil {
+				v := *r.QUICOrigin
+				r.QUICOrigin = &v
+			}
 			out.Records = append(out.Records, r)
 		}
 	}

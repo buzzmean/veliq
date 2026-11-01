@@ -69,3 +69,20 @@ Discord adaptive UDP/voice остаётся прежним; принудител
 но `stages[].service` и `records[].service` отделяют YouTube/Discord/X/rutracker/
 ordinary. Нельзя приписывать Discord bytes экономии YouTube. `local.catalog`
 показывает origin data version и число групп. Monthly budget — отдельный этап.
+
+## Граница origin у зашифрованного соединения
+
+01.11.2026: browser QUIC LOCAL остаётся unsupported по
+[ADR-006](ADR-006-browser-quic-admission.md). В draft
+[#53](https://github.com/buzzmean/veliq/pull/53) есть passive ClientHello,
+fresh FLOW/owner/SID и собственная bounded HTTP/3-проба; это не допуск
+браузерного трафика. HTTP80 подготовлен отдельно в draft
+[#52](https://github.com/buzzmean/veliq/pull/52), не включён в ветку #53.
+
+SNI/CONNECT и DNS hints описывают доступные службе условия выбора соединения.
+Без application decryption служба не читает `:authority` каждого последующего
+HTTP/2-запроса. Гарантия required floor для распознанного домена не доказывает
+изоляцию скрытых запросов при connection reuse. Фактическое coalescing Chromium
+между разными policy classes требует отдельной изолированной проверки из ADR.
+Обнаруженная утечка конкретного protected-сайта этим анализом не установлена;
+существующие required guards сохраняются.

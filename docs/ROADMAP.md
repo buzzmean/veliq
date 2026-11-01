@@ -20,7 +20,7 @@
 
 | # | Этап | Статус | Что осталось / критерий готовности |
 |---|---|---|---|
-| R1 | Маршрутизация браузеров | Частично | native capture, DNS, DIRECT обычных сайтов, RELAY Telegram/ChatGPT/Claude — работают у владельца. **Блокер: LOCAL для YouTube CDN и прочих DPI-сайтов не проходит** (весь YouTube через relay). Нет HTTP80, QUIC fake, Discord voice UDP LOCAL. Готово, когда 2160p 2 мин: googlevideo RELAY ≈ 0, Discord LOCAL. |
+| R1 | Маршрутизация браузеров | Частично | Native capture и тёплый YouTube LOCAL измерялись; новое поведение cold/resume/post-reply подготовлено в [draft #51](https://github.com/buzzmean/veliq/pull/51), HTTP80 — в [draft #52](https://github.com/buzzmean/veliq/pull/52). [Draft #53](https://github.com/buzzmean/veliq/pull/53) добавляет own HTTP3 diagnostics; browser QUIC LOCAL unsupported по [ADR-006](ADR-006-browser-quic-admission.md), TCP fallback сохранён. Нужны проверка origin isolation при HTTP/2 reuse, повторная Windows/ISP-приёмка нового кода и Discord voice LOCAL. Критерий остаётся: 2160p 2 мин, googlevideo RELAY ≈ 0, Discord LOCAL; drafts/CI его не закрывают. |
 | R2 | Игры | Частично | gameudp DIRECT→LOCAL→RELAY для PUBG и FACEIT/Vanguard guard в коде; Riot-профиль добавлен. **Не проверено в реальном матче.** Готово, когда PUBG/Valorant/FACEIT — полный матч без ошибок античита, VPS не используется. |
 | R3 | Серверы | Частично | Hostkey 146.0.77.98 — основной relay и с 25.10.2026 control plane + активация (решение владельца: перенос; база, ключи и тот же CA перенесены, оба relay шлют heartbeat сюда, PC07 переключён). 2.56.177.4 — запасной relay VPS-01 (владелец 25.10 склоняется продлить его как запасной; CP/активация остаются на Hostkey) и старая копия CP для непереключённых ПК. Осталось до 12.11: переключить остальные установленные ПК (`tools/windows/switch-control-plane.ps1`), перенести на Hostkey админ-инструменты кодов активации и продление сертификата, серверный учёт трафика и общий клубный подбор стратегий. |
 | R4 | Установщик и образ | Не начато (подготовлено в коде) | Собрать `VELIQ-Setup.exe` (Inno Setup 6.4.3), тихая установка `/CLUBCODEFILE` в образ без identity, per-PC overlay, тот же слот после отката. Решение по подписи кода/SmartScreen. Готово, когда 2–3 ПК после перезагрузки сами активированы и работают. |
@@ -36,7 +36,10 @@
 
 ## Порядок работ сейчас
 
-1. R1: починить LOCAL (главное для экономии и масштаба на 40 ПК).
+1. R1: продолжать HTTPS/CDN LOCAL и проверить origin isolation при HTTP/2 reuse
+   по ADR-006 в изолированном CI. Browser QUIC LOCAL остаётся архитектурным gate;
+   новые CID/fuzz/probe проверки не заменяют недостающий admission. Приёмка
+   нового кода на пользовательских ПК/ISP пока отложена, R1 не закрыт.
 2. R3: решение по серверам до 12.11.
 3. R4 → R5 → R6 → R7.
 R2 проверяется владельцем в реальных матчах параллельно, когда есть время.

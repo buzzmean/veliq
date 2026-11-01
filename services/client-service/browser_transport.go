@@ -25,6 +25,7 @@ import (
 )
 
 type browserRuntime struct {
+	quic      *browserQUICRuntime
 	youtube   *youtubeRuntime
 	dnsWire   *browserDNSRuntime
 	domains   browserDomainIndex
@@ -54,7 +55,7 @@ type browserRuntime struct {
 }
 
 func newBrowserRuntime() *browserRuntime {
-	return &browserRuntime{youtube: newYoutubeRuntime(), dnsWire: newBrowserDNSRuntime(), origins: browserproxy.NewOriginHealth(), dns: browserproxy.NewDNSRecovery(), learned: flowpolicy.NewBrowserLearning(), probes: make(chan struct{}, 4), local: map[string]*localstrategy.LocalStrategyEngine{}, plans: map[flowpolicy.LearnKey]chan struct{}{}, directTimeouts: flowpolicy.NewDirectTimeoutCache()}
+	return &browserRuntime{quic: newBrowserQUICRuntime(), youtube: newYoutubeRuntime(), dnsWire: newBrowserDNSRuntime(), origins: browserproxy.NewOriginHealth(), dns: browserproxy.NewDNSRecovery(), learned: flowpolicy.NewBrowserLearning(), probes: make(chan struct{}, 4), local: map[string]*localstrategy.LocalStrategyEngine{}, plans: map[flowpolicy.LearnKey]chan struct{}{}, directTimeouts: flowpolicy.NewDirectTimeoutCache()}
 }
 func (c *Controller) browserOwner(ctx context.Context, source, local netip.AddrPort) (browserproxy.Owner, error) {
 	id, err := wp.LookupTCPPeer(source, local)
