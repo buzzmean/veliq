@@ -72,31 +72,42 @@ ClientHello/SNI не определяет authority всех последующ�
 включая оба `chatgpt.com` authority. Проверка с Go race PASS. Это доказательство
 работоспособности сценария, не утверждение о маршрутизации VELIQ/публичных сайтов.
 
-Windows Chrome `156.0.8078.48`, code SHA
-`b7152cda63265316a0a48a3f1dc05dcf8f426ecd`:
-[run 41349924470, browser job 124977693377](https://github.com/buzzmean/veliq/actions/runs/41349924470/job/124977693377).
+02.11.2026 MSK (01.11 UTC), Windows Chrome `156.0.8078.48`, code SHA
+`a654618fab522de195281d4cfd58b385eaafa4e0`:
+[run 41352232776, browser job 124984733487](https://github.com/buzzmean/veliq/actions/runs/41352232776/job/124984733487).
 Baseline coalescing PASS, pinned DLL filters PASS. Artifact
-`browser-origin-reuse-evidence`, ID `13101050932` содержит только журналы
-контролируемого сценария, без ключей/сертификатов/пользовательских данных.
+`browser-origin-reuse-evidence`, ID `13101499474`, digest
+`sha256:13e47ca1fb29e45d33859e4f94a9a07b165d274f5a67ce5620806d317e32fadd`
+содержит только журналы контролируемого сценария, без ключей/сертификатов.
 
 | Сценарий | Первый запрос | Последующие REQUIRED requests | Relay TCP / RX counter | Gate |
 |---|---|---|---|---|
-| PAC | LOCAL, source 127.0.0.1 | Оба на отдельном connection 5, SNI chatgpt.com, source 127.0.0.2 | 1 / 2497 | PASS, 0 DIRECT |
-| Native REQUIRED → LOCAL | REQUIRED bootstrap на connection 1, SNI chatgpt.com, source 127.0.0.2, body 78 bytes | Оба на connection 2, SNI www.youtube.com, source 127.0.0.1 | 1 / 2654 | FAIL, 2 DIRECT |
-| Native LOCAL first | LOCAL bootstrap на connection 1, source 127.0.0.1 | Оба на connection 2, SNI www.youtube.com, source 127.0.0.1 | 0 / 0 | FAIL, 2 DIRECT |
+| PAC | LOCAL, source 127.0.0.1 | Оба на connection 5, SNI chatgpt.com, source 127.0.0.2 | 1 / 2499 | PASS, 0 DIRECT |
+| PAC + native LOCAL first | LOCAL, connection 1, source 127.0.0.1 | Оба на connection 4, SNI chatgpt.com, source 127.0.0.2 | 1 / 2497 | PASS, 0 DIRECT |
+| PAC + native REQUIRED → LOCAL | REQUIRED, connection 3, source 127.0.0.2 | Оба на connection 6, SNI chatgpt.com, source 127.0.0.2 | 4 / 8604 | PASS, 0 DIRECT |
+| Native REQUIRED → LOCAL | REQUIRED, connection 1, SNI chatgpt.com, source 127.0.0.2 | Оба на connection 2, SNI www.youtube.com, source 127.0.0.1 | 1 / 2653 | FAIL, 2 DIRECT |
+| Native LOCAL first | LOCAL, connection 1, source 127.0.0.1 | Оба на connection 2, SNI www.youtube.com, source 127.0.0.1 | 0 / 0 | FAIL, 2 DIRECT |
 
-Connection IDs локальны для каждого запуска. В обоих native сценариях
-connection 2 обслужил `www.youtube.com`, `youtube.com`, затем оба запроса
-`chatgpt.com`. Сервер получил authority REQUIRED, браузер полностью прочитал
-ответы 41 и 47 bytes. `relay_rx` — счётчик `relay.Metrics.RXBytes`, не размер
-HTTP body. Ненулевой relay counter первого сценария native относится к
-первоначальному соединению и не доказывает маршрут позднейших запросов.
+Connection IDs локальны для каждого запуска. В обоих hybrid сценариях локальный
+и sibling fetch остались DIRECT: connections 2/3 либо 4/5 соответственно,
+с собственными SNI и source `127.0.0.1`. REQUIRED bodies 41 и 47 bytes полностью
+прочитаны браузером через relay. Первый REQUIRED bootstrap — отдельные 78 bytes.
+Реальные delegated/connected/reflected/PAC opened/PAC exchanges составили 4/4/4/4/4
+и 6/6/6/6/6; native-only accepted = 0 в обоих. Полные native/PAC connection ledgers
+подтвердили три authority, правильные owner PID/birth/profile, policy и байты.
 
-Native record с SNI `www.youtube.com` остаётся DIRECT; новый REQUIRED open для
-последующих authority отсутствует. В LOCAL-first вообще нет relay bytes.
-Все эти соединения созданы после включения контроллера и capture: это не только
-исключение для сокетов, существовавших до активации. Свежий REQUIRED bootstrap
-действительно идёт через relay, что отдельно подтверждено серверным source.
+`relay_rx` — счётчик `relay.Metrics.RXBytes`, не размер HTTP body. Browser
+preconnect и bootstrap могут создавать дополнительные tunnels: число relay TCP
+не равно числу fetch и само по себе не доказывает маршрут. Серверный учёт каждого
+запроса остаётся главным свидетельством egress. Capture metadata ring вытеснил
+8/19 старых samples; его atomic totals и отдельные полные connection ledgers
+сохранены; семантика счётчика определена в `platform/windows/capture_ingress.go`.
+
+В обоих native-only сценариях connection 2 обслужил все четыре fetch с исходным
+SNI `www.youtube.com` и source `127.0.0.1`. Новый REQUIRED open для поздних authority
+отсутствует. Ненулевой relay counter первого native сценария относится только к
+начальному соединению; в LOCAL-first relay bytes нет. Все соединения созданы после
+включения controller/capture, это не только исключение pre-activation TCP.
 
 Это **воспроизведённое нарушение изоляции origin у native DIRECT-пути** в
 заданных условиях общего SAN/IP/port. Не установлен факт общей SAN-связи
@@ -105,16 +116,16 @@ transform, автоматическое LOCAL learning, ECH, Edge, policy uptake
 IPv6, пользовательские сети и произвольные будущие версии браузера этим
 сценарием не приняты. Продуктовый код не изменён, R1 остаётся частично готовым.
 
-Полные Go race/vet/build CODE b7152cd:
-[Windows job 124977693452](https://github.com/buzzmean/veliq/actions/runs/41349924470/job/124977693452)
+Полные Go race/vet/build CODE a654618:
+[Windows job 124984733288](https://github.com/buzzmean/veliq/actions/runs/41352232776/job/124984733288)
 PASS;
-[Linux + PostgreSQL 17, job 124977693256](https://github.com/buzzmean/veliq/actions/runs/41349924467/job/124977693256)
-PASS. Linux workflow далее падает на прежнем Python rollback-тесте; общий Verify
-также сохраняет WPF `Empty visual: actual-RelayChoice`, Edge acceptance —
-`Edge AUTO requires verified Edge CONNECT/PAC`. Общий CI не зелёный.
-Chrome policy/actual-driver, Game UDP и isolated upgrade того же SHA прошли.
-Эти результаты отделены от красного origin routing gate: прохождение сборки
-не означает устранения нарушения.
+[Linux + PostgreSQL 17, job 124984733368](https://github.com/buzzmean/veliq/actions/runs/41352232773/job/124984733368)
+PASS. C# 218 PASS в Edge workflow. Общий CI сохраняет прежние failures:
+Python rollback (99/100), WPF `Empty visual: actual-RelayChoice`,
+Edge `Edge AUTO requires verified Edge CONNECT/PAC`.
+[Chrome policy/actual-driver](https://github.com/buzzmean/veliq/actions/runs/41352232798)
+PASS. Два native-only origin FAIL остаются открыты: успешные сборки и три
+PAC/hybrid PASS не закрывают весь routing gate.
 
 ## Граница readiness: следующий контракт
 
@@ -158,12 +169,12 @@ Chrome policy/actual-driver, Game UDP и isolated upgrade того же SHA пр
 
 ## Продолжение R1
 
-1. Для строгой per-request изоляции использовать уже имеющееся разделение
-   proxy identity по authority, подтверждённое PAC-сценарием. Следующий шаг —
-   проверить этот же gate для `PAC_NATIVE_UPSTREAM` с native AUTO profile и
-   фактическим capture/owner/LOCAL/RELAY accounting; отдельно проверить readiness
-   и незаметный подхват существующей owned policy. Текущий тест PAC не утверждает
-   её установку или подхват работающим пользовательским браузером.
+1. Разделение proxy identity по authority подтверждено для PAC и существующего
+   `PAC_NATIVE_UPSTREAM` с native AUTO и фактическим capture/owner/egress accounting.
+   Следующий шаг — проверить условия readiness выше: незаметный подхват owned policy
+   уже работающим браузером, потерю/восстановление transport и старые pinned flows.
+   Нынешние сценарии используют явно заданный PAC нового test process; их PASS
+   не доказывает установку policy или её подхват пользовательским браузером.
 2. Явно разделить гарантии: native наблюдение SNI привязано к соединению;
    строгая изоляция каждого запроса требует подтверждённого браузерного
    transport-контекста. Нельзя объявлять gate закрытым по корректному первому

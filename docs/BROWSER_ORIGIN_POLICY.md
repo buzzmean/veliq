@@ -36,7 +36,10 @@ DIRECT default и существующий failure recovery; гарантии с
 маршрутизация привязана к соединению. На контролируемом общем SAN/IP Chromium
 передал последующие REQUIRED authority по уже допущенному DIRECT HTTP/2
 соединению; первоначальное REQUIRED-соединение при этом могло корректно идти
-через relay. Per-authority PAC в том же сценарии сохранил изоляцию.
+через relay. Per-authority PAC и его существующая связка с native AUTO
+(`PAC_NATIVE_UPSTREAM`, actual WinDivert) в том же сценарии сохранили изоляцию
+и DIRECT для разрешённых имён. Подхват owned policy работающим браузером
+и строгая readiness ещё не подтверждены этой проверкой.
 [Условия, фактический egress и открытый R1 gate](BROWSER_ORIGIN_REUSE.md).
 Это не установленная утечка публичных сайтов и не принятие DIRECT+ или ISP.
 
