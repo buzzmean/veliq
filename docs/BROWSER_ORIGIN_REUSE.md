@@ -59,7 +59,70 @@ ClientHello/SNI не определяет authority всех последующ�
 включая оба `chatgpt.com` authority. Проверка с Go race PASS. Это доказательство
 работоспособности сценария, не утверждение о маршрутизации VELIQ/публичных сайтов.
 
-Windows PAC/native и полный CI будут зафиксированы после фактического прогона.
+Windows Chrome `156.0.8078.48`, code SHA
+`b7152cda63265316a0a48a3f1dc05dcf8f426ecd`:
+[run 41349924470, browser job 124977693377](https://github.com/buzzmean/veliq/actions/runs/41349924470/job/124977693377).
+Baseline coalescing PASS, pinned DLL filters PASS. Artifact
+`browser-origin-reuse-evidence`, ID `13101050932` содержит только журналы
+контролируемого сценария, без ключей/сертификатов/пользовательских данных.
+
+| Сценарий | Первый запрос | Последующие REQUIRED requests | Relay TCP / RX counter | Gate |
+|---|---|---|---|---|
+| PAC | LOCAL, source 127.0.0.1 | Оба на отдельном connection 5, SNI chatgpt.com, source 127.0.0.2 | 1 / 2497 | PASS, 0 DIRECT |
+| Native REQUIRED → LOCAL | REQUIRED bootstrap на connection 1, SNI chatgpt.com, source 127.0.0.2, body 78 bytes | Оба на connection 2, SNI www.youtube.com, source 127.0.0.1 | 1 / 2654 | FAIL, 2 DIRECT |
+| Native LOCAL first | LOCAL bootstrap на connection 1, source 127.0.0.1 | Оба на connection 2, SNI www.youtube.com, source 127.0.0.1 | 0 / 0 | FAIL, 2 DIRECT |
+
+Connection IDs локальны для каждого запуска. В обоих native сценариях
+connection 2 обслужил `www.youtube.com`, `youtube.com`, затем оба запроса
+`chatgpt.com`. Сервер получил authority REQUIRED, браузер полностью прочитал
+ответы 41 и 47 bytes. `relay_rx` — счётчик `relay.Metrics.RXBytes`, не размер
+HTTP body. Ненулевой relay counter первого сценария native относится к
+первоначальному соединению и не доказывает маршрут позднейших запросов.
+
+Native record с SNI `www.youtube.com` остаётся DIRECT; новый REQUIRED open для
+последующих authority отсутствует. В LOCAL-first вообще нет relay bytes.
+Все эти соединения созданы после включения контроллера и capture: это не только
+исключение для сокетов, существовавших до активации. Свежий REQUIRED bootstrap
+действительно идёт через relay, что отдельно подтверждено серверным source.
+
+Это **воспроизведённое нарушение изоляции origin у native DIRECT-пути** в
+заданных условиях общего SAN/IP/port. Не установлен факт общей SAN-связи
+публичных YouTube/OpenAI; не доказана утечка их реального трафика. DIRECT+
+transform, автоматическое LOCAL learning, ECH, Edge, policy uptake/recovery,
+IPv6, пользовательские сети и произвольные будущие версии браузера этим
+сценарием не приняты. Продуктовый код не изменён, R1 остаётся частично готовым.
+
+Полные Go race/vet/build CODE b7152cd:
+[Windows job 124977693452](https://github.com/buzzmean/veliq/actions/runs/41349924470/job/124977693452)
+PASS;
+[Linux + PostgreSQL 17, job 124977693256](https://github.com/buzzmean/veliq/actions/runs/41349924467/job/124977693256)
+PASS. Linux workflow далее падает на прежнем Python rollback-тесте; общий Verify
+также сохраняет WPF `Empty visual: actual-RelayChoice`, Edge acceptance —
+`Edge AUTO requires verified Edge CONNECT/PAC`. Общий CI не зелёный.
+Chrome policy/actual-driver, Game UDP и isolated upgrade того же SHA прошли.
+Эти результаты отделены от красного origin routing gate: прохождение сборки
+не означает устранения нарушения.
+
+## Продолжение R1
+
+1. Для строгой per-request изоляции использовать уже имеющееся разделение
+   proxy identity по authority, подтверждённое PAC-сценарием. Следующий шаг —
+   проверить этот же gate для `PAC_NATIVE_UPSTREAM` с native AUTO profile и
+   фактическим capture/owner/LOCAL/RELAY accounting; отдельно проверить readiness
+   и незаметный подхват существующей owned policy. Текущий тест PAC не утверждает
+   её установку или подхват работающим пользовательским браузером.
+2. Явно разделить гарантии: native наблюдение SNI привязано к соединению;
+   строгая изоляция каждого запроса требует подтверждённого браузерного
+   transport-контекста. Нельзя объявлять gate закрытым по корректному первому
+   REQUIRED open, TLS успеху, SYN count или ещё одному SNI/IP cache.
+3. Сохранить existing-flow pinning/no replay, известный REQUIRED floor и
+   экономию DIRECT/LOCAL. Не вводить скрыто полный RELAY браузера, MITM,
+   извлечение ключей, расширение или принудительный restart/policy reload.
+   Независимый WFP guard сам не раскрывает HTTP/2 authority:
+   [действующая архитектурная граница](BROWSER_NATIVE_GUARD.md#отдельное-ограничение-имя-сайта-не-всегда-доступно).
+4. Сохранить `ORIGIN_ISOLATION_VIOLATION` как failure до реального исправления
+   или явно принятого другого контракта. Это draft с воспроизведением,
+   не готовое исправление и не разрешение на merge/rollout.
 
 ## Запуск
 
