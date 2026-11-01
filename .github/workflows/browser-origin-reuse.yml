@@ -24,15 +24,6 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-go@v5
         with: {go-version: '1.25.x'}
-      - name: Full Windows Go race, vet and build
-        shell: powershell
-        run: |
-          & go test -race -p 1 -timeout 180s ./...
-          if ($LASTEXITCODE) { throw 'WINDOWS_RACE_FAILED' }
-          & go vet ./...
-          if ($LASTEXITCODE) { throw 'WINDOWS_VET_FAILED' }
-          & go build ./...
-          if ($LASTEXITCODE) { throw 'WINDOWS_BUILD_FAILED' }
       - name: All filters through the pinned signed DLL
         shell: powershell
         run: |
@@ -42,9 +33,6 @@ jobs:
           & go test -c -o bin/filter-tests.exe ./platform/windows
           if ($LASTEXITCODE) { throw 'FILTER_TEST_BUILD_FAILED' }
           & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
-      - name: Fetch pinned driver for disposable VM capture
-        shell: powershell
-        run: ./tools/windows/fetch-windivert.ps1
       - name: Real Chromium coalescing precondition with verified TLS
         shell: powershell
         run: |
@@ -58,6 +46,16 @@ jobs:
           $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
           & go test -v -count=1 -timeout 210s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
           if ($LASTEXITCODE) { throw 'ORIGIN_REUSE_ROUTING_GATE_FAILED' }
+      - name: Full Windows Go race, vet and build
+        if: ${{ !cancelled() }}
+        shell: powershell
+        run: |
+          & go test -race -p 1 -timeout 180s ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_RACE_FAILED' }
+          & go vet ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_VET_FAILED' }
+          & go build ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_BUILD_FAILED' }
 # Linux race/vet/build with PostgreSQL is supplied by relay-release.yml.
 # A routing violation deliberately fails this gate. No continue-on-error,
 # production credentials, browser policy installation or owner PC acceptance.
