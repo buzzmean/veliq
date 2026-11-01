@@ -138,6 +138,50 @@ Edge `Edge AUTO requires verified Edge CONNECT/PAC`.
 PASS. Два native-only origin FAIL остаются открыты: успешные сборки и три
 PAC/hybrid PASS не закрывают весь routing gate.
 
+## Работающий Chromium и owned policy
+
+02.11.2026 MSK (01.11 UTC), Chrome `156.0.8078.80`, code
+`079e73142d3890e35631387538403fd686f3dd67`:
+[run 41355656822/job 124995009467](https://github.com/buzzmean/veliq/actions/runs/41355656822/job/124995009467).
+Artifact `13102064835`, `browser-origin-reuse-evidence`, digest
+`sha256:0acdcc59c629d3153ce221014e0ca32a96294d661144eb5e847d8e1e97d9e795`.
+Baseline coalescing и pinned DLL filters PASS. Вся матрица: PAC/hybrid/owned-before
+4 PASS, live-install и два native-only сценария 3 FAIL. FAIL не подавлены.
+
+| Сценарий | Наблюдение | Вывод |
+|---|---|---|
+| Owned PAC до запуска Chromium; native включён после LOCAL fetch | LOCAL connection 2 и sibling 3 DIRECT, REQUIRED connection 4 RELAY; 2 hybrid exchanges, 2 connected/reflected, relay TCP 1/RX 2497 | PASS для данного перехода; PID/birth не изменились |
+| Штатный native maintenance после первого REQUIRED | Registry policy удалена, listener сохранён; через 3048 ms после активации повторный REQUIRED остался на том же relay connection 4 | Уже открытый tunnel сохранился; будущие новые соединения после удаления ещё не приняты |
+| Owned PAC записана в уже работающий Chromium после LOCAL fetch | Registry active; через 30031 ms CONNECT/hybrid/relay counters всё ещё 0, `POLICY_PENDING_BROWSER_REFRESH` | Live uptake не доказан в этом окне; нельзя обещать мгновенное включение или конечный срок |
+
+В live-install LOCAL был на connection 3/SNI `www.youtube.com`; sibling и оба
+REQUIRED — на **новом** connection 4/SNI `youtube.com`, source `127.0.0.1`.
+Следовательно, `pre_activation_reuse=0`, `fresh_loopback_unproven=2`.
+Это достоверное отсутствие PAC ingress и два DIRECT-запроса к фикстуре, но не
+новое доказательство обхода native capture: Windows loopback исключён NETWORK
+filter. Gate сообщает `LIVE_POLICY_UPTAKE_NOT_PROVEN` и
+`LIVE_POLICY_REQUIRED_ROUTE_NOT_PROVEN`; не приписывает этому случаю нарушение
+pre-activation pinning. Ранее подтверждённые native-only нарушения используют
+TEST-NET и остаются отдельными actual-capture FAIL.
+
+Проверены реальные journal/writer, `nativeBrowserCompatibility` и один явный вызов
+`RetrySilentBrowserPolicies` в заданной фазе. Полный `Controller.Start`, SCM,
+readiness enforcement и recovery не запускаются. Live-install оставляет policy
+на всё окно наблюдения; обычный native maintenance мог бы удалить её раньше.
+Поэтому этот опыт не сертифицирует весь продуктовый startup/lifecycle.
+Фактическое удаление согласуется с текущим кодом, но расходится с историческим
+обещанием постоянного PAC guard: [уточнение области старого варианта A](BROWSER_SILENT_POLICY.md).
+После удаления `POLICY_OR_LISTENER_UNAVAILABLE` означает недоступную registry
+policy, хотя сохранённый listener и старый relay tunnel продолжают работать.
+
+Полные Go race/vet/build этого code SHA:
+[Windows 124995009381](https://github.com/buzzmean/veliq/actions/runs/41355656822/job/124995009381)
+и [Linux + PG17 124995008859](https://github.com/buzzmean/veliq/actions/runs/41355656769/job/124995008859)
+PASS. Chrome policy/actual-driver, Game UDP и isolated upgrade PASS; C# 218 PASS.
+Общий CI сохраняет прежние Python rollback (99/100), WPF `actual-RelayChoice`
+и Edge `verified CONNECT/PAC` failures. Эти результаты не закрывают три
+отрицательных browser gate и не являются приёмкой на ПК/ISP.
+
 ## Граница readiness: следующий контракт
 
 Текущие статусы отвечают на разные вопросы. Их нельзя объединять в одну
@@ -182,10 +226,12 @@ PAC/hybrid PASS не закрывают весь routing gate.
 
 1. Разделение proxy identity по authority подтверждено для PAC и существующего
    `PAC_NATIVE_UPSTREAM` с native AUTO и фактическим capture/owner/egress accounting.
-   Следующий шаг — проверить условия readiness выше: незаметный подхват owned policy
-   уже работающим браузером, потерю/восстановление transport и старые pinned flows.
-   Нынешние сценарии используют явно заданный PAC нового test process; их PASS
-   не доказывает установку policy или её подхват пользовательским браузером.
+   Переход с owned PAC, существующей до браузера, теперь проверен; live-install
+   остаётся pending в измеренном 30-секундном окне. Следующий gate — свежий CONNECT
+   после native policy withdrawal, затем отказы/восстановление listener, capture
+   и relay. Для нового DIRECT нужен реально перехватываемый TEST-NET endpoint;
+   loopback сам по себе не подтверждает native защиту. Старые tunnels учитывать
+   отдельно. Полный startup/recovery/strict readiness ещё не приняты.
 2. Явно разделить гарантии: native наблюдение SNI привязано к соединению;
    строгая изоляция каждого запроса требует подтверждённого браузерного
    transport-контекста. Нельзя объявлять gate закрытым по корректному первому
