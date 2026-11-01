@@ -36,6 +36,10 @@ try{[IO.File]::WriteAllBytes($result,$bom)}catch{$result=Join-Path ([IO.Path]::G
 $isWin=($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows
 
 function Say([string]$Text){Write-Host $Text;[IO.File]::AppendAllText($result,$Text+"`r`n",$utf8)}
+function Write-NetworkDiagnosis($Record,[string]$Source){
+ $d=Prop $Record 'diagnosis'
+ if($null -ne $d){Say ('Network Intelligence source='+$Source+' id='+(Prop $Record 'id' '-')+' network='+(Prop $Record 'network' 'UNKNOWN')+' layer='+(Prop $d 'layer')+' state='+(Prop $d 'state')+' page_verified='+(Prop $d 'page_verified' $false)+' playback_verified='+(Prop $d 'playback_verified' $false))}
+}
 function Want([string]$Section){return ($Only.Count -eq 0) -or ($Only -contains $Section) -or ($Section -eq 'sni' -and $Only -contains 'youtube')}
 function Section([string]$Title){Say '';Say ('=== '+$Title+' ===')}
 function Scrub([string]$Text){
@@ -291,7 +295,7 @@ function Find-PathMtu([string]$Address){
  }finally{$ping.Dispose()}
 }
 
-$ScriptVersion='2026-10-25.16 (measurement revision 2: relay sessions, layered DNS/TLS, timestamp/early failure audit)'
+$ScriptVersion='2026-11-01.17 (Network Intelligence stage1: scoped DNS/TLS/HTTP/transfer evidence; no playback claims)'
 Say "VELIQ diag-no-vpn, started $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss zzz'))"
 Say "Script version: $ScriptVersion"
 Say "Script file: $(if($PSCommandPath){$PSCommandPath}else{'(unknown)'})"
@@ -628,6 +632,7 @@ function Write-BrowserDNSEvidence($native) {
   Say ('browser DNS broker: scope='+(Prop $dns 'scope')+' queries='+(Prop $dns 'queries' 0)+' relay_https_doh='+(Prop $dns 'relay_doh' 0)+' original_resolver='+(Prop $dns 'system_dns' 0)+' failed='+(Prop $dns 'failed' 0)+' active='+(Prop $dns 'active' 0)+'/'+(Prop $dns 'max_active' 0))
   Say ('browser Secure DNS: '+(Prop $dns 'secure_dns_policy')+'; encrypted_answers='+(Prop $dns 'encrypted_answers'))
   foreach($r in @(Prop $dns 'records' @())|Select-Object -Last 16){
+   Write-NetworkDiagnosis $r 'DNS'
    Say ('browser DNS query: profile='+(Prop $r 'profile_id')+' domain='+(Prop $r 'domain')+' qtype='+(Prop $r 'query_type')+' path='+(Prop $r 'path')+' result='+(Prop $r 'result')+' hinted_addresses='+(Prop $r 'addresses' 0))
   }
  }
@@ -736,6 +741,7 @@ function Write-LocalProbeEvidence($ladder) {
 
  Say 'LOCAL probes: service | host | strategy | result | wire_tx | wire_rx | body_rx | committed | inspection | sent packets(length/TTL/protocol)'
  foreach($probe in @(Prop $ladder 'probes' @())){
+  Write-NetworkDiagnosis $probe 'LOCAL_PROBE'
   $inspection=Prop $probe 'inspection'
   $actions=@(Prop $probe 'planned_actions' @() | ForEach-Object {$native=Prop $_ 'native_tcp';if($null -ne $native){'native:'+(Prop $native 'mode')+'/repeats='+(Prop $native 'repeats')+'/fooling='+(Prop $native 'fooling')+'/badseq_only_if_fooling_badseq='+(Prop $native 'bad_sequence')+'/badack_only_if_fooling_badseq='+(Prop $native 'bad_ack')+'/ts_delta='+(Prop $native 'timestamp_delta')}else{((Prop $_ 'kind')+'/ttl='+(Prop $_ 'ttl' 0)+'/repeats='+(Prop $_ 'repeats' 0)+'/fooling='+(Prop $_ 'fooling' ''))}}) -join ','
   Say (' planned (not wire proof): '+$actions)
@@ -774,6 +780,7 @@ function Write-YouTubeLocalEvidence($ladder) {
 
 function Write-NativeIngressEvidence($native) {
  foreach($r in @(Prop (Prop $native 'youtube_local_ladder') 'records' @())){
+  Write-NetworkDiagnosis $r 'LADDER'
   $hostName=[string](Prop $r 'domain' '');$address=[string](Prop $r 'destination' '')
   if($hostName -match '(^|\.)googlevideo\.com$' -and $address -match '^188\.43\.(61|64|65|66|67|68|69|87|126|127)\.[0-9]+:443$'){
    Say ('googlevideo GGC: host='+$hostName+' destination='+$address+' label=COMMUNITY_GGC_RANGE_UNVERIFIED AS20485-reference; prefix label only, not measured ownership/throttling and no routing change')
@@ -922,6 +929,7 @@ Step 'native_browser' {
   }catch{Say ($lane+' path metrics unavailable: '+(Scrub $_.Exception.Message))}
  }
  foreach($r in @(Prop $native 'records' @())|Select-Object -First 32){
+  Write-NetworkDiagnosis $r 'NATIVE'
   $de=Prop $r 'domain_evidence';if($de){Say ('native domain evidence: source='+(Prop $de 'source')+' confidence='+(Prop $de 'confidence')+' outer='+(Prop $de 'outer_sni')+' candidates='+(@(Prop $de 'candidates' @()) -join ',')+' ambiguous='+(Prop $de 'ambiguous')+' restricted='+(Prop $de 'restricted'))}
   $pre=Prop $r 'origin_preflight';if($pre){Say ('native origin preflight: chosen='+(Prop $pre 'destination')+' verified='+(Prop $pre 'verified')+' address_verified='+(Prop $pre 'address_verified')+' source='+(Prop $pre 'source')+' expires='+(Prop $pre 'expires')+' failure='+(Prop $pre 'failure'))}
   $owner=Prop $r 'owner';$policy=Prop $r 'policy'

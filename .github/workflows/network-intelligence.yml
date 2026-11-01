@@ -1,0 +1,48 @@
+name: Network Intelligence stage1
+on:
+  push:
+    branches: [feat/network-intelligence-stage1]
+  pull_request:
+    paths:
+      - 'core/netdiagnostic/**'
+      - 'core/browserproxy/**'
+      - 'services/client-service/browser_*'
+      - 'tools/windows/diag-no-vpn.ps1'
+      - 'tests/windows-tools/*checks.ps1'
+      - '.github/workflows/network-intelligence.yml'
+permissions:
+  contents: read
+jobs:
+  windows-evidence:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Layered diagnosis, real HTTP transfer and scoped recovery
+        shell: pwsh
+        run: |
+          go test -race -v -count=3 -timeout=120s ./core/netdiagnostic ./core/browserproxy ./services/client-service -run 'TestServiceDiagnosis|TestDNSStatus|TestNetworkIntelligence|TestNativeSnapshotRetains|TestFirstFlight|TestRelayOriginNeverReplays|TestSharedCandidateNeverAuthorizes|TestCommonLadderDPIAndUnknownFailures|TestBrowserDNSProtected'
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          go build ./...
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Diagnostic projection in Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          & ./tests/windows-tools/browser-path-checks.ps1
+          & ./tests/windows-tools/local-probe-checks.ps1
+          & ./tests/windows-tools/layer-measurement-checks.ps1
+      - name: Diagnostic projection in PowerShell 7
+        shell: pwsh
+        run: |
+          & ./tests/windows-tools/browser-path-checks.ps1
+          & ./tests/windows-tools/local-probe-checks.ps1
+          & ./tests/windows-tools/layer-measurement-checks.ps1
+      - name: Compile every service filter with pinned WinDivert DLL without driver access
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go test -c -o bin/ni-filter-tests.exe ./platform/windows
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/ni-filter-tests.exe')

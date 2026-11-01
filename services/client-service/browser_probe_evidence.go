@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/buzzmean/neexitlag/core/browserproxy"
 	"github.com/buzzmean/neexitlag/core/localstrategy"
+	"github.com/buzzmean/neexitlag/core/netdiagnostic"
 	wp "github.com/buzzmean/neexitlag/platform/windows"
 	"net"
 	"net/netip"
@@ -13,6 +14,9 @@ import (
 )
 
 type localProbeEvidence struct {
+	Network        string                    `json:"network"`
+	Profile        string                    `json:"profile"`
+	Diagnosis      netdiagnostic.Diagnosis   `json:"diagnosis"`
 	Failure        string                    `json:"failure,omitempty"`
 	HTTPStatus     int                       `json:"http_status"`
 	TLSVersion     uint16                    `json:"tls_version"`
@@ -81,6 +85,7 @@ func (c *Controller) localPacketInspection(q browserproxy.Request, p browserprox
 func (c *Controller) recordLocalProbe(q browserproxy.Request, p browserproxy.Plan, strategy string, result browserproxy.ProbeResult, applied bool, sent ...uint64) {
 	inspection := c.localPacketInspection(q, p)
 	row := localProbeEvidence{Failure: result.Failure, HTTPStatus: result.Status, TLSVersion: result.TLSVersion, At: time.Now(), Strategy: strategy, Host: q.Host, Service: c.browserOriginPolicy(q.Host).Group, Result: localProbeOutcome(result, applied), Phase: result.Phase, Detail: result.Detail, Received: result.Bytes, Body: result.BodyBytes, Committed: applied, Inspection: inspection}
+	row.Network, row.Profile, row.Diagnosis = p.Network, q.Owner.Profile, netdiagnostic.DiagnoseProbe(result)
 	if len(sent) > 0 {
 		row.Sent = sent[0]
 	}

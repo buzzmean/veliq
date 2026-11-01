@@ -14,6 +14,7 @@ import (
 
 	"github.com/buzzmean/neexitlag/core/browserproxy"
 	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/neexitlag/core/netdiagnostic"
 	"github.com/buzzmean/neexitlag/core/profiles"
 	"github.com/buzzmean/neexitlag/core/security"
 	"github.com/buzzmean/neexitlag/core/transport"
@@ -56,6 +57,8 @@ type nativeBrowserProfileStatus struct {
 	FirstExchangeMS int64                `json:"enable_to_first_exchange_ms"`
 }
 type nativeBrowserRecord struct {
+	Diagnosis       netdiagnostic.Diagnosis `json:"diagnosis"`
+	Network         string                  `json:"network"`
 	planReporter    browserproxy.PlanReporter
 	OriginPreflight *browserproxy.DNSRecoveryResult `json:"origin_preflight,omitempty"`
 	DomainEvidence  *browserDomainEvidence          `json:"domain_evidence,omitempty"`
@@ -201,6 +204,7 @@ func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
 			v := r.tlsWire.Snapshot()
 			r.TLS = &v
 		}
+		r.Diagnosis = netdiagnostic.DiagnoseStream(r.Failure+" "+r.Result, r.Sent, r.Received, r.TLS)
 		s.Records = append(s.Records, r)
 	}
 	sort.Slice(s.Records, func(i, j int) bool { return s.Records[i].ID > s.Records[j].ID })
@@ -215,6 +219,7 @@ func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
 		if len(raw) <= 60*1024 {
 			break
 		}
+		dnsRecords, _ := s.DNS["records"].([]browserDNSRecord)
 		switch {
 		case len(s.YoutubeLocal.Records) > 0:
 			s.YoutubeLocal.Records = s.YoutubeLocal.Records[:len(s.YoutubeLocal.Records)-1]
@@ -241,6 +246,10 @@ func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
 		case s.CaptureIngress != nil && len(s.CaptureIngress.Records) > 0:
 			s.CaptureIngress.Records = s.CaptureIngress.Records[1:]
 			s.CaptureIngress.Lost++
+		case len(dnsRecords) > 0:
+			s.DNS["records"] = dnsRecords[1:]
+			omitted, _ := s.DNS["records_omitted"].(uint64)
+			s.DNS["records_omitted"] = omitted + 1
 		case len(s.Profiles) > 0:
 			s.Profiles = s.Profiles[:len(s.Profiles)-1]
 		default:
@@ -433,6 +442,7 @@ func (n *nativeBrowserRuntime) opened(id uint64, plan browserproxy.Plan, err err
 		return
 	}
 	r.Policy = plan.Policy
+	r.Network = plan.Network
 	r.Upstream = plan.Destination.String()
 	r.Probe = plan.Probe
 	p := n.profiles[r.Owner.Profile]

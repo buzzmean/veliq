@@ -59,6 +59,9 @@ func TestNativeSnapshotRetainsIPCHeadroomWithSiblingCache(t *testing.T) {
 	c := New(context.Background())
 	defer c.Close()
 	r := c.browser.youtube
+	for i := 0; i < 64; i++ {
+		c.browser.dnsWire.record(strings.Repeat("n", 64), strings.Repeat("p", 128), strings.Repeat("d", 253), 1, "AUTHENTICATED_RELAY_DOH", "DNS_NXDOMAIN", 0)
+	}
 	for i := 0; i < 128; i++ {
 		label := fmt.Sprint(i)
 		r.stats[label] = youtubeStage{Service: "youtube-media", Stage: "LOCAL", Strategy: strings.Repeat("s", 64) + label}
