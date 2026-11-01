@@ -86,7 +86,14 @@ func runNativeBrowserHotAttachFixture(t *testing.T, driver bool) {
 				t.Fatal(e)
 			}
 			target := origin.Addr().(*net.TCPAddr).AddrPort()
+			var accepted, requested atomic.Uint64
+			t.Cleanup(func() {
+				if t.Failed() {
+					t.Logf("NATIVE_FIXTURE_TRAFFIC driver=%t ingress_accepts=%d origin_requests=%d", driver, accepted.Load(), requested.Load())
+				}
+			})
 			web := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requested.Add(1)
 				host, _, _ := net.SplitHostPort(r.RemoteAddr)
 				w.Header().Set("Connection", "close")
 				w.Header().Set("Cache-Control", "no-store")
@@ -101,6 +108,7 @@ func runNativeBrowserHotAttachFixture(t *testing.T, driver bool) {
 					if err != nil {
 						return
 					}
+					accepted.Add(1)
 					go func() {
 						defer conn.Close()
 						var up net.Conn
@@ -330,36 +338,48 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 	t.Cleanup(func() { ws.Close() })
 	ws.MaxPayloadBytes = 1 << 20
 	seq := 0
+	stage := "startup"
 	call := func(method string, params any) json.RawMessage {
 		t.Helper()
 		seq++
-		ws.SetDeadline(time.Now().Add(5 * time.Second))
-		if e := websocket.JSON.Send(ws, map[string]any{"id": seq, "method": method, "params": params}); e != nil {
-			t.Fatal(e)
+		started := time.Now()
+		if e := ws.SetDeadline(started.Add(5 * time.Second)); e != nil {
+			t.Fatalf("CDP_DEADLINE_FAILED stage=%s method=%s: %v", stage, method, e)
 		}
+		if e := websocket.JSON.Send(ws, map[string]any{"id": seq, "method": method, "params": params}); e != nil {
+			t.Fatalf("CDP_SEND_FAILED stage=%s method=%s elapsed=%s: %v", stage, method, time.Since(started), e)
+		}
+		lastEvent := "none"
 		for i := 0; i < 512; i++ {
 			var r struct {
 				ID     int             `json:"id"`
+				Method string          `json:"method"`
 				Result json.RawMessage `json:"result"`
 				Error  json.RawMessage `json:"error"`
 			}
 			if e := websocket.JSON.Receive(ws, &r); e != nil {
-				t.Fatal(e)
+				t.Fatalf("CDP_RECEIVE_FAILED stage=%s method=%s elapsed=%s messages=%d last_event=%s: %v", stage, method, time.Since(started), i, lastEvent, e)
+			}
+			// Record event names only, never page content, URLs or CDP payloads.
+			if r.Method != "" {
+				lastEvent = r.Method
 			}
 			if r.ID == seq {
 				if len(r.Error) > 0 {
-					t.Fatal("CDP_COMMAND_FAILED", method)
+					t.Fatalf("CDP_COMMAND_FAILED stage=%s method=%s", stage, method)
 				}
 				return r.Result
 			}
 		}
-		t.Fatal("CDP_EVENT_LIMIT")
+		t.Fatalf("CDP_EVENT_LIMIT stage=%s method=%s last_event=%s", stage, method, lastEvent)
 		return nil
 	}
 	call("Page.enable", map[string]any{})
 	// port is the controlled original destination port.
-	visit := func(stage, source string) {
+	visit := func(nextStage, source string) {
 		t.Helper()
+		stage = nextStage
+		t.Logf("NATIVE_BROWSER_STAGE stage=%s", stage)
 		path := "/" + stage
 		url := fmt.Sprintf("http://native-browser.test:%d%s", port, path)
 		// The TEST-NET route exists only while the driver reflects it. Baseline/OFF

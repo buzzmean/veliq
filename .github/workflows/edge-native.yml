@@ -68,11 +68,11 @@ jobs:
           $env:NEEXITLAG_TEST_BROWSER_DISABLE='1'
           go test -v -count=1 -timeout 180s ./services/client-service -run '^TestWindowsBrowserDisablePolicyContinuity$' 2>&1 | Tee-Object browser-disable.log
           if ($LASTEXITCODE) { throw "Browser disable continuity failed: $LASTEXITCODE" }
-      - name: Browsers started before native controller, no PAC, authenticated relay and OFF
+      - name: Browsers started before native controller, no PAC, authenticated relay and OFF (3 runs)
         shell: pwsh
         run: |
           $env:NEEXITLAG_TEST_NATIVE_BROWSER='1'
-          go test -v -count=1 -timeout 180s ./services/client-service -run '^TestWindowsNativeBrowserStartsBeforeControllerWithoutPAC$' 2>&1 | Tee-Object native-hot-attach.log
+          go test -v -count=3 -timeout 180s ./services/client-service -run '^TestWindowsNativeBrowserStartsBeforeControllerWithoutPAC$' 2>&1 | Tee-Object native-hot-attach.log
           if ($LASTEXITCODE) { throw "Native controller browser fixture failed: $LASTEXITCODE" }
       - name: Chrome and Edge service/owner regressions
         run: go test -p 1 -race -count=1 ./services/client-service ./platform/windows -run 'Edge|Chrome|Browser'
