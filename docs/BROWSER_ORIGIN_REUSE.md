@@ -59,6 +59,17 @@ ClientHello/SNI не определяет authority всех последующ�
   не потеря пакетов: проверяются его lifetime atomic totals и число реальных
   reflected accepts. Отдельные native/PAC журналы соединений обязаны оставаться
   полными, с owner/policy и двусторонними байтами для каждого authority.
+- Два live-policy сценария запускают Chromium без proxy flags и включают native
+  capture только после первого полностью прочитанного LOCAL fetch. В одном owned
+  HKCU PAC уже существует до запуска, в другом настоящий journal/writer службы
+  устанавливает его после прогрева DIRECT H2. Сверяются неизменные PID/birth,
+  серверные connection IDs и реальные CONNECT. После первого REQUIRED измеряется
+  штатное удаление owned policy через native maintenance (existing-policy случай)
+  либо повторный REQUIRED через 30 секунд (live install). Нет browser restart,
+  reload, дополнительного RefreshPolicy или смены транспорта через CDP.
+  Readiness enforcement/SCM/recovery provisioning здесь не сертифицируются.
+  Повторный DIRECT доказывает pinned reuse только при том же connection ID/SNI;
+  новый loopback DIRECT не считается доказательством native interception.
 
 Сервер учитывает запрос до ответа: даже ответ 421/403 не отменяет факт
 получения REQUIRED authority на неверном egress. `ORIGIN_ISOLATION_VIOLATION`

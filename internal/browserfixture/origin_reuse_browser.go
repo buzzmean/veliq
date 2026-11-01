@@ -23,6 +23,13 @@ import (
 // certificate-error flags, browser key exports or changes to user profiles.
 // Windows trust changes are allowed ONLY on a disposable Actions runner.
 func (f *OriginReuse) Run(t testing.TB, chrome, address, bootstrapHost string, args []string) {
+	f.RunPhased(t, chrome, address, bootstrapHost, args, nil)
+}
+
+// RunPhased exposes completed request boundaries, never browser transport
+// controls. The caller can change the service/policy while the same browser and
+// warm H2 connections stay alive. Hooks must fit within the bounded lifetime.
+func (f *OriginReuse) RunPhased(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32)) {
 	t.Helper()
 	if os.Getenv("NEEXITLAG_TEST_ORIGIN_REUSE") != "1" {
 		t.Fatal("explicit origin reuse fixture opt-in required")
@@ -183,6 +190,9 @@ func (f *OriginReuse) Run(t testing.TB, chrome, address, bootstrapHost string, a
 	if !ready {
 		t.Fatal("trusted HTTPS bootstrap not observed")
 	}
+	if after != nil {
+		after("bootstrap", uint32(cmd.Process.Pid))
+	}
 	for i, host := range []string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost, ReuseRequiredHost} {
 		step := []string{"local", "sibling", "required", "required_again"}[i]
 		url, _ := json.Marshal(f.URL(host, "payload") + "&step=" + step)
@@ -196,6 +206,9 @@ func (f *OriginReuse) Run(t testing.TB, chrome, address, bootstrapHost string, a
 		}
 		if len(r.ExceptionDetails) > 0 || r.Result.Value != f.Nonce+":"+step {
 			t.Fatalf("browser response missing: step=%s", step)
+		}
+		if after != nil {
+			after(step, uint32(cmd.Process.Pid))
 		}
 	}
 }

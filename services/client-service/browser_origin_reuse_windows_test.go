@@ -120,6 +120,8 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		{"PAC", "pac", false},
 		{"PACNativeLocalFirst", "pac-native", false},
 		{"PACNativeRequiredThenLocal", "pac-native", true},
+		{"OwnedPACBeforeNativeActivation", "policy-existing", false},
+		{"OwnedPACAppliedToRunningBrowser", "policy-live", false},
 		{"NativeRequiredThenLocal", "native", true},
 		{"NativeLocalFirst", "native", false},
 	} {
@@ -128,8 +130,9 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 }
 
 func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst bool) {
-	native := mode == "native" || mode == "pac-native"
-	usePAC := mode == "pac" || mode == "pac-native"
+	livePolicy := mode == "policy-existing" || mode == "policy-live"
+	native := mode == "native" || mode == "pac-native" || livePolicy
+	usePAC := mode == "pac" || mode == "pac-native" || livePolicy
 	if !native && !usePAC {
 		t.Fatal("unknown fixture transport")
 	}
@@ -152,7 +155,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	// This isolates authority reuse after a locally admitted connection. It does
 	// not fake a successful DPI transform or claim LOCAL selection/ISP acceptance.
 	p := profiles.Profile{ID: "origin-reuse", Name: "Origin reuse", Executables: []string{chrome}, Mode: profiles.Auto, Custom: true, Rules: []flowpolicy.Rule{{ID: "controlled-local", Protocol: "tcp", Domains: []string{browserfixture.ReuseLocalHost, browserfixture.ReuseSiblingHost}, Action: flowpolicy.Direct, Fallback: flowpolicy.FailBlock}}}
-	if native {
+	if native && !livePolicy {
 		p.BrowserTransport = "native"
 	}
 	if err = c.Profiles.Upsert(p); err != nil {
@@ -193,6 +196,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	args := []string{"--no-proxy-server"}
 	var proxy *browserproxy.Server
 	var delegated *originReuseDelegatedBackend
+	var startCapture func()
 	if native {
 		raw, err := os.ReadFile(filepath.Join(os.Getenv("NEEXITLAG_TEST_DRIVER_DIR"), "pins.json"))
 		if err != nil {
@@ -218,8 +222,13 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			}
 			return c.Classify(id, tuple)
 		}
-		if err = backend.Start(c.ctx, classify); err != nil {
-			t.Fatal(err)
+		startCapture = func() {
+			if err := backend.Start(c.ctx, classify); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if !livePolicy {
+			startCapture()
 		}
 		t.Cleanup(func() { backend.Stop() })
 		if !usePAC {
@@ -249,6 +258,28 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 				args = append(args, arg)
 			}
 		}
+		if livePolicy {
+			args = nil // No proxy flags: only the actual owner-user registry policy.
+			c.browser.server = proxy
+			c.browser.address = proxy.Address()
+			c.browser.expectedPAC = strings.TrimPrefix(pacArgs[1], "--proxy-pac-url=")
+			c.browser.silent.Profiles = []string{p.ID}
+			// Exercise the real owned journal and writer. Readiness/SCM/recovery
+			// provisioning is deliberately outside this isolated transport gate.
+			if mode == "policy-existing" {
+				c.browser.mu.Lock()
+				err = c.reapplySilentLocked(false)
+				c.browser.mu.Unlock()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Cleanup(func() {
+				if err := c.CleanupOwnedBrowserPolicies(); err != nil {
+					t.Error("owned policy cleanup", err)
+				}
+			})
+		}
 	}
 	if native && usePAC {
 		t.Cleanup(func() {
@@ -270,6 +301,58 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	bootstrap := browserfixture.ReuseLocalHost
 	if requiredFirst {
 		bootstrap = browserfixture.ReuseRequiredHost
+	}
+	if livePolicy {
+		var identity wp.ProcessIdentity
+		f.RunPhased(t, chrome, address, bootstrap, args, func(stage string, pid uint32) {
+			current, err := wp.NewDiscovery().Lookup(pid)
+			if err != nil || !wp.IsCurrent(current) {
+				t.Fatal("live browser identity missing", err)
+			}
+			if identity.PID == 0 {
+				identity = current
+			}
+			if current.PID != identity.PID || current.CreationTime != identity.CreationTime {
+				t.Fatal("browser was replaced during native activation")
+			}
+			c.network.Store(&wp.NetworkContext{Fingerprint: "isolated-origin-reuse", ObservedAt: time.Now()})
+			if stage == "local" {
+				if mode == "policy-live" {
+					c.browser.mu.Lock()
+					err = c.reapplySilentLocked(false)
+					c.browser.mu.Unlock()
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				p.BrowserTransport = "native"
+				if err := c.Profiles.Upsert(p); err != nil {
+					t.Fatal(err)
+				}
+				startCapture()
+				compat, err := c.nativeBrowserCompatibility(p, false)
+				if err != nil || compat == nil || !compat.OwnedPolicy || compat.PolicyChanged {
+					t.Fatal("existing owned policy compatibility missing", err)
+				}
+				t.Logf("ORIGIN_POLICY_ACTIVATION mode=%s warm_local=true same_pid_birth=true registry_active=%t compatibility=%s", mode, c.chromePolicyActive(), compat.Verification)
+			}
+			if stage == "required" {
+				if mode == "policy-existing" {
+					c.RetrySilentBrowserPolicies()
+					if c.chromePolicyActive() || !proxy.Snapshot().Listening {
+						t.Fatal("native policy withdrawal/listener lifecycle changed")
+					}
+					t.Log("ORIGIN_POLICY_WITHDRAWAL registry_active=false compatibility_listener=true; real native maintenance path")
+					time.Sleep(3 * time.Second)
+				} else {
+					// Bounded observation, no extra RefreshPolicy, chrome://policy,
+					// page reload, restart or transport change through CDP.
+					time.Sleep(30 * time.Second)
+				}
+			}
+		})
+		verifyLiveOriginPolicy(t, c, f, proxy, delegated, mode, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
+		return
 	}
 	f.Run(t, chrome, address, bootstrap, args)
 	first := f.Bootstrap(t)
@@ -354,6 +437,62 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	}
 	if requiredDirect == 0 && (r.Metrics.TCPConnections.Load() == 0 || r.Metrics.RXBytes.Load() == 0) {
 		t.Error("authenticated relay accounting missing")
+	}
+}
+
+func verifyLiveOriginPolicy(t *testing.T, c *Controller, f *browserfixture.OriginReuse, proxy *browserproxy.Server, delegated *originReuseDelegatedBackend, mode string, relayTCP, relayRX uint64) {
+	t.Helper()
+	first := f.Bootstrap(t)
+	requests := f.Requests(t)
+	t.Logf("ORIGIN_POLICY_BOOTSTRAP mode=%s %+v", mode, first)
+	if first.Source != "127.0.0.1" || requests[0].Source != "127.0.0.1" || requests[1].Source != "127.0.0.1" {
+		t.Error("permitted origins did not preserve DIRECT")
+	}
+	direct := 0
+	for i, q := range requests {
+		t.Logf("ORIGIN_POLICY_REQUEST mode=%s %+v", mode, q)
+		if i >= 2 && q.Source != "127.0.0.2" {
+			direct++
+			// Only reuse of the proven pre-activation DIRECT connection establishes
+			// a pinned-flow counterexample. Fresh loopback bypass isn't native proof.
+			if q.Connection != requests[0].Connection || q.SNI != browserfixture.ReuseLocalHost {
+				t.Error("new DIRECT fixture connection: native interception not proven for loopback")
+			}
+		}
+	}
+	native, pac := c.nativeSnapshot(), proxy.Snapshot()
+	if native.Lost != 0 || native.Truncated || pac.Lost != 0 || pac.Truncated {
+		t.Fatal("live policy application evidence incomplete")
+	}
+	if native.CaptureIngress == nil || !native.Ready || native.NativeOnly.Accepted != 0 {
+		t.Fatal("live policy capture unavailable or ingress contaminated")
+	}
+	witnessed := map[string]bool{}
+	for _, record := range native.Records {
+		if record.Sent == 0 || record.Received == 0 {
+			continue
+		}
+		want := flowpolicy.Direct
+		if record.Domain == browserfixture.ReuseRequiredHost {
+			want = flowpolicy.RelayRequired
+		}
+		if record.Ingress != "PAC_NATIVE_UPSTREAM" || record.Owner.Profile != "origin-reuse" || record.Owner.PID == 0 || record.Owner.Birth == 0 || record.Policy.Action != want {
+			t.Error("live policy authority/owner/policy mismatch", record.Domain, record.Ingress, record.Policy.Action)
+		}
+		witnessed[record.Domain] = true
+	}
+	c.browser.mu.Lock()
+	view := c.silentViewLocked(false, pac)
+	c.browser.mu.Unlock()
+	t.Logf("ORIGIN_POLICY_PROOF mode=%s state=%s observed=%d registry_active=%t native_pac_exchanges=%d connected=%d reflected=%d metadata_evicted=%d required_direct=%d relay_tcp=%d relay_rx=%d", mode, view.State, view.ObservedRequests, c.chromePolicyActive(), native.PACUpstream.Exchanges, delegated.connected.Load(), native.CaptureIngress.ReflectedAccepts, native.CaptureIngress.Lost, direct, relayTCP, relayRX)
+	if !witnessed[browserfixture.ReuseSiblingHost] || !witnessed[browserfixture.ReuseRequiredHost] || delegated.connected.Load() == 0 || native.CaptureIngress.ReflectedAccepts < delegated.connected.Load() {
+		t.Error("LIVE_POLICY_UPTAKE_NOT_PROVEN: actual hybrid exchanges for new authorities missing within bounded observation")
+	}
+	if direct > 0 {
+		t.Error("ORIGIN_ISOLATION_VIOLATION: REQUIRED reached pre-activation DIRECT fixture path; no public-site leak claimed")
+	}
+	if direct == 0 && (relayTCP == 0 || relayRX == 0) {
+		t.Error("live policy authenticated relay accounting missing")
 	}
 }
 
