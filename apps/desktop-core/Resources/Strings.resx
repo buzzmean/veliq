@@ -43,7 +43,7 @@
     <value>Напрямую</value>
   </data>
   <data name="OptimizationOn" xml:space="preserve">
-    <value>Работает</value>
+    <value>Включён</value>
   </data>
   <data name="OptimizationOff" xml:space="preserve">
     <value>Выключено</value>
@@ -632,7 +632,7 @@
   <data name="AboutService" xml:space="preserve"><value>Служба</value></data>
   <data name="HomeOffLead" xml:space="preserve"><value>Нажмите кнопку, и VELIQ построит оптимальный маршрут для каждого соединения.</value></data>
   <data name="HomeConnectingLead" xml:space="preserve"><value>Замеряем пути и подключаем браузер. Обычно это занимает пару секунд.</value></data>
-  <data name="HomeOnLead" xml:space="preserve"><value>Маршруты построены: заблокированное открывается, игры идут по самому быстрому пути.</value></data>
+  <data name="HomeOnLead" xml:space="preserve"><value>VELIQ управляет маршрутами новых соединений. Доступность сайтов проверяется отдельно.</value></data>
   <data name="HomeErrorLead" xml:space="preserve"><value>Пока ошибка не исправлена, интернет работает как без VELIQ.</value></data>
   <data name="GoSubOff" xml:space="preserve"><value>выключено</value></data>
   <data name="GoSubConnecting" xml:space="preserve"><value>строим маршруты</value></data>

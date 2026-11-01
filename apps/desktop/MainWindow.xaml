@@ -294,7 +294,7 @@
     <Image Source="{StaticResource VeliqSymbol}" Width="56" Height="56" HorizontalAlignment="Center" Margin="0,0,0,20"/>
     <TextBlock Text="{ui:Tr EnterActivationCode}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
     <TextBlock Text="{ui:Tr ActivationLead}" Style="{StaticResource Lead}" TextAlignment="Center" Margin="0,10,0,22"/>
-    <PasswordBox x:Name="ActivationCode" MaxLength="64" FontSize="18" AutomationProperties.Name="{ui:Tr EnterActivationCode}"/>
+    <TextBox x:Name="ActivationCode" MaxLength="64" FontSize="18" MinHeight="48" Margin="0" AutomationProperties.Name="{ui:Tr EnterActivationCode}"/>
     <Button x:Name="ActivationSubmit" Content="{ui:Tr ActivateCode}" Click="SubmitActivation" Style="{StaticResource Primary}" FontSize="16" MinHeight="48" Margin="0,14,0,12"/>
     <TextBlock x:Name="ActivationError" TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource TextMuted}"/>
    </StackPanel>
