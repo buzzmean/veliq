@@ -122,6 +122,7 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		{"PACNativeRequiredThenLocal", "pac-native", true},
 		{"OwnedPACBeforeNativeActivation", "policy-existing", false},
 		{"OwnedPACAppliedToRunningBrowser", "policy-live", false},
+		{"FreshRequiredAfterPACWithdrawal", "policy-withdrawal", false},
 		{"NativeRequiredThenLocal", "native", true},
 		{"NativeLocalFirst", "native", false},
 	} {
@@ -130,7 +131,8 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 }
 
 func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst bool) {
-	livePolicy := mode == "policy-existing" || mode == "policy-live"
+	freshAfterWithdrawal := mode == "policy-withdrawal"
+	livePolicy := mode == "policy-existing" || mode == "policy-live" || freshAfterWithdrawal
 	native := mode == "native" || mode == "pac-native" || livePolicy
 	usePAC := mode == "pac" || mode == "pac-native" || livePolicy
 	if !native && !usePAC {
@@ -237,7 +239,8 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	}
 	if usePAC {
 		plan := func(ctx context.Context, q browserproxy.Request) (browserproxy.Plan, error) {
-			if !q.Secure || q.Port != f.Port() || (q.Host != browserfixture.ReuseLocalHost && q.Host != browserfixture.ReuseSiblingHost && q.Host != browserfixture.ReuseRequiredHost) {
+			freshHost := freshAfterWithdrawal && q.Host == browserfixture.ReuseFreshRequiredHost
+			if !q.Secure || q.Port != f.Port() || (!freshHost && q.Host != browserfixture.ReuseLocalHost && q.Host != browserfixture.ReuseSiblingHost && q.Host != browserfixture.ReuseRequiredHost) {
 				return browserproxy.Plan{}, errors.New("outside controlled origin reuse endpoint")
 			}
 			return c.browserPlan(ctx, q)
@@ -266,7 +269,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			c.browser.silent.Profiles = []string{p.ID}
 			// Exercise the real owned journal and writer. Readiness/SCM/recovery
 			// provisioning is deliberately outside this isolated transport gate.
-			if mode == "policy-existing" {
+			if mode != "policy-live" {
 				c.browser.mu.Lock()
 				err = c.reapplySilentLocked(false)
 				c.browser.mu.Unlock()
@@ -292,7 +295,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 				t.Logf("ORIGIN_REUSE_HYBRID_CAPTURE tcp=%d reflected=%d lost=%d", snap.CaptureIngress.TCPPackets, snap.CaptureIngress.ReflectedAccepts, snap.CaptureIngress.Lost)
 			}
 			for _, r := range proxy.Snapshot().Records {
-				if r.Domain == browserfixture.ReuseLocalHost || r.Domain == browserfixture.ReuseSiblingHost || r.Domain == browserfixture.ReuseRequiredHost {
+				if r.Domain == browserfixture.ReuseLocalHost || r.Domain == browserfixture.ReuseSiblingHost || r.Domain == browserfixture.ReuseRequiredHost || r.Domain == browserfixture.ReuseFreshRequiredHost {
 					t.Logf("ORIGIN_REUSE_HYBRID_OPEN host=%s result=%s failure=%s", r.Domain, r.Result, r.OpenFailure)
 				}
 			}
@@ -305,7 +308,13 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	if livePolicy {
 		var identity wp.ProcessIdentity
 		var activatedAt time.Time
-		f.RunPhased(t, chrome, address, bootstrap, args, func(stage string, pid uint32) {
+		var beforeFresh nativeBrowserSnapshot
+		var beforeTCP, beforeRX uint64
+		run := f.RunPhased
+		if freshAfterWithdrawal {
+			run = f.RunFreshAfterSequence
+		}
+		run(t, chrome, address, bootstrap, args, func(stage string, pid uint32) {
 			current, err := wp.NewDiscovery().Lookup(pid)
 			if err != nil || !wp.IsCurrent(current) {
 				t.Fatal("live browser identity missing", err)
@@ -339,7 +348,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 				t.Logf("ORIGIN_POLICY_ACTIVATION mode=%s warm_local=true same_pid_birth=true registry_active=%t compatibility=%s", mode, c.chromePolicyActive(), compat.Verification)
 			}
 			if stage == "required" {
-				if mode == "policy-existing" {
+				if mode != "policy-live" {
 					c.RetrySilentBrowserPolicies()
 					if c.chromePolicyActive() || !proxy.Snapshot().Listening {
 						t.Fatal("native policy withdrawal/listener lifecycle changed")
@@ -355,8 +364,26 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			if stage == "required_again" {
 				t.Logf("ORIGIN_POLICY_WINDOW mode=%s after_activation_ms=%d same_pid_birth=true", mode, time.Since(activatedAt).Milliseconds())
 			}
+			if stage == "before_fresh" {
+				verifyLiveOriginPolicy(t, c, f, proxy, delegated, mode, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
+				if c.chromePolicyActive() {
+					t.Fatal("fresh phase requires withdrawn policy")
+				}
+				beforeFresh = c.nativeSnapshot()
+				for _, record := range beforeFresh.Records {
+					if record.Domain == browserfixture.ReuseFreshRequiredHost {
+						t.Fatal("fresh authority used before withdrawal boundary")
+					}
+				}
+				beforeTCP, beforeRX = r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load()
+				t.Log("ORIGIN_FRESH_BOUNDARY registry_active=false new_authority_unseen=true same_pid_birth=true destination=TEST-NET")
+			}
 		})
-		verifyLiveOriginPolicy(t, c, f, proxy, delegated, mode, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
+		if freshAfterWithdrawal {
+			verifyFreshOriginAfterWithdrawal(t, c, f, proxy, beforeFresh, r.Metrics.TCPConnections.Load()-beforeTCP, r.Metrics.RXBytes.Load()-beforeRX)
+		} else {
+			verifyLiveOriginPolicy(t, c, f, proxy, delegated, mode, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
+		}
 		return
 	}
 	f.Run(t, chrome, address, bootstrap, args)
@@ -502,6 +529,66 @@ func verifyLiveOriginPolicy(t *testing.T, c *Controller, f *browserfixture.Origi
 	if direct == 0 && (relayTCP == 0 || relayRX == 0) {
 		t.Error("live policy authenticated relay accounting missing")
 	}
+}
+
+func verifyFreshOriginAfterWithdrawal(t *testing.T, c *Controller, f *browserfixture.OriginReuse, proxy *browserproxy.Server, before nativeBrowserSnapshot, relayTCP, relayRX uint64) {
+	t.Helper()
+	if c.chromePolicyActive() || before.CaptureIngress == nil {
+		t.Fatal("fresh phase did not start after policy withdrawal")
+	}
+	previous := map[uint64]bool{f.Bootstrap(t).Connection: true}
+	for _, q := range f.Requests(t) {
+		previous[q.Connection] = true
+	}
+	for _, q := range f.FreshRequests(t) {
+		t.Logf("ORIGIN_FRESH_REQUEST %+v", q)
+		if previous[q.Connection] {
+			t.Error("fresh authority reused a pre-withdrawal origin connection")
+		}
+		if q.Source != "127.0.0.2" {
+			t.Error("ORIGIN_ISOLATION_VIOLATION: fresh REQUIRED did not reach authenticated relay egress")
+		}
+	}
+	after, pac := c.nativeSnapshot(), proxy.Snapshot()
+	if after.Lost != 0 || after.Truncated || pac.Lost != 0 || pac.Truncated || after.CaptureIngress == nil || !after.Ready {
+		t.Fatal("fresh capture/application evidence incomplete")
+	}
+	if after.CaptureIngress.TCPPackets <= before.CaptureIngress.TCPPackets || after.CaptureIngress.ReflectedAccepts <= before.CaptureIngress.ReflectedAccepts || relayTCP == 0 || relayRX == 0 {
+		t.Error("fresh capture and authenticated relay increments missing")
+	}
+	var lastID uint64
+	for _, record := range before.Records {
+		if record.ID > lastID {
+			lastID = record.ID
+		}
+	}
+	ingresses := map[string]int{}
+	for _, record := range after.Records {
+		if record.Domain != browserfixture.ReuseFreshRequiredHost || record.Sent == 0 || record.Received == 0 {
+			continue
+		}
+		if record.ID <= lastID || record.Owner.Profile != "origin-reuse" || record.Owner.PID == 0 || record.Owner.Birth == 0 || record.Policy.Action != flowpolicy.RelayRequired || record.Policy.Fallback != flowpolicy.Required {
+			t.Error("fresh authority/owner/REQUIRED floor mismatch")
+		}
+		if record.Ingress != "NATIVE_TCP" && record.Ingress != "PAC_NATIVE_UPSTREAM" {
+			t.Error("unproven fresh ingress", record.Ingress)
+		}
+		ingresses[record.Ingress]++
+		t.Logf("ORIGIN_FRESH_NATIVE ingress=%s domain=%s action=%s sent=%d received=%d", record.Ingress, record.Domain, record.Policy.Action, record.Sent, record.Received)
+	}
+	if len(ingresses) == 0 {
+		t.Error("fresh authority capture exchange not observed")
+	}
+	pacObserved := false
+	for _, record := range pac.Records {
+		if record.Domain == browserfixture.ReuseFreshRequiredHost && record.Sent > 0 && record.Received > 0 && record.Plan.Policy.Action == flowpolicy.RelayRequired {
+			pacObserved = true
+		}
+	}
+	if (ingresses["PAC_NATIVE_UPSTREAM"] > 0) != pacObserved {
+		t.Error("fresh CONNECT and delegated capture evidence disagree")
+	}
+	t.Logf("ORIGIN_FRESH_PROOF registry_active=false native_only=%d pac_upstream=%d capture_tcp_delta=%d reflected_delta=%d relay_tcp_delta=%d relay_rx_delta=%d", ingresses["NATIVE_TCP"], ingresses["PAC_NATIVE_UPSTREAM"], after.CaptureIngress.TCPPackets-before.CaptureIngress.TCPPackets, after.CaptureIngress.ReflectedAccepts-before.CaptureIngress.ReflectedAccepts, relayTCP, relayRX)
 }
 
 // Test-only network seam: an ordinary Windows loopback SYN never traverses the

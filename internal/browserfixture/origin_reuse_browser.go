@@ -30,6 +30,16 @@ func (f *OriginReuse) Run(t testing.TB, chrome, address, bootstrapHost string, a
 // controls. The caller can change the service/policy while the same browser and
 // warm H2 connections stay alive. Hooks must fit within the bounded lifetime.
 func (f *OriginReuse) RunPhased(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32)) {
+	f.runPhased(t, chrome, address, bootstrapHost, args, after, false)
+}
+
+// RunFreshAfterSequence adds a previously unused authority after the warm
+// sequence. Its TEST-NET mapping is fixed before launch, never via CDP mutation.
+func (f *OriginReuse) RunFreshAfterSequence(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32)) {
+	f.runPhased(t, chrome, address, bootstrapHost, args, after, true)
+}
+
+func (f *OriginReuse) runPhased(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32), fresh bool) {
 	t.Helper()
 	if os.Getenv("NEEXITLAG_TEST_ORIGIN_REUSE") != "1" {
 		t.Fatal("explicit origin reuse fixture opt-in required")
@@ -96,6 +106,9 @@ func (f *OriginReuse) RunPhased(t testing.TB, chrome, address, bootstrapHost str
 	rules := []string{}
 	for _, host := range []string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost} {
 		rules = append(rules, "MAP "+host+" "+address)
+	}
+	if fresh {
+		rules = append(rules, "MAP "+ReuseFreshRequiredHost+" 192.0.2.254")
 	}
 	// All other browser DNS fails locally. No public service/credential is used.
 	rules = append(rules, "MAP * ~NOTFOUND", "EXCLUDE localhost", "EXCLUDE *.localhost")
@@ -193,8 +206,17 @@ func (f *OriginReuse) RunPhased(t testing.TB, chrome, address, bootstrapHost str
 	if after != nil {
 		after("bootstrap", uint32(cmd.Process.Pid))
 	}
-	for i, host := range []string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost, ReuseRequiredHost} {
-		step := []string{"local", "sibling", "required", "required_again"}[i]
+	hosts := []string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost, ReuseRequiredHost}
+	steps := []string{"local", "sibling", "required", "required_again"}
+	if fresh {
+		hosts = append(hosts, ReuseFreshRequiredHost, ReuseFreshRequiredHost)
+		steps = append(steps, "fresh_required", "fresh_required_again")
+	}
+	for i, host := range hosts {
+		step := steps[i]
+		if fresh && i == 4 && after != nil {
+			after("before_fresh", uint32(cmd.Process.Pid))
+		}
 		url, _ := json.Marshal(f.URL(host, "payload") + "&step=" + step)
 		expression := "fetch(" + string(url) + ",{cache:'no-store',credentials:'omit'}).then(async r=>{if(r.status!==200)throw Error('status '+r.status);return await r.text()})"
 		var r struct {

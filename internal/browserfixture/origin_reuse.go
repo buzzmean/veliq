@@ -27,6 +27,7 @@ import (
 const ReuseLocalHost = "www.youtube.com"
 const ReuseSiblingHost = "youtube.com"
 const ReuseRequiredHost = "chatgpt.com"
+const ReuseFreshRequiredHost = "api.openai.com"
 
 type OriginRequest struct {
 	Connection              uint64
@@ -42,6 +43,7 @@ type OriginReuse struct {
 	Nonce     string
 	mu        sync.Mutex
 	requests  []OriginRequest
+	fresh     []OriginRequest
 	bootstrap *OriginRequest
 	overflow  bool
 }
@@ -69,7 +71,7 @@ func NewOriginReuse(t testing.TB) *OriginReuse {
 	if err != nil {
 		t.Fatal(err)
 	}
-	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: []string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour)}
+	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: []string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost, ReuseFreshRequiredHost}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour)}
 	der, err := x509.CreateCertificate(rand.Reader, leaf, ca, &leafKey.PublicKey, key)
 	if err != nil {
 		t.Fatal(err)
@@ -112,7 +114,7 @@ func (f *OriginReuse) URL(host, path string) string {
 
 func (f *OriginReuse) serveReuse(w http.ResponseWriter, r *http.Request) {
 	host, _, _ := net.SplitHostPort(r.Host)
-	if host != ReuseLocalHost && host != ReuseSiblingHost && host != ReuseRequiredHost {
+	if host != ReuseLocalHost && host != ReuseSiblingHost && host != ReuseRequiredHost && host != ReuseFreshRequiredHost {
 		http.Error(w, "unexpected host", 400)
 		return
 	}
@@ -141,14 +143,21 @@ func (f *OriginReuse) serveReuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	step := r.URL.Query().Get("step")
-	if step != "local" && step != "sibling" && step != "required" && step != "required_again" {
+	fresh := host == ReuseFreshRequiredHost && (step == "fresh_required" || step == "fresh_required_again")
+	if !fresh && (host == ReuseFreshRequiredHost || (step != "local" && step != "sibling" && step != "required" && step != "required_again")) {
 		http.Error(w, "bad step", 400)
 		return
 	}
 	body := f.Nonce + ":" + step
 	record := reuseRequest(r, host, step, len(body))
 	f.mu.Lock()
-	if len(f.requests) < 32 {
+	if fresh {
+		if len(f.fresh) < 4 {
+			f.fresh = append(f.fresh, record)
+		} else {
+			f.overflow = true
+		}
+	} else if len(f.requests) < 32 {
 		f.requests = append(f.requests, record)
 	} else {
 		f.overflow = true
@@ -157,6 +166,25 @@ func (f *OriginReuse) serveReuse(w http.ResponseWriter, r *http.Request) {
 	// Record before returning the response: a rejected request has already leaked
 	// its authority to this endpoint. Never use an origin 421/403 as route proof.
 	fmt.Fprint(w, body)
+}
+
+// FreshRequests is separate from the four-request coalescing sequence. The
+// browser maps this new authority to TEST-NET before launch, preventing reuse
+// of the earlier loopback direct connection and requiring real capture/PAC.
+func (f *OriginReuse) FreshRequests(t testing.TB) []OriginRequest {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.overflow || len(f.fresh) != 2 {
+		t.Fatalf("expected two fresh-authority requests, got %d", len(f.fresh))
+	}
+	for i, r := range f.fresh {
+		step := []string{"fresh_required", "fresh_required_again"}[i]
+		if r.Host != ReuseFreshRequiredHost || r.SNI != ReuseFreshRequiredHost || r.Step != step || r.Protocol != 2 || r.Connection == 0 || r.BodyBytes != len(f.Nonce+":"+step) {
+			t.Fatal("incomplete fresh-authority H2 evidence")
+		}
+	}
+	return append([]OriginRequest(nil), f.fresh...)
 }
 
 func (f *OriginReuse) Requests(t testing.TB) []OriginRequest {

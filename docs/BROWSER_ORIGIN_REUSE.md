@@ -70,6 +70,14 @@ ClientHello/SNI не определяет authority всех последующ�
   Readiness enforcement/SCM/recovery provisioning здесь не сертифицируются.
   Повторный DIRECT доказывает pinned reuse только при том же connection ID/SNI;
   новый loopback DIRECT не считается доказательством native interception.
+- Fresh-withdrawal сценарий после той же последовательности обращается к новому
+  REQUIRED authority `api.openai.com`. Он включён только в тестовый SAN, заранее
+  mapped на TEST-NET и ещё не встречался в ledger. Старые имена остаются на
+  loopback; browser process/transport не меняется. Для двух новых ответов нужны
+  новые серверные connection IDs, relay source, новые owner-bound capture records
+  с REQUIRED floor и приращения capture/reflected/relay counters. Фактический
+  `NATIVE_TCP` либо `PAC_NATIVE_UPSTREAM` учитывается отдельно: удалённая registry
+  policy сама по себе не доказывает отказ браузера от cached PAC.
 
 Сервер учитывает запрос до ответа: даже ответ 421/403 не отменяет факт
 получения REQUIRED authority на неверном egress. `ORIGIN_ISOLATION_VIOLATION`
