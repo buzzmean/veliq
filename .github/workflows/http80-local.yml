@@ -1,0 +1,47 @@
+name: HTTP80 LOCAL
+on:
+  push:
+    branches: [main, 'feat/r1-http80-*']
+    paths:
+      - 'services/client-service/**'
+      - 'core/browserproxy/**'
+      - 'core/localstrategy/**'
+      - 'platform/windows/**'
+      - '.github/workflows/http80-local.yml'
+  pull_request:
+    paths:
+      - 'services/client-service/**'
+      - 'core/browserproxy/**'
+      - 'core/localstrategy/**'
+      - 'platform/windows/**'
+      - '.github/workflows/http80-local.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Compile every filter with the pinned WinDivert DLL
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go test ./platform/windows '-run' '^TestServiceWinDivertFilterInventory$'
+          if ($LASTEXITCODE) { throw 'FILTER_INVENTORY_FAILED' }
+          & go test -c -o bin/filter-tests.exe ./platform/windows
+          if ($LASTEXITCODE) { throw 'FILTER_TEST_BUILD_FAILED' }
+          & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
+      - name: HTTP80 cold relay, committed split, cancellation and reset without replay
+        run: go test -race -v ./services/client-service -run '^TestWindowsHTTP80' -count 1 -timeout 90s
+      - name: Full Windows Go race regressions
+        run: go test -race -p 1 -timeout 180s ./...
+      - run: go vet ./...
+      - run: go build ./...
+# Linux race/vet/build with PostgreSQL runs in relay-release.yml on the same SHA.
+# Native loopback fixtures do not install a driver or prove real ISP behavior.

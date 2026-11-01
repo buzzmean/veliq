@@ -255,6 +255,7 @@ func (c *Controller) Close() {
 		_ = c.CleanupOwnedBrowserPolicies() // Before listeners, relay workers or capture stop.
 	}
 	c.cancel()
+	c.browser.http80.stop()
 	c.browser.youtube.stop()
 	c.activation.mu.Lock()
 	activationDone := c.activation.done

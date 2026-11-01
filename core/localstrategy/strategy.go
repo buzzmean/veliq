@@ -14,6 +14,7 @@ func (s packetStrategy) Process(p []byte, state *State) Result {
 }
 
 var mechanisms = map[string]LocalStrategy{
+	HTTP80HostSplit:   packetStrategy{"tcp", HTTP80HostSplit},
 	"tcp-split":       packetStrategy{"tcp", "tcp-split"},
 	"tcp-split-1":     packetStrategy{"tcp", "tcp-split-1"},
 	"tcp-split-5":     packetStrategy{"tcp", "tcp-split-5"},

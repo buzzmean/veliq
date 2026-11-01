@@ -52,8 +52,11 @@ client registry не требует повторного deploy VPS.
 
 ## Честные ограничения
 
-Реализован HTTPS TCP443/IPv4. HTTP80 LOCAL и собственный browser QUIC fake пока
-unsupported; текущий QUIC→TCP fallback сохранён. Discord browser TLS/WebSocket
+Реализован HTTPS TCP443/IPv4. Отдельный [HTTP80 LOCAL](BROWSER_HTTP80_LOCAL.md)
+поддерживает ограниченный Host split после фонового same-host HTTPS upgrade
+и committed transform; это не TLS/body proof, реальная сеть не проверена.
+HTTP/QUIC-правила каталога и собственный browser QUIC fake остаются unsupported;
+текущий QUIC→TCP fallback сохранён. Discord browser TLS/WebSocket
 использует общую лестницу, но успешная TCP-проба не доказывает UDP voice. Desktop
 Discord adaptive UDP/voice остаётся прежним; принудительно запускать на нём
 непроверенный UDP fake было бы регрессией. Поэтому «Discord voice LOCAL» пока

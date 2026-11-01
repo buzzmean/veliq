@@ -25,6 +25,7 @@ import (
 )
 
 type browserRuntime struct {
+	http80    *http80Runtime
 	youtube   *youtubeRuntime
 	dnsWire   *browserDNSRuntime
 	domains   browserDomainIndex
@@ -54,7 +55,7 @@ type browserRuntime struct {
 }
 
 func newBrowserRuntime() *browserRuntime {
-	return &browserRuntime{youtube: newYoutubeRuntime(), dnsWire: newBrowserDNSRuntime(), origins: browserproxy.NewOriginHealth(), dns: browserproxy.NewDNSRecovery(), learned: flowpolicy.NewBrowserLearning(), probes: make(chan struct{}, 4), local: map[string]*localstrategy.LocalStrategyEngine{}, plans: map[flowpolicy.LearnKey]chan struct{}{}, directTimeouts: flowpolicy.NewDirectTimeoutCache()}
+	return &browserRuntime{http80: newHTTP80Runtime(), youtube: newYoutubeRuntime(), dnsWire: newBrowserDNSRuntime(), origins: browserproxy.NewOriginHealth(), dns: browserproxy.NewDNSRecovery(), learned: flowpolicy.NewBrowserLearning(), probes: make(chan struct{}, 4), local: map[string]*localstrategy.LocalStrategyEngine{}, plans: map[flowpolicy.LearnKey]chan struct{}{}, directTimeouts: flowpolicy.NewDirectTimeoutCache()}
 }
 func (c *Controller) browserOwner(ctx context.Context, source, local netip.AddrPort) (browserproxy.Owner, error) {
 	id, err := wp.LookupTCPPeer(source, local)
@@ -160,6 +161,9 @@ func (c *Controller) browserScopedLocal(p profiles.Profile, host, network string
 	return key, engine
 }
 func (c *Controller) browserLocal(strategy string) *localstrategy.LocalStrategyEngine {
+	if e := c.browser.http80.engine(strategy); e != nil {
+		return e
+	}
 	if e := c.browser.youtube.engine(strategy); e != nil {
 		return e
 	}
@@ -189,8 +193,11 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 	if err != nil {
 		return nil, err
 	}
-	// Cached PAC can still reach this listener after policy removal. Authenticated
-	// browser ownership was checked above; bypass the stopped engine/WinDivert.
+	// HTTP80 probes and new LOCAL opens cannot inherit cached-PAC compatibility.
+	if scope, ok := ctx.Value(http80ContextKey{}).(http80Scope); ok && !c.http80ScopeCurrent(scope, current) {
+		return nil, errors.New("HTTP80 policy changed before upstream open")
+	}
+	// Authenticated cached PAC requests retain ordinary OFF compatibility.
 	if current.routingDisabled {
 		return openBrowserDirectCompatibility(ctx, disabledBrowserPlan(plan))
 	}
@@ -217,7 +224,9 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 		return c.openNativePAC(ctx, q, plan, d)
 	}
 	if d.Route.Local() {
-		if !c.browserLocalAllowed(current.network) && !(plan.Policy.Source == youtubeLadderSource && c.youtubeLocalAllowed(current.network)) {
+		_, http80ScopePresent := ctx.Value(http80ContextKey{}).(http80Scope)
+		http80Allowed := plan.Policy.Source == http80LadderSource && http80ScopePresent && q.Port == 80 && !q.Secure && c.youtubeLocalAllowed(current.network)
+		if !c.browserLocalAllowed(current.network) && !(plan.Policy.Source == youtubeLadderSource && c.youtubeLocalAllowed(current.network)) && !http80Allowed {
 			return nil, errors.New("native local strategy unavailable on current network")
 		}
 		backend, ok := c.Backend.(interface {
