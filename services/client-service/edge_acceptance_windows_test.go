@@ -245,6 +245,25 @@ func TestEdgeActualPolicyHTTPSOutageRestart(t *testing.T) {
 		return nil
 	})
 	if err != nil {
+		c.browser.mu.Lock()
+		e := c.edgeLocked()
+		server := e.server
+		policyActive := e.policyActive(c.BrowserOwnerSID)
+		c.browser.mu.Unlock()
+		if server != nil {
+			snapshot := server.Snapshot()
+			t.Logf("EDGE_RECOVERY_STATE listening=%t confirmed=%t policy_active=%t active=%d lost=%d truncated=%t failures=%v", snapshot.Listening, server.Confirmed(p.ID), policyActive, snapshot.ActiveConnections, snapshot.Lost, snapshot.Truncated, snapshot.Failures)
+			// Log bounded route metadata for controlled fixture domains only.
+			// Never dump the saved PAC, health URL, owner data or protocol payload.
+			for _, record := range snapshot.Records[max(0, len(snapshot.Records)-24):] {
+				for _, host := range browserfixture.Domains {
+					if record.Domain == host {
+						t.Logf("EDGE_RECOVERY_ROUTE id=%d host=%s active=%t result=%s action=%s probe=%s open_failure=%s sent=%d received=%d", record.ID, host, record.Active, record.Result, record.Plan.Policy.Action, record.Plan.Probe, record.OpenFailure, record.Sent, record.Received)
+						break
+					}
+				}
+			}
+		}
 		t.Fatal("actual Edge policy/site/outage/restart", err, output)
 	}
 	after := c.browser.edge.server.Snapshot()

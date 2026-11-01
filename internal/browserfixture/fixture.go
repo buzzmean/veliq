@@ -210,7 +210,7 @@ func (f *Fixture) serve(w http.ResponseWriter, r *http.Request) {
 		if string(expected) == "null" {
 			expected = []byte("[]")
 		}
-		fmt.Fprintf(w, `<!doctype html><title>PENDING</title><body><script>const expectedFailures=%s;Promise.all(%s.map(async h=>{let value;try{const r=await fetch('https://'+h+':%d/check?stage=%s',{cache:'no-store'});if(r.status!==200)throw Error('HTTP '+r.status);value=await r.text();}catch(e){if(expectedFailures.includes(h))return;throw e;}if(expectedFailures.includes(h))throw Error('UNEXPECTED PROTECTED SUCCESS '+h);if(value!==%q)throw Error('wrong nonce');})).then(()=>{document.title='NEEXITLAG_PASS_%s';document.body.textContent='CONTROLLED_HTTPS_OK';}).catch(e=>{document.title='NEEXITLAG_FAIL';document.body.textContent=String(e);});</script>`, expected, string(domainJSON()), f.Port(), stage, f.Nonce, f.Nonce+"_"+stage)
+		fmt.Fprintf(w, `<!doctype html><title>PENDING</title><body><script>const expectedFailures=%s;Promise.all(%s.map(async h=>{let value;try{const r=await fetch('https://'+h+':%d/check?stage=%s',{cache:'no-store'});if(r.status!==200)throw Error('HTTP '+r.status);value=await r.text();}catch(e){if(expectedFailures.includes(h))return;throw Error(h+': '+String(e));}if(expectedFailures.includes(h))throw Error('UNEXPECTED PROTECTED SUCCESS '+h);if(value!==%q)throw Error(h+': wrong nonce');})).then(()=>{document.title='NEEXITLAG_PASS_%s';document.body.textContent='CONTROLLED_HTTPS_OK';}).catch(e=>{document.title='NEEXITLAG_FAIL';document.body.textContent=String(e);});</script>`, expected, string(domainJSON()), f.Port(), stage, f.Nonce, f.Nonce+"_"+stage)
 		return
 	}
 	if r.URL.Path != "/" && r.URL.Path != "/check" {
