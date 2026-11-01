@@ -41,6 +41,11 @@ jobs:
           if ($LASTEXITCODE) { throw "Native delegation lifecycle regression failed: $LASTEXITCODE" }
           go test -race -p 1 -v -count=1 -timeout 90s ./core/browserproxy ./services/client-service -run '^TestNativeOnly|^TestBrowserReservationCollision|^TestBrowserKnownGroups|^TestBrowserGroup|^TestBrowserCachedGroup|^TestSilentDirectOrigin|^TestFirstByte|^TestBrowserFirstByte'
           if ($LASTEXITCODE) { throw "Native ingress/local reservation regression failed: $LASTEXITCODE" }
+      - name: Event-ordered native route proof, including real DIRECT fault injection
+        shell: pwsh
+        run: |
+          go test -race -v -count=50 -timeout 90s ./services/client-service -run '^TestNativeRouteProof'
+          if ($LASTEXITCODE) { throw "Native route proof regression failed: $LASTEXITCODE" }
       - name: ECH DNS hints and cert-verified Telegram alternate IP regression
         shell: pwsh
         run: |
@@ -82,5 +87,5 @@ jobs:
           $ErrorActionPreference='Stop'
           $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
           $env:NEEXITLAG_TEST_NATIVE_BROWSER_DRIVER='1'
-          go test -v -count=1 -timeout 180s ./services/client-service -run '^TestWindowsNativeBrowserDriverHotAttach$'
+          go test -v -count=3 -timeout 180s ./services/client-service -run '^TestWindowsNativeBrowserDriverHotAttach$'
           if ($LASTEXITCODE) { throw "Actual driver/browser hot-attach failed: $LASTEXITCODE" }
