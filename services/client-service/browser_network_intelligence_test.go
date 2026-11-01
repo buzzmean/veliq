@@ -109,3 +109,18 @@ func TestNetworkIntelligenceMidstreamFailureUsesExistingScopedLadder(t *testing.
 		}
 	}
 }
+
+func TestNetworkIntelligenceRetainsKnownTLSPhaseWithoutWireSnapshot(t *testing.T) {
+	r := newYoutubeRuntime()
+	r.seq = 2
+	r.records[1] = youtubeRecord{ID: 1, TX: 2000, RX: 7000, ServerHello: true, Reason: "REMOTE_IO_TIMEOUT", IOFailure: "TIMEOUT"}
+	r.records[2] = youtubeRecord{ID: 2, TX: 2000, RX: 100, Reason: "EARLY_TLS_ALERT_OR_INVALID_HEADER_NO_REPLAY"}
+	for _, row := range r.snapshot().Records {
+		if row.ID == 1 && (row.Diagnosis.Layer != "TRANSFER" || row.Diagnosis.State != "TIMEOUT_OBSERVED") {
+			t.Fatal("known ServerHello phase lost", row.Diagnosis)
+		}
+		if row.ID == 2 && row.Diagnosis.State != "ALERT_OR_INVALID_RECORD" {
+			t.Fatal("known alert lost without raw wire", row.Diagnosis)
+		}
+	}
+}

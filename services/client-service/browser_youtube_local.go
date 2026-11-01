@@ -306,8 +306,13 @@ func (r *youtubeRuntime) snapshot() youtubeSnapshot {
 		return s.Stages[i].Stage+s.Stages[i].Strategy < s.Stages[j].Stage+s.Stages[j].Strategy
 	})
 	for _, v := range r.records {
-		v.Diagnosis = netdiagnostic.DiagnoseStream(v.Reason+" "+v.IOFailure, v.TX, v.RX, nil)
-		if v.ServerHello && v.Diagnosis.State == "INSUFFICIENT_EVIDENCE" {
+		var wire *browserproxy.TLSWireEvidence
+		if v.ServerHello {
+			wire = &browserproxy.TLSWireEvidence{}
+			wire.Origin.ServerHelloComplete = true
+		}
+		v.Diagnosis = netdiagnostic.DiagnoseStream(v.Reason+" "+v.IOFailure, v.TX, v.RX, wire)
+		if v.ServerHello && v.Diagnosis.State == "SERVER_HELLO_ONLY" {
 			v.Diagnosis = netdiagnostic.Diagnosis{Layer: "TLS", State: "SERVER_HELLO_OBSERVED_NOT_PLAYBACK_PROOF"}
 			if v.RX > 64*1024 {
 				v.Diagnosis = netdiagnostic.Diagnosis{Layer: "TRANSFER", State: "TRANSPORT_PROGRESS_NOT_PLAYBACK_PROOF"}

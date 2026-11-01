@@ -74,7 +74,7 @@ func DiagnoseProbe(p browserproxy.ProbeResult) Diagnosis {
 
 func DiagnoseStream(reason string, tx, rx uint64, wire *browserproxy.TLSWireEvidence) Diagnosis {
 	r := strings.ToUpper(reason)
-	if wire != nil && (wire.Origin.AlertLevel != 0 || wire.Origin.State == "NON_TLS_OR_INVALID_HEADER") {
+	if strings.Contains(r, "TLS_ALERT") || strings.Contains(r, "INVALID_HEADER") || wire != nil && (wire.Origin.AlertLevel != 0 || wire.Origin.State == "NON_TLS_OR_INVALID_HEADER") {
 		return Diagnosis{Layer: "TLS", State: "ALERT_OR_INVALID_RECORD"}
 	}
 	if strings.Contains(r, "RST") || strings.Contains(r, "RESET") {
