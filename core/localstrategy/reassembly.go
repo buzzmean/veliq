@@ -85,8 +85,9 @@ func (e *LocalStrategyEngine) BufferTCP(p []byte, st *State, b *HelloBuffer, m M
 	if len(data) == 0 {
 		return false, nil
 	}
+	http80 := e.http80Profile(m)
 	if !b.Pending() {
-		if !e.bufferEligible(st, m) || data[0] != 22 && binary.BigEndian.Uint32(p[24:]) == st.synSequence+1 {
+		if !e.bufferEligible(st, m) || !http80 && data[0] != 22 && binary.BigEndian.Uint32(p[24:]) == st.synSequence+1 {
 			return false, nil
 		}
 		b.started = now
@@ -102,6 +103,9 @@ func (e *LocalStrategyEngine) BufferTCP(p []byte, st *State, b *HelloBuffer, m M
 	// Enforce the bound BEFORE copying. On limit the current packet was not
 	// accepted; the caller flushes the old originals then sends this one directly.
 	maxPacket := 1500
+	if http80 {
+		maxPacket = MaxHelloBytes
+	}
 	s := e.current.Load()
 	for i := range s.profiles {
 		c := &s.profiles[i]
@@ -159,9 +163,22 @@ func (e *LocalStrategyEngine) BufferTCP(p []byte, st *State, b *HelloBuffer, m M
 	}
 	b.diagnostic.OutOfOrder = b.outOfOrder
 	hello, offsets, expected, reason := assembleHello(stream[:contiguous])
+	if http80 {
+		host, _, size, complete := HTTP80Host(stream[:contiguous])
+		hello, offsets, expected, reason = nil, nil, 0, ""
+		if complete && host == "" {
+			reason = "HTTP80_HEADER_UNSUPPORTED"
+		} else if complete {
+			hello = stream[:size]
+			offsets = make([]int, size)
+			for i := range offsets {
+				offsets[i] = i
+			}
+		}
+	}
 	b.diagnostic.ExpectedClientHelloBytes = expected
 	b.diagnostic.HandshakeBytes = expected
-	if contiguous >= 5 {
+	if contiguous >= 5 && !http80 {
 		b.diagnostic.RecordBytes = 5 + int(binary.BigEndian.Uint16(stream[3:5]))
 	}
 	if reason != "" {
@@ -191,6 +208,10 @@ func (e *LocalStrategyEngine) BufferTCP(p []byte, st *State, b *HelloBuffer, m M
 	d.HandshakeBytes = len(hello)
 	d.Reason = "REASSEMBLY_COMPLETE"
 	d.Detail = "ClientHello assembled; outer SNI only; original segment boundaries retained"
+	if http80 {
+		d.Reason, d.Detail = "HTTP80_HEADER_REASSEMBLED", "bounded HTTP Host; original bytes and segment context retained"
+		d.HandshakeBytes = 0
+	}
 	d.ReassemblyMS = now.Sub(b.started).Milliseconds()
 	if r.Inspection != nil {
 		d.OriginalPacketBytes = r.Inspection.OriginalPacketBytes
@@ -205,7 +226,7 @@ func (e *LocalStrategyEngine) BufferTCP(p []byte, st *State, b *HelloBuffer, m M
 			d.Reason = r.Inspection.Reason
 		}
 	}
-	if d.Domain != "" {
+	if d.Domain != "" && !http80 {
 		d.ReassembledSNI = true
 		d.ObservedSNI = d.Domain
 		d.SNIStatus = "REASSEMBLED_SNI"
@@ -276,8 +297,11 @@ func InspectHelloStream(stream []byte) (domain, reason string, complete bool) {
 	}
 	if len(stream) > 0 && stream[0] != 22 {
 		if bytes.Contains(stream, []byte("\r\n\r\n")) {
-			d := PacketDomain(stream)
+			d, _, _, _ := httpHeaderHost(stream, true)
 			if d != "" {
+				if h, _, _, _ := HTTP80Host(stream); h == "" {
+					return d, "HTTP_HOST_OTHER_PORT", true
+				}
 				return d, "HTTP_HOST", true
 			}
 			return "", "DOMAIN_NOT_OBSERVED", true

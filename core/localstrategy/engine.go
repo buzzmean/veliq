@@ -134,6 +134,9 @@ func New() *LocalStrategyEngine {
 	return e
 }
 func compile(p Profile) (compiled, error) {
+	if p.Strategy == HTTP80HostSplit && (!catalogProfile(p) || len(p.Ports) != 1 || p.Ports[0] != 80 || len(p.Domains) == 0 || len(p.IPs) != 0 || p.Preset != "" || p.QuicFallback) {
+		return compiled{}, errors.New("HTTP80 requires exact browser TCP80 first-header scope")
+	}
 	if p.ID == "" || len(p.ID) > 64 || len(p.Name) > 128 || len(p.Application) > 2048 || p.Version != Version || p.Cutoff < 1 || p.Cutoff > 8 || len(p.Ports) == 0 || len(p.Ports) > 32 || !strings.HasSuffix(strings.ToLower(p.Application), ".exe") {
 		return compiled{}, errors.New("invalid local strategy profile")
 	}
@@ -381,12 +384,23 @@ func (e *LocalStrategyEngine) Process(p []byte, st *State, m Metadata) (r Result
 	st.generation = s.generation
 	st.inspected++
 	e.inspected.Add(1)
+	http80 := e.http80Profile(m)
 	if m.Protocol == "tcp" {
 		inspectionPayload := payload
 		if st.logicalHello != nil {
 			inspectionPayload = st.logicalHello
 		}
 		r.Inspection = inspectHello(inspectionPayload)
+		if http80 {
+			host, _, _, complete := HTTP80Host(inspectionPayload)
+			r.Inspection = &Inspection{Domain: host, PayloadBytes: len(inspectionPayload), Reason: "HTTP80_HOST_OBSERVED", Detail: "bounded HTTP Host; no TLS/SNI proof"}
+			if !complete || host == "" {
+				st.done = true
+				r.Inspection.Reason = "HTTP80_HEADER_UNSUPPORTED"
+				return r
+			}
+			m.Domain = host // Trusted metadata cannot replace the actual HTTP Host.
+		}
 		r.Inspection.OriginalPacketBytes = len(p)
 		if len(p) >= 40 {
 			r.Inspection.TCPHeaderBytes = int(p[32]>>4) * 4
@@ -397,7 +411,7 @@ func (e *LocalStrategyEngine) Process(p []byte, st *State, m Metadata) (r Result
 		r.Inspection.ServerTTL = st.serverTTL
 	}
 	if !st.matched {
-		if m.Protocol == "tcp" && !m.TrustedOrigin {
+		if m.Protocol == "tcp" && !m.TrustedOrigin && !http80 {
 			m.Domain = PacketDomain(payload)
 			if st.logicalHello != nil {
 				m.Domain = tlsDomain(st.logicalHello)
@@ -449,7 +463,9 @@ func (e *LocalStrategyEngine) Process(p []byte, st *State, m Metadata) (r Result
 	}
 	st.splitPosition = c.SplitPosition
 	var processed Result
-	if len(c.Actions) == 1 && c.Actions[0].Native != nil {
+	if c.Strategy == HTTP80HostSplit {
+		processed = http80Packets(p, st)
+	} else if len(c.Actions) == 1 && c.Actions[0].Native != nil {
 		processed = nativeTCPData(p, st, c, c.Actions[0].Native)
 	} else if st.logicalHello != nil {
 		processed = chainStream(st, c)

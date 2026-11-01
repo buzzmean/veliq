@@ -79,6 +79,7 @@ type nativeBrowserRecord struct {
 	Active          bool               `json:"active"`
 }
 type nativeBrowserSnapshot struct {
+	HTTP80       http80Snapshot  `json:"http80_local"`
 	YoutubeLocal youtubeSnapshot `json:"youtube_local_ladder"`
 	DNS          map[string]any  `json:"browser_dns"`
 
@@ -132,6 +133,7 @@ func (c *Controller) nativeBrowserActivation(enabled, wasEnabled bool, at time.T
 }
 func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
 	s := nativeBrowserSnapshot{YoutubeLocal: c.browser.youtube.snapshot(), NativeOnlyState: "NATIVE_ONLY_NOT_OBSERVED", NativeOnlyAutoMode: "AUTOMATIC_NATIVE_NEW_CONNECTIONS_NO_PAC_DEPENDENCY", Version: 1, Ready: c.nativeBackendReady(), ExistingTCP: "PINNED_UNTIL_CLOSED; reload may reuse HTTP/2", PageVerification: "NOT_OBSERVED; bidirectional bytes are not HTTPS/page PASS", Profiles: []nativeBrowserProfileStatus{}, Records: []nativeBrowserRecord{}}
+	s.HTTP80 = c.browser.http80.snapshot()
 	c.mu.Lock()
 	s.Enabled = c.enabled
 	c.mu.Unlock()
@@ -541,7 +543,10 @@ func (c *Controller) openNativeBrowser(ctx context.Context, p profiles.Profile, 
 			return nil, d, errors.New("NATIVE_OWNER_SID_MISMATCH")
 		}
 	}
-	q := browserproxy.Request{Ingress: "NATIVE_TCP", Owner: browserproxy.Owner{PID: id.PID, Birth: id.CreationTime, Exe: id.Path, Profile: p.ID}, Source: t.Source, Host: d.OriginDomain, Port: t.Destination.Port(), Secure: reason != "HTTP_HOST"}
+	q := browserproxy.Request{Ingress: "NATIVE_TCP", Owner: browserproxy.Owner{PID: id.PID, Birth: id.CreationTime, Exe: id.Path, Profile: p.ID}, Source: t.Source, Host: d.OriginDomain, Port: t.Destination.Port(), Secure: reason != "HTTP_HOST" && reason != "HTTP_HOST_OTHER_PORT"}
+	// Preserve ordinary HTTP on other ports, but never promote a mismatched
+	// Host authority on TCP80 using the credential-free port-80 probe.
+	q.OriginAmbiguous = q.Port == 80 && reason == "HTTP_HOST_OTHER_PORT"
 	current, err := c.browserProfile(q.Owner)
 	if err != nil || !current.enabled || !(nativeBrowserProfile(current.profile) || riotAuto(current.profile)) || c.policyRevision(p) != c.policyRevision(current.profile) {
 		return nil, d, errors.New("NATIVE_PROFILE_CHANGED")
