@@ -11,7 +11,13 @@
 > listener сами по себе не доказывают изоляцию каждого запроса. На code `17f6273`
 > после удаления registry policy новый REQUIRED authority всё ещё прошёл через
 > cached PAC + native upstream; это не переход к native-only и не основание
-> считать compatibility listener ненужным.
+> считать compatibility listener ненужным. На code `d7ecc28` шесть одиночных
+> outage/recovery сценариев PASS: AvailabilityPAC при потере listener перешёл
+> через NATIVE_TCP в RELAY для REQUIRED; при потере capture оба PAC блокировали
+> CONNECT, включая ordinary; при потере relay ordinary остался DIRECT.
+> Все recovery новых authority прошли через PAC_NATIVE_UPSTREAM без browser restart.
+> Одновременная потеря listener+capture и весь SCM/readiness lifecycle ещё не приняты;
+> эти результаты не подтверждают независимый crash guard.
 
 Решение владельца, 20.10.2026: независимый WFP guard отложен (вариант B в
 BROWSER_NATIVE_GUARD.md). PAC остаётся обязательным crash-guard. Пользователь

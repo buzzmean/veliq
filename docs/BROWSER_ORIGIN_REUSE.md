@@ -280,44 +280,6 @@ Chrome policy PASS, но [отдельный actual-driver job 125000355273](htt
    всех requests работающего браузера. Не разрывать их и не replay/migrate TLS.
    Сохранить DIRECT/LOCAL для допустимого трафика и отдельный REQUIRED floor.
 
-## Продолжение R1
-
-1. Разделение proxy identity по authority подтверждено для PAC и существующего
-   `PAC_NATIVE_UPSTREAM` с native AUTO и фактическим capture/owner/egress accounting.
-   Переход с owned PAC, существующей до браузера, теперь проверен; live-install
-   остаётся pending в измеренном 30-секундном окне. Свежий authority после policy
-   withdrawal теперь прошёл через cached PAC + native upstream. Следующий gate —
-   отказы и восстановление listener, capture и relay, отдельно для guarded PAC и
-   фактического AvailabilityPAC. Использовать новый TEST-NET authority, проверять
-   отсутствие REQUIRED DIRECT на сервере и отдельно учитывать старые tunnels.
-   Полный startup/recovery/strict readiness ещё не приняты.
-2. Явно разделить гарантии: native наблюдение SNI привязано к соединению;
-   строгая изоляция каждого запроса требует подтверждённого браузерного
-   transport-контекста. Нельзя объявлять gate закрытым по корректному первому
-   REQUIRED open, TLS успеху, SYN count или ещё одному SNI/IP cache.
-3. Сохранить existing-flow pinning/no replay, известный REQUIRED floor и
-   экономию DIRECT/LOCAL. Не вводить скрыто полный RELAY браузера, MITM,
-   извлечение ключей, расширение или принудительный restart/policy reload.
-   Независимый WFP guard сам не раскрывает HTTP/2 authority:
-   [действующая архитектурная граница](BROWSER_NATIVE_GUARD.md#отдельное-ограничение-имя-сайта-не-всегда-доступно).
-4. Сохранить `ORIGIN_ISOLATION_VIOLATION` как failure до реального исправления
-   или явно принятого другого контракта. Это draft с воспроизведением,
-   не готовое исправление и не разрешение на merge/rollout.
-
-## Запуск
-
-Linux baseline (нужны Chromium и NSS certutil):
-
-```sh
-NEEXITLAG_TEST_ORIGIN_REUSE=1 go test -race -v ./internal/browserfixture -run '^TestChromiumOriginReuseBaseline$' -count=1 -timeout=70s
-```
-
-Полный Windows сценарий — workflow `Browser HTTP2 origin reuse`, на отдельной
-Actions VM с pinned DLL и app-scoped firewall rule. Trust/capture opt-in
-преднамеренно не поддерживает запуск на установленном пользовательском ПК.
-Workflow также проверяет полный Windows Go race/vet/build и все WinDivert
-filters; Linux Go race/vet/build с PostgreSQL — `relay-release.yml` того же SHA.
-
 ## Матрица одиночных отказов после withdrawal
 
 Новые `Listener/Capture/RelayOutage{Guarded,Availability}` выполняют исходную
@@ -347,4 +309,105 @@ owner/floor, native/PAC ledgers и приращения relay/capture прове
 ordinary при остановленном capture/guarded listener учитывается явно. Ни error
 браузера, ни пустой серверный ledger по отдельности не дают PASS. Одновременная
 потеря listener+capture, crash guard, долгий lifecycle и повтор неудачного authority
-остаются отдельными gates. Результаты Windows появятся после выполнения этой матрицы.
+остаются отдельными gates.
+
+02.11.2026 MSK (01.11 UTC), Chrome `156.0.8078.80`, code
+`d7ecc28b0515bd0a909244d8c2e9267ecf1c5dff`:
+[run 41358865000/job 125004701506](https://github.com/buzzmean/veliq/actions/runs/41358865000/job/125004701506).
+Все **6 новых сценариев PASS**; вся матрица **11 PASS / 3 FAIL**. Baseline coalescing
+и actual pinned DLL filters PASS. Artifact `browser-origin-reuse-evidence`,
+ID `13104102853`, digest
+`sha256:a4ac8e29465bf745a25706df210898f60556710d04562f0af4cb542c38767d58`.
+
+| Отказ | PAC | REQUIRED во время отказа | Ordinary во время отказа | Новые authority после восстановления |
+|---|---|---|---|---|
+| Listener | guarded | FetchError, серверных запросов 0 | FetchError, запросов 0 | REQUIRED RELAY, ordinary DIRECT |
+| Listener | Availability | RELAY через NATIVE_TCP | DIRECT через NATIVE_TCP | REQUIRED RELAY, ordinary DIRECT |
+| Capture | guarded | CONNECT open failed, запросов 0 | CONNECT open failed, запросов 0 | REQUIRED RELAY, ordinary DIRECT |
+| Capture | Availability | CONNECT open failed, запросов 0 | CONNECT open failed, запросов 0 | REQUIRED RELAY, ordinary DIRECT |
+| Relay + его pool | guarded | OPEN_IO_FAILED, запросов 0 | DIRECT через PAC_NATIVE_UPSTREAM | REQUIRED RELAY, ordinary DIRECT |
+| Relay + его pool | Availability | OPEN_IO_FAILED, запросов 0 | DIRECT через PAC_NATIVE_UPSTREAM | REQUIRED RELAY, ordinary DIRECT |
+
+У listener Availability REQUIRED действительно дошёл до origin с source
+`127.0.0.2`: connection 7/SNI outage.openai.com, body 48 bytes. Ordinary на
+connection 8/source `127.0.0.1`, body 46 bytes. Native records показали
+`NATIVE_TCP`, RELAY_REQUIRED/Required и DIRECT; relay TCP/RX приросли на 1/2409.
+Таким образом, browser proxy fallback DIRECT в этом случае не стал DIRECT egress
+для REQUIRED: работающий capture открыл relay по новому SNI. Это не разрешает
+переносить вывод на поздние authority внутри уже открытого H2.
+
+При capture outage listener оставался доступен, capture readiness был false.
+Оба PAC получили `UPSTREAM_OPEN_FAILED` за 2–4 ms без обращения к доступному
+loopback origin. Не было DIRECT retry после отказа CONNECT в этом браузере;
+при этом ordinary тоже недоступен. При relay outage REQUIRED получил
+`OPEN_IO_FAILED` за 6–8 ms, ordinary сохранил DIRECT, relay TCP/RX delta = 0.
+Это быстрый явный отказ закрытого pool/server, не silent blackhole/standby acceptance.
+
+Во всех шести recovery новые REQUIRED/ordinary authority дали полные HTTP/2 body
+50/48 bytes, разные новые server connection IDs, правильные source и owner-bound
+`PAC_NATIVE_UPSTREAM` records. Каждый recovery добавил 1 relay TCP и 2413–2415 RX
+bytes; capture/reflected increments и полнота application ledgers проверены
+assertions. Browser PID/birth не менялись, registry policy оставалась удалённой.
+Listener возвращался на прежний port. Нет доказательства, что bad-proxy cache
+у неудачного старого authority очистился: после recovery использовались другие имена.
+
+Прежние три failures сохранились: live-install за 30s pending/CONNECT=0 и два
+native-only случая с 2/2 REQUIRED DIRECT. Fresh-after-withdrawal снова PASS через
+PAC_NATIVE_UPSTREAM (native-only=0, capture TCP +40/reflected +1, relay +1/+2512).
+Runtime не менялся; эта матрица не исправляет native origin isolation и не закрывает R1.
+
+Полный Linux Go race/vet/build + PostgreSQL17 PASS:
+[job 125004701385](https://github.com/buzzmean/veliq/actions/runs/41358865009/job/125004701385).
+Затем прежний Python rollback #35 (99/100). Полный Windows Go race/vet/build
+[job125004701705](https://github.com/buzzmean/veliq/actions/runs/41358865000/job/125004701705)
+на 01.11 23:10 UTC всё ещё `in_progress` в общем шаге; завершённый журнал пока
+недоступен. Это **PENDING**, не PASS и не подтверждённый timeout. Целевой browser
+job и DLL filters уже завершены отдельно. Повторный общий прогон не запускался;
+перед дальнейшими Go-изменениями проверить результат именно этого job.
+C#218 PASS. Общий CI сохраняет
+WPF actual-RelayChoice #36/job125004701218 и Edge verified CONNECT/PAC
+#37/job125004700877. Chrome policy/actual-driver run41358864943, Game UDP
+run41358864935, isolated upgrade run41358864932 (оба варианта) PASS. Chrome
+actual-driver PASS в этом запуске не объясняет предыдущий intermittent empty-policy
+failure на17f6273; он не исправлен этой тестовой правкой.
+
+
+## Продолжение R1
+
+1. Разделение proxy identity по authority подтверждено для PAC и существующего
+   `PAC_NATIVE_UPSTREAM` с native AUTO и фактическим capture/owner/egress accounting.
+   Переход с owned PAC, существующей до браузера, теперь проверен; live-install
+   остаётся pending в измеренном 30-секундном окне. Свежий authority после policy
+   withdrawal прошёл через cached PAC + native upstream; шесть одиночных
+   outage/recovery сценариев выше также PASS. Следующий gate — одновременная
+   потеря listener и capture при физически доступном DIRECT endpoint, отдельно
+   guarded/AvailabilityPAC и без ложного PASS по TEST-NET blackhole. Это измерение
+   границы crash guard, не обещание его наличия. Затем — повтор уже неудачного
+   authority/bad-proxy cache и полный startup/recovery/strict readiness. Не заменять
+   эти проверки повтором уже принятого здорового fresh-flow сценария.
+2. Явно разделить гарантии: native наблюдение SNI привязано к соединению;
+   строгая изоляция каждого запроса требует подтверждённого браузерного
+   transport-контекста. Нельзя объявлять gate закрытым по корректному первому
+   REQUIRED open, TLS успеху, SYN count или ещё одному SNI/IP cache.
+3. Сохранить existing-flow pinning/no replay, известный REQUIRED floor и
+   экономию DIRECT/LOCAL. Не вводить скрыто полный RELAY браузера, MITM,
+   извлечение ключей, расширение или принудительный restart/policy reload.
+   Независимый WFP guard сам не раскрывает HTTP/2 authority:
+   [действующая архитектурная граница](BROWSER_NATIVE_GUARD.md#отдельное-ограничение-имя-сайта-не-всегда-доступно).
+4. Сохранить `ORIGIN_ISOLATION_VIOLATION` как failure до реального исправления
+   или явно принятого другого контракта. Это draft с воспроизведением,
+   не готовое исправление и не разрешение на merge/rollout.
+
+## Запуск
+
+Linux baseline (нужны Chromium и NSS certutil):
+
+```sh
+NEEXITLAG_TEST_ORIGIN_REUSE=1 go test -race -v ./internal/browserfixture -run '^TestChromiumOriginReuseBaseline$' -count=1 -timeout=70s
+```
+
+Полный Windows сценарий — workflow `Browser HTTP2 origin reuse`, на отдельной
+Actions VM с pinned DLL и app-scoped firewall rule. Trust/capture opt-in
+преднамеренно не поддерживает запуск на установленном пользовательском ПК.
+Workflow также проверяет полный Windows Go race/vet/build и все WinDivert
+filters; Linux Go race/vet/build с PostgreSQL — `relay-release.yml` того же SHA.
