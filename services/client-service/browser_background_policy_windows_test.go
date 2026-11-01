@@ -248,21 +248,37 @@ func TestWindowsYouTubeBackgroundPolicyChangePreservesMediaFailure(t *testing.T)
 	key := youtubeScope(cur, q)
 	c.youtubeBackgroundRecheck(cur, q, p, key)
 	awaitBackground(t, entered)
+	// Admit a concurrent foreground trial through the normal qualification and
+	// slot APIs. Only its transform witness and media failure are injected.
+	strategy := r.order[0]
+	public := q
+	public.Host = "www.youtube.com"
+	c.recordLocalProbe(public, p, strategy, browserproxy.ProbeResult{Status: http.StatusForbidden}, true)
+	r.completeCDNQualification(key, strategy, time.Now())
+	endpoint := cdnEndpoint{q.Host, p.Destination.String()}
+	sibling := testSibling(true)
+	sibling.MediaRequired, sibling.MediaBytes = true, cdnStrongBytes+1
+	chosen, token, ok := r.takeEndpointTrial(key, time.Now(), sibling, endpoint)
+	if !ok || chosen != strategy {
+		t.Fatal("fixture did not admit the foreground media trial")
+	}
 	changeBackgroundPolicy(t, c, cur.profile, "optimize-off")
 	// An existing pinned media flow can report failure after OFF. Its meter
 	// callback must retain the real cooldown when the background worker exits.
-	meter := &youtubeMeter{r: r, key: key, stage: "LOCAL", strategy: r.order[0], host: q.Host, destination: p.Destination.String()}
+	meter := &youtubeMeter{r: r, key: key, stage: "LOCAL", strategy: strategy, trial: true, trialID: token, host: q.Host, destination: p.Destination.String()}
 	meter.failure("MIDSTREAM_STALL_NEW_CONNECTION_REQUIRED")
 	r.mu.Lock()
 	before := r.cache[key]
+	endpointKey := cdnEndpointKey{key, endpoint, strategy}
+	beforeEndpoint := r.endpointNegative[endpointKey]
 	r.mu.Unlock()
-	if before.Failures == 0 || before.Retry.IsZero() || before.TrialAfter.IsZero() {
+	if before.Failures == 0 || before.Retry.IsZero() || before.TrialAfter.IsZero() || beforeEndpoint.Until.IsZero() {
 		t.Fatal("fixture did not record a real media failure")
 	}
 	resume()
 	finishBackground(t, c)
 	after := r.cache[key]
-	if after.Failures != before.Failures || after.Tried != before.Tried || after.Reason != before.Reason || !after.Retry.Equal(before.Retry) || !after.TrialAfter.Equal(before.TrialAfter) || r.selection.BackgroundFailures != 0 {
+	if after.Failures != before.Failures || after.Tried != before.Tried || after.Reason != before.Reason || !after.Retry.Equal(before.Retry) || !after.TrialAfter.Equal(before.TrialAfter) || !r.endpointNegative[endpointKey].Until.Equal(beforeEndpoint.Until) || r.selection.BackgroundFailures != 0 {
 		t.Fatalf("background cancellation changed the media failure: before=%+v after=%+v", before, after)
 	}
 }
