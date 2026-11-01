@@ -15,7 +15,6 @@ import (
 
 	"github.com/buzzmean/neexitlag/core/browserproxy"
 	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/profiles"
 	wp "github.com/buzzmean/neexitlag/platform/windows"
 )
 
@@ -70,8 +69,10 @@ func TestBrowserDNSRecoveryWindowsOwnerAndOffNoDirect(t *testing.T) {
 	c.settings.Automatic = true
 	c.mu.Unlock()
 	c.network.Store(&wp.NetworkContext{Fingerprint: "isolated", ObservedAt: time.Now()})
-	p := profiles.Profile{ID: "dns-owner-fixture", Executables: []string{helper}, Mode: profiles.Auto, BrowserTransport: "native"}
-	c.Profiles.Upsert(p)
+	p := dnsRecoveryOwnerProfile(helper)
+	if e = c.Profiles.Upsert(p); e != nil {
+		t.Fatal("invalid owner fixture profile", e)
+	}
 	owner := browserproxy.Owner{PID: id.PID, Birth: id.CreationTime, Exe: id.Path, Profile: p.ID}
 	cur, e := c.browserProfile(owner)
 	if e != nil {

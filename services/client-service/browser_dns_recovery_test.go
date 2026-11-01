@@ -15,6 +15,7 @@ import (
 
 	"github.com/buzzmean/neexitlag/core/browserproxy"
 	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/neexitlag/core/profiles"
 	wp "github.com/buzzmean/neexitlag/platform/windows"
 )
 
@@ -223,5 +224,21 @@ func TestBrowserDNSRecoveryTCPStreamReturnsRecoveredAnswer(t *testing.T) {
 	}
 	if e := <-done; e != nil || !bytes.Equal(answer, reply) {
 		t.Fatal(e)
+	}
+}
+
+// Общая сборка профиля проверяется и на Linux, хотя OS-owner тест — Windows-only.
+func dnsRecoveryOwnerProfile(executable string) profiles.Profile {
+	return profiles.Profile{ID: "dns-owner-fixture", Name: "DNS owner fixture", Executables: []string{executable}, Mode: profiles.Auto, BrowserTransport: "native", Custom: true}
+}
+func TestBrowserDNSRecoveryOwnerFixtureRegistersBeforeOSChecks(t *testing.T) {
+	c, _ := timeoutFixture(t)
+	p := dnsRecoveryOwnerProfile(`C:\Fixture\chrome.exe`)
+	if e := c.Profiles.Upsert(p); e != nil {
+		t.Fatal("invalid owner fixture profile", e)
+	}
+	got, ok := c.matchApplication(wp.ProcessIdentity{PID: 7, CreationTime: 13, Path: p.Executables[0]})
+	if !ok || got.ID != p.ID || !nativeBrowserProfile(got) {
+		t.Fatal("owner fixture matched a different profile", got, ok)
 	}
 }
