@@ -85,25 +85,57 @@ func newLoginCode() (string, error) {
 	return fmt.Sprintf("%06d", n.Int64()), nil
 }
 
-// StartLogin stores a fresh one-time code. sent=false means a code was sent
-// less than a minute ago and nothing new must be mailed.
+type loginQueryer interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+// StartLogin atomically reserves a code for callers delivering it out of band.
+// The HTTP API uses deliverLogin so a failed delivery rolls the reservation back.
 func (s *Store) StartLogin(ctx context.Context, email string, now time.Time) (code string, sent bool, err error) {
-	var last time.Time
-	e := s.DB.QueryRow(ctx, "SELECT sent_at FROM login_codes WHERE email=$1", email).Scan(&last)
-	if e == nil && now.Sub(last) < LoginResendInterval {
+	return reserveLogin(ctx, s.DB, email, now)
+}
+
+func reserveLogin(ctx context.Context, q loginQueryer, email string, now time.Time) (code string, reserved bool, err error) {
+	code, e := newLoginCode()
+	if e != nil {
+		return "", false, e
+	}
+	var claimed int
+	e = q.QueryRow(ctx, `INSERT INTO login_codes(email,code_hash,expires_at,attempts,sent_at) VALUES($1,$2,$3,0,$4)
+ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,attempts=0,sent_at=excluded.sent_at
+WHERE login_codes.sent_at <= $5 RETURNING 1`, email, loginHash(email, code), now.Add(LoginCodeLifetime), now, now.Add(-LoginResendInterval)).Scan(&claimed)
+	if errors.Is(e, pgx.ErrNoRows) {
 		return "", false, nil
 	}
-	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
-		return "", false, e
-	}
-	if code, e = newLoginCode(); e != nil {
-		return "", false, e
-	}
-	_, e = s.DB.Exec(ctx, "INSERT INTO login_codes(email,code_hash,expires_at,attempts,sent_at) VALUES($1,$2,$3,0,$4) ON CONFLICT(email) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,attempts=0,sent_at=excluded.sent_at", email, loginHash(email, code), now.Add(LoginCodeLifetime), now)
 	if e != nil {
 		return "", false, e
 	}
 	return code, true, nil
+}
+
+var errLoginDelivery = errors.New("MAIL_UNAVAILABLE")
+
+// The email row/unique-index lock covers SMTP and commit. A concurrent resend
+// cannot acknowledge an uncommitted (possibly failing) delivery. Rollback keeps
+// the previous code, attempts and resend time intact; no compensating DELETE
+// can race a newer reservation. SMTP honors the request deadline, and the API
+// bounds concurrent deliveries so they cannot monopolize the database pool.
+func (s *Store) deliverLogin(ctx context.Context, email string, now time.Time, send func(string) error) error {
+	tx, e := s.DB.Begin(ctx)
+	if e != nil {
+		return e
+	}
+	defer tx.Rollback(ctx)
+	code, reserved, e := reserveLogin(ctx, tx, email, now)
+	if e != nil {
+		return e
+	}
+	if reserved {
+		if e = send(code); e != nil {
+			return errLoginDelivery
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 // FinishLogin checks the code, creates the account on first login and opens a session.
@@ -185,11 +217,19 @@ func (s *Store) CreateSubscription(ctx context.Context, account Account, p Plan,
 	if seats < 1 || seats > p.MaxSeats {
 		return "", errors.New("SUBSCRIPTION_INVALID")
 	}
-	tx, e := s.DB.Begin(ctx)
+	// The count must get a fresh snapshot after waiting for the account lock,
+	// even if the database/session default was changed to repeatable read.
+	tx, e := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if e != nil {
 		return "", e
 	}
 	defer tx.Rollback(ctx)
+	// Serialize count + insert for this account. NO KEY UPDATE does not conflict
+	// with foreign-key KEY SHARE locks, unlike an unnecessarily strong UPDATE lock.
+	var lockedAccount string
+	if e = tx.QueryRow(ctx, "SELECT id FROM accounts WHERE id=$1 FOR NO KEY UPDATE", account.ID).Scan(&lockedAccount); e != nil {
+		return "", e
+	}
 	var n int
 	if e = tx.QueryRow(ctx, "SELECT count(*) FROM subscriptions WHERE account_id=$1", account.ID).Scan(&n); e != nil {
 		return "", e

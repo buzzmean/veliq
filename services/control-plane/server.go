@@ -61,13 +61,14 @@ type API struct {
 	limit                                     *limiter
 	enrollIP, enrollCode                      *limiter
 	loginIP                                   *limiter
+	loginDeliveries                           chan struct{}
 }
 
 func New(s *Store, c Settings) (*API, error) {
 	if len(c.AdminToken) < 24 || len(c.SigningKey) != ed25519.PrivateKeySize || c.KeyID == "" || c.CA == nil || c.CAKey == nil {
 		return nil, errors.New("admin token, signing key and device CA required")
 	}
-	return &API{Store: s, Settings: c, limit: newLimiter(time.Now()), enrollIP: newEnrollmentLimiter(time.Now()), enrollCode: newEnrollmentLimiter(time.Now()), loginIP: newLoginLimiter(time.Now())}, nil
+	return &API{Store: s, Settings: c, limit: newLimiter(time.Now()), enrollIP: newEnrollmentLimiter(time.Now()), enrollCode: newEnrollmentLimiter(time.Now()), loginIP: newLoginLimiter(time.Now()), loginDeliveries: make(chan struct{}, 2)}, nil
 }
 func (a *API) publish(ctx context.Context) ([]byte, error) {
 	pub := a.Settings.SigningKey.Public().(ed25519.PublicKey)

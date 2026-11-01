@@ -112,17 +112,26 @@ func (a *API) loginStart(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 400, "EMAIL_INVALID")
 		return
 	}
-	code, sent, e := a.Store.StartLogin(r.Context(), email, time.Now())
-	if e != nil {
-		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
+	// Production has eight DB connections. At most two bounded SMTP transactions
+	// (including same-email waiters) leave capacity for auth and other API calls.
+	select {
+	case a.loginDeliveries <- struct{}{}:
+		defer func() { <-a.loginDeliveries }()
+	default:
+		a.fail(w, 503, "MAIL_UNAVAILABLE")
 		return
 	}
-	if sent {
+	e := a.Store.deliverLogin(r.Context(), email, time.Now(), func(code string) error {
 		text := "Код для входа в личный кабинет VELIQ: " + code + "\n\nКод действует 10 минут. Если вы не входили в кабинет, просто удалите это письмо."
-		if e = a.Settings.Mailer.Send(r.Context(), email, "Код для входа: "+code, text); e != nil {
+		return a.Settings.Mailer.Send(r.Context(), email, "Код для входа: "+code, text)
+	})
+	if e != nil {
+		if errors.Is(e, errLoginDelivery) {
 			a.fail(w, 503, "MAIL_UNAVAILABLE")
-			return
+		} else {
+			a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		}
+		return
 	}
 	// The same answer for new and known addresses and for a throttled resend.
 	respond(w, 200, map[string]string{"status": "sent"})
@@ -170,7 +179,10 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c, e := r.Cookie(sessionCookie); e == nil {
-		_ = a.Store.EndSession(r.Context(), c.Value)
+		if e = a.Store.EndSession(r.Context(), c.Value); e != nil {
+			a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
+			return
+		}
 	}
 	setSession(w, "", -1)
 	respond(w, 200, map[string]string{"status": "ok"})
