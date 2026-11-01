@@ -4,6 +4,9 @@
 Связано с Issue #33. Это небольшой диагностический этап; полная автоматическая доступность сервисов не заявляется.
 Код аккаунтов/подписок, UI PR #34, VPS, глобальные DNS Windows, CA и WinDivert не меняются.
 
+[Парное CI-сравнение с main и отдельные блокеры](NETWORK_INTELLIGENCE_CI.md).
+[План NI-2 до реализации](NETWORK_INTELLIGENCE_STAGE2_DESIGN.md).
+
 ## Аудит и используемая основа
 
 | Существующий механизм | Использование и ограничение |
@@ -62,7 +65,8 @@
 `test_atomic_update_health_rollback_and_preserving_uninstall` (test_relay_lifecycle.py:142, exit 1),
 Windows native UI `Empty visual: actual-RelayChoice`. Они не исправляются в этой ветке и не являются доказательством ошибки NI.
 Локально выполнены полный Go race с PostgreSQL17, vet/build Linux+Windows, PS7 три затронутые диагностические фикстуры и 30 повторов целевых race-регрессий.
-Проверки PS5.1/pinned DLL/Windows runtime должны оцениваться по новому focused workflow, а реальный ISP — только на ПК.
+Focused Windows workflow 41295413706 прошёл PS5.1/PS7 и pinned DLL; повтор на 9c067b0 (41296717528) тоже PASS.
+Это Windows-фикстуры диагностического слоя, не реальный ISP или playback; они проверяются отдельно на ПК.
 
 На отдельном Windows-ПК после проверки CI:
 
