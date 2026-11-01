@@ -375,10 +375,10 @@ public partial class MainWindow : Window
                 return;
             LocalPreferences.SetAutoStart(Launch.IsChecked == true);
             SaveLocalPreferences(StartMinimized.IsChecked == true, MinimizeToTray.IsChecked == true);
-            ShowMessage(model.Available ? "SettingsSaved" : "LocalSettingsSaved");
+            model.SetNotice(Text.Get(model.Available ? "SettingsSaved" : "LocalSettingsSaved"));
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch { ShowMessage("SettingsFailed"); }
+        catch { model.SetNotice(Text.Get("SettingsFailed")); }
     }
     void ShowMessage(string key) => PromptWindow.Show(this, key, false);
 }
