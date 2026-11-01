@@ -42,7 +42,7 @@ jobs:
           & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
       - name: Background policy changes before upstream open and proof publication
         run: go test -race -v ./services/client-service -run '^TestWindowsYouTubeBackgroundPolicyChange' -count 1 -timeout 90s
-      - name: Cold CDN and OFF-network resume to LOCAL over TLS and authenticated relay
+      - name: Cold CDN resume, LOCAL promotion and reset fallback over TLS and relay
         run: go test -race -v ./services/client-service -run '^TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion$' -count 1 -timeout 60s
       - name: Full Windows Go race regressions
         run: go test -race -p 1 -timeout 180s ./...

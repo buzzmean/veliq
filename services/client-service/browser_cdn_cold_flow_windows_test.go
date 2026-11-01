@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -183,14 +184,15 @@ func cdnColdRelayPool(t *testing.T, ctx context.Context) *transport.Pool {
 }
 
 // Real service path: cold RELAY HTTP bytes -> asynchronous public TLS/403 ->
-// guarded LOCAL trial -> running strong promotion -> peer LOCAL. No counters,
+// guarded LOCAL trial -> running strong promotion -> peer LOCAL, or a real
+// mid-body TCP reset followed by RELAY for a separately opened flow. No counters,
 // qualifications or trial outcomes are manually seeded. DNS/IP mapping and the
 // packet-transform witness are seams; this is not Chrome playback/driver/ISP.
 func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 	owner := cdnColdOwner(t)
 	for _, tc := range []struct {
 		name, transition string
-		hint             bool
+		hint, resetMedia bool
 	}{
 		{name: "SNI"},
 		{name: "DNS-hint", hint: true},
@@ -198,6 +200,10 @@ func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 		{name: "DNS-hint-optimize-resume", transition: "optimize", hint: true},
 		{name: "SNI-network-return", transition: "network"},
 		{name: "DNS-hint-network-return", transition: "network", hint: true},
+		{name: "SNI-optimize-resume-RST", transition: "optimize", resetMedia: true},
+		{name: "DNS-hint-optimize-resume-RST", transition: "optimize", hint: true, resetMedia: true},
+		{name: "SNI-network-return-RST", transition: "network", resetMedia: true},
+		{name: "DNS-hint-network-return-RST", transition: "network", hint: true, resetMedia: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
@@ -218,11 +224,41 @@ func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 				http.Error(w, "public fixture is not a media segment", http.StatusForbidden)
 			}))
 			const chunkSize = 128 * 1024
+			abortMedia, resetMedia := backgroundBarrier(t)
+			defer resetMedia()
+			resetDone := make(chan error, 1)
+			var abortedRequests atomic.Int32
 			media, mediaRoots := youtubeTLSHTTPFixture(t, "*.googlevideo.com", http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 				source, _, _ := net.SplitHostPort(request.RemoteAddr)
 				w.Header().Set("X-Fixture-Egress", source)
 				w.Header().Set("Content-Length", strconv.Itoa(12*chunkSize))
 				chunk := bytes.Repeat([]byte("v"), chunkSize)
+				if request.URL.Path == "/abort" {
+					abortedRequests.Add(1)
+					if _, err := w.Write(chunk); err != nil {
+						return
+					}
+					w.(http.Flusher).Flush()
+					select {
+					case <-abortMedia:
+					case <-request.Context().Done():
+						return
+					}
+					conn, _, err := w.(http.Hijacker).Hijack()
+					if err == nil {
+						// Abort the actual origin TCP after the client has consumed
+						// body bytes. Do not send a TLS close_notify or inject a
+						// meter callback: the service must observe the socket RST.
+						raw := conn.(*tls.Conn).NetConn().(*net.TCPConn)
+						err = raw.SetLinger(0)
+						closeErr := raw.Close()
+						if err == nil {
+							err = closeErr
+						}
+					}
+					resetDone <- err
+					return
+				}
 				for i := 0; i < 12; i++ {
 					if request.URL.Path == "/sustained" && i > 0 {
 						select {
@@ -351,7 +387,53 @@ func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 				t.Fatal("qualified candidate caused redundant background probes")
 			}
 			q.Source = netip.MustParseAddrPort("127.0.0.1:50102")
-			localTLS, _ := open(q, flowpolicy.DirectPlus)
+			localTLS, localPlan := open(q, flowpolicy.DirectPlus)
+			if tc.resetMedia {
+				key := youtubeScope(cur, q)
+				r.mu.Lock()
+				qualified := r.cache[key].Qualified
+				r.mu.Unlock()
+				cdnColdResetRequest(t, localTLS, q.Host, resetMedia, resetDone)
+				s = r.snapshot()
+				if s.Selection.Trials != 1 || s.Selection.TrialFailures != 1 || s.Selection.FailedAfterReply != 1 || s.Selection.ActiveTrial || s.Selection.TrialInconclusive != 0 || s.Selection.StrongPromotions != 0 || s.Selection.BurstPromotions != 0 || s.Selection.PeerProofs != 0 {
+					t.Fatalf("actual media RST did not fail and release the trial: %+v", s.Selection)
+				}
+				cdnColdPinned(t, localPlan, flowpolicy.DirectPlus)
+				if forwarder.opens.Load() != 1 || backend.mediaOpens.Load() != 1 || abortedRequests.Load() != 1 {
+					t.Fatal("failed media request was replayed or reopened", forwarder.opens.Load(), backend.mediaOpens.Load(), abortedRequests.Load())
+				}
+				negativeKey := cdnEndpointKey{key, cdnEndpoint{q.Host, p.Destination.String()}, qualified}
+				r.mu.Lock()
+				learned, negative := r.cache[key], r.endpointNegative[negativeKey]
+				r.mu.Unlock()
+				if qualified == "" || learned.Qualified != qualified || !learned.Retry.Equal(learned.TrialAfter) || !learned.TrialAfter.After(time.Now().Add(youtubeTrialCooldown-10*time.Second)) || negative.Reason != "REMOTE_RST" || !negative.Until.After(time.Now().Add(youtubeLearnTTL-10*time.Second)) {
+					t.Fatalf("RST lost qualification scope or failure guards: cache=%+v negative=%+v", learned, negative)
+				}
+				for i := 0; i < 3; i++ {
+					c.recheckPendingLocal(time.Now())
+					finishBackground(t, c)
+				}
+				// Only a separately opened request may use RELAY after origin
+				// bytes. The failed request itself must never migrate or replay.
+				q.Source = netip.MustParseAddrPort("127.0.0.1:50103")
+				fallbackTLS, _ := open(q, flowpolicy.RelayRequired)
+				cdnColdRequest(t, fallbackTLS, q.Host, "/fallback", "127.0.0.2", 12*chunkSize)
+				finishBackground(t, c)
+				cdnColdRequest(t, relayTLS, q.Host, "/pinned-after-reset", "127.0.0.2", 12*chunkSize)
+				cdnColdPinned(t, pinned, flowpolicy.RelayRequired)
+				r.mu.Lock()
+				after, negativeAfter := r.cache[key], r.endpointNegative[negativeKey]
+				r.mu.Unlock()
+				if !after.Retry.Equal(learned.Retry) || !after.TrialAfter.Equal(learned.TrialAfter) || negativeAfter != negative || after.TrialAdmission != "SUBGROUP_COOLDOWN" {
+					t.Fatalf("recheck/new flow changed failure guards: cache=%+v negative=%+v", after, negativeAfter)
+				}
+				s = r.snapshot()
+				if forwarder.opens.Load() != 2 || backend.mediaOpens.Load() != 1 || abortedRequests.Load() != 1 || publicRequests.Load() != wantPublic || s.Selection.Trials != 1 || s.Selection.TrialFailures != 1 || s.Selection.BackgroundAttempts != uint64(wantPublic) {
+					t.Fatalf("unexpected retry after media RST: relay=%d local=%d requests=%d public=%d selection=%+v", forwarder.opens.Load(), backend.mediaOpens.Load(), abortedRequests.Load(), publicRequests.Load(), s.Selection)
+				}
+				t.Logf("transition=%q actual_origin_rst=true failed_after_reply=1 replayed_requests=0 next_flow=RELAY relay_opens=2 local_media_opens=1 trial_slot_released=true cooldown_preserved=true endpoint_negative_ttl_preserved=true pinned_relay_preserved=true", tc.transition)
+				return
+			}
 			cdnColdRequest(t, localTLS, q.Host, "/sustained", "127.0.0.1", 12*chunkSize)
 			s = r.snapshot()
 			if s.Selection.Trials != 1 || s.Selection.StrongPromotions != 1 || s.Selection.ActiveTrial || s.Selection.PeerProofs != 1 {
@@ -363,13 +445,7 @@ func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 			// The original TLS connection still sends on the original relay;
 			// neither LOCAL promotion nor a different subgroup can migrate it.
 			cdnColdRequest(t, relayTLS, "rr1---sn-cold.googlevideo.com", "/pinned", "127.0.0.2", 12*chunkSize)
-			if policy, ok := pinned.(interface {
-				CurrentTCPPolicy() (flowpolicy.Result, bool)
-			}); !ok {
-				t.Fatal("missing pinned plan reporter")
-			} else if got, known := policy.CurrentTCPPolicy(); !known || got.Action != flowpolicy.RelayRequired {
-				t.Fatal("established relay route changed", got)
-			}
+			cdnColdPinned(t, pinned, flowpolicy.RelayRequired)
 			if forwarder.opens.Load() != 1 || backend.mediaOpens.Load() != 2 || r.snapshot().Selection.PeerProvisional != 1 {
 				t.Fatal("unexpected extra route opens", forwarder.opens.Load(), backend.mediaOpens.Load(), r.snapshot().Selection)
 			}
@@ -391,6 +467,55 @@ func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 				t.Fatal("reused owner identity accepted")
 			}
 		})
+	}
+}
+
+func cdnColdPinned(t *testing.T, conn net.Conn, want flowpolicy.Action) {
+	t.Helper()
+	policy, ok := conn.(interface {
+		CurrentTCPPolicy() (flowpolicy.Result, bool)
+	})
+	if !ok {
+		t.Fatal("missing pinned plan reporter")
+	}
+	if got, known := policy.CurrentTCPPolicy(); !known || got.Action != want {
+		t.Fatal("established route changed", got)
+	}
+}
+
+func cdnColdResetRequest(t *testing.T, conn *tls.Conn, host string, reset func(), resetDone <-chan error) {
+	t.Helper()
+	req, err := http.NewRequest("GET", "https://"+host+"/abort", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := req.Write(conn); err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.ReadResponse(bufio.NewReader(conn), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	prefix := make([]byte, 64*1024)
+	if _, err := io.ReadFull(response.Body, prefix); err != nil {
+		t.Fatal("media body before RST", err)
+	}
+	if response.StatusCode != http.StatusOK || response.Header.Get("X-Fixture-Egress") != "127.0.0.1" || !bytes.Equal(prefix, bytes.Repeat([]byte("v"), len(prefix))) {
+		t.Fatal("LOCAL media response missing before RST")
+	}
+	reset()
+	remaining, err := io.ReadAll(response.Body)
+	if !errors.Is(err, syscall.Errno(10054)) || int64(len(prefix)+len(remaining)) >= response.ContentLength {
+		t.Fatalf("want native Windows connection reset with incomplete body, received=%d content_length=%d err=%v", len(prefix)+len(remaining), response.ContentLength, err)
+	}
+	select {
+	case err := <-resetDone:
+		if err != nil {
+			t.Fatal("origin TCP reset", err)
+		}
+	case <-time.After(8 * time.Second):
+		t.Fatal("origin did not acknowledge TCP reset")
 	}
 }
 
