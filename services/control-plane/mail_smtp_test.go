@@ -64,6 +64,9 @@ func startFakeSMTP(t *testing.T, port string, implicitTLS, offerStartTLS bool) *
 	cert, pool := smtpTestCert(t)
 	ln, e := net.Listen("tcp", net.JoinHostPort("127.0.0.1", port))
 	if e != nil {
+		if port == "0" {
+			t.Fatal("ephemeral loopback SMTP listener unavailable:", e)
+		}
 		t.Skipf("port %s unavailable: %v", port, e)
 	}
 	f := &fakeSMTP{username: "robot@smtp.test", password: "secret", data: make(chan string, 1), err: make(chan error, 1)}
@@ -86,7 +89,7 @@ func startFakeSMTP(t *testing.T, port string, implicitTLS, offerStartTLS bool) *
 		f.err <- f.serve(conn, &cert, offerStartTLS)
 	}()
 	f.mailer = SMTPMailer{
-		Addr:      net.JoinHostPort("127.0.0.1", port),
+		Addr:      ln.Addr().String(),
 		From:      "cabinet@veliq.app",
 		Username:  f.username,
 		Password:  f.password,
