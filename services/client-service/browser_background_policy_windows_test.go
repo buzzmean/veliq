@@ -230,3 +230,39 @@ func TestWindowsYouTubeBackgroundPolicyChangeBeforeProof(t *testing.T) {
 		})
 	}
 }
+
+func TestWindowsYouTubeBackgroundPolicyChangePreservesMediaFailure(t *testing.T) {
+	c, cur, q, p := backgroundPolicyFixture(t, cdnColdOwner(t))
+	entered := make(chan struct{})
+	release, resume := backgroundBarrier(t)
+	defer resume()
+	c.BrowserAlternativeDNS = func(ctx context.Context, _ string, _ browserproxy.DNSOpen) (browserproxy.DNSAnswer, error) {
+		close(entered)
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return browserproxy.DNSAnswer{}, errors.New("fixture DNS cancelled")
+	}
+	r := c.browser.youtube
+	key := youtubeScope(cur, q)
+	c.youtubeBackgroundRecheck(cur, q, p, key)
+	awaitBackground(t, entered)
+	changeBackgroundPolicy(t, c, cur.profile, "optimize-off")
+	// An existing pinned media flow can report failure after OFF. Its meter
+	// callback must retain the real cooldown when the background worker exits.
+	meter := &youtubeMeter{r: r, key: key, stage: "LOCAL", strategy: r.order[0], host: q.Host, destination: p.Destination.String()}
+	meter.failure("MIDSTREAM_STALL_NEW_CONNECTION_REQUIRED")
+	r.mu.Lock()
+	before := r.cache[key]
+	r.mu.Unlock()
+	if before.Failures == 0 || before.Retry.IsZero() || before.TrialAfter.IsZero() {
+		t.Fatal("fixture did not record a real media failure")
+	}
+	resume()
+	finishBackground(t, c)
+	after := r.cache[key]
+	if after.Failures != before.Failures || after.Tried != before.Tried || after.Reason != before.Reason || !after.Retry.Equal(before.Retry) || !after.TrialAfter.Equal(before.TrialAfter) || r.selection.BackgroundFailures != 0 {
+		t.Fatalf("background cancellation changed the media failure: before=%+v after=%+v", before, after)
+	}
+}

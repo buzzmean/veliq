@@ -38,7 +38,7 @@ type youtubeSelectionSnapshot struct {
 	PeerProvisional, PeerProvisionalFailures, PeerRevocations           uint64
 	PeerRenewals, PeerRestored                                          uint64
 	PeerProofs                                                          int
-	ActiveDomain                                                       string `json:"active_domain,omitempty"`
+	ActiveDomain                                                        string `json:"active_domain,omitempty"`
 	ActiveAgeMS                                                         int64  `json:"active_age_ms"`
 	ActiveLastRXAgeMS                                                   int64  `json:"active_last_rx_age_ms"`
 	ActiveState                                                         string `json:"active_state,omitempty"`
@@ -65,6 +65,33 @@ type youtubePending struct {
 	Request browserproxy.Request
 	Plan    browserproxy.Plan
 	Seen    time.Time
+}
+
+// Background probes have no cached-PAC compatibility entitlement. Carry their
+// admission policy through both DoH and origin opens, including nested timeouts.
+type youtubeBackgroundScopeKey struct{}
+type youtubeBackgroundScope struct {
+	network, revision string
+	cancel            context.CancelFunc
+}
+
+func (c *Controller) youtubeBackgroundScopeCurrent(scope youtubeBackgroundScope, cur profilesResult) bool {
+	return cur.enabled && !cur.routingDisabled && cur.network == scope.network &&
+		c.youtubeLocalAllowed(scope.network) && c.policyRevision(cur.profile) == scope.revision
+}
+
+func (r *youtubeRuntime) cancelBackgroundRecheck(key youtubeKey, retry time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, ok := r.cache[key]
+	// Release only this worker's scheduling delay. A real flow may have
+	// installed a newer cooldown/confirmation while the probe was in flight.
+	if !ok || !v.Retry.Equal(retry) || r.trialActive && r.trialKey == key {
+		return
+	}
+	v.Retry = time.Time{}
+	v.Reason = "BACKGROUND_POLICY_CHANGED"
+	r.cache[key] = v
 }
 
 func (r *youtubeRuntime) register(k youtubeKey, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, now time.Time) {
@@ -526,10 +553,29 @@ func (c *Controller) youtubeBackgroundRecheck(cur profilesResult, q browserproxy
 		r.endRecheck()
 		return
 	}
+	scope := youtubeBackgroundScope{network: cur.network, revision: c.policyRevision(cur.profile)}
 	go func() {
-		defer func() { <-c.browser.probes; r.endRecheck() }()
+		cancelled := false
+		defer func() {
+			if cancelled {
+				r.cancelBackgroundRecheck(key, learned.Retry)
+			}
+			<-c.browser.probes
+			r.endRecheck()
+		}()
 		ctx, cancel := context.WithTimeout(c.ctx, 12*time.Second)
 		defer cancel()
+		scope.cancel = cancel
+		ctx = context.WithValue(ctx, youtubeBackgroundScopeKey{}, scope)
+		current := func() bool {
+			fresh, err := c.browserProfile(q.Owner)
+			if errors.Is(ctx.Err(), context.Canceled) || err != nil || !c.youtubeBackgroundScopeCurrent(scope, fresh) {
+				cancelled = true
+				cancel()
+				return false
+			}
+			return true
+		}
 		probeQ := q
 		probeQ.Ingress = "YOUTUBE_BACKGROUND_RECHECK"
 		r.mu.Lock()
@@ -547,6 +593,9 @@ func (c *Controller) youtubeBackgroundRecheck(cur profilesResult, q browserproxy
 		var verifiedBytes uint64
 		var controlClass string
 		passed := youtubePrerequisites(key, q.Host, func(origin [2]string) bool {
+			if !current() {
+				return false
+			}
 			// Separate held source reservations prevent the second origin from borrowing
 			// the first origin's committed-transform evidence on a shared CDN address.
 			socket, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IP(q.Source.Addr().AsSlice())})
@@ -560,6 +609,10 @@ func (c *Controller) youtubeBackgroundRecheck(cur profilesResult, q browserproxy
 			relay := p
 			relay.Policy = browserDNSPolicy(cur)
 			answer, e := c.knownOriginResolve(work, cur, probeQ, relay)
+			if !current() {
+				stop()
+				return false
+			}
 			if e != nil {
 				stop()
 				c.recordLocalProbe(probeQ, p, strategy, browserproxy.ProbeResult{Phase: "ORIGIN_DNS", Failure: "DNS_FAILED", Detail: "RESOLVE_FAILED"}, false)
@@ -610,6 +663,10 @@ func (c *Controller) youtubeBackgroundRecheck(cur profilesResult, q browserproxy
 			} else {
 				result = browserproxy.ProbeOriginTransfer(work, probeQ.Host, origin[1], c.BrowserProbeRoots, probe)
 			}
+			if !current() {
+				stop()
+				return false
+			}
 			var socketError *os.SyscallError
 			if result.Phase == "RELAY_OR_TCP_OPEN" && errors.As(probeOpenError, &socketError) && socketError.Syscall == "LOCAL_TCP_TIMESTAMPS_UNAVAILABLE" {
 				result.Phase = "LOCAL_GUARD"
@@ -633,7 +690,7 @@ func (c *Controller) youtubeBackgroundRecheck(cur profilesResult, q browserproxy
 			}
 			return true
 		})
-		if !passed {
+		if !passed || !current() {
 			return
 		}
 
