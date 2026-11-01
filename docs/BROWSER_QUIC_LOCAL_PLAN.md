@@ -83,9 +83,9 @@ QUIC handshake, HTTP/3, доступность сайта или основан�
 из capture сохраняется. Это не raw WinDivert injection браузерных datagrams.
 
 `browserproxy.HTTP3ProbeManager` допускает одну пробу на manager, без очереди,
-retry, TTL cache или записи в действующий TLS/CDN picker. Новый запрос требует
-отдельного явного вызова; служба пока не создаёт manager. Перед будущим runtime
-подключением нужен один manager на controller и общий бюджет с другими пробами.
+retry, TTL cache или записи в действующий TLS/CDN picker. Служба создаёт один
+manager на controller; отдельный runtime ниже управляет общим budget, cooldown
+и свежими triggers. Сам manager не запускает запросы по таймеру.
 
 Caller задаёт reviewed DPI hostname, pinned public IPv4:443, browser PID/birth/
 executable и network/profile/revision. Protected, relay-first и ordinary names,
@@ -259,14 +259,15 @@ WinDivert injection для QUIC, ISP, playback,
 поведение браузера после отказа QUIC и экономия VPS. Full Linux/Windows Go
 race/vet/build и pinned DLL compiler проверяются CI отдельно от этих сценариев.
 
-## Следующая граница R1
+## Решение о browser admission
 
-Фоновый runtime теперь подключён, но browser LOCAL требует отдельного
-admission и CID/tuple lifecycle. Initial SNI и sample собственного socket не
-устанавливают origin последующих short headers, encrypted NEW_CONNECTION_ID,
-coalesced requests или мигрировавшего соединения. Нельзя переносить разрешение
-по IP/DNS/старому tuple/CID или принимать ECH/PSK/Retry/v2 как известный origin.
-Следующий шаг — определить допустимый browser protocol scope с сохранением
-protected fail-closed, без TLS/application decryption и без повторения
-standalone packet/parser/HTTP3 этапов. Пока этот контракт не обеспечен,
-browser QUIC остаётся TCP fallback. Отдельная Windows/ISP-приёмка отложена.
+[ADR-006](ADR-006-browser-quic-admission.md) фиксирует browser QUIC LOCAL как
+unsupported в текущей архитектуре. Свежий owner/FLOW, видимый SNI и успех своей
+пробы достаточны только для описанного диагностического пути. Отслеживание
+смены CID и запрет миграции не обеспечивают origin каждого HTTP/3-запроса.
+
+Для пересмотра нужен проверяемый механизм допуска до отправки каждого запроса,
+включая повторное использование соединения разными origins. Дополнительный
+parser/fuzz/ISP PASS этого условия не заменяет. R1 остаётся частично выполненным;
+реальная Windows/ISP-приёмка отложена. Следующая фоновая проверка границы origin
+для существующего HTTP/2 пути описана в ADR; QUIC-диагностика её не доказывает.
