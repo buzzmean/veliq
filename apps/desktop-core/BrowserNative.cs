@@ -52,14 +52,21 @@ public sealed class NativeBrowserRecord
 }
 public sealed partial class DesktopViewModel
 {
-    public string BrowserReadinessText {get;private set;}="Подготавливаем браузер…";
+    public string BrowserReadinessText {get;private set;}="Проверяем подключение браузера к VELIQ…";
     public void ApplyNativeBrowserReadiness(NativeBrowserStatus status){
         var configured = Applications.Where(a => NativeBrowser(a.Profile) && a.Profile.Mode == "AUTO").Select(a => a.Profile.Id).ToArray();
         var observed = configured.Any(id => status.Profiles.Any(p => p.ProfileId == id
             && p.NativeOnly is { BidirectionalExchanges: > 0, SentBytes: > 0, ReceivedBytes: > 0 }));
-        var next=!Optimizing?"Браузеры используют обычную сеть.":status.CaptureReady&&status.Optimizing&&status.State=="READY_NEW_CONNECTIONS"&&observed
-          ?"Браузеры: обмен через VELIQ подтверждён."
-          :"Подготавливаем браузер…";
+        // Readiness is not website availability. Do not leave the GUI in an endless
+        // "preparing" state after native capture is armed but no new flow was seen.
+        var next = !Optimizing ? "Браузеры используют обычную сеть."
+            : !status.CaptureReady || !status.Optimizing || status.State != "READY_NEW_CONNECTIONS"
+                ? "Маршрутизация браузера не подтверждена. Проверьте диагностику."
+            : configured.Length == 0
+                ? "Браузер не добавлен в автоматическую маршрутизацию."
+            : observed
+                ? "Обмен через VELIQ подтверждён. Доступность сайтов проверяется отдельно."
+                : "Маршрутизация браузера включена. Ожидаем новые соединения.";
         if(BrowserReadinessText!=next){BrowserReadinessText=next;Changed(nameof(BrowserReadinessText));HealthChanged();}
     }
     public static bool NativeBrowser(Profile p) => p.PolicyData is { } data && data.TryGetValue("browser_transport", out var v)
