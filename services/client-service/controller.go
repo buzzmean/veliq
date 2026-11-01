@@ -583,7 +583,13 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return c.clubStatus(), nil
 	}
 	if (method == "profile.set" || method == "profile.delete" || method == "auto.commit") && c.browserProfileMutation(raw) {
-		defer func() { _ = c.CleanupOwnedBrowserPolicies() }()
+		previous := c.Profiles.List()
+		defer func() {
+			if method == "profile.set" && err == nil && c.preserveConfirmedEdgeProfileUpdate(raw, previous) {
+				return
+			}
+			_ = c.CleanupOwnedBrowserPolicies()
+		}()
 	}
 
 	if !c.activationNetworkAllowed() {
