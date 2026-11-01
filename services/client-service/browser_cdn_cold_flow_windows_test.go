@@ -188,13 +188,33 @@ func cdnColdRelayPool(t *testing.T, ctx context.Context) *transport.Pool {
 // packet-transform witness are seams; this is not Chrome playback/driver/ISP.
 func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 	owner := cdnColdOwner(t)
-	for _, hint := range []bool{false, true} {
-		t.Run(map[bool]string{false: "SNI", true: "DNS-hint"}[hint], func(t *testing.T) {
+	for _, tc := range []struct {
+		name, transition string
+		hint             bool
+	}{
+		{name: "SNI"},
+		{name: "DNS-hint", hint: true},
+		{name: "SNI-optimize-resume", transition: "optimize"},
+		{name: "DNS-hint-optimize-resume", transition: "optimize", hint: true},
+		{name: "SNI-network-return", transition: "network"},
+		{name: "DNS-hint-network-return", transition: "network", hint: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 			defer cancel()
 			var publicRequests atomic.Int32
-			public, publicRoots := youtubeTLSHTTPFixture(t, "www.youtube.com", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				publicRequests.Add(1)
+			publicEntered := make(chan struct{})
+			release, resume := backgroundBarrier(t)
+			defer resume()
+			public, publicRoots := youtubeTLSHTTPFixture(t, "www.youtube.com", http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if publicRequests.Add(1) == 1 && tc.transition != "" {
+					close(publicEntered)
+					select {
+					case <-release:
+					case <-request.Context().Done():
+						return
+					}
+				}
 				http.Error(w, "public fixture is not a media segment", http.StatusForbidden)
 			}))
 			const chunkSize = 128 * 1024
@@ -219,6 +239,9 @@ func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 			}))
 			c := New(ctx)
 			t.Cleanup(c.Close)
+			// Optimize may read policy journals or publish a recovery guard. Keep
+			// those paths isolated; no owner SID or installed backend is supplied.
+			c.customPath = filepath.Join(t.TempDir(), "profiles.json")
 			c.enabled, c.settings.Automatic = true, true
 			c.BrowserProbeRoots = publicRoots
 			profile := profiles.Profile{ID: "cdn-cold", Name: "CDN cold owner fixture", Executables: []string{owner.Path}, Mode: profiles.Auto, BrowserTransport: "native", Custom: true}
@@ -234,10 +257,11 @@ func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 				return browserproxy.DNSAnswer{Addresses: []netip.Addr{logical.Addr()}, TTL: time.Minute, ObtainedAt: time.Now(), Source: "ISOLATED_FIXTURE"}, nil
 			}
 			backend := &cdnColdBackend{owner: owner, publicAddress: public.Listener.Addr().String(), mediaAddress: media.Listener.Addr().String(), committed: map[cdnColdTuple]bool{}}
+			backend.ready, backend.id = true, owner
 			c.Backend = backend
 			forwarder := &cdnColdRelay{pool: cdnColdRelayPool(t, ctx), logical: logical, physical: media.Listener.Addr().(*net.TCPAddr).AddrPort()}
 			c.Engine.SetRelay("VPS-01", forwarder)
-			q := browserproxy.Request{Owner: browserproxy.Owner{PID: owner.PID, Birth: owner.CreationTime, Exe: owner.Path, Profile: profile.ID}, Source: netip.MustParseAddrPort("127.0.0.1:50101"), Host: "rr1---sn-cold.googlevideo.com", Port: 443, Secure: true, HintOnly: hint}
+			q := browserproxy.Request{Owner: browserproxy.Owner{PID: owner.PID, Birth: owner.CreationTime, Exe: owner.Path, Profile: profile.ID}, Source: netip.MustParseAddrPort("127.0.0.1:50101"), Host: "rr1---sn-cold.googlevideo.com", Port: 443, Secure: true, HintOnly: tc.hint}
 			cur, err := c.browserProfile(q.Owner)
 			if err != nil || !cur.enabled {
 				t.Fatal("owner/profile validation", err)
@@ -262,11 +286,69 @@ func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 			}
 			relayTLS, pinned := open(q, flowpolicy.RelayRequired)
 			cdnColdRequest(t, relayTLS, q.Host, "/initial", "127.0.0.2", 12*chunkSize)
-			c.browser.youtube.workers.Wait()
 			r := c.browser.youtube
+			wantPublic := int32(1)
+			if tc.transition != "" {
+				awaitBackground(t, publicEntered)
+				key := youtubeScope(cur, q)
+				r.mu.Lock()
+				_, pending := r.pending[key]
+				r.mu.Unlock()
+				if !pending {
+					t.Fatal("initial service flow did not register background work")
+				}
+				setActive := func(active bool) {
+					t.Helper()
+					if tc.transition == "optimize" {
+						if _, err := c.Handle(ctx, "optimize", []byte(`{"enabled":`+strconv.FormatBool(active)+`}`)); err != nil {
+							t.Fatal("optimize IPC", err)
+						}
+						if backend.Status().Ready != active {
+							t.Fatal("optimize did not change capture state")
+						}
+					} else {
+						network := "replacement-net"
+						if active {
+							network = cur.network
+						}
+						c.network.Store(&wp.NetworkContext{Fingerprint: network, ObservedAt: time.Now(), ConflictsObservedAt: time.Now()})
+					}
+				}
+				setActive(false)
+				resume()
+				finishBackground(t, c)
+				if len(r.qualifications) != 0 || len(r.probeEvidence) != 0 || r.selection.BackgroundFailures != 0 || !r.cache[key].Retry.IsZero() {
+					t.Fatalf("cancelled probe retained learning or retry delay: selection=%+v cache=%+v", r.selection, r.cache[key])
+				}
+				c.recheckPendingLocal(time.Now())
+				finishBackground(t, c)
+				if publicRequests.Load() != 1 || r.snapshot().Selection.BackgroundAttempts != 1 {
+					t.Fatal("pending work restarted while disabled or on another network")
+				}
+				// Existing relay TLS remains usable even during OFF/the synthetic
+				// fingerprint change. These bytes refresh real scoped relay usage.
+				cdnColdRequest(t, relayTLS, q.Host, "/inactive-pinned", "127.0.0.2", 12*chunkSize)
+				setActive(true)
+				cur, err = c.browserProfile(q.Owner)
+				if err != nil || !cur.enabled || cur.network != key.Network {
+					t.Fatal("owner/profile did not resume on original network", err)
+				}
+				// Exercise the watcher's actual handler with real time. Do not
+				// seed proof or skip the retry interval by advancing its clock.
+				c.recheckPendingLocal(time.Now())
+				wantPublic = 2
+			}
+			finishBackground(t, c)
 			s := r.snapshot()
-			if publicRequests.Load() != 1 || s.Selection.BackgroundFailures != 1 || s.Selection.Trials != 0 {
+			if publicRequests.Load() != wantPublic || s.Selection.BackgroundAttempts != uint64(wantPublic) || s.Selection.BackgroundFailures != 1 || s.Selection.Trials != 0 {
 				t.Fatalf("cold public 403 path: requests=%d selection=%+v", publicRequests.Load(), s.Selection)
+			}
+			for i := 0; i < 3; i++ {
+				c.recheckPendingLocal(time.Now())
+				finishBackground(t, c)
+			}
+			if publicRequests.Load() != wantPublic || r.snapshot().Selection.BackgroundAttempts != uint64(wantPublic) {
+				t.Fatal("qualified candidate caused redundant background probes")
 			}
 			q.Source = netip.MustParseAddrPort("127.0.0.1:50102")
 			localTLS, _ := open(q, flowpolicy.DirectPlus)
@@ -302,7 +384,7 @@ func TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion(t *testing.T) {
 			if localRX < 24*chunkSize || relayRX < 24*chunkSize {
 				t.Fatal("actual TLS bytes missing from route accounting", localRX, relayRX)
 			}
-			t.Logf("public_403=1 relay_opens=1 local_media_opens=2 strong_promotions=1 peer_provisional=1 pinned_relay_preserved=true local_rx=%d relay_rx=%d", localRX, relayRX)
+			t.Logf("transition=%q public_requests=%d background_attempts=%d background_failures=1 relay_opens=1 local_media_opens=2 strong_promotions=1 peer_provisional=1 pinned_relay_preserved=true local_rx=%d relay_rx=%d", tc.transition, publicRequests.Load(), s.Selection.BackgroundAttempts, localRX, relayRX)
 			q.Owner.Birth++
 			if conn, err := c.browserOpenUnobserved(ctx, q, p); err == nil {
 				conn.Close()
