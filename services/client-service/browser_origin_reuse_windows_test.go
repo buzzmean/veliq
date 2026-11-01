@@ -304,6 +304,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	}
 	if livePolicy {
 		var identity wp.ProcessIdentity
+		var activatedAt time.Time
 		f.RunPhased(t, chrome, address, bootstrap, args, func(stage string, pid uint32) {
 			current, err := wp.NewDiscovery().Lookup(pid)
 			if err != nil || !wp.IsCurrent(current) {
@@ -334,6 +335,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 				if err != nil || compat == nil || !compat.OwnedPolicy || compat.PolicyChanged {
 					t.Fatal("existing owned policy compatibility missing", err)
 				}
+				activatedAt = time.Now()
 				t.Logf("ORIGIN_POLICY_ACTIVATION mode=%s warm_local=true same_pid_birth=true registry_active=%t compatibility=%s", mode, c.chromePolicyActive(), compat.Verification)
 			}
 			if stage == "required" {
@@ -349,6 +351,9 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 					// page reload, restart or transport change through CDP.
 					time.Sleep(30 * time.Second)
 				}
+			}
+			if stage == "required_again" {
+				t.Logf("ORIGIN_POLICY_WINDOW mode=%s after_activation_ms=%d same_pid_birth=true", mode, time.Since(activatedAt).Milliseconds())
 			}
 		})
 		verifyLiveOriginPolicy(t, c, f, proxy, delegated, mode, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
@@ -448,15 +453,15 @@ func verifyLiveOriginPolicy(t *testing.T, c *Controller, f *browserfixture.Origi
 	if first.Source != "127.0.0.1" || requests[0].Source != "127.0.0.1" || requests[1].Source != "127.0.0.1" {
 		t.Error("permitted origins did not preserve DIRECT")
 	}
-	direct := 0
+	direct, pinnedDirect := 0, 0
 	for i, q := range requests {
 		t.Logf("ORIGIN_POLICY_REQUEST mode=%s %+v", mode, q)
 		if i >= 2 && q.Source != "127.0.0.2" {
 			direct++
 			// Only reuse of the proven pre-activation DIRECT connection establishes
 			// a pinned-flow counterexample. Fresh loopback bypass isn't native proof.
-			if q.Connection != requests[0].Connection || q.SNI != browserfixture.ReuseLocalHost {
-				t.Error("new DIRECT fixture connection: native interception not proven for loopback")
+			if q.Connection == requests[0].Connection && q.SNI == browserfixture.ReuseLocalHost {
+				pinnedDirect++
 			}
 		}
 	}
@@ -484,12 +489,15 @@ func verifyLiveOriginPolicy(t *testing.T, c *Controller, f *browserfixture.Origi
 	c.browser.mu.Lock()
 	view := c.silentViewLocked(false, pac)
 	c.browser.mu.Unlock()
-	t.Logf("ORIGIN_POLICY_PROOF mode=%s state=%s observed=%d registry_active=%t native_pac_exchanges=%d connected=%d reflected=%d metadata_evicted=%d required_direct=%d relay_tcp=%d relay_rx=%d", mode, view.State, view.ObservedRequests, c.chromePolicyActive(), native.PACUpstream.Exchanges, delegated.connected.Load(), native.CaptureIngress.ReflectedAccepts, native.CaptureIngress.Lost, direct, relayTCP, relayRX)
+	t.Logf("ORIGIN_POLICY_PROOF mode=%s state=%s observed=%d registry_active=%t native_pac_exchanges=%d connected=%d reflected=%d metadata_evicted=%d required_direct=%d pre_activation_reuse=%d fresh_loopback_unproven=%d relay_tcp=%d relay_rx=%d", mode, view.State, view.ObservedRequests, c.chromePolicyActive(), native.PACUpstream.Exchanges, delegated.connected.Load(), native.CaptureIngress.ReflectedAccepts, native.CaptureIngress.Lost, direct, pinnedDirect, direct-pinnedDirect, relayTCP, relayRX)
 	if !witnessed[browserfixture.ReuseSiblingHost] || !witnessed[browserfixture.ReuseRequiredHost] || delegated.connected.Load() == 0 || native.CaptureIngress.ReflectedAccepts < delegated.connected.Load() {
 		t.Error("LIVE_POLICY_UPTAKE_NOT_PROVEN: actual hybrid exchanges for new authorities missing within bounded observation")
 	}
-	if direct > 0 {
+	if pinnedDirect > 0 {
 		t.Error("ORIGIN_ISOLATION_VIOLATION: REQUIRED reached pre-activation DIRECT fixture path; no public-site leak claimed")
+	}
+	if direct > pinnedDirect {
+		t.Error("LIVE_POLICY_REQUIRED_ROUTE_NOT_PROVEN: new loopback DIRECT cannot establish native capture or a pre-activation pinned-flow violation")
 	}
 	if direct == 0 && (relayTCP == 0 || relayRX == 0) {
 		t.Error("live policy authenticated relay accounting missing")
