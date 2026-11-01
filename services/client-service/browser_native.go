@@ -104,10 +104,20 @@ type nativeBrowserSnapshot struct {
 	Truncated          bool                         `json:"truncated"`
 }
 type nativeBrowserRuntime struct {
+	// Ленивые уведомления snapshot-наблюдателю; без подписчика канал не создаётся.
+	changed    chan struct{}
 	mu         sync.Mutex
 	next, lost uint64
 	profiles   map[string]nativeBrowserProfileStatus
 	records    map[uint64]nativeBrowserRecord
+}
+
+// Вызывать под mu. Уведомление не публикует маршрут и не меняет его готовность.
+func (n *nativeBrowserRuntime) notifyLocked() {
+	if n.changed != nil {
+		close(n.changed)
+		n.changed = make(chan struct{})
+	}
 }
 
 func (n *nativeBrowserRuntime) activate(id string, reset bool) { n.activateAt(id, reset, time.Now()) }
@@ -392,6 +402,7 @@ func (c *Controller) handleNativeBrowser(ctx context.Context, method string, raw
 func (n *nativeBrowserRuntime) begin(q browserproxy.Request, t wp.Tuple) (uint64, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	defer n.notifyLocked()
 	if n.records == nil {
 		n.records = map[uint64]nativeBrowserRecord{}
 	}
@@ -428,6 +439,7 @@ func (n *nativeBrowserRuntime) begin(q browserproxy.Request, t wp.Tuple) (uint64
 func (n *nativeBrowserRuntime) opened(id uint64, plan browserproxy.Plan, err error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	defer n.notifyLocked()
 	r, ok := n.records[id]
 	if !ok {
 		return
@@ -471,6 +483,7 @@ func (n *nativeBrowserRuntime) opened(id uint64, plan browserproxy.Plan, err err
 func (n *nativeBrowserRuntime) bytes(id uint64, tx, rx uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	defer n.notifyLocked()
 	r, ok := n.records[id]
 	if !ok {
 		return
@@ -511,6 +524,7 @@ func (n *nativeBrowserRuntime) bytes(id uint64, tx, rx uint64) {
 func (n *nativeBrowserRuntime) closed(id uint64) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	defer n.notifyLocked()
 	r, ok := n.records[id]
 	if ok {
 		p := n.profiles[r.Owner.Profile]
