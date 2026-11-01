@@ -308,3 +308,23 @@ flow, max1, bulk guard, реальный failure callback, cooldown и endpoint 
 
 R1 остаётся открытым до реальной проверки холодного старта/экономии и Discord
 LOCAL с собеседником. Никакой результат этого теста не закрывает клубный пилот.
+
+### Сквозная Windows-фикстура холодного старта
+
+`TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion` проходит полный
+служебный путь для SNI и DNS hint: пустой runtime → реальный RELAY HTTPS body
+>1MiB → асинхронный публичный TLS/403 → новый guarded LOCAL flow → running
+strong promotion → LOCAL для другой sn-подгруппы. Квалификация, sibling RX,
+trial outcomes и promotion counters заранее не заполняются.
+
+В фикстуре настоящий Windows PID/birth/path отдельного тестового exe, реальные
+TLS/HTTP и QUIC+mTLS с одноразовым ticket. Origin различает RELAY и LOCAL по
+source IP. После promotion проверяется ещё один HTTP-запрос по прежнему RELAY
+TLS: он сохраняет egress и не создаёт новый relay flow. Подменённый birth
+отклоняется службой до открытия upstream.
+
+Границы: процесс — тестовый exe, не Chrome; DNS и сопоставление публичного IP
+с loopback заданы фикстурой; committed transform — свидетельство, задаваемое
+тестовым backend после фактической записи в точный socket tuple. WinDivert
+пакеты не инжектируются. Это проверка связности службы и реального переноса
+байтов, не доказательство обхода DPI или экономии у провайдера.

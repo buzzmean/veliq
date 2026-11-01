@@ -33,6 +33,8 @@ jobs:
           & go test -c -o bin/filter-tests.exe ./platform/windows
           if ($LASTEXITCODE) { throw 'FILTER_TEST_BUILD_FAILED' }
           & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
+      - name: Cold CDN background to LOCAL over real TLS and authenticated relay
+        run: go test -race -v ./services/client-service -run '^TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion$' -count 1 -timeout 60s
       - name: Full Windows Go race regressions
         run: go test -race -p 1 -timeout 180s ./...
       - run: go vet ./...
