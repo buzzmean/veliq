@@ -66,8 +66,8 @@ try {
         }
     }
     $modifiedMatch=[regex]::Match($metadata,'(?m)^\s*build\s+vcs.modified=(true|false)\s*$')
-    if (-not $metadata.Contains($ldflags) -or -not $modifiedMatch.Success) {
-        throw 'R1_PACKAGE_BUILD_FLAGS_MISSING'
+    if (-not $modifiedMatch.Success) {
+        throw 'R1_PACKAGE_VCS_STATE_MISSING'
     }
     $modified=$modifiedMatch.Groups[1].Value -eq 'true'
     $hash=(Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -76,6 +76,8 @@ try {
         artifact='VELIQ R1 service-only test build'
         source_commit=$commit
         build_sequence=[int]$sequence
+        # Go omits -ldflags from build info with -trimpath; record the input here.
+        linker_flags=$ldflags
         go_version=$goVersion
         target='windows/amd64'
         vcs_modified=$modified
