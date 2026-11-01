@@ -17,6 +17,7 @@ import (
 	"github.com/buzzmean/neexitlag/core/browserproxy"
 	"github.com/buzzmean/neexitlag/core/flowpolicy"
 	"github.com/buzzmean/neexitlag/core/localstrategy"
+	"github.com/buzzmean/neexitlag/core/netdiagnostic"
 	"github.com/buzzmean/neexitlag/core/originpolicy"
 )
 
@@ -58,6 +59,8 @@ type youtubeStage struct {
 	Inconclusive, HelloSamples, HelloSumMS, HelloMaxMS uint64
 }
 type youtubeRecord struct {
+	Network   string                  `json:"network"`
+	Diagnosis netdiagnostic.Diagnosis `json:"diagnosis"`
 	cdnTrialSlot
 	DataTrial              bool                  `json:"data_trial"`
 	TrialResult            string                `json:"trial_result,omitempty"`
@@ -144,7 +147,7 @@ type youtubeRuntime struct {
 	peerWriteSeq   uint64
 	peerWriteDone  uint64
 	peerWriteMu    sync.Mutex
-	selecting     bool
+	selecting      bool
 	trialKey       youtubeKey
 	trialStrategy  string
 	trialStarted   time.Time
@@ -303,6 +306,18 @@ func (r *youtubeRuntime) snapshot() youtubeSnapshot {
 		return s.Stages[i].Stage+s.Stages[i].Strategy < s.Stages[j].Stage+s.Stages[j].Strategy
 	})
 	for _, v := range r.records {
+		var wire *browserproxy.TLSWireEvidence
+		if v.ServerHello {
+			wire = &browserproxy.TLSWireEvidence{}
+			wire.Origin.ServerHelloComplete = true
+		}
+		v.Diagnosis = netdiagnostic.DiagnoseStream(v.Reason+" "+v.IOFailure, v.TX, v.RX, wire)
+		if v.ServerHello && v.Diagnosis.State == "SERVER_HELLO_ONLY" {
+			v.Diagnosis = netdiagnostic.Diagnosis{Layer: "TLS", State: "SERVER_HELLO_OBSERVED_NOT_PLAYBACK_PROOF"}
+			if v.RX > 64*1024 {
+				v.Diagnosis = netdiagnostic.Diagnosis{Layer: "TRANSFER", State: "TRANSPORT_PROGRESS_NOT_PLAYBACK_PROOF"}
+			}
+		}
 		s.Records = append(s.Records, v)
 	}
 	sort.Slice(s.Records, func(i, j int) bool {
@@ -548,6 +563,9 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 			r.trialRecord = record
 		}
 		r.records[record] = youtubeRecord{cdnTrialSlot: cdnTrialSlot{TrialID: trialID, NeutralShortAttempt: r.cache[key].NeutralShortStreak + 1}, OpenMS: float64(time.Since(openStarted)) / float64(time.Millisecond), Service: service, Active: err == nil, ID: record, Profile: cur.profile.ID, Domain: q.Host, Destination: actual.Destination.String(), Stage: stage, Strategy: strategy, Reason: "OPEN", Trial: trial && stage == "LOCAL", Updated: time.Now()}
+		row := r.records[record]
+		row.Network = cur.network
+		r.records[record] = row
 		label := service + ":" + stage + ":" + strategy
 		if _, exists := r.stats[label]; !exists && len(r.stats) >= 128 {
 			label = "other:" + stage + ":CATALOG_OVERFLOW"

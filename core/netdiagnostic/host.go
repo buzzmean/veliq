@@ -31,6 +31,7 @@ func ErrorClass(err error) string {
 }
 
 type HostResult struct {
+	Diagnosis                                      Diagnosis `json:"diagnosis"`
 	Host, Address, TCP, RealTLS, ForeignTLS, Stage string
 	TCPMS, RealTLSMS, ForeignTLSMS                 float64
 	HTTP                                           browserproxy.ProbeResult
@@ -52,8 +53,9 @@ func tlsEndpoint(ctx context.Context, address, sni string, roots *x509.CertPool)
 	e = secure.HandshakeContext(ctx)
 	return ErrorClass(e), float64(time.Since(start)) / float64(time.Millisecond)
 }
-func Host(ctx context.Context, host, ip, path string) HostResult {
-	r := HostResult{Host: host, Address: ip, Stage: "UNCLASSIFIED"}
+func Host(ctx context.Context, host, ip, path string) (r HostResult) {
+	r = HostResult{Host: host, Address: ip, Stage: "UNCLASSIFIED"}
+	defer func() { r.Diagnosis = DiagnoseHost(r) }()
 	addr, e := netip.ParseAddr(ip)
 	if e != nil || !addr.IsGlobalUnicast() || addr.IsPrivate() {
 		r.Stage = "PUBLIC_ADDRESS_REQUIRED"

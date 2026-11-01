@@ -3,7 +3,7 @@ $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 $path=Join-Path $PSScriptRoot '..\..\tools\windows\diag-no-vpn.ps1'
 $tokens=$null;$errors=$null;$ast=[System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
 if($errors.Count){throw ($errors|Out-String)}
-foreach($name in @('Prop','Write-RelayOpenPerformance','Write-CdnTrialEvidence','Write-OrdinaryAddressEvidence','Write-LocalProbeEvidence')){
+foreach($name in @('Prop','Write-NetworkDiagnosis','Write-RelayOpenPerformance','Write-CdnTrialEvidence','Write-OrdinaryAddressEvidence','Write-LocalProbeEvidence')){
  $fn=$ast.Find({param($n)$n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name},$true)
  if(!$fn){throw ('MISSING '+$name)};Invoke-Expression $fn.Extent.Text
 }

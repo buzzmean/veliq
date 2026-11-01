@@ -114,7 +114,16 @@ func probeOrigin(ctx context.Context, host string, port uint16, secure bool, pat
 	stop := context.AfterFunc(ctx, func() { conn.Close() })
 	defer stop()
 	counter := &probeCountingConn{Conn: conn}
-	defer func() { r.Bytes = counter.received.Load() }()
+	defer func() {
+		r.Bytes = counter.received.Load()
+		// Cancellation closes the socket concurrently with Read. That Read may
+		// return net.ErrClosed instead of a timeout; retain the known context
+		// cause instead of exporting a misleading generic I/O failure. Never
+		// replace an actual TLS/certificate/HTTP result or a completed response.
+		if r.Failure == "CONNECTION_FAILED" && r.Detail == "IO_FAILED" && ctx.Err() != nil {
+			r = probeError(r, ctx.Err())
+		}
+	}()
 	var origin net.Conn = counter
 	if secure {
 		r.Phase = "ORIGIN_TLS"

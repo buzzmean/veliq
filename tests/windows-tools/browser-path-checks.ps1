@@ -4,7 +4,7 @@ $path=Join-Path $PSScriptRoot '..\..\tools\windows\diag-no-vpn.ps1'
 $tokens=$null;$errors=$null
 $ast=[System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors)
 if($errors.Count){throw ($errors|Out-String)}
-foreach($name in @('Prop','Write-YouTubeLocalEvidence','Write-BrowserDNSEvidence','Write-RelayOpenPerformance','Write-TlsWireEvidence','Write-BrowserPathEvidence','Write-NativeIngressEvidence','Write-NativeFirewallEvidence','Write-BrowserFirstByteEvidence')){
+foreach($name in @('Prop','Write-NetworkDiagnosis','Write-YouTubeLocalEvidence','Write-BrowserDNSEvidence','Write-RelayOpenPerformance','Write-TlsWireEvidence','Write-BrowserPathEvidence','Write-NativeIngressEvidence','Write-NativeFirewallEvidence','Write-BrowserFirstByteEvidence')){
  $fn=$ast.Find({param($a)$a -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $a.Name -eq $name},$true)
  if(!$fn){throw "Missing function $name"};Invoke-Expression $fn.Extent.Text
 }
@@ -202,3 +202,11 @@ Write-NativeIngressEvidence ([pscustomobject]@{youtube_local_ladder=[pscustomobj
 $text=$script:lines -join ' '
 if($text -notmatch '188.43.67.12:443 label=COMMUNITY_GGC_RANGE_UNVERIFIED' -or $text -match 'GGC: host=vk.ru' -or $text -match '188.43.70.12:443 label='){throw 'GGC_LABEL_SCOPE_WRONG'}
 Write-Host 'PASS community GGC prefix label scoped to known googlevideo; no routing verdict'
+
+$script:lines=@()
+Write-NetworkDiagnosis ([pscustomobject]@{id=17;network='network-fixture';diagnosis=[pscustomobject]@{layer='DNS';state='DNS_NXDOMAIN';page_verified=$false;playback_verified=$false;private_payload='DO_NOT_PRINT'};token='DO_NOT_PRINT'}) 'DNS'
+$text=$script:lines -join ' '
+Check ($text -match 'id=17 network=network-fixture layer=DNS state=DNS_NXDOMAIN page_verified=False playback_verified=False' -and $text -notmatch 'DO_NOT_PRINT|token|private_payload') 'Network diagnosis invented success or leaked payload'
+$script:lines=@();Write-NetworkDiagnosis $null 'LEGACY'
+Check ($script:lines.Count -eq 0) 'Missing instrumentation invented a diagnosis'
+Write-Host 'PASS Network Intelligence finite projection, explicit unknown playback, legacy compatibility'

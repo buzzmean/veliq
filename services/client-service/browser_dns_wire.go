@@ -10,6 +10,7 @@ import (
 
 	"github.com/buzzmean/neexitlag/core/browserproxy"
 	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/neexitlag/core/netdiagnostic"
 	"github.com/buzzmean/neexitlag/core/profiles"
 	wp "github.com/buzzmean/neexitlag/platform/windows"
 )
@@ -23,19 +24,22 @@ type browserDNSRuntime struct {
 	records                        []browserDNSRecord
 }
 type browserDNSRecord struct {
-	At        time.Time `json:"at"`
-	Profile   string    `json:"profile_id"`
-	Host      string    `json:"domain"`
-	Type      uint16    `json:"query_type"`
-	Path      string    `json:"path"`
-	Result    string    `json:"result"`
-	Addresses int       `json:"addresses"`
+	Network   string                  `json:"network"`
+	ID        uint64                  `json:"id"`
+	Diagnosis netdiagnostic.Diagnosis `json:"diagnosis"`
+	At        time.Time               `json:"at"`
+	Profile   string                  `json:"profile_id"`
+	Host      string                  `json:"domain"`
+	Type      uint16                  `json:"query_type"`
+	Path      string                  `json:"path"`
+	Result    string                  `json:"result"`
+	Addresses int                     `json:"addresses"`
 }
 
 func newBrowserDNSRuntime() *browserDNSRuntime {
 	return &browserDNSRuntime{slots: make(chan struct{}, 16), streams: make(chan struct{}, 16)}
 }
-func (s *browserDNSRuntime) record(p, host string, typ uint16, path, result string, n int) {
+func (s *browserDNSRuntime) record(network, p, host string, typ uint16, path, result string, n int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.queries++
@@ -44,18 +48,18 @@ func (s *browserDNSRuntime) record(p, host string, typ uint16, path, result stri
 	} else {
 		s.system++
 	}
-	if result != "DNS_RESPONSE" {
+	if result != "DNS_RESPONSE" && result != "DNS_RESPONSE_NO_ADDRESS_HINTS" && result != "DNS_NODATA" && result != "DNS_TRUNCATED" && result != "DNS_CANCELED" {
 		s.failed++
 	}
 	if len(s.records) >= 64 {
 		s.records = s.records[1:]
 	}
-	s.records = append(s.records, browserDNSRecord{time.Now(), p, host, typ, path, result, n})
+	s.records = append(s.records, browserDNSRecord{Network: network, ID: s.queries, Diagnosis: netdiagnostic.DiagnoseDNS(result), At: time.Now(), Profile: p, Host: host, Type: typ, Path: path, Result: result, Addresses: n})
 }
 func (s *browserDNSRuntime) snapshot() map[string]any {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return map[string]any{"scope": "ATTRIBUTED_NATIVE_BROWSER_IPV4_UDP_TCP_53; Windows DNS service queries remain system-owned", "secure_dns_policy": "KNOWN_DOH_AUTHENTICATED_RELAY; no forced automatic fallback", "encrypted_answers": "NOT_OBSERVED; no TLS interception", "queries": s.queries, "relay_doh": s.relay, "system_dns": s.system, "failed": s.failed, "active": len(s.slots), "max_active": cap(s.slots), "records": append([]browserDNSRecord{}, s.records...)}
+	return map[string]any{"scope": "ATTRIBUTED_NATIVE_BROWSER_IPV4_UDP_TCP_53; Windows DNS service queries remain system-owned", "secure_dns_policy": "KNOWN_DOH_AUTHENTICATED_RELAY; no forced automatic fallback", "encrypted_answers": "NOT_OBSERVED; no TLS interception", "queries": s.queries, "relay_doh": s.relay, "system_dns": s.system, "failed": s.failed, "active": len(s.slots), "max_active": cap(s.slots), "records_omitted": s.queries - uint64(len(s.records)), "records": append([]browserDNSRecord{}, s.records...)}
 }
 
 func (c *Controller) browserDNSDecision(p profiles.Profile, id wp.ProcessIdentity, t wp.Tuple, d wp.Decision, network string) wp.Decision {
@@ -124,19 +128,31 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 		answer, err = browserproxy.ExchangeSystemDNS(ctx, t.Protocol+"4", t.Destination.String(), query)
 	}
 	var hints []browserproxy.DNSHint
+	invalidReply := false
 	if err == nil {
 		if t.Protocol == "udp" {
 			answer = browserproxy.DNSDatagramResponse(query, answer)
 		}
 		hints, err = browserproxy.ValidateDNSResponse(query, answer)
+		invalidReply = err != nil
 	}
 	result := "DNS_RESPONSE"
 	if err != nil {
 		result = "BROWSER_DNS_TRANSACTION_FAILED"
+		var timeout net.Error
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) || errors.As(err, &timeout) && timeout.Timeout() {
+			result = "DNS_TIMEOUT"
+		} else if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+			result = "DNS_CANCELED"
+		} else if invalidReply {
+			result = "DNS_INVALID_RESPONSE"
+		}
+	} else {
+		result = browserproxy.DNSResponseStatus(query, answer)
 	}
-	state.record(cur.profile.ID, host, uint16(q.Type), path, result, len(hints))
+	state.record(cur.network, cur.profile.ID, host, uint16(q.Type), path, result, len(hints))
 	if err != nil {
-		return nil, errors.New(result)
+		return nil, errors.New("BROWSER_DNS_TRANSACTION_FAILED")
 	} // Never leak resolver errors/payload.
 	if cur.enabled {
 		c.browser.domains.observeBrowserDNS(cur.network, cur.profile.ID, hints, time.Now())
