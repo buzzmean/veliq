@@ -18,37 +18,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 )
-
-// Controlled backend seam, NOT WinDivert proof: the regression is delegating an
-// already-authorized cached-PAC request into a stopped backend. Owner/SID,
-// registry policy, actual browser and HTTP body checks here are real Windows.
-type continuityBackend struct {
-	activationCaptureFixture
-	nativeCalls atomic.Int32
-}
-
-func (b *continuityBackend) Status() wp.CaptureStatus {
-	s := b.activationCaptureFixture.Status()
-	s.Capabilities.Transparent = true
-	return s
-}
-func (b *continuityBackend) OpenBrowserNativeTCP(ctx context.Context, _ wp.ProcessIdentity, _ netip.AddrPort, dst netip.AddrPort, _ wp.Decision) (net.Conn, error) {
-	b.nativeCalls.Add(1)
-	if !b.active.Load() {
-		return nil, errors.New("NATIVE_CAPTURE_NOT_READY")
-	}
-	return (&net.Dialer{}).DialContext(ctx, "tcp", dst.String())
-}
 
 func continuityResolver(t *testing.T, addresses ...[4]byte) *net.Resolver {
 	answer := [4]byte{127, 0, 0, 1}
@@ -130,7 +107,7 @@ func TestWindowsBrowserDisablePolicyContinuity(t *testing.T) {
 			c.BrowserOwnerSID = sid
 			c.customPath = filepath.Join(t.TempDir(), "profiles.json")
 			c.BrowserResolver = continuityResolver(t)
-			backend := &continuityBackend{}
+			backend := &continuityBackend{controller: c}
 			backend.active.Store(true)
 			c.Backend = backend
 			c.enabled = true
@@ -305,21 +282,36 @@ func TestWindowsBrowserDisablePolicyContinuity(t *testing.T) {
 				}
 			}
 			visit("active")
-			before := backend.nativeCalls.Load()
-			if before == 0 {
+			if backend.nativeCalls.Load() == 0 {
 				t.Fatal("real policy did not reach native-dispatch seam")
 			}
+			logTrace := func(stage string) continuityTrace {
+				t.Helper()
+				trace := backend.trace()
+				raw, _ := json.Marshal(trace)
+				t.Logf("stage=%s proxy_active=%d native=%s", stage, proxy.Snapshot().ActiveConnections, raw)
+				return trace
+			}
+			checkDisabled := func(stage string) {
+				t.Helper()
+				trace := logTrace(stage)
+				if trace.StartedWhileDisabled != 0 || trace.StartedAfterDisable != 0 {
+					t.Errorf("disabled browser re-entered native backend: off_entry=%d after_disable_complete=%d", trace.StartedWhileDisabled, trace.StartedAfterDisable)
+				}
+			}
+			backend.mark("disable_requested")
+			logTrace("disable_requested")
 			if _, err = c.Handle(context.Background(), "optimize", []byte(`{"enabled":false}`)); err != nil {
 				t.Fatal(err)
 			}
+			backend.mark("disable_complete")
+			checkDisabled("disable_complete")
 			if _, _, err = key.GetStringValue("ProxySettings"); !errors.Is(err, registry.ErrNotExist) {
 				t.Fatal("owned policy retained", err)
 			}
 			proxy.CloseConnections() // fixture forces NEW sockets; never rely on old keepalive/preconnect
 			visit("disabled")
-			if backend.nativeCalls.Load() != before {
-				t.Fatal("disabled browser re-entered native backend")
-			}
+			checkDisabled("disabled_page_loaded")
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			if err = c.CloseForHost(ctx); err != nil {
@@ -329,7 +321,10 @@ func TestWindowsBrowserDisablePolicyContinuity(t *testing.T) {
 				t.Fatal("host stop retained primary")
 			}
 			visit("host-stopped")
-			t.Log("PASS controlled real browser HTTP body, real user policy removal, PID/birth unchanged, stopped native backend not used; NOT Internet/WinDivert/SCM runtime proof")
+			checkDisabled("host_stopped_page_loaded")
+			if !t.Failed() {
+				t.Log("PASS controlled real browser HTTP body, real user policy removal, PID/birth unchanged, stopped native backend not used; NOT Internet/WinDivert/SCM runtime proof")
+			}
 		})
 	}
 }
