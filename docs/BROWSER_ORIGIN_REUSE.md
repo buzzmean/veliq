@@ -17,6 +17,9 @@ ClientHello/SNI не определяет authority всех последующ�
   либо временно в current-user store disposable Windows Actions VM. Проверка
   сертификатов включена; SPKI exception / ignore-certificate-errors не применяются.
   Root удаляется после теста, ключи и сертификаты не публикуются в evidence.
+- ECH/GREASE отключён только в этом дочернем браузере; сервер проверяет отсутствие
+  расширения `0xfe0d`. Проверяется reuse после явно видимого SNI, отдельно от
+  известной native opaque-origin границы. QUIC отключён, чтобы измерять HTTP/2.
 - Одна top-level страница последовательно получает четыре body: локальный
   DPI host, его sibling, REQUIRED host, повторный REQUIRED. Один network
   isolation key, fetch без credentials/cache. Сервер записывает connection ID,

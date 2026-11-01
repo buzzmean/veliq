@@ -75,6 +75,12 @@ func (f *OriginReuse) Run(t testing.TB, chrome, address, bootstrapHost string, a
 	if err := os.Mkdir(directory, 0700); err != nil {
 		t.Fatal(err)
 	}
+	// This preference belongs only to the new empty test profile. Chromium no
+	// longer honors the old EncryptedClientHello feature flag. The endpoint
+	// independently verifies that extension 0xfe0d is absent.
+	if err := os.WriteFile(filepath.Join(directory, "Local State"), []byte(`{"ssl":{"ech_enabled":false}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
 	rules := []string{}
 	for _, host := range []string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost} {
 		rules = append(rules, "MAP "+host+" "+address)

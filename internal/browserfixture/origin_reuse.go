@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -81,7 +82,16 @@ func NewOriginReuse(t testing.TB) *OriginReuse {
 	f.Nonce = hex.EncodeToString(nonce[:])
 	f.Server = httptest.NewUnstartedServer(http.HandlerFunc(f.serveReuse))
 	f.Server.EnableHTTP2 = true
-	f.Server.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: leafKey}}}
+	f.Server.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: leafKey}}, GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+		// Isolate reuse of an explicitly observed SNI from the separate opaque
+		// ECH/GREASE limitation. Verify the browser flag at the actual endpoint.
+		for _, extension := range hello.Extensions {
+			if extension == 0xfe0d {
+				return nil, errors.New("origin reuse precondition: ECH extension must be absent")
+			}
+		}
+		return nil, nil
+	}}
 	var next atomic.Uint64
 	f.Server.Config.ConnContext = func(ctx context.Context, _ net.Conn) context.Context {
 		return context.WithValue(ctx, reuseConnectionKey{}, next.Add(1))
