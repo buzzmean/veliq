@@ -1,0 +1,162 @@
+package browserfixture
+
+import (
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/hex"
+	"fmt"
+	"math/big"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+// These names never resolve publicly in this fixture. One ephemeral certificate
+// deliberately authorizes different policy classes at the same IP and port.
+const ReuseLocalHost = "www.youtube.com"
+const ReuseSiblingHost = "youtube.com"
+const ReuseRequiredHost = "chatgpt.com"
+
+type OriginRequest struct {
+	Connection              uint64
+	Host, SNI, Source, Step string
+	Protocol                int
+	BodyBytes               int
+}
+
+type OriginReuse struct {
+	Server   *httptest.Server
+	RootDER  []byte
+	Roots    *x509.CertPool
+	Nonce    string
+	mu       sync.Mutex
+	requests []OriginRequest
+	overflow bool
+}
+
+type reuseConnectionKey struct{}
+
+func NewOriginReuse(t testing.TB) *OriginReuse {
+	t.Helper()
+	f := &OriginReuse{}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	root := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "VELIQ ephemeral origin reuse"}, IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour)}
+	f.RootDER, err = x509.CreateCertificate(rand.Reader, root, root, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ca, err := x509.ParseCertificate(f.RootDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: []string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, leaf, ca, &leafKey.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Roots = x509.NewCertPool()
+	f.Roots.AddCert(ca)
+	var nonce [16]byte
+	if _, err = rand.Read(nonce[:]); err != nil {
+		t.Fatal(err)
+	}
+	f.Nonce = hex.EncodeToString(nonce[:])
+	f.Server = httptest.NewUnstartedServer(http.HandlerFunc(f.serveReuse))
+	f.Server.EnableHTTP2 = true
+	f.Server.TLS = &tls.Config{MinVersion: tls.VersionTLS12, Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: leafKey}}}
+	var next atomic.Uint64
+	f.Server.Config.ConnContext = func(ctx context.Context, _ net.Conn) context.Context {
+		return context.WithValue(ctx, reuseConnectionKey{}, next.Add(1))
+	}
+	f.Server.StartTLS()
+	t.Cleanup(f.Server.Close)
+	return f
+}
+
+func (f *OriginReuse) Port() uint16 { return uint16(f.Server.Listener.Addr().(*net.TCPAddr).Port) }
+func (f *OriginReuse) Destination() netip.AddrPort {
+	return netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), f.Port())
+}
+func (f *OriginReuse) URL(host, path string) string {
+	return fmt.Sprintf("https://%s:%d/%s?nonce=%s", host, f.Port(), path, f.Nonce)
+}
+
+func (f *OriginReuse) serveReuse(w http.ResponseWriter, r *http.Request) {
+	host, _, _ := net.SplitHostPort(r.Host)
+	if host != ReuseLocalHost && host != ReuseSiblingHost && host != ReuseRequiredHost {
+		http.Error(w, "unexpected host", 400)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	if r.URL.Query().Get("nonce") != f.Nonce {
+		http.NotFound(w, r)
+		return
+	}
+	if r.URL.Path == "/sequence" {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, "<!doctype html><title>ORIGIN_REUSE_READY</title><body>ephemeral fixture</body>")
+		return
+	}
+	if r.URL.Path != "/payload" || r.Method != "GET" {
+		http.NotFound(w, r)
+		return
+	}
+	step := r.URL.Query().Get("step")
+	if step != "local" && step != "sibling" && step != "required" && step != "required_again" {
+		http.Error(w, "bad step", 400)
+		return
+	}
+	body := f.Nonce + ":" + step
+	source, _, _ := net.SplitHostPort(r.RemoteAddr)
+	record := OriginRequest{Connection: r.Context().Value(reuseConnectionKey{}).(uint64), Host: host, SNI: r.TLS.ServerName, Source: source, Step: step, Protocol: r.ProtoMajor, BodyBytes: len(body)}
+	f.mu.Lock()
+	if len(f.requests) < 32 {
+		f.requests = append(f.requests, record)
+	} else {
+		f.overflow = true
+	}
+	f.mu.Unlock()
+	// Record before returning the response: a rejected request has already leaked
+	// its authority to this endpoint. Never use an origin 421/403 as route proof.
+	fmt.Fprint(w, body)
+}
+
+func (f *OriginReuse) Requests(t testing.TB) []OriginRequest {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.overflow {
+		t.Fatal("origin reuse evidence overflow")
+	}
+	out := append([]OriginRequest(nil), f.requests...)
+	if len(out) != 4 {
+		t.Fatalf("expected four sequential browser requests, got %d", len(out))
+	}
+	hosts := []string{ReuseLocalHost, ReuseSiblingHost, ReuseRequiredHost, ReuseRequiredHost}
+	steps := []string{"local", "sibling", "required", "required_again"}
+	for i, r := range out {
+		if r.Host != hosts[i] || r.Step != steps[i] || r.Protocol != 2 || r.Connection == 0 || r.BodyBytes == 0 {
+			t.Fatalf("incomplete H2 request evidence: %+v", out)
+		}
+	}
+	return out
+}
