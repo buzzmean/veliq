@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -202,15 +203,23 @@ func TestEdgeActualPolicyHTTPSOutageRestart(t *testing.T) {
 	fixture.HealthURL = launch["health_url"].(string)
 	fixture.BeforeRequests = func() error {
 		if _, err := edgeCall(c, "edge.confirm", map[string]string{"profile_id": p.ID, "health_url": fixture.HealthURL}); err != nil {
-			return err
+			return fmt.Errorf("initial edge.confirm: %w", err)
 		}
 		p.Mode = profiles.Auto
 		p.AppPreset = "edge-sites"
 		if _, err := edgeCall(c, "profile.set", p); err != nil {
-			return err
+			return fmt.Errorf("initial profile.set: %w", err)
 		}
 		_, err := edgeCall(c, "optimize", map[string]bool{"enabled": true})
-		return err
+		if err != nil {
+			c.browser.mu.Lock()
+			e := c.edgeLocked()
+			confirmed := e.server != nil && e.server.Confirmed(p.ID)
+			active := e.policyActive(c.BrowserOwnerSID)
+			c.browser.mu.Unlock()
+			return fmt.Errorf("initial optimize: confirmed=%t policy_active=%t: %w", confirmed, active, err)
+		}
+		return nil
 	}
 	fixture.ExpectedFailures = map[int][]string{2: {"chatgpt.com", "www.youtube.com", "blocked.example"}}
 	var records []browserproxy.Record
@@ -227,10 +236,13 @@ func TestEdgeActualPolicyHTTPSOutageRestart(t *testing.T) {
 		c = configure()
 		c.Engine.SetRelay("VPS-01", pool)
 		if err := c.RestoreBrowserTransport(); err != nil {
-			return err
+			return fmt.Errorf("restart RestoreBrowserTransport: %w", err)
 		}
 		_, err := edgeCall(c, "optimize", map[string]bool{"enabled": true})
-		return err
+		if err != nil {
+			return fmt.Errorf("restart optimize: %w", err)
+		}
+		return nil
 	})
 	if err != nil {
 		t.Fatal("actual Edge policy/site/outage/restart", err, output)
