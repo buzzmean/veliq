@@ -9,7 +9,8 @@ import (
 )
 
 // Passive observations are deliberately not stored in Decision.OriginDomain,
-// DNS caches or HTTP3 admission. They describe this blocked flight only.
+// DNS caches or browser admission. They describe this blocked flight only;
+// scheduling a separate owned probe also requires a fresh one-shot FLOW trigger.
 type quicOriginCaptureState struct {
 	started, emitted, pendingEmitted bool
 	owner                            ProcessIdentity

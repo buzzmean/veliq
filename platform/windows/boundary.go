@@ -43,6 +43,9 @@ type TCPPolicyReporter interface {
 }
 
 type Decision struct {
+	// Queue only an owned probe; this callback never changes browser routing.
+	QUICProbe func(QUICProbeTrigger)
+
 	OriginHintOnly bool // Domain is routing metadata; do not treat it as authenticated SNI.
 	// Selected browser DNS only; no DNS/53 packet is relayed.
 	DNSExchange func(context.Context, []byte) ([]byte, error)

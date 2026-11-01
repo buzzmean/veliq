@@ -206,6 +206,7 @@ func (c *Controller) scopedDecision(p profiles.Profile, id wp.ProcessIdentity, t
 		return d
 	}
 	out := resolve("")
+	out = c.browserQUICDecision(p, id, t, out)
 	if nativeBrowserProfile(p) && t.Destination.Port() == 53 {
 		return c.browserDNSDecision(p, id, t, out, network)
 	}

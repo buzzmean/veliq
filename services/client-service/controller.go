@@ -256,6 +256,7 @@ func (c *Controller) Close() {
 	}
 	c.cancel()
 	c.browser.youtube.stop()
+	c.browser.quic.close()
 	c.activation.mu.Lock()
 	activationDone := c.activation.done
 	c.activation.mu.Unlock()

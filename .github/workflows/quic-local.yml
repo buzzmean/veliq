@@ -6,12 +6,14 @@ on:
       - 'core/localstrategy/**'
       - 'core/browserproxy/**'
       - 'platform/windows/**'
+      - 'services/client-service/**'
       - '.github/workflows/quic-local.yml'
   pull_request:
     paths:
       - 'core/localstrategy/**'
       - 'core/browserproxy/**'
       - 'platform/windows/**'
+      - 'services/client-service/**'
       - '.github/workflows/quic-local.yml'
   workflow_dispatch:
 permissions:
@@ -35,8 +37,8 @@ jobs:
           & go test -c -o bin/filter-tests.exe ./platform/windows
           if ($LASTEXITCODE) { throw 'FILTER_TEST_BUILD_FAILED' }
           & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
-      - name: Owned HTTP3, passive origin, native BLOCK and QUIC bounds
-        run: go test -race -v ./core/localstrategy ./core/browserproxy ./platform/windows -run 'QUICProbe|HTTP3Probe|QUICOrigin' -count 1 -timeout 90s
+      - name: Owned HTTP3 runtime, fresh FLOW, native owner and BLOCK
+        run: go test -race -v ./core/localstrategy ./core/browserproxy ./platform/windows ./services/client-service -run 'QUICProbe|HTTP3Probe|QUICOrigin|QUICFlow|QUICOwner' -count 1 -timeout 90s
       - name: Bounded QUIC Initial and ClientHello fuzzing
         shell: powershell
         run: |

@@ -1,12 +1,11 @@
 # QUIC LOCAL: собственная ограниченная HTTP/3-проба
 
-01.11.2026. Блок R1 для QUIC: пакетный план, собственный connected UDP socket
-и ограниченный менеджер authenticated HTTP/3-пробы службы. Дополнительно
-включено пассивное наблюдение ClientHello заблокированных Chrome/Edge UDP443. **Автоматический QUIC LOCAL
-браузера пока не включён.** Нет нового IPC, конфигурационного переключателя,
-автоматического запуска HTTP3-проб службой, изменения Classify или игровой политики.
-В UDP capture добавлена только ограниченная диагностическая ветка; BLOCK/ICMP
-и существующая отправка пакетов сохраняются.
+01.11.2026. Блок R1: пакетный план, собственный connected UDP socket,
+пассивное наблюдение ClientHello и фоновая HTTP/3-проба службы по свежему
+заблокированному Chrome/Edge UDP443. **Автоматический QUIC LOCAL браузера
+пока не включён.** Classifier добавляет только callback постановки отдельной
+пробы; BLOCK/ICMP и исходные маршруты сохраняются. Новых IPC, конфигурационных
+переключателей и зависимостей нет.
 
 Native Chrome/Edge по-прежнему получают UDP443→ICMP→TCP fallback, где действует
 существующая origin policy. Поддержка QUIC relay transport не равна поддержке
@@ -57,7 +56,7 @@ unsupported. Это собственная ограниченная адапта
 не доказательство origin и не проверка SID/ACL. Caller обязан предоставить
 проверку живого процесса и актуальной политики; она вызывается перед каждым
 send и чтением результата. Отозванный witness не восстанавливается при возврате
-политики: нужен новый writer для новой пробы. Production capture не создаёт этот writer.
+политики: нужен новый writer для новой пробы. Capture не создаёт writer для браузерного сокета; отдельный worker службы создаёт его для своего connected UDP socket.
 
 На writer допускается одна fake flight. Последующие datagrams сохраняются без
 добавлений. Отказ любой отправки или изменение scope терминальны: нет retry,
@@ -69,8 +68,9 @@ QUIC handshake, HTTP/3, доступность сайта или основан�
 
 ## Собственный сокет и HTTP/3
 
-`OpenQUICProbeSocket` проверяет реальный Windows PID/birth/path через `IsCurrent`
-и caller-owned network/profile/revision guard. Source tuple выбирает ОС для
+`OpenQUICProbeSocket` проверяет живой Windows PID/birth через `IsCurrent`
+и caller-owned network/profile/revision guard. В runtime дополнительный guard
+проверяет PID/birth/image/SID через один process handle, как описано ниже. Source tuple выбирает ОС для
 нового connected UDP socket; переданный извне source запрещён. Writer проверяет
 этот tuple перед каждым send. Callback должен быть быстрым и потокобезопасным;
 проверять только PID недостаточно. Изменение scope и отмена закрывают пробу.
@@ -166,12 +166,61 @@ sample на flow; истечение таймера без следующих da
 ожидаемый ограниченный результат, не основание задерживать fallback.
 
 Даже видимое protected SNI остаётся BLOCK. Наблюдение не записывает
-Decision.OriginDomain, DNS/probe cache, не запускает HTTP3 и не выдаёт LOCAL
-admission. Нужны отдельные current owner/SID/protocol lifecycle checks и proof
-для именно нового flow; прежний diagnostic sample не переносится на другой
-CID/tuple/epoch или возобновлённое/мигрировавшее соединение.
+Decision.OriginDomain и DNS/CDN/route cache. Historical sample не запускает
+пробу: нужен отдельный свежий одноразовый trigger текущего capture.
+
+## Фоновый runtime службы
+
+`quicFlowLedger` фиксирует kernel FLOW endpoint, PID/birth/path, точный tuple
+и QPC timestamp. Первый UDP443 packet расходует разрешение до выбора политики,
+в том числе при UDP-port owner fallback. FLOW должен предшествовать первому
+пакету не более чем на2s; packet timestamp также должен быть свежим. После
+полного видимого ClientHello trigger можно получить и расходовать ровно один
+раз, не позднее2s от первого packet. Late/duplicate FLOW, cache expiry, смена
+endpoint/owner и повторные packets не восстанавливают разрешение. Ledger
+ограничен1024tuples; при переполнении временная граница не позволяет позднему
+FLOW превратить ранее неучтённый packet в свежий. Неизвестный tuple запрещён.
+
+Callback в packet loop только проверяет metadata, лимиты и Claim. Системные
+identity calls, TLS и сеть выполняются worker. `CurrentQUICProcessOwner`
+проверяет birth, полный image path, SID владельца установки и отсутствие exit
+через **один OpenProcess handle**; повторно использованный PID не наследует
+проверку. Token/SID/handle не попадают в диагностику. Worker перепроверяет
+current owner, AUTO/native profile, network/revision, LOCAL enabled, capture
+ready, отсутствие VPN/conflicts, static DPI floor и действующую origin policy.
+Protected/ordinary и явные UDP flow rules не запускают пробу.
+
+Один manager на controller, максимум одна QUIC-проба и один слот из общего
+browser probe budget4, без очереди. Между попытками не менее30s; после sample
+новый trigger того же key ограничен5min, после отказа3min. Cooldown map<=128,
+история<=16. Изменение scope/отмена нейтральны, без negative route cache.
+Повтор требует нового свежего FLOW и ClientHello; timer сам ничего не запускает.
+Runtime использует6 дополнительных Initial; все прочие HTTP3 byte/time limits
+сохранены. Нет relay fallback, DNS dial, credentials, replay браузерных bytes.
+
+После Claim исходный browser socket может закрыться из-за ICMP: разрешена
+только отдельно созданная bounded проба, уже не привязанная к его lifetime.
+Capture restart и опубликованное изменение policy epoch отзывают trigger
+навсегда; возвращение прежней конфигурации его не оживляет. Guard проверяется
+перед каждым send, на завершении и watcher каждые50ms. Controller.Close
+отменяет manager и ждёт освобождения worker/shared slot.
+
+`browser.native.status.quic_probe` содержит ограниченную историческую сводку
+attempts/observed/canceled и host/outcome/body_bytes. Это не readiness, не
+LOCAL proof/cache и не правило маршрутизации. В частности authenticated sample
+не доказывает допустимость следующих зашифрованных браузерных packets.
 
 ## Проверки
+
+- Fresh FLOW, stale/future timestamps, late attribution, endpoint reuse/delete,
+  duplicate/parallel Claim, overflow, capture/policy generations: разрешение
+  одноразовое; после закрытия source socket оно относится лишь к owned probe.
+- Native process handle: реальные SID/birth/image тестового chrome.exe,
+  несовпадение SID/path/birth и завершение процесса запрещают пробу.
+- Native controller guard: классификация BLOCK+callback, отказ пустого trigger,
+  OFF/network/profile/revision/VPN/capture/owner/protected revocations.
+- Runtime shared-budget saturation, no queue, close/cancel, neutral stale scope,
+  global rate limit, exact-key cooldown, bounded history и snapshot isolation.
 
 - Независимый quic-go client с гибридным key share и настоящим UDP loopback:
   fragmented ClientHello разбирается в scope; deadline/capacity/rate/epoch bounds.
@@ -204,18 +253,20 @@ CID/tuple/epoch или возобновлённое/мигрировавшее �
 тестового exe с именем chrome.exe. DNS/IP mapping —
 loopback seam. HTTP/3 использует production socket helper, без подмены Send;
 ранний raw QUIC+mTLS тест имеет отдельный packet send seam. Не запускался
-Chrome или драйвер; не проверены SID/ACL, WinDivert injection, ISP, playback,
+Chrome или драйвер в QUIC-сценариях; SID проверен через native process token,
+но не проверены cross-user installation ACL, реальные FLOW/SOCKET события,
+WinDivert injection для QUIC, ISP, playback,
 поведение браузера после отказа QUIC и экономия VPS. Full Linux/Windows Go
 race/vet/build и pinned DLL compiler проверяются CI отдельно от этих сценариев.
 
 ## Следующая граница R1
 
-Перед подключением к runtime нужны общий бюджет вместе с другими пробами,
-admission по видимому origin именно нового QUIC flow и current process/SID/profile/network,
-ограниченные positive/negative TTL и отдельный admission для browser flow.
-Собственная HTTP/3-проба, её socket witness и пассивная ingress metadata этих условий не заменяют. Отмена не должна публиковать старый proof.
-QUIC v2, Retry, connection migration и short headers не получают разрешения
-по старому tuple или чужому CID. Protected/ambiguous остаются на существующем
-TCP fallback. Established flow не переводится на другой egress, application
-bytes не воспроизводятся повторно. После изолированных регрессий потребуется
-отдельная WinDivert/ISP-приёмка; она пока отложена владельцем.
+Фоновый runtime теперь подключён, но browser LOCAL требует отдельного
+admission и CID/tuple lifecycle. Initial SNI и sample собственного socket не
+устанавливают origin последующих short headers, encrypted NEW_CONNECTION_ID,
+coalesced requests или мигрировавшего соединения. Нельзя переносить разрешение
+по IP/DNS/старому tuple/CID или принимать ECH/PSK/Retry/v2 как известный origin.
+Следующий шаг — определить допустимый browser protocol scope с сохранением
+protected fail-closed, без TLS/application decryption и без повторения
+standalone packet/parser/HTTP3 этапов. Пока этот контракт не обеспечен,
+browser QUIC остаётся TCP fallback. Отдельная Windows/ISP-приёмка отложена.
