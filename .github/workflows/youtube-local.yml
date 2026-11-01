@@ -6,12 +6,16 @@ on:
       - 'services/client-service/**'
       - 'core/browserproxy/**'
       - 'core/localstrategy/**'
+      - 'tools/windows/package-r1-service.ps1'
+      - 'docs/R1_TEST_BUILD.md'
       - '.github/workflows/youtube-local.yml'
   pull_request:
     paths:
       - 'services/client-service/**'
       - 'core/browserproxy/**'
       - 'core/localstrategy/**'
+      - 'tools/windows/package-r1-service.ps1'
+      - 'docs/R1_TEST_BUILD.md'
       - '.github/workflows/youtube-local.yml'
   workflow_dispatch:
 permissions:
@@ -22,6 +26,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
       - uses: actions/setup-go@v5
         with: {go-version: '1.25.x'}
       - name: Compile every filter with the pinned WinDivert DLL
@@ -39,5 +46,45 @@ jobs:
         run: go test -race -p 1 -timeout 180s ./...
       - run: go vet ./...
       - run: go build ./...
+      - name: Package service with Windows PowerShell 5.1
+        shell: powershell
+        env:
+          R1_EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:R1_EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/r1-service-ps51')
+      - name: Package service with PowerShell 7 and verify identical payloads
+        shell: pwsh
+        env:
+          R1_EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:R1_EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/r1-service-ps7')
+          $sequence=& git rev-list --count HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'R1_PACKAGE_SEQUENCE_CHECK_FAILED' }
+          $expected=@('build-info.txt','manifest.json','README.md','SHA256SUMS','veliq-service.exe') | Sort-Object
+          foreach ($folder in @('bin/r1-service-ps51','bin/r1-service-ps7')) {
+            $files=@(Get-ChildItem -LiteralPath $folder | Select-Object -ExpandProperty Name | Sort-Object)
+            if (Compare-Object $expected $files) { throw 'R1_PACKAGE_UNEXPECTED_FILES' }
+            $jsonBytes=[IO.File]::ReadAllBytes((Join-Path $PWD "$folder/manifest.json"))
+            if ($jsonBytes[0] -ne 123) { throw 'R1_PACKAGE_JSON_MUST_HAVE_NO_BOM' }
+            $manifest=Get-Content -Raw -LiteralPath "$folder/manifest.json" | ConvertFrom-Json
+            if ($manifest.source_commit -ne $env:R1_EXPECTED_COMMIT -or $manifest.build_sequence -ne [int]$sequence -or $manifest.vcs_modified) { throw 'R1_PACKAGE_SOURCE_MISMATCH' }
+            $hash=(Get-FileHash -LiteralPath "$folder/veliq-service.exe" -Algorithm SHA256).Hash
+            if ($hash -ne $manifest.executable.sha256) { throw 'R1_PACKAGE_HASH_MISMATCH' }
+            foreach ($line in Get-Content -LiteralPath "$folder/SHA256SUMS") {
+              $sum,$name=$line -split '  ',2
+              if ((Get-FileHash -LiteralPath (Join-Path $folder $name) -Algorithm SHA256).Hash -ne $sum) { throw 'R1_PACKAGE_CHECKSUM_MISMATCH' }
+            }
+          }
+          # JSON formatting can differ by PowerShell version; executable bytes must not.
+          $hash51=(Get-FileHash -LiteralPath 'bin/r1-service-ps51/veliq-service.exe' -Algorithm SHA256).Hash
+          $hash7=(Get-FileHash -LiteralPath 'bin/r1-service-ps7/veliq-service.exe' -Algorithm SHA256).Hash
+          if ($hash51 -ne $hash7) { throw 'R1_PACKAGE_RUNTIME_BUILD_MISMATCH' }
+          Write-Host "R1_PACKAGE_VERIFIED commit=$env:R1_EXPECTED_COMMIT sequence=$sequence sha256=$hash7"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VELIQ-R1-service-win-x64
+          path: bin/r1-service-ps7/
+          if-no-files-found: error
+          retention-days: 14
 # Portable TLS fixtures run natively on Windows. This job does not install a
 # capture driver, exercise a public ISP, or prove YouTube playback/relay savings.
