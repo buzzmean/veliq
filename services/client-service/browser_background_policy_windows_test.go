@@ -272,7 +272,7 @@ func TestWindowsYouTubeBackgroundPolicyChangePreservesMediaFailure(t *testing.T)
 	endpointKey := cdnEndpointKey{key, endpoint, strategy}
 	beforeEndpoint := r.endpointNegative[endpointKey]
 	r.mu.Unlock()
-	if before.Failures == 0 || before.Retry.IsZero() || before.TrialAfter.IsZero() || beforeEndpoint.Until.IsZero() {
+	if r.selection.TrialFailures != 1 || r.trialActive || before.Retry.IsZero() || before.TrialAfter.IsZero() || beforeEndpoint.Until.IsZero() {
 		t.Fatal("fixture did not record a real media failure")
 	}
 	resume()
