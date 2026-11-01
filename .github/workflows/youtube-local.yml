@@ -1,0 +1,41 @@
+name: YouTube LOCAL
+on:
+  push:
+    branches: [main, 'fix/r1-*']
+    paths:
+      - 'services/client-service/**'
+      - 'core/browserproxy/**'
+      - 'core/localstrategy/**'
+      - '.github/workflows/youtube-local.yml'
+  pull_request:
+    paths:
+      - 'services/client-service/**'
+      - 'core/browserproxy/**'
+      - 'core/localstrategy/**'
+      - '.github/workflows/youtube-local.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Compile every filter with the pinned WinDivert DLL
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go test ./platform/windows '-run' '^TestServiceWinDivertFilterInventory$'
+          if ($LASTEXITCODE) { throw 'FILTER_INVENTORY_FAILED' }
+          & go test -c -o bin/filter-tests.exe ./platform/windows
+          if ($LASTEXITCODE) { throw 'FILTER_TEST_BUILD_FAILED' }
+          & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
+      - name: Full Windows Go race regressions
+        run: go test -race -p 1 -timeout 180s ./...
+      - run: go vet ./...
+      - run: go build ./...
+# Portable TLS fixtures run natively on Windows. This job does not install a
+# capture driver, exercise a public ISP, or prove YouTube playback/relay savings.

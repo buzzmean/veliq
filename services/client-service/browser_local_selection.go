@@ -668,6 +668,22 @@ func (r *youtubeRuntime) backgroundFailure(k youtubeKey, strategy, reason string
 		r.mu.Unlock()
 		return
 	}
+	if reason == "BACKGROUND_NOT_SUSTAINED_OR_NO_TRANSFORM" && youtubeCDN(k) {
+		now := time.Now()
+		v := r.cache[k]
+		if candidate := r.cdnCandidate(k, v, now); candidate != "" {
+			// The public response failed, but recordLocalProbe may have
+			// witnessed a committed transform. Keep it eligible for the
+			// existing guarded media trial; this is not a CDN failure or
+			// success. Tried candidates and expired/foreign proofs stay out.
+			// Preserve a live media confirmation without extending its TTL.
+			if !v.Confirmed || v.Stage != "LOCAL" || !now.Before(v.Until) {
+				r.completeCDNQualificationLocked(k, candidate, now)
+			}
+			r.mu.Unlock()
+			return
+		}
+	}
 	r.mu.Unlock()
 	r.failed(k, "LOCAL", strategy, reason, time.Now())
 }
@@ -706,9 +722,14 @@ func (r *youtubeRuntime) recordVerification(k youtubeKey, bytes uint64) {
 
 // Public prerequisites do not extend a real CDN confirmation deadline.
 func (r *youtubeRuntime) completeCDNQualification(key youtubeKey, strategy string, now time.Time) {
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.completeCDNQualificationLocked(key, strategy, now)
+}
+
+// Caller holds mu so a real CDN failure cannot race selection and restore a
+// just-rejected strategy between the proof check and qualification update.
+func (r *youtubeRuntime) completeCDNQualificationLocked(key youtubeKey, strategy string, now time.Time) {
 	if r.trialActive {
 		return
 	} // Never change binding beneath an established trial.
