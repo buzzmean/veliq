@@ -32,6 +32,17 @@ TCP. ECH/DNS hints не объявляются inner SNI: LOCAL требует �
 подписанных правил. Неизвестный opaque поток сохраняет согласованный владельцем
 DIRECT default и существующий failure recovery; гарантии скрытого домена нет.
 
+Отдельная подтверждённая граница: даже при доступном исходном SNI native
+маршрутизация привязана к соединению. На контролируемом общем SAN/IP Chromium
+передал последующие REQUIRED authority по уже допущенному DIRECT HTTP/2
+соединению; первоначальное REQUIRED-соединение при этом могло корректно идти
+через relay. Per-authority PAC и его существующая связка с native AUTO
+(`PAC_NATIVE_UPSTREAM`, actual WinDivert) в том же сценарии сохранили изоляцию
+и DIRECT для разрешённых имён. Подхват owned policy работающим браузером
+и строгая readiness ещё не подтверждены этой проверкой.
+[Условия, фактический egress и открытый R1 gate](BROWSER_ORIGIN_REUSE.md).
+Это не установленная утечка публичных сайтов и не принятие DIRECT+ или ISP.
+
 ## Обновление данных
 
 Origin registry — optional `origins` в подписанном local-catalog, с собственной
