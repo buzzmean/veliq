@@ -1,14 +1,16 @@
-name: QUIC probe packet plan
+name: QUIC and HTTP3 owned probe
 on:
   push:
     branches: [main, 'feat/r1-quic-*']
     paths:
       - 'core/localstrategy/**'
+      - 'core/browserproxy/**'
       - 'platform/windows/**'
       - '.github/workflows/quic-local.yml'
   pull_request:
     paths:
       - 'core/localstrategy/**'
+      - 'core/browserproxy/**'
       - 'platform/windows/**'
       - '.github/workflows/quic-local.yml'
   workflow_dispatch:
@@ -33,11 +35,12 @@ jobs:
           & go test -c -o bin/filter-tests.exe ./platform/windows
           if ($LASTEXITCODE) { throw 'FILTER_TEST_BUILD_FAILED' }
           & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
-      - name: QUIC packet bounds, real Windows owner, authenticated exchange and certificate rejection
-        run: go test -race -v ./core/localstrategy ./platform/windows -run 'QUICProbe' -count 1 -timeout 90s
+      - name: Owned HTTP3, QUIC bounds, Windows owner and certificate rejection
+        run: go test -race -v ./core/localstrategy ./core/browserproxy ./platform/windows -run 'QUICProbe|HTTP3Probe' -count 1 -timeout 90s
       - name: Full Windows Go race regressions
         run: go test -race -p 1 -timeout 180s ./...
       - run: go vet ./...
       - run: go build ./...
 # Linux race/vet/build with PostgreSQL runs in relay-release.yml at the same SHA.
-# Packet capture/injection is a seam; no driver install or public ISP acceptance.
+# HTTP3 uses a real connected socket with a loopback destination seam.
+# No browser, driver install or public ISP acceptance.
