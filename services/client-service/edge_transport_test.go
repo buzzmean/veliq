@@ -30,6 +30,161 @@ func edgeCall(c *Controller, method string, payload any) (any, error) {
 	raw, _ := json.Marshal(payload)
 	return c.Handle(context.Background(), method, raw)
 }
+
+func TestEdgeConfirmedProfilePublicationPreservesPAC(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		change   func(*profiles.Profile)
+		preserve bool
+		reject   bool
+	}{
+		{name: "publish", preserve: true},
+		{name: "rename", preserve: true, change: func(p *profiles.Profile) { p.Name = "Renamed Edge" }},
+		{name: "changed_guard", change: func(p *profiles.Profile) {
+			p.Rules = []flowpolicy.Rule{{ID: "new-protected", Domains: []string{"private.example"}, Action: flowpolicy.RelayRequired, RelayID: "VPS-01"}}
+		}},
+		{name: "changed_executable", change: func(p *profiles.Profile) { p.Executables = []string{`C:\OtherEdge\msedge.exe`} }},
+		{name: "direct", change: func(p *profiles.Profile) { p.Mode = profiles.Direct }},
+		{name: "availability_contract"},
+		{name: "rejected_update", reject: true, change: func(p *profiles.Profile) { p.Mode = "INVALID" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			c := New(context.Background())
+			defer c.Close()
+			c.Demo = true
+			c.BrowserOwnerSID = "isolated-owner"
+			if runtime.GOOS == "windows" {
+				self, err := wp.NewDiscovery().Lookup(uint32(os.Getpid()))
+				if err != nil {
+					t.Fatal(err)
+				}
+				c.BrowserOwnerSID, err = wp.ProcessUserSID(self)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := c.SetCustomPath(filepath.Join(t.TempDir(), "profiles.json")); err != nil {
+				t.Fatal(err)
+			}
+			p := edgeTestProfile()
+			c.Profiles.Upsert(p)
+			server, err := browserproxy.Listen(c.ctx, browserproxy.Config{
+				Authorize: func(context.Context, netip.AddrPort, netip.AddrPort) (browserproxy.Owner, error) {
+					return browserproxy.Owner{PID: 77, Birth: 1, Exe: p.Executables[0], Profile: p.ID}, nil
+				},
+				Plan: func(context.Context, browserproxy.Request) (browserproxy.Plan, error) {
+					return browserproxy.Plan{}, errors.New("health must not plan an origin")
+				},
+				Open: func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error) {
+					return nil, errors.New("health must not open an origin")
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			e := c.edgeLocked()
+			e.server = server
+			e.saved.Address = server.Address()
+			policy := ""
+			e.write = func(_ string, _ []string, next string) error { policy = next; return nil }
+			e.active = func(sid, pac string) bool { return sid == c.BrowserOwnerSID && policy == edgePolicyValue(pac) }
+			edgeRemovals, chromeRemovals := 0, 0
+			e.remove = func(_ string, owned []string) error {
+				if policy == "" {
+					return nil
+				}
+				for _, value := range owned {
+					if policy == value {
+						policy = ""
+						edgeRemovals++
+						return nil
+					}
+				}
+				return errors.New("foreign policy preserved")
+			}
+			c.browser.silent.Owned = []string{"isolated-chrome-policy"}
+			c.browser.chromeRemove = func(string, []string) error { chromeRemovals++; return nil }
+			prepare := func() string {
+				r, err := edgeCall(c, "edge.prepare", map[string]string{"profile_id": p.ID, "directory": t.TempDir(), "recovery_address": "127.0.0.1:17777"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				return r.(map[string]any)["health_url"].(string)
+			}
+			prepare()
+			if _, err := edgeCall(c, "edge.policy", map[string]string{"profile_id": p.ID, "operation": "guard"}); err != nil {
+				t.Fatal(err)
+			}
+			health := prepare()
+			if _, err := edgeCall(c, "edge.policy", map[string]string{"profile_id": p.ID, "operation": "install"}); err != nil {
+				t.Fatal(err)
+			}
+			conn, err := net.Dial("tcp", server.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Fprintf(conn, "GET %s HTTP/1.1\r\nHost: neexitlag-health.invalid\r\n\r\n", health)
+			response, err := http.ReadResponse(bufio.NewReader(conn), nil)
+			if err != nil {
+				conn.Close()
+				t.Fatal(err)
+			}
+			io.Copy(io.Discard, response.Body)
+			response.Body.Close()
+			conn.Close()
+			if response.StatusCode != 200 {
+				t.Fatal("health request rejected", response.StatusCode)
+			}
+			if _, err := edgeCall(c, "edge.confirm", map[string]string{"profile_id": p.ID, "health_url": health}); err != nil {
+				t.Fatal(err)
+			}
+			if !server.Confirmed(p.ID) || !e.policyActive(c.BrowserOwnerSID) {
+				t.Fatal("confirm did not establish actual health/policy readiness")
+			}
+			p.Mode, p.AppPreset = profiles.Auto, "edge-sites"
+			if test.name == "availability_contract" {
+				c.browser.readiness.enforced.Store(true)
+			}
+			if test.change != nil {
+				test.change(&p)
+			}
+			_, err = edgeCall(c, "profile.set", p)
+			if (err != nil) != test.reject {
+				t.Fatal("unexpected profile update result", err)
+			}
+			if !test.preserve {
+				if e.policyActive(c.BrowserOwnerSID) || edgeRemovals != 1 {
+					t.Fatal("changed/rejected scope retained policy", edgeRemovals)
+				}
+				if !test.reject && p.Mode == profiles.Auto && c.requireEdgeActivation() == nil {
+					t.Fatal("scope change reused activation proof")
+				}
+				return
+			}
+			if _, err := edgeCall(c, "optimize", map[string]bool{"enabled": true}); err != nil {
+				t.Fatalf("after profile.set: confirmed=%t policy_active=%t edge_removals=%d chrome_removals=%d: %v", server.Confirmed(p.ID), e.policyActive(c.BrowserOwnerSID), edgeRemovals, chromeRemovals, err)
+			}
+			if edgeRemovals != 0 || chromeRemovals != 0 {
+				t.Fatal("Edge activation removed a browser policy")
+			}
+			// A no-op update must not revoke the proof either, but intentional disable
+			// must still remove the PAC even after successful profile publication.
+			if _, err := edgeCall(c, "profile.set", p); err != nil {
+				t.Fatal(err)
+			}
+			if !e.policyActive(c.BrowserOwnerSID) || edgeRemovals != 0 || chromeRemovals != 0 {
+				t.Fatal("no-op Edge update removed a browser policy")
+			}
+			if _, err := edgeCall(c, "optimize", map[string]bool{"enabled": false}); err != nil {
+				t.Fatal(err)
+			}
+			if e.policyActive(c.BrowserOwnerSID) || edgeRemovals != 1 {
+				t.Fatal("disabled optimization retained Edge PAC")
+			}
+		})
+	}
+}
+
 func TestEdgePrepareIsolationAndNoSyntheticReadiness(t *testing.T) {
 	c := New(context.Background())
 	defer c.Close()
