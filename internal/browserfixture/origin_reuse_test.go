@@ -15,6 +15,7 @@ func TestChromiumOriginReuseBaseline(t *testing.T) {
 	}
 	f := NewOriginReuse(t)
 	f.Run(t, chrome, "127.0.0.1", ReuseLocalHost, []string{"--no-proxy-server"})
+	t.Logf("ORIGIN_REUSE_BASELINE_BOOTSTRAP %+v", f.Bootstrap(t))
 	requests := f.Requests(t)
 	for _, r := range requests {
 		t.Logf("ORIGIN_REUSE_BASELINE %+v", r)

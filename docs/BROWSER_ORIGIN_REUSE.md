@@ -13,6 +13,9 @@ ClientHello/SNI не определяет authority всех последующ�
   общий IP/port и короткоживущий SAN-сертификат для `www.youtube.com`,
   `youtube.com`, `chatgpt.com`. Эти имена перенаправлены только на фикстуру;
   к публичным сайтам, production или пользовательским данным обращений нет.
+  Test-only allowlist отклоняет фоновые CONNECT до planner и native browser
+  destinations кроме контролируемого TCP endpoint. Для изучаемого endpoint
+  вызываются исходные classifier/planner службы; per-request фильтра не добавлено.
 - Уникальный root добавляется в отдельный NSS store дочернего Linux-процесса
   либо временно в machine root store disposable Windows Actions VM. User-root import
   может требовать диалога Windows; machine store не используется вне этой VM. Проверка
@@ -38,8 +41,10 @@ ClientHello/SNI не определяет authority всех последующ�
 - Локальный egress — `127.0.0.1`; authenticated QUIC+mTLS relay с одноразовыми
   билетами — `127.0.0.2`. Учитываются реальные origin requests и relay bytes.
   Никакой TLS расшифровки/подмены между браузером и целевым сервером нет.
-- Native проверяется в двух порядках: сначала REQUIRED (контроль свежего
-  relay открытия), затем отдельным процессом сначала LOCAL (опасный reuse).
+- Native проверяется в двух порядках: REQUIRED bootstrap → LOCAL fetch → REQUIRED
+  fetch, затем отдельным процессом LOCAL bootstrap → LOCAL fetch → REQUIRED fetch.
+  Egress bootstrap учитывается отдельно: правильный первый REQUIRED relay не
+  доказывает маршрут позднейшего запроса после открытия локального соединения.
   Существующие соединения не мигрируют, запросы не повторяются службой.
 
 Сервер учитывает запрос до ответа: даже ответ 421/403 не отменяет факт

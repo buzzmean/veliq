@@ -36,13 +36,14 @@ type OriginRequest struct {
 }
 
 type OriginReuse struct {
-	Server   *httptest.Server
-	RootDER  []byte
-	Roots    *x509.CertPool
-	Nonce    string
-	mu       sync.Mutex
-	requests []OriginRequest
-	overflow bool
+	Server    *httptest.Server
+	RootDER   []byte
+	Roots     *x509.CertPool
+	Nonce     string
+	mu        sync.Mutex
+	requests  []OriginRequest
+	bootstrap *OriginRequest
+	overflow  bool
 }
 
 type reuseConnectionKey struct{}
@@ -123,7 +124,16 @@ func (f *OriginReuse) serveReuse(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Path == "/sequence" {
 		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, "<!doctype html><title>ORIGIN_REUSE_READY</title><body>ephemeral fixture</body>")
+		body := "<!doctype html><title>ORIGIN_REUSE_READY</title><body>ephemeral fixture</body>"
+		record := reuseRequest(r, host, "bootstrap", len(body))
+		f.mu.Lock()
+		if f.bootstrap != nil {
+			f.overflow = true
+		} else {
+			f.bootstrap = &record
+		}
+		f.mu.Unlock()
+		fmt.Fprint(w, body)
 		return
 	}
 	if r.URL.Path != "/payload" || r.Method != "GET" {
@@ -136,8 +146,7 @@ func (f *OriginReuse) serveReuse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := f.Nonce + ":" + step
-	source, _, _ := net.SplitHostPort(r.RemoteAddr)
-	record := OriginRequest{Connection: r.Context().Value(reuseConnectionKey{}).(uint64), Host: host, SNI: r.TLS.ServerName, Source: source, Step: step, Protocol: r.ProtoMajor, BodyBytes: len(body)}
+	record := reuseRequest(r, host, step, len(body))
 	f.mu.Lock()
 	if len(f.requests) < 32 {
 		f.requests = append(f.requests, record)
@@ -169,4 +178,19 @@ func (f *OriginReuse) Requests(t testing.TB) []OriginRequest {
 		}
 	}
 	return out
+}
+
+func reuseRequest(r *http.Request, host, step string, size int) OriginRequest {
+	source, _, _ := net.SplitHostPort(r.RemoteAddr)
+	return OriginRequest{Connection: r.Context().Value(reuseConnectionKey{}).(uint64), Host: host, SNI: r.TLS.ServerName, Source: source, Step: step, Protocol: r.ProtoMajor, BodyBytes: size}
+}
+
+func (f *OriginReuse) Bootstrap(t testing.TB) OriginRequest {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.overflow || f.bootstrap == nil || f.bootstrap.Protocol != 2 || f.bootstrap.Connection == 0 || f.bootstrap.BodyBytes == 0 {
+		t.Fatal("missing unique H2 bootstrap evidence")
+	}
+	return *f.bootstrap
 }

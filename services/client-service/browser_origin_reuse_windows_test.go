@@ -7,6 +7,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -114,7 +115,7 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		name                  string
 		native, requiredFirst bool
 	}{
-		{"PAC", false, false}, {"NativeRequiredFirst", true, true}, {"NativeLocalFirst", true, false},
+		{"PAC", false, false}, {"NativeRequiredThenLocal", true, true}, {"NativeLocalFirst", true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) { runOriginReuseController(t, chrome, tc.native, tc.requiredFirst) })
 	}
@@ -192,13 +193,28 @@ func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst
 		files.Directory = os.Getenv("NEEXITLAG_TEST_DRIVER_DIR")
 		backend := wp.NewWinDivert(files, c.Engine)
 		c.Backend = backend
-		if err = backend.Start(c.ctx, c.Classify); err != nil {
+		controlled := netip.AddrPortFrom(netip.MustParseAddr("192.0.2.254"), f.Port())
+		classify := func(id wp.ProcessIdentity, tuple wp.Tuple) wp.Decision {
+			// Contain unrelated browser bootstrap traffic in this disposable
+			// VM. The tested endpoint still uses the unmodified classifier.
+			if strings.EqualFold(id.Path, chrome) && (tuple.Protocol != "tcp" || tuple.Destination != controlled) {
+				return wp.Decision{Block: true, BlockOnFailure: true, Policy: flowpolicy.Result{Action: flowpolicy.Block, Fallback: flowpolicy.FailBlock}}
+			}
+			return c.Classify(id, tuple)
+		}
+		if err = backend.Start(c.ctx, classify); err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { backend.Stop() })
 		address = "192.0.2.254"
 	} else {
-		proxy, err = browserproxy.Listen(c.ctx, browserproxy.Config{TransportCheck: c.transportCheckSettings, RequireClientHelloReplay: true, Authorize: c.browserOwner, AuthorizeForwarded: c.browserRecoveryOwner, Plan: c.browserPlan, Open: c.browserOpen, OpenPlan: c.browserOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered})
+		plan := func(ctx context.Context, q browserproxy.Request) (browserproxy.Plan, error) {
+			if !q.Secure || q.Port != f.Port() || (q.Host != browserfixture.ReuseLocalHost && q.Host != browserfixture.ReuseSiblingHost && q.Host != browserfixture.ReuseRequiredHost) {
+				return browserproxy.Plan{}, errors.New("outside controlled origin reuse endpoint")
+			}
+			return c.browserPlan(ctx, q)
+		}
+		proxy, err = browserproxy.Listen(c.ctx, browserproxy.Config{TransportCheck: c.transportCheckSettings, RequireClientHelloReplay: true, Authorize: c.browserOwner, AuthorizeForwarded: c.browserRecoveryOwner, Plan: plan, Open: c.browserOpen, OpenPlan: c.browserOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -220,6 +236,15 @@ func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst
 		bootstrap = browserfixture.ReuseRequiredHost
 	}
 	f.Run(t, chrome, address, bootstrap, args)
+	first := f.Bootstrap(t)
+	t.Logf("ORIGIN_REUSE_BOOTSTRAP native=%t %+v", native, first)
+	firstSource := "127.0.0.1"
+	if requiredFirst {
+		firstSource = "127.0.0.2"
+	}
+	if first.Host != bootstrap || first.SNI != bootstrap || first.Source != firstSource {
+		t.Fatal("fresh bootstrap route not proved", first)
+	}
 	requests := f.Requests(t)
 	for _, q := range requests {
 		t.Logf("ORIGIN_REUSE_REQUEST native=%t %+v", native, q)
@@ -250,7 +275,9 @@ func runOriginReuseController(t *testing.T, chrome string, native, requiredFirst
 		}
 		required := false
 		for _, record := range snap.Records {
-			t.Logf("ORIGIN_REUSE_CONNECT domain=%s action=%s sent=%d received=%d", record.Domain, record.Plan.Policy.Action, record.Sent, record.Received)
+			if record.Domain == browserfixture.ReuseLocalHost || record.Domain == browserfixture.ReuseSiblingHost || record.Domain == browserfixture.ReuseRequiredHost {
+				t.Logf("ORIGIN_REUSE_CONNECT domain=%s action=%s sent=%d received=%d", record.Domain, record.Plan.Policy.Action, record.Sent, record.Received)
+			}
 			if record.Domain == browserfixture.ReuseRequiredHost && record.Plan.Policy.Action == flowpolicy.RelayRequired && record.Sent > 0 && record.Received > 0 {
 				required = true
 			}
