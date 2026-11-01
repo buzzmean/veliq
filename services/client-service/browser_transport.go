@@ -189,6 +189,10 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 	if err != nil {
 		return nil, err
 	}
+	if scope, ok := ctx.Value(youtubeBackgroundScopeKey{}).(youtubeBackgroundScope); ok && !c.youtubeBackgroundScopeCurrent(scope, current) {
+		scope.cancel()
+		return nil, errors.New("background browser policy changed before upstream open")
+	}
 	// Cached PAC can still reach this listener after policy removal. Authenticated
 	// browser ownership was checked above; bypass the stopped engine/WinDivert.
 	if current.routingDisabled {
