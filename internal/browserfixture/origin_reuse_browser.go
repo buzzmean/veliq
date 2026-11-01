@@ -40,7 +40,7 @@ func (f *OriginReuse) Run(t testing.TB, chrome, address, bootstrapHost string, a
 	run := func(name string, argv ...string) {
 		t.Helper()
 		if err := exec.CommandContext(ctx, name, argv...).Run(); err != nil {
-			t.Fatalf("ephemeral trust setup %s: %v", name, err)
+			t.Fatalf("ephemeral trust setup %s: %v deadline=%v", name, err, ctx.Err())
 		}
 	}
 	env := os.Environ()
@@ -51,11 +51,16 @@ func (f *OriginReuse) Run(t testing.TB, chrome, address, bootstrapHost string, a
 		}
 		// Unique generated root; delete exactly this thumbprint, never a shared CA.
 		thumb := sha1.Sum(f.RootDER)
-		run("certutil.exe", "-user", "-addstore", "Root", rootPath)
+		// Current-user root import can open an interactive trust prompt. This
+		// machine store exists only on the disposable Actions VM; no user PC
+		// or shared trust store is supported by this explicit fixture.
+		t.Log("ORIGIN_REUSE_TRUST store=disposable-machine-root begin")
+		run("certutil.exe", "-addstore", "Root", rootPath)
+		t.Log("ORIGIN_REUSE_TRUST store=disposable-machine-root ready")
 		defer func() {
 			cleanup, stop := context.WithTimeout(context.Background(), 10*time.Second)
 			defer stop()
-			if err := exec.CommandContext(cleanup, "certutil.exe", "-user", "-delstore", "Root", hex.EncodeToString(thumb[:])).Run(); err != nil {
+			if err := exec.CommandContext(cleanup, "certutil.exe", "-delstore", "Root", hex.EncodeToString(thumb[:])).Run(); err != nil {
 				t.Error("ephemeral trust cleanup", err)
 			}
 		}()

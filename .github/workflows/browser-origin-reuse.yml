@@ -37,17 +37,31 @@ jobs:
         shell: powershell
         run: |
           $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
-          & go test -v -count=1 -timeout 70s ./internal/browserfixture '-run' '^TestChromiumOriginReuseBaseline$'
+          & go test -v -count=1 -timeout 70s ./internal/browserfixture '-run' '^TestChromiumOriginReuseBaseline$' 2>&1 | Tee-Object -FilePath origin-reuse-baseline.log
           if ($LASTEXITCODE) { throw 'COALESCING_PRECONDITION_NOT_OBSERVED' }
       - name: Required authority isolation through PAC and actual native capture
         shell: powershell
         run: |
           $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
           $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
-          & go test -v -count=1 -timeout 210s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
+          & go test -v -count=1 -timeout 210s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$' 2>&1 | Tee-Object -FilePath origin-reuse-routing.log
           if ($LASTEXITCODE) { throw 'ORIGIN_REUSE_ROUTING_GATE_FAILED' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-origin-reuse-evidence
+          path: origin-reuse-*.log
+          if-no-files-found: warn
+  windows-validation:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
       - name: Full Windows Go race, vet and build
-        if: ${{ !cancelled() }}
         shell: powershell
         run: |
           & go test -race -p 1 -timeout 180s ./...

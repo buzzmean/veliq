@@ -14,7 +14,8 @@ ClientHello/SNI не определяет authority всех последующ�
   `youtube.com`, `chatgpt.com`. Эти имена перенаправлены только на фикстуру;
   к публичным сайтам, production или пользовательским данным обращений нет.
 - Уникальный root добавляется в отдельный NSS store дочернего Linux-процесса
-  либо временно в current-user store disposable Windows Actions VM. Проверка
+  либо временно в machine root store disposable Windows Actions VM. User-root import
+  может требовать диалога Windows; machine store не используется вне этой VM. Проверка
   сертификатов включена; SPKI exception / ignore-certificate-errors не применяются.
   Root удаляется после теста, ключи и сертификаты не публикуются в evidence.
 - ECH/GREASE отключён только в этом дочернем браузере; сервер проверяет отсутствие
