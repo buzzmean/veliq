@@ -1,0 +1,68 @@
+name: NI-1 baseline comparison
+on:
+  push:
+    branches: [feat/network-intelligence-stage1]
+    paths: ['.github/workflows/ni-baseline-comparison.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deployment:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ['17bae3498da3b0204c6faf83e0657608baa3b968', '81f340d17a1c689cc0f880e4075b66a5ccd35ac7']
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ matrix.ref }}'}
+      - name: Runtime and fixture binary metadata (read only)
+        run: |
+          uname -a
+          cat /etc/os-release
+          python3 --version
+          id
+          ls -l /bin/true /bin/false
+          file /bin/true /bin/false
+          git rev-parse HEAD
+      - run: python3 -m unittest discover -s tests/deployment -v
+  desktop:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ['17bae3498da3b0204c6faf83e0657608baa3b968', '81f340d17a1c689cc0f880e4075b66a5ccd35ac7']
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ matrix.ref }}'}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Real WPF controls on the selected revision
+        run: dotnet run --project tests/desktop-native/NeExitLag.Desktop.NativeTests.csproj --configuration Release
+        timeout-minutes: 3
+        env: {NEEXITLAG_TEST_CHROME_POLICY: '1'}
+  edge:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ['17bae3498da3b0204c6faf83e0657608baa3b968', '81f340d17a1c689cc0f880e4075b66a5ccd35ac7']
+    steps:
+      - uses: actions/checkout@v4
+        with: {ref: '${{ matrix.ref }}'}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Real Edge CONNECT/PAC, HTTPS, relay and recovery
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .e2e | Out-Null
+          go test -c -o .e2e/browser-recovery-acceptance.exe ./services/client-service/cmd/service
+          if ($LASTEXITCODE) { throw 'Recovery helper build failed' }
+          $env:NEEXITLAG_TEST_BROWSER_RECOVERY=(Resolve-Path .e2e/browser-recovery-acceptance.exe).Path
+          $env:NEEXITLAG_TEST_EDGE_POLICY='1'
+          go test -v -count=1 -timeout 120s ./services/client-service -run '^(TestEdgeActualPolicyHTTPSOutageRestart|TestEdgePolicyRefusesForeignAndWrongOwnerSID)$'
+          if ($LASTEXITCODE) { throw "Actual Edge policy acceptance failed: $LASTEXITCODE" }
