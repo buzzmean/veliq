@@ -215,7 +215,7 @@ func (f *Fixture) RunChrome(ctx context.Context, chrome string, args []string, t
 			}
 			if title == "NEEXITLAG_FAIL" {
 				raw, _ := call("Runtime.evaluate", map[string]any{"expression": "document.body.innerText", "returnByValue": true})
-				return title, fmt.Errorf("controlled Chrome stage %d fetch failed: %s", stage, raw)
+				return title, fmt.Errorf("controlled Chrome stage %d fetch failed: %s; recent network failures=%v", stage, raw, networkFailures)
 			}
 			select {
 			case <-ctx.Done():

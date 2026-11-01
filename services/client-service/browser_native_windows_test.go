@@ -86,7 +86,14 @@ func runNativeBrowserHotAttachFixture(t *testing.T, driver bool) {
 				t.Fatal(e)
 			}
 			target := origin.Addr().(*net.TCPAddr).AddrPort()
+			var accepted, requested atomic.Uint64
+			t.Cleanup(func() {
+				if t.Failed() {
+					t.Logf("NATIVE_FIXTURE_TRAFFIC driver=%t ingress_accepts=%d origin_requests=%d", driver, accepted.Load(), requested.Load())
+				}
+			})
 			web := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requested.Add(1)
 				host, _, _ := net.SplitHostPort(r.RemoteAddr)
 				w.Header().Set("Connection", "close")
 				w.Header().Set("Cache-Control", "no-store")
@@ -101,6 +108,7 @@ func runNativeBrowserHotAttachFixture(t *testing.T, driver bool) {
 					if err != nil {
 						return
 					}
+					accepted.Add(1)
 					go func() {
 						defer conn.Close()
 						var up net.Conn
@@ -280,7 +288,7 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 	if len(addresses) > 0 {
 		address = addresses[0]
 	}
-	cmd := exec.Command(executable, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--remote-debugging-port=0", "--remote-allow-origins=http://localhost", "--host-resolver-rules=MAP native-browser.test "+address, "--user-data-dir="+dir, "about:blank")
+	cmd := exec.Command(executable, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--remote-debugging-port=0", "--remote-allow-origins=http://localhost", "--host-resolver-rules=MAP native-browser.test "+address+", MAP *.native-browser.test "+address, "--user-data-dir="+dir, "about:blank")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -330,44 +338,76 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 	t.Cleanup(func() { ws.Close() })
 	ws.MaxPayloadBytes = 1 << 20
 	seq := 0
-	call := func(method string, params any) json.RawMessage {
+	stage := "startup"
+	call := func(method string, params any, deadline time.Time) json.RawMessage {
 		t.Helper()
 		seq++
-		ws.SetDeadline(time.Now().Add(5 * time.Second))
-		if e := websocket.JSON.Send(ws, map[string]any{"id": seq, "method": method, "params": params}); e != nil {
-			t.Fatal(e)
+		started := time.Now()
+		if e := ws.SetDeadline(deadline); e != nil {
+			t.Fatalf("CDP_DEADLINE_FAILED stage=%s method=%s: %v", stage, method, e)
 		}
+		if e := websocket.JSON.Send(ws, map[string]any{"id": seq, "method": method, "params": params}); e != nil {
+			t.Fatalf("CDP_SEND_FAILED stage=%s method=%s elapsed=%s: %v", stage, method, time.Since(started), e)
+		}
+		lastEvent := "none"
 		for i := 0; i < 512; i++ {
 			var r struct {
 				ID     int             `json:"id"`
+				Method string          `json:"method"`
 				Result json.RawMessage `json:"result"`
 				Error  json.RawMessage `json:"error"`
 			}
 			if e := websocket.JSON.Receive(ws, &r); e != nil {
-				t.Fatal(e)
+				t.Fatalf("CDP_RECEIVE_FAILED stage=%s method=%s elapsed=%s messages=%d last_event=%s: %v", stage, method, time.Since(started), i, lastEvent, e)
+			}
+			// Record event names only, never page content, URLs or CDP payloads.
+			if r.Method != "" {
+				lastEvent = r.Method
 			}
 			if r.ID == seq {
 				if len(r.Error) > 0 {
-					t.Fatal("CDP_COMMAND_FAILED", method)
+					t.Fatalf("CDP_COMMAND_FAILED stage=%s method=%s", stage, method)
 				}
 				return r.Result
 			}
 		}
-		t.Fatal("CDP_EVENT_LIMIT")
+		t.Fatalf("CDP_EVENT_LIMIT stage=%s method=%s last_event=%s", stage, method, lastEvent)
 		return nil
 	}
-	call("Page.enable", map[string]any{})
+	call("Page.enable", map[string]any{}, time.Now().Add(5*time.Second))
 	// port is the controlled original destination port.
-	visit := func(stage, source string) {
+	visit := func(nextStage, source string) {
 		t.Helper()
+		stage = nextStage
+		t.Logf("NATIVE_BROWSER_STAGE stage=%s", stage)
+		started := time.Now()
+		// Navigation and body observation now share one 8s visit budget.
+		// A separate 5s CDP deadline cut navigation short, while resetting it on
+		// every evaluation could let the complete visit exceed its body budget.
+		end := started.Add(8 * time.Second)
+		if stage == "before-controller" {
+			// CDP availability precedes the first renderer/network load. CI has
+			// observed that load consume almost 8s before any controller exists.
+			// Give initial HTTP readiness the same 15s bound as DevTools startup;
+			// active/OFF/host-stopped retain their strict 8s end-to-end budget.
+			end = started.Add(15 * time.Second)
+		}
 		path := "/" + stage
-		url := fmt.Sprintf("http://native-browser.test:%d%s", port, path)
+		// Each stage needs a NEW connection: a speculative socket accepted before
+		// controller activation is correctly pinned DIRECT. Connection: close on
+		// a response does not prevent Chromium from opening another idle socket.
+		// Distinct HTTP origins separate its pools without restarting the browser.
+		url := fmt.Sprintf("http://%s.native-browser.test:%d%s", stage, port, path)
+		if stage == "native-active" {
+			url = fmt.Sprintf("http://native-browser.test:%d%s", port, path)
+		}
 		// The TEST-NET route exists only while the driver reflects it. Baseline/OFF
 		// test the same live browser against the actual local origin, with no proxy.
 		if address == "192.0.2.254" && stage != "native-active" {
 			url = fmt.Sprintf("http://127.0.0.2:%d%s", port, path)
 		}
-		raw := call("Page.navigate", map[string]any{"url": url})
+		raw := call("Page.navigate", map[string]any{"url": url}, end)
+		t.Logf("NATIVE_BROWSER_NAVIGATED stage=%s elapsed=%s", stage, time.Since(started))
 		var nav struct {
 			Error string `json:"errorText"`
 		}
@@ -375,28 +415,36 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 		if nav.Error != "" {
 			t.Fatal(stage, nav.Error)
 		}
-		end := time.Now().Add(8 * time.Second)
 		observed := false
+		lastSource := "none"
 		for time.Now().Before(end) {
-			raw = call("Runtime.evaluate", map[string]any{"expression": "document.body && document.body.textContent", "returnByValue": true})
+			raw = call("Runtime.evaluate", map[string]any{"expression": "document.body && document.body.textContent", "returnByValue": true}, end)
 			var result struct {
 				Result struct {
 					Value string `json:"value"`
 				} `json:"result"`
 			}
-			if json.Unmarshal(raw, &result) == nil && result.Result.Value == "VELIQ continuity "+path+" source="+source {
-				observed = true
-				break
+			if json.Unmarshal(raw, &result) == nil {
+				prefix := "VELIQ continuity " + path + " source="
+				// Only expose the fixture's parsed IP, never arbitrary page content.
+				if value, ok := strings.CutPrefix(result.Result.Value, prefix); ok && net.ParseIP(value) != nil {
+					lastSource = value
+				}
+				if result.Result.Value == prefix+source {
+					observed = true
+					break
+				}
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
 		if !observed {
-			t.Fatal("HTTP_BODY_NOT_OBSERVED", stage)
+			t.Fatalf("HTTP_BODY_NOT_OBSERVED stage=%s expected_source=%s observed_source=%s", stage, source, lastSource)
 		}
 		after, e := wp.NewDiscovery().Lookup(identity.PID)
 		if e != nil || after.CreationTime != identity.CreationTime {
 			t.Fatal("BROWSER_RESTARTED", stage)
 		}
+		t.Logf("NATIVE_BROWSER_BODY_OBSERVED stage=%s elapsed=%s", stage, time.Since(started))
 	}
 	return visit
 }

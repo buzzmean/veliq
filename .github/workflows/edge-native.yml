@@ -46,7 +46,7 @@ jobs:
         run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
       - name: WPF build
         run: dotnet build apps/desktop/Neexitlag.Desktop.csproj --nologo
-      - name: Real Edge policy, HTTPS, authenticated relay and recovery
+      - name: Real Edge policy, HTTPS, authenticated relay and recovery (3 runs)
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force .e2e | Out-Null
@@ -54,7 +54,7 @@ jobs:
           if ($LASTEXITCODE) { throw "Recovery helper build failed" }
           $env:NEEXITLAG_TEST_BROWSER_RECOVERY=(Resolve-Path .e2e/browser-recovery-acceptance.exe).Path
           $env:NEEXITLAG_TEST_EDGE_POLICY='1'
-          go test -v -count=1 -timeout 120s ./services/client-service -run '^(TestEdgeActualPolicyHTTPSOutageRestart|TestEdgePolicyRefusesForeignAndWrongOwnerSID)$' 2>&1 | Tee-Object edge-native.log
+          go test -v -count=3 -timeout 180s ./services/client-service -run '^(TestEdgeActualPolicyHTTPSOutageRestart|TestEdgePolicyRefusesForeignAndWrongOwnerSID)$' 2>&1 | Tee-Object edge-native.log
           if ($LASTEXITCODE) { throw "Actual Edge policy acceptance failed: $LASTEXITCODE" }
       - name: Already running Chrome and Edge silent policy uptake (no restart)
         shell: pwsh
@@ -68,11 +68,11 @@ jobs:
           $env:NEEXITLAG_TEST_BROWSER_DISABLE='1'
           go test -v -count=1 -timeout 180s ./services/client-service -run '^TestWindowsBrowserDisablePolicyContinuity$' 2>&1 | Tee-Object browser-disable.log
           if ($LASTEXITCODE) { throw "Browser disable continuity failed: $LASTEXITCODE" }
-      - name: Browsers started before native controller, no PAC, authenticated relay and OFF
+      - name: Browsers started before native controller, no PAC, authenticated relay and OFF (3 runs)
         shell: pwsh
         run: |
           $env:NEEXITLAG_TEST_NATIVE_BROWSER='1'
-          go test -v -count=1 -timeout 180s ./services/client-service -run '^TestWindowsNativeBrowserStartsBeforeControllerWithoutPAC$' 2>&1 | Tee-Object native-hot-attach.log
+          go test -v -count=3 -timeout 180s ./services/client-service -run '^TestWindowsNativeBrowserStartsBeforeControllerWithoutPAC$' 2>&1 | Tee-Object native-hot-attach.log
           if ($LASTEXITCODE) { throw "Native controller browser fixture failed: $LASTEXITCODE" }
       - name: Chrome and Edge service/owner regressions
         run: go test -p 1 -race -count=1 ./services/client-service ./platform/windows -run 'Edge|Chrome|Browser'
