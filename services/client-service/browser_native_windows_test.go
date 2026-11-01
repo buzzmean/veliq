@@ -288,7 +288,7 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 	if len(addresses) > 0 {
 		address = addresses[0]
 	}
-	cmd := exec.Command(executable, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--remote-debugging-port=0", "--remote-allow-origins=http://localhost", "--host-resolver-rules=MAP native-browser.test "+address, "--user-data-dir="+dir, "about:blank")
+	cmd := exec.Command(executable, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--remote-debugging-port=0", "--remote-allow-origins=http://localhost", "--host-resolver-rules=MAP native-browser.test "+address+", MAP *.native-browser.test "+address, "--user-data-dir="+dir, "about:blank")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +386,14 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 		// every evaluation could let the complete visit exceed its body budget.
 		end := started.Add(8 * time.Second)
 		path := "/" + stage
-		url := fmt.Sprintf("http://native-browser.test:%d%s", port, path)
+		// Each stage needs a NEW connection: a speculative socket accepted before
+		// controller activation is correctly pinned DIRECT. Connection: close on
+		// a response does not prevent Chromium from opening another idle socket.
+		// Distinct HTTP origins separate its pools without restarting the browser.
+		url := fmt.Sprintf("http://%s.native-browser.test:%d%s", stage, port, path)
+		if stage == "native-active" {
+			url = fmt.Sprintf("http://native-browser.test:%d%s", port, path)
+		}
 		// The TEST-NET route exists only while the driver reflects it. Baseline/OFF
 		// test the same live browser against the actual local origin, with no proxy.
 		if address == "192.0.2.254" && stage != "native-active" {
@@ -401,6 +408,7 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 			t.Fatal(stage, nav.Error)
 		}
 		observed := false
+		lastSource := "none"
 		for time.Now().Before(end) {
 			raw = call("Runtime.evaluate", map[string]any{"expression": "document.body && document.body.textContent", "returnByValue": true}, end)
 			var result struct {
@@ -408,14 +416,21 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 					Value string `json:"value"`
 				} `json:"result"`
 			}
-			if json.Unmarshal(raw, &result) == nil && result.Result.Value == "VELIQ continuity "+path+" source="+source {
-				observed = true
-				break
+			if json.Unmarshal(raw, &result) == nil {
+				prefix := "VELIQ continuity " + path + " source="
+				// Only expose the fixture's parsed IP, never arbitrary page content.
+				if value, ok := strings.CutPrefix(result.Result.Value, prefix); ok && net.ParseIP(value) != nil {
+					lastSource = value
+				}
+				if result.Result.Value == prefix+source {
+					observed = true
+					break
+				}
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
 		if !observed {
-			t.Fatal("HTTP_BODY_NOT_OBSERVED", stage)
+			t.Fatalf("HTTP_BODY_NOT_OBSERVED stage=%s expected_source=%s observed_source=%s", stage, source, lastSource)
 		}
 		after, e := wp.NewDiscovery().Lookup(identity.PID)
 		if e != nil || after.CreationTime != identity.CreationTime {
