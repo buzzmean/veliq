@@ -76,19 +76,19 @@ try:
     else:raise AssertionError('outer injection accepted')
 finally:release.diagnostics.run_process=real_run
 assert Path('/etc/neexitlag/control/server.pem').read_bytes()==before_outer
-assert sql('SELECT max(version) FROM schema_migrations')=='3'
+assert sql('SELECT max(version) FROM schema_migrations') in ('3','4')  # migration 4 is additive and may already be applied
 assert sql("SELECT count(*) FROM devices WHERE name='CA rotation health probe' AND NOT revoked")=='0'
 assert release.PROGRESS.rollback=='COMPLETE_SECURITY_STATE_PRESERVED'
 release.apply(stage,commit,'ACTIVATE-CODES-2.56.177.4')
 assert Path('/etc/neexitlag/control/ca.pem').read_bytes()==ca_before
 assert int(sql('SELECT count(*) FROM devices WHERE revoked'))>=revoked_before+2
-assert sql('SELECT max(version) FROM schema_migrations')=='3'
+assert sql('SELECT max(version) FROM schema_migrations')=='4'
 assert sql("SELECT count(*) FROM devices WHERE name='CA rotation health probe' AND NOT revoked")=='0'
 for name in ('neexitlag-control-plane','neexitlag-relay','veliq-certificate-renewal.timer'):
     leaf.command(['systemctl','is-active','--quiet',name])
 assert leaf.command(['systemctl','show','--value','--property=Result','veliq-certificate-renewal.service']).strip()=='success'
 assert leaf.command(['systemctl','show','--value','--property=ExecMainStatus','veliq-certificate-renewal.service']).strip()=='0'
-# Re-run from an already installed release (schema 3): idempotent preflight and
+# Re-run from an already installed release (schema 4): idempotent preflight and
 # real service due=false path, no forced user/device/certificate replacement.
 leaf.command(['systemctl','start','veliq-certificate-renewal.service'])
 leaf.validate_helper(stage/'fresh-pc')
@@ -97,5 +97,5 @@ assert not leaf.command(['systemctl','list-units','--state=active','--no-legend'
 status=release.final_snapshot(stage)
 assert status['certificates']['leaf_remaining_seconds']>29*86400
 assert status['certificates']['leaf_matches_relay']
-(root/'activation-proof.json').write_text(json.dumps({'pass':True,'schema':3,'renewal_service':'success','temporary_identities_revoked':True,'rollback_injection':True,'ca_unchanged':True}))
+(root/'activation-proof.json').write_text(json.dumps({'pass':True,'schema':4,'renewal_service':'success','temporary_identities_revoked':True,'rollback_injection':True,'ca_unchanged':True}))
 print('PASS isolated actual activation + leaf renewal + service sandbox + schema2 retry + revoked probes + no leftover active timers')

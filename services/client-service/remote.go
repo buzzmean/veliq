@@ -124,13 +124,15 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	done := make(chan struct{})
 	c.remoteDone = done
 	var workers sync.WaitGroup
-	workers.Add(5)
+	workers.Add(6)
 	c.wg.Add(1)
 	go func() { defer c.wg.Done(); defer workers.Done(); c.catalog.run(remoteCtx, cp, keys, m.StateDirectory) }()
 	c.wg.Add(1)
 	go func() { defer c.wg.Done(); defer workers.Done(); c.runSharedLearning(remoteCtx, cp, keys) }()
 	c.wg.Add(1)
 	go func() { defer c.wg.Done(); defer workers.Done(); c.runRemoteTraffic(remoteCtx, cp, keys) }()
+	c.wg.Add(1)
+	go func() { defer c.wg.Done(); defer workers.Done(); c.runSubscription(remoteCtx, cp) }()
 	if m.StateDirectory != "" && c.updater.Load() == nil {
 		u := newUpdater(keys, filepath.Dir(m.StateDirectory), launchUpdateSetup)
 		u.relay = c.relayHTTPClient()
@@ -283,6 +285,9 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 			// proof/ticket, including retries after an uncertain failed handshake.
 			ticket, err := s.cp.Ticket(ctx, node.ID)
 			if err != nil {
+				if errors.Is(err, controlclient.ErrSubscriptionExpired) {
+					c.subscriptionRecheck()
+				}
 				return nil, &transport.OpenError{Reason: "ticket_request_failed", Cause: err}
 			}
 			client, err := transport.DialWithTicket(ctx, node.Address, s.tls, ticket)

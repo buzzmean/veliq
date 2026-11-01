@@ -82,7 +82,7 @@ func TestPostgresLearningDeviceProofBindingReplayRevocationAndNoSchemaChange(t *
 		t.Fatal("revoked contributor accepted", w.Code)
 	}
 	var version int
-	if e = s.DB.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); e != nil || version != 3 {
+	if e = s.DB.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); e != nil || version != 4 {
 		t.Fatal("unexpected schema", version, e)
 	}
 }

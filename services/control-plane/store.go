@@ -53,7 +53,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if _, e = tx.Exec(ctx, string(b)); e != nil {
 		return e
 	}
-	for _, name := range []string{"migrations/002_activation_codes.sql", "migrations/003_temporary_test_codes.sql"} {
+	for _, name := range []string{"migrations/002_activation_codes.sql", "migrations/003_temporary_test_codes.sql", "migrations/004_accounts_subscriptions.sql"} {
 		b, e := migrations.ReadFile(name)
 		if e != nil {
 			return e

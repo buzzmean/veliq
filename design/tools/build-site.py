@@ -948,6 +948,45 @@ contacts_body = f"""
 """
 page("contacts.html", "Контакты и реквизиты", "Контакты поддержки VELIQ и реквизиты продавца.", "", contacts_body)
 
+# ---------------------------------------------------------------- личный кабинет
+# Разметку оживляет assets/account.js; API — /api/v1/account на том же домене (docs/ACCOUNTS.md).
+account_body = f"""
+<section class="page-head"><div class="wrap"><div class="crumbs"><a href="index.html">Главная</a> / Личный кабинет</div><h1 class="h1">Личный кабинет</h1><p class="lede">Подписка, оплата и коды активации — в одном месте.</p></div></section>
+<section class="sec sec--tight"><div class="wrap" data-account>
+  <div data-step="email">
+    <form class="acc-form" data-email-form novalidate>
+      <label class="field"><span>Почта</span><input class="input" type="email" name="email" autocomplete="email" required placeholder="you@example.ru"></label>
+      <button class="btn" type="submit">Получить код для входа</button>
+      <p class="acc-error" data-email-error hidden></p>
+      <p class="muted acc-small">Пароль не нужен: пришлём на почту код из шести цифр. Входя, вы принимаете <a href="terms.html">оферту</a> и <a href="privacy.html">политику конфиденциальности</a>.</p>
+    </form>
+  </div>
+  <div data-step="code" hidden>
+    <form class="acc-form" data-code-form novalidate>
+      <p>Код отправлен на <b data-sent-to></b>. Письмо может прийти через минуту, проверьте и «Спам».</p>
+      <label class="field"><span>Код из письма</span><input class="input mono" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+      <button class="btn" type="submit">Войти</button>
+      <button class="btn btn--quiet btn--sm" type="button" data-change-email>Другая почта</button>
+      <p class="acc-error" data-code-error hidden></p>
+    </form>
+  </div>
+  <div data-step="cabinet" hidden>
+    <div class="acc-head"><p class="muted" style="margin:0">Вы вошли как <b data-account-email></b></p><button class="btn btn--ghost btn--sm" type="button" data-logout>Выйти</button></div>
+    <h2 class="h2">Подписки</h2>
+    <p class="muted" data-subs-empty>Подписок пока нет. Выберите тариф ниже.</p>
+    <div class="acc-subs" data-subs></div>
+    <h2 class="h2">Оформить подписку</h2>
+    <div class="acc-plans" data-plans></div>
+    <h2 class="h2">Платежи</h2>
+    <p class="muted" data-payments-empty>Платежей пока не было.</p>
+    <ul class="acc-pays" data-payments></ul>
+    <p class="muted acc-small">Вопросы об оплате и возврате — <a href="mailto:{SITE['email']}">{SITE['email']}</a>. Условия — в <a href="pricing.html#refund">разделе о возврате</a>.</p>
+  </div>
+</div></section>
+<script src="assets/account.js"></script>
+"""
+page("account.html", "Личный кабинет", "Вход в личный кабинет VELIQ: подписка, оплата, коды активации.", "", account_body)
+
 nf_body = f"""
 <section class="center-stack"><div class="wrap">
   <h1 class="h-display"><span class="slit-line" style="margin:0 auto"><span class="slit">404</span></span></h1>
@@ -1022,7 +1061,7 @@ pages = ["", "how.html", "download.html", "clubs.html", "pricing.html", "support
 (OUT / "sitemap.xml").write_text(
     '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     + "".join(f"  <url><loc>{SITE['url']}/{p}</loc></url>\n" for p in pages) + "</urlset>\n", encoding="utf-8")
-(OUT / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {SITE['url']}/sitemap.xml\n", encoding="utf-8")
+(OUT / "robots.txt").write_text(f"User-agent: *\nAllow: /\nDisallow: /account.html\nDisallow: /api/\nSitemap: {SITE['url']}/sitemap.xml\n", encoding="utf-8")
 (OUT / "site.webmanifest").write_text(json.dumps({
     "name": "VELIQ", "short_name": "VELIQ", "lang": "ru", "start_url": "index.html", "display": "browser",
     "background_color": "#0A0A0B", "theme_color": "#0A0A0B",

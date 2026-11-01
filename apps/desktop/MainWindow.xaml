@@ -245,6 +245,10 @@
       <Button DockPanel.Dock="Right" Content="{ui:Tr ChangeActivationCode}" Click="ChangeActivation" Margin="12,0,0,0" VerticalAlignment="Center"/>
       <StackPanel VerticalAlignment="Center"><TextBlock x:Name="ActivationSummary" Text="{ui:Tr ActivationStatusChecking}" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="ActivationCertificates" Style="{StaticResource Small}" Margin="0,2,0,0"/></StackPanel>
      </DockPanel></Border>
+     <Border x:Name="SubscriptionRow" Style="{StaticResource PanelBox}" Margin="0,-6,0,18" Visibility="Collapsed"><DockPanel Margin="16,12">
+      <Button DockPanel.Dock="Right" Content="{ui:Tr RenewSubscription}" Click="RenewSubscription" Margin="12,0,0,0" VerticalAlignment="Center"/>
+      <StackPanel VerticalAlignment="Center"><TextBlock x:Name="SubscriptionSummary" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="SubscriptionHint" Style="{StaticResource Small}" Margin="0,2,0,0" TextWrapping="Wrap"/></StackPanel>
+     </DockPanel></Border>
      <TextBlock Text="{ui:Tr SetStart}" Style="{StaticResource GroupTitle}"/>
      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><StackPanel>
       <Border Style="{StaticResource SetRow}"><CheckBox x:Name="Launch" Content="{ui:Tr AutoStart}" Margin="0"/></Border>
@@ -287,6 +291,17 @@
     </ScrollViewer>
    </Grid>
   </DockPanel>
+
+  <!-- ============ Подписка закончилась (поверх окна) ============ -->
+  <Border x:Name="SubscriptionPanel" Grid.ColumnSpan="2" Background="#F50A0A0B" Visibility="Collapsed" Panel.ZIndex="9">
+   <StackPanel Width="420" VerticalAlignment="Center" HorizontalAlignment="Center">
+    <Image Source="{StaticResource VeliqSymbol}" Width="56" Height="56" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+    <TextBlock Text="{ui:Tr SubscriptionEnded}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+    <TextBlock Text="{ui:Tr SubscriptionEndedLead}" Style="{StaticResource Lead}" TextAlignment="Center" Margin="0,10,0,22"/>
+    <Button Content="{ui:Tr RenewSubscription}" Click="RenewSubscription" Style="{StaticResource Primary}" FontSize="16" MinHeight="48" Margin="0,0,0,10"/>
+    <Button Content="{ui:Tr SubscriptionRecheck}" Click="RecheckSubscription" HorizontalAlignment="Center"/>
+   </StackPanel>
+  </Border>
 
   <!-- ============ Активация (поверх окна) ============ -->
   <Border x:Name="ActivationPanel" Grid.ColumnSpan="2" Background="#F50A0A0B" Visibility="Collapsed" Panel.ZIndex="10">

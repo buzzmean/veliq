@@ -96,6 +96,7 @@ type Controller struct {
 	clubMode        atomic.Bool
 	games           gameRuntime
 	activation      activationRuntime
+	subscription    subscriptionRuntime
 	remoteDone      chan struct{}
 	remoteMu        sync.Mutex
 	remoteCancel    context.CancelFunc
@@ -582,7 +583,13 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return c.clubStatus(), nil
 	}
 	if (method == "profile.set" || method == "profile.delete" || method == "auto.commit") && c.browserProfileMutation(raw) {
-		defer func() { _ = c.CleanupOwnedBrowserPolicies() }()
+		previous := c.Profiles.List()
+		defer func() {
+			if method == "profile.set" && err == nil && c.preserveConfirmedEdgeProfileUpdate(raw, previous) {
+				return
+			}
+			_ = c.CleanupOwnedBrowserPolicies()
+		}()
 	}
 
 	if !c.activationNetworkAllowed() {
@@ -654,6 +661,8 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return c.handleGameUDP(ctx, method, raw)
 	case "activation.status", "activation.set":
 		return c.handleActivation(method, raw)
+	case "subscription.status", "subscription.refresh":
+		return c.handleSubscription(method)
 	case "browser.native.attribution":
 		return c.nativeBrowserAttribution(), nil
 	case "browser.native.firewall":
