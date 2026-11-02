@@ -1,0 +1,86 @@
+name: Beta candidate kit (no deployment)
+on:
+  push:
+    branches: ['release/beta-candidate-*']
+  pull_request:
+    paths:
+      - '.github/workflows/beta-candidate.yml'
+      - 'tools/beta_acceptance.py'
+      - 'docs/BETA*'
+permissions:
+  contents: read
+jobs:
+  acceptance-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: python3 -m unittest discover -s tests/deployment -p test_beta_acceptance.py -v
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Full Windows race, vet and build
+        shell: powershell
+        run: |
+          & go test -race -p 1 -timeout 180s ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_RACE_FAILED' }
+          & go vet ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_VET_FAILED' }
+          & go build ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_BUILD_FAILED' }
+      - name: Desktop contracts and self-contained GUI
+        shell: powershell
+        run: |
+          & dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+          if ($LASTEXITCODE) { throw 'DESKTOP_CONTRACTS_FAILED' }
+          & ./tools/windows/build-desktop.ps1
+      - name: Build service and verify pinned DLL (PowerShell 5.1)
+        shell: powershell
+        env:
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/beta-service-ps51')
+      - name: Verify service parity and assemble unapproved candidate (PowerShell 7)
+        shell: pwsh
+        env:
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/beta-service-ps7')
+          $a=(Get-FileHash bin/beta-service-ps51/veliq-service.exe -Algorithm SHA256).Hash
+          $b=(Get-FileHash bin/beta-service-ps7/veliq-service.exe -Algorithm SHA256).Hash
+          if ($a -cne $b) { throw 'BETA_SERVICE_PARITY_FAILED' }
+          $service=Get-Content -Raw bin/beta-service-ps7/manifest.json | ConvertFrom-Json
+          if ($service.vcs_modified -or $service.source_commit -cne $env:EXPECTED_COMMIT) { throw 'BETA_SOURCE_MISMATCH' }
+          New-Item bin/beta-kit -ItemType Directory | Out-Null
+          Copy-Item bin/beta-service-ps7/veliq-service.exe bin/beta-kit/
+          Copy-Item bin/release/VELIQ.exe bin/beta-kit/
+          Copy-Item docs/BETA_ACCEPTANCE.md bin/beta-kit/README.md
+          Copy-Item docs/BETA_RESULTS.template.json bin/beta-kit/
+          $files=@('veliq-service.exe','VELIQ.exe','README.md','BETA_RESULTS.template.json')
+          $manifest=[ordered]@{schema_version=1;source_commit=$env:EXPECTED_COMMIT;build_sequence=$service.build_sequence;approval='NOT_APPROVED';kind='update-kit-existing-installation-only';files=@()}
+          foreach ($name in $files) {
+            $hash=(Get-FileHash -LiteralPath "bin/beta-kit/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            $manifest.files+=@{path=$name;sha256=$hash}
+          }
+          [IO.File]::WriteAllText((Join-Path $PWD 'bin/beta-kit/candidate.json'),($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+          $sums=@($files+@('candidate.json') | ForEach-Object { (Get-FileHash -LiteralPath "bin/beta-kit/$_" -Algorithm SHA256).Hash.ToLowerInvariant()+'  '+$_ })
+          [IO.File]::WriteAllLines((Join-Path $PWD 'bin/beta-kit/SHA256SUMS'),$sums,[Text.UTF8Encoding]::new($false))
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VELIQ-beta-candidate-win-x64-NOT-APPROVED
+          path: bin/beta-kit/
+          if-no-files-found: error
+          retention-days: 14
+# This kit is for an existing installation. No CA, code, identity, config, driver,
+# public release or automatic updater manifest is published. Routing failures
+# remain failures in the independent Browser HTTP2 workflow.
