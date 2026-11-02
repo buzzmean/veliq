@@ -101,9 +101,7 @@ func TestOwnerPolicyRefreshEventProbe(t *testing.T) {
 		t.Logf("OWNER_GP_CSE unavailable=%v", err)
 		return
 	}
-	if os.Getenv("VELIQ_TEST_GP_KEEP") != "1" {
-		defer cleanup()
-	}
+	defer cleanup()
 	windows.ResetEvent(event)
 	started = time.Now()
 	state = refreshOwnerUserPolicy(sid)

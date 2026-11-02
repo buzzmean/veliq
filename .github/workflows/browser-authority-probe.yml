@@ -47,3 +47,25 @@ jobs:
         with:
           name: owner-authority-probe
           path: owner-authority-probe.log
+
+  capture-independent:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [CaptureOutageGuarded, CaptureOutageAvailability]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Actual DIRECT and protected RELAY without capture
+        shell: powershell
+        env:
+          VELIQ_ORIGIN_REUSE_CASE: ${{ matrix.scenario }}
+        run: |
+          & ./tools/windows/fetch-windivert.ps1
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          & go test -v -count=1 -timeout 110s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
+          if ($LASTEXITCODE) { throw 'CAPTURE_INDEPENDENT_ROUTE_FAILED' }
