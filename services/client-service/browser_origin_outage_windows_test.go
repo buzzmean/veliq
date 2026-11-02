@@ -130,7 +130,7 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 	for i := start; i < start+2; i++ {
 		host, step := browserfixture.OutageHosts[i], browserfixture.OutageSteps[i]
 		outcome := outcomes[i]
-		wantSuccess := recovery || (strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability")) || (i%2 == 1 && strings.Contains(o.mode, "-relay-"))
+		wantSuccess := recovery || (i%2 == 1 && ((strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability")) || strings.Contains(o.mode, "-relay-")))
 		if !recovery && i%2 == 1 && strings.Contains(o.mode, "-combined-") && strings.HasSuffix(o.mode, "-availability") {
 			wantSuccess = true
 		}

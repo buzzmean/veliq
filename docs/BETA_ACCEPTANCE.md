@@ -9,6 +9,9 @@
 
 Ветка `release/beta-candidate-20261102` основана на #51/83dfad8 (CDN cold/resume,
 отмена устаревших фоновых проб), с test-only origin gates из #54/e9f58b9.
+Кандидат также включает шесть независимых исправлений #41/#42/#43/#44/#46/#48:
+rollback ELF fixture, WPF technical preference, сохранение подтверждённого Edge PAC,
+событийное ожидание native plan, Browser Disable sequence и PS5.1 reinstall CA.
 #52/HTTP80, #53/QUIC, accounts/оплата и другие экспериментальные ветки не включены.
 QUIC browser LOCAL не поддерживается. Состояние native H2 origin isolation и
 live-policy uptake остаётся открытым до соответствующего исправления и evidence.
@@ -25,7 +28,10 @@ Go race/vet/build, C# контракты, self-contained GUI, службу от�
 Это update-kit для уже установленного тестового ПК. В нём нет драйвера, CA,
 конфигурации, кодов и identity; это НЕ Setup для чистого образа. Для чистых машин
 нужен `build-setup.ps1` того же commit с существующим публичным CA владельца и
-проверенным Inno Setup6.4.3. Публичный CA в текущей среде отсутствует; production
+проверенным Inno Setup6.4.3. CI дополнительно собирает настоящий Inno Setup6.4.3 с отдельным эфемерным CA и
+loopback-only endpoint и проверяет install/update/uninstall в PS5.1 и PS7. Этот
+Setup не публикуется, его CA не подходит production; это не приёмка клубной активации.
+Публичный production CA в текущей среде отсутствует; production
 VPS для его получения не используется. Нельзя подставлять новый тестовый CA:
 установленные CP/relay ему не доверяют. Сборка Setup и первый install остаются
 отдельным обязательным gate, даже если update-kit уже есть.
@@ -39,7 +45,7 @@ hash старых exe и путь к локальной защищённой р�
 ключи, токены и staged code не помещать в git, чат или публичный результат.
 
 Зафиксировать source_commit и hash обоих exe из candidate.json. Распаковать kit
-в отдельную папку. Проверить каждый SHA256SUMS через Get-FileHash; несовпадение —
+в отдельную папку `bin/beta-kit` внутри exact checkout. Проверить каждый SHA256SUMS через Get-FileHash; несовпадение —
 STOP. Новый commit или пересборка после начала тестов обнуляет допуск этой сборки.
 Нельзя смешивать службу Build601 и GUI другого кандидата, а затем засчитать всё
 как одну проверенную версию. Проверить и установленный hash после обновления.
@@ -74,9 +80,9 @@ STOP. Новый commit или пересборка после начала те
 
 Windows job125004701705 от предыдущего #54 завершился CANCELLED; завершённый
 журнал через connector недоступен. Это не PASS. Новый candidate должен получить
-собственный завершённый полный Windows прогон. Существующие Python rollback,
-WPF actual-RelayChoice и Edge verified CONNECT/PAC failures требуют разбора;
-принимать их как «просто старые красные» для релиза нельзя.
+собственный завершённый полный Windows прогон. Прежние Python rollback/WPF/Edge блокеры имеют независимые исправления,
+теперь включённые в candidate; их совместный CI должен подтвердиться на его SHA.
+Заменять этот прогон результатом другой ветки нельзя.
 
 ## 3. На двух тестовых ПК (2–4 часа, параллельно)
 
@@ -135,6 +141,10 @@ owner SID, из exact checkout (папка kit задаётся явно):
 ```
 
 GUI предварительно закрыть через трей; Chrome/Edge не закрывать принудительно.
+Проверить реальный путь установленного GUI. Если GUI принадлежит Setup и находится
+в `%ProgramFiles%\VELIQ`, обновлять GUI только Setup того же SHA; per-user installer
+ниже не обновляет этот путь и может оставить старый autostart. Не засчитывать такую
+смешанную установку как candidate PASS. Для прежней per-user установки с marker
 GUI обновляется тем же обычным пользователем (без admin):
 `& .\tools\windows\install-desktop.ps1 -SourceDirectory '.\bin\beta-kit'`.
 Сверить hash установленного `%LOCALAPPDATA%\Programs\VELIQ\VELIQ.exe`.
@@ -183,3 +193,24 @@ traffic delta, LOCAL/RELAY, crashes/reconnects, жалобы, версия. Пр
 сумме RX+TX согласно биллингу и месячному прогнозу с минимум30% запасом, без
 придуманной гарантии по двухминутному видео. Недельный R6 продолжается после
 дневной приёмки; 40ПК и публичный релиз в этот допуск не входят.
+
+## Изменение PAC после воспроизведения совместного отказа
+
+Seed ce0767f, run41369834272/job125037705516: AvailabilityV1 при listener=false,
+capture_ready=false отправил outage.openai.com на DIRECT127.0.0.1, connection7,
+SNI outage.openai.com, HTTP2 body48. Ordinary использовал то же H2 напрямую.
+Guarded counterpart заблокировал оба; recovery обоих новых authority работал.
+Это actual Windows/Chrome evidence в контролируемой среде, не публичная утечка.
+
+AvailabilityV2 сохраняет DIRECT fallback для ordinary. Для всех bundled RELAY
+floors, protectedSuffixes профиля и strictProxy из цепочки удаляются DIRECT entries;
+если старый recovery PAC вернул только DIRECT, используется существующий
+fail-closed proxy endpoint. Старый V1 owner journal оборачивается V2 идемпотентно.
+Никакой TLS replay или переноса существующих TCP нет. Запрет fallback защищённого
+имени означает, что при отсутствии listener запрос блокируется даже при здоровом
+capture: браузер не должен угадывать наличие capture по отсутствующему proxy.
+
+Это изменение не переписывает уже закешированный V1 внутри работающего браузера.
+Нужен проверенный uptake новой policy; fresh native-only без PAC и старые H2
+origin violations этим не исправлены. До их разрешения origin_isolation остаётся
+FAIL и rollout запрещён. Результаты после исправления должны быть добавлены по SHA.

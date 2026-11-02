@@ -1,3 +1,9 @@
+> Кандидат беты: AvailabilityV2 закрывает DIRECT fallback для bundled RELAY
+> floors, profile guard и strictProxy; ordinary fallback сохранён. Это patch
+> после actual compound-outage RED в run41369834272/job125037705516. Исторические
+> результаты AvailabilityV1 ниже не описывают поведение нового wrapper. Cached
+> V1 в работающем браузере требует отдельного подтверждения uptake.
+
 # Вариант A: тихий owned PAC Chrome и Edge
 
 > Актуальная граница native AUTO, 02.11.2026 MSK: ниже описан исторический

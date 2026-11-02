@@ -75,6 +75,43 @@ jobs:
           [IO.File]::WriteAllText((Join-Path $PWD 'bin/beta-kit/candidate.json'),($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
           $sums=@($files+@('candidate.json') | ForEach-Object { (Get-FileHash -LiteralPath "bin/beta-kit/$_" -Algorithm SHA256).Hash.ToLowerInvariant()+'  '+$_ })
           [IO.File]::WriteAllLines((Join-Path $PWD 'bin/beta-kit/SHA256SUMS'),$sums,[Text.UTF8Encoding]::new($false))
+      - name: Compile actual Setup with a disposable public CA (no artifact publication)
+        shell: powershell
+        run: |
+          $download=Join-Path $env:RUNNER_TEMP 'innosetup-6.4.3.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe' -OutFile $download
+          $signature=Get-AuthenticodeSignature -LiteralPath $download
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Jordan Russell|O=Pyrsys B\.V\.') { throw 'INNO_INSTALLER_SIGNATURE_INVALID' }
+          $process=Start-Process -FilePath $download -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'INNO_INSTALL_FAILED' }
+          $trust=Join-Path $env:RUNNER_TEMP 'beta-disposable-ca'
+          New-Item $trust -ItemType Directory | Out-Null
+          $rsa=[Security.Cryptography.RSA]::Create();$rsa.KeySize=2048
+          $request=[Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=VELIQ disposable beta installer CA',$rsa,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)
+          $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true,$false,0,$true))
+          $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new([Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyCertSign,$true))
+          $cert=$request.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5),[DateTimeOffset]::UtcNow.AddDays(2))
+          try {
+            $pem='-----BEGIN CERTIFICATE-----'+"`n"+[Convert]::ToBase64String($cert.RawData)+"`n"+'-----END CERTIFICATE-----'+"`n"
+            [IO.File]::WriteAllText((Join-Path $trust 'ca.pem'),$pem,[Text.UTF8Encoding]::new($false))
+          } finally { $cert.Dispose();$rsa.Dispose() }
+          New-Item bin/windows-e2e -ItemType Directory -Force | Out-Null
+          Copy-Item bin/beta-service-ps7/veliq-service.exe bin/windows-e2e/
+          & ./installer/build.ps1 -PublicTrustDirectory $trust -ControlPlaneUrl 'https://127.0.0.1:1' -ProbeTarget '127.0.0.1:1' -TCPProbeTarget '127.0.0.1:1' -Output (Join-Path $PWD 'bin/beta-installer-smoke')
+      - name: Actual Setup lifecycle (PowerShell 5.1)
+        shell: powershell
+        env:
+          VELIQ_BETA_INSTALL_SMOKE: '1'
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          & ./tests/windows-tools/beta-installer-smoke.ps1 -SetupExecutable './bin/beta-installer-smoke/output/VELIQ-Setup.exe' -PackageDirectory './bin/beta-installer-smoke/payload' -ExpectedCommit $env:EXPECTED_COMMIT
+      - name: Actual Setup lifecycle (PowerShell 7)
+        shell: pwsh
+        env:
+          VELIQ_BETA_INSTALL_SMOKE: '1'
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          & ./tests/windows-tools/beta-installer-smoke.ps1 -SetupExecutable './bin/beta-installer-smoke/output/VELIQ-Setup.exe' -PackageDirectory './bin/beta-installer-smoke/payload' -ExpectedCommit $env:EXPECTED_COMMIT
       - uses: actions/upload-artifact@v4
         with:
           name: VELIQ-beta-candidate-win-x64-NOT-APPROVED

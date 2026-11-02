@@ -50,7 +50,7 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 420*time.Second)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, child, "-test.run=^TestWindowsBrowserOriginReuse$", "-test.v")
+		cmd := exec.CommandContext(ctx, child, "-test.run=^TestWindowsBrowserOriginReuse$", "-test.v", "-test.timeout=390s")
 		cmd.Env = append(os.Environ(), "NEEXITLAG_ORIGIN_REUSE_CHILD=1")
 		out, err := cmd.CombinedOutput()
 		t.Log(string(out))

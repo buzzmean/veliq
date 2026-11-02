@@ -56,10 +56,11 @@ def validate(report, root, commit, service_hash, gui_hash):
             errors.append('invalid or duplicate PC alias')
         else:
             names.add(name)
+        label = name if isinstance(name, str) and re.fullmatch(r'PC[0-9]{2}', name) else 'INVALID_PC'
         for field, expected in (('source_commit', commit), ('service_sha256', service_hash), ('gui_sha256', gui_hash)):
             if pc.get(field) != expected:
-                errors.append('pc/' + str(name) + '/' + field + ': mismatch')
-        checks(pc.get('checks'), PER_PC, 'pc/' + str(name))
+                errors.append('pc/' + label + '/' + field + ': mismatch')
+        checks(pc.get('checks'), PER_PC, 'pc/' + label)
     if report.get('pilot_size') not in (5, 6):
         errors.append('pilot_size must be 5 or 6')
     if report.get('owner_reviewed') is not True:
