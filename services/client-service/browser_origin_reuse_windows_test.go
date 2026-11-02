@@ -128,6 +128,9 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		{"NativeRequiredThenLocal", "native", true},
 		{"NativeLocalFirst", "native", false},
 	} {
+		if selected := os.Getenv("VELIQ_ORIGIN_REUSE_CASE"); selected != "" && selected != tc.name {
+			continue // Dedicated diagnostic workflow only; release gate leaves it unset.
+		}
 		t.Run(tc.name, func(t *testing.T) { runOriginReuseController(t, chrome, tc.mode, tc.requiredFirst) })
 	}
 }
@@ -397,6 +400,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 				}
 				activatedAt = time.Now()
 				t.Logf("ORIGIN_POLICY_ACTIVATION mode=%s warm_local=true same_pid_birth=true registry_active=%t compatibility=%s", mode, c.chromePolicyActive(), compat.Verification)
+				t.Logf("ORIGIN_GP_REFRESH activation=%+v", wp.BrowserPolicyRefreshStatus())
 			}
 			if stage == "required" {
 				if mode != "policy-live" {
@@ -575,6 +579,7 @@ func verifyLiveOriginPolicy(t *testing.T, c *Controller, f *browserfixture.Origi
 	c.browser.mu.Lock()
 	view := c.silentViewLocked(false, pac)
 	c.browser.mu.Unlock()
+	t.Logf("ORIGIN_GP_REFRESH observed=%+v", wp.BrowserPolicyRefreshStatus())
 	t.Logf("ORIGIN_POLICY_PROOF mode=%s state=%s observed=%d registry_active=%t native_pac_exchanges=%d connected=%d reflected=%d metadata_evicted=%d required_direct=%d pre_activation_reuse=%d fresh_loopback_unproven=%d relay_tcp=%d relay_rx=%d", mode, view.State, view.ObservedRequests, c.chromePolicyActive(), native.PACUpstream.Exchanges, delegated.connected.Load(), native.CaptureIngress.ReflectedAccepts, native.CaptureIngress.Lost, direct, pinnedDirect, direct-pinnedDirect, relayTCP, relayRX)
 	if !witnessed[browserfixture.ReuseSiblingHost] || !witnessed[browserfixture.ReuseRequiredHost] || delegated.connected.Load() == 0 || native.CaptureIngress.ReflectedAccepts < delegated.connected.Load() {
 		t.Error("LIVE_POLICY_UPTAKE_NOT_PROVEN: actual hybrid exchanges for new authorities missing within bounded observation")

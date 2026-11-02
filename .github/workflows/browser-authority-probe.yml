@@ -1,0 +1,42 @@
+name: Owner browser authority probe (isolated)
+on:
+  push:
+    branches: ['test/r1-browser-authority-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  owner-gp-event:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Actual owner Group Policy event and user-only refresh
+        shell: powershell
+        run: |
+          $env:VELIQ_TEST_GP_NOTIFY='1'
+          & go test -v -count=1 -timeout 90s ./platform/windows '-run' '^TestOwnerPolicyRefreshEventProbe$'
+          if ($LASTEXITCODE) { throw 'OWNER_GP_PROBE_FAILED' }
+  live-authority:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Pinned DLL and actual live policy delivery
+        shell: powershell
+        run: |
+          & ./tools/windows/fetch-windivert.ps1
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          $env:VELIQ_ORIGIN_REUSE_CASE='OwnedPACAppliedToRunningBrowser'
+          & go test -v -count=1 -timeout 110s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$' 2>&1 | Tee-Object -FilePath owner-authority-probe.log
+          if ($LASTEXITCODE) { throw 'LIVE_AUTHORITY_UPTAKE_NOT_PROVEN' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-authority-probe
+          path: owner-authority-probe.log
