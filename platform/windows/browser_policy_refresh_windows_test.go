@@ -102,6 +102,8 @@ func TestOwnerPolicyRefreshEventProbe(t *testing.T) {
 		return
 	}
 	defer cleanup()
+	immediate, _ := windows.WaitForSingleObject(event, 0)
+	t.Logf("OWNER_GP_SAVE notification=%t", immediate == windows.WAIT_OBJECT_0)
 	windows.ResetEvent(event)
 	started = time.Now()
 	state = refreshOwnerUserPolicy(sid)
@@ -109,7 +111,7 @@ func TestOwnerPolicyRefreshEventProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("OWNER_GP_CSE state=%s notification=%t elapsed_ms=%d retained_for_disposable_job=%t", state, observed == windows.WAIT_OBJECT_0, time.Since(started).Milliseconds(), os.Getenv("VELIQ_TEST_GP_KEEP") == "1")
+	t.Logf("OWNER_GP_CSE state=%s notification=%t elapsed_ms=%d prepared_for_disposable_job=%t", state, observed == windows.WAIT_OBJECT_0, time.Since(started).Milliseconds(), true)
 
 }
 
@@ -182,5 +184,29 @@ func prepareGPNotificationCanary() (func(), error) {
 		release()
 		return nil, err
 	}
-	return func() { key.DeleteValue(name); _ = save(0); key.Close(); root.Close(); release() }, nil
+	// Release the editor/hive before asking gpsvc to process this GPO.
+	// The disposable runner is destroyed after this job; this behavior-free
+	// canary remains only for subsequent steps in this same isolated VM.
+	key.Close()
+	root.Close()
+	release()
+	return func() {}, nil
+}
+
+// Used by the isolated browser test after its owned proxy value is written.
+// No application code calls this helper, and no shared/user PC is supported.
+func TestCommitUserGPOCanary(t *testing.T) {
+	if os.Getenv("VELIQ_GPO_NOTIFICATION_COMMIT") != "1" {
+		t.Skip("explicit Local GPO probe")
+	}
+	if os.Getenv("GITHUB_ACTIONS") != "true" {
+		t.Fatal("disposable Actions VM required")
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	_, err := prepareGPNotificationCanary()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("OWNER_GP_SAVE_COMMITTED released_editor=true")
 }

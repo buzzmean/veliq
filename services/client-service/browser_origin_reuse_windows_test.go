@@ -388,6 +388,17 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 					if err != nil {
 						t.Fatal(err)
 					}
+					if helper := os.Getenv("VELIQ_TEST_GPO_COMMIT_EXEC"); helper != "" {
+						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+						command := exec.CommandContext(ctx, helper, "-test.run=^TestCommitUserGPOCanary$", "-test.v")
+						command.Env = append(os.Environ(), "VELIQ_GPO_NOTIFICATION_COMMIT=1")
+						output, commitErr := command.CombinedOutput()
+						cancel()
+						t.Log(string(output)) // Test-only constants, no policy content.
+						if commitErr != nil {
+							t.Fatal("owned diagnostic GPO commit", commitErr)
+						}
+					}
 				}
 				p.BrowserTransport = "native"
 				if err := c.Profiles.Upsert(p); err != nil {

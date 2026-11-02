@@ -36,6 +36,10 @@ jobs:
       - name: Pinned DLL and actual live policy delivery
         shell: powershell
         run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go test -c -o bin/owner-gpo-tests.exe ./platform/windows
+          if ($LASTEXITCODE) { throw 'OWNER_GPO_HELPER_BUILD_FAILED' }
+          $env:VELIQ_TEST_GPO_COMMIT_EXEC=(Resolve-Path bin/owner-gpo-tests.exe).Path
           & ./tools/windows/fetch-windivert.ps1
           $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
           $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
