@@ -5,6 +5,7 @@ package clientservice
 import (
 	"context"
 	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/neexitlag/core/flowpolicy"
 	"github.com/buzzmean/neexitlag/core/profiles"
 	wp "github.com/buzzmean/neexitlag/platform/windows"
 	"golang.org/x/sys/windows"
@@ -111,6 +112,26 @@ func TestWindowsOwnerAuthorityWorkerAndOtherApplications(t *testing.T) {
 		if record.Owner.PID != self.PID || record.Owner.Birth != self.CreationTime {
 			t.Fatal("other application attribution missing")
 		}
+	}
+	// Profile IDs are user data. A selected MANUAL/required profile with the
+	// passthrough label must still reach its relay provider and remain fail-closed.
+	c.Profiles.Delete("other-app-block")
+	if err := c.Profiles.Upsert(profiles.Profile{ID: "owner-system-passthrough", Name: "Selected sentinel ID", Executables: []string{self.Path}, Mode: profiles.Manual, RelayID: "sentinel-fixture", Fallback: flowpolicy.Required, Custom: true}); err != nil {
+		t.Fatal(err)
+	}
+	relay := &unwantedGameRelay{}
+	c.Engine.SetRelay("sentinel-fixture", relay)
+	c.BrowserResolver = continuityResolver(t, [4]byte{192, 0, 2, 88})
+	endpoint, _ := url.Parse(target.URL)
+	response, err = client.Get("http://manual-routing.example:" + endpoint.Port() + "/required-relay")
+	if err == nil {
+		response.Body.Close()
+		if response.StatusCode < 400 {
+			t.Fatal("required relay provider failure escaped")
+		}
+	}
+	if relay.calls.Load() != 1 {
+		t.Fatal("selected sentinel profile bypassed its relay provider")
 	}
 	t.Log("OWNER_AUTHORITY_WORKER real_primary_owner=true wrong_owner_refused=true unselected_body=true selected_block_preserved=true")
 	// Foreign change after installation is refused by the product. The fixture

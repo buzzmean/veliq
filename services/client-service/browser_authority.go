@@ -159,7 +159,10 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 	if plan.Policy.Action == flowpolicy.Block {
 		return nil, errors.New("OWNER_PROXY_APPLICATION_BLOCKED")
 	}
-	p, _ := c.matchApplication(id)
+	p, selected := c.matchApplication(id)
+	if selected && p.ID != q.Owner.Profile || !selected && q.Owner.Profile != "owner-system-passthrough" {
+		return nil, browserproxy.ErrOwnerProfile
+	}
 	d := applyFlowResult(p, wp.Decision{}, plan.Policy, plan.Network, c.Local)
 	d.Flow = routing.Flow{Protocol: "tcp", Source: q.Source, Destination: plan.Destination, PID: id.PID, ProcessPath: id.Path, ApplicationID: q.Owner.Profile, Network: plan.Network, PinnedPolicy: d.Flow.PinnedPolicy}
 	if d.Route.Local() {
@@ -171,7 +174,7 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 		}
 		return backend.OpenBrowserLocalTCP(ctx, id, q.Source, plan.Destination, d)
 	}
-	if !plan.Enabled || q.Owner.Profile == "owner-system-passthrough" {
+	if !plan.Enabled || !selected {
 		return (&net.Dialer{}).DialContext(ctx, "tcp", plan.Destination.String())
 	}
 	return c.Engine.OpenTCP(ctx, d.Flow)
