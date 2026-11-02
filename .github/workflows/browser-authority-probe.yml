@@ -26,6 +26,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: {go-version: '1.25.x'}
+      - name: Prepare harmless Local GPO registry notification canary
+        shell: powershell
+        run: |
+          $env:VELIQ_TEST_GP_NOTIFY='1'
+          $env:VELIQ_TEST_GP_KEEP='1'
+          & go test -v -count=1 -timeout 90s ./platform/windows '-run' '^TestOwnerPolicyRefreshEventProbe$'
+          if ($LASTEXITCODE) { throw 'OWNER_GP_PREPARATION_FAILED' }
       - name: Pinned DLL and actual live policy delivery
         shell: powershell
         run: |
