@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"net/netip"
 	"os"
 	"path/filepath"
 )
@@ -28,13 +29,23 @@ func readOwnerProxyLease(path, owner string) (*ownerProxyLease, error) {
 	}
 	raw, err := os.ReadFile(path)
 	var lease ownerProxyLease
-	if err != nil || json.Unmarshal(raw, &lease) != nil || lease.Version != 1 || lease.Owner != owner || !freeOwnerProxy(lease.Original) || lease.Installed.Flags != 5 || lease.Installed.Server != "" || lease.Installed.Bypass != "" || !validAuthorityPAC(lease.Installed.PAC) {
+	if err != nil || json.Unmarshal(raw, &lease) != nil || lease.Version != 1 || lease.Owner != owner || !freeOwnerProxy(lease.Original) || !ownedAuthorityProxy(lease.Installed) {
 		return nil, errors.New("OWNER_PROXY_JOURNAL_INVALID")
 	}
-	if lease.Previous != nil && (lease.Previous.Flags != 5 || lease.Previous.Server != "" || lease.Previous.Bypass != "" || !validAuthorityPAC(lease.Previous.PAC)) {
+	if lease.Previous != nil && !ownedAuthorityProxy(*lease.Previous) {
 		return nil, errors.New("OWNER_PROXY_JOURNAL_INVALID")
 	}
 	return &lease, nil
+}
+func ownedAuthorityProxy(s wp.OwnerProxyState) bool {
+	if s.Bypass != "" || !validAuthorityPAC(s.PAC) {
+		return false
+	}
+	if s.Flags == 5 && s.Server == "" {
+		return true
+	} // Existing journal from the first isolated proof.
+	address, err := netip.ParseAddrPort(s.Server)
+	return s.Flags == 7 && err == nil && address.Addr() == netip.MustParseAddr("127.0.0.1") && address.Port() != 0
 }
 func freeOwnerProxy(s wp.OwnerProxyState) bool {
 	return s.PAC == "" && s.Server == "" && s.Flags&2 == 0
@@ -73,7 +84,10 @@ func writeOwnerProxyLease(path string, lease ownerProxyLease) error {
 // Compare-before-write is not an atomic Windows transaction; foreign changes
 // seen before a write or during readback are refused and never blindly restored.
 func acquireOwnerProxy(ctx context.Context, path, owner, pac string, exchange ownerProxyExchange) error {
-	if !validAuthorityPAC(pac) {
+	return acquireOwnerProxyState(ctx, path, owner, wp.OwnerProxyState{Flags: 5, PAC: pac}, exchange)
+}
+func acquireOwnerProxyState(ctx context.Context, path, owner string, desired wp.OwnerProxyState, exchange ownerProxyExchange) error {
+	if !ownedAuthorityProxy(desired) {
 		return errors.New("OWNER_PROXY_PAC_INVALID")
 	}
 	lease, err := readOwnerProxyLease(path, owner)
@@ -92,7 +106,6 @@ func acquireOwnerProxy(ctx context.Context, path, owner, pac string, exchange ow
 	} else if current != lease.Installed && current != lease.Original && (lease.Previous == nil || current != *lease.Previous) {
 		return errors.New("OWNER_PROXY_FOREIGN_PRESERVED")
 	}
-	desired := wp.OwnerProxyState{Flags: 5, PAC: pac}
 	if current == desired {
 		return nil
 	}

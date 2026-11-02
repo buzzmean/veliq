@@ -51,14 +51,15 @@ func TestWindowsOwnerAuthorityWorkerAndOtherApplications(t *testing.T) {
 		t.Fatal("foreign proxy preserved; disposable clean VM required")
 	}
 	c := New(context.Background())
-	defer c.Close()
+	t.Cleanup(c.Close)
 	c.BrowserOwnerSID = sid
 	c.enabled = true
+	c.selfExecutable = helper // The real service binary differs from this client process.
 	server, err := browserproxy.Listen(c.ctx, browserproxy.Config{RequireClientHelloReplay: true, Authorize: c.authorityOwner, Plan: c.authorityPlan, Open: c.authorityOpen, OpenPlan: c.authorityOpenPlan})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer server.Close()
+	t.Cleanup(func() { server.Close() })
 	pac, err := authorityPAC(server.Address(), "owner-worker-acceptance", nil, false)
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +126,17 @@ func TestWindowsOwnerAuthorityWorkerAndOtherApplications(t *testing.T) {
 	if _, err := exchange(ctx, wp.OwnerProxyCommand{Owner: sid, Expected: &installed, Desired: &foreign}); err != nil {
 		t.Fatal("fixture foreign change", err)
 	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		current, err := exchange(ctx, wp.OwnerProxyCommand{Owner: sid})
+		if err == nil && current == foreign {
+			_, err = exchange(ctx, wp.OwnerProxyCommand{Owner: sid, Expected: &foreign, Desired: &installed})
+		}
+		if err != nil {
+			t.Error("fixture foreign value cleanup", err)
+		}
+	})
 	if err := releaseOwnerProxy(ctx, path, sid, exchange); err == nil || !strings.Contains(err.Error(), "FOREIGN_PRESERVED") {
 		t.Error("foreign proxy was not refused")
 	}

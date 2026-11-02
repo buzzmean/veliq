@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/netip"
 	"path/filepath"
+	"slices"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,6 +24,7 @@ type browserAuthorityRuntime struct {
 	published atomic.Pointer[browserAuthorityPublished]
 	mu        sync.Mutex
 	server    *browserproxy.Server
+	fallback  *browserproxy.Server
 	pac       string
 	applied   bool
 	appliedAt time.Time
@@ -32,13 +35,14 @@ type browserAuthorityRuntime struct {
 }
 type browserAuthorityPublished struct {
 	server    *browserproxy.Server
+	fallback  *browserproxy.Server
 	applied   bool
 	appliedAt time.Time
 	reason    string
 }
 
 func (a *browserAuthorityRuntime) publish() {
-	a.published.Store(&browserAuthorityPublished{a.server, a.applied, a.appliedAt, a.lastError})
+	a.published.Store(&browserAuthorityPublished{a.server, a.fallback, a.applied, a.appliedAt, a.lastError})
 }
 
 func (c *Controller) authorityOwner(ctx context.Context, source, local netip.AddrPort) (browserproxy.Owner, error) {
@@ -271,6 +275,25 @@ func (c *Controller) RetryBrowserAuthority() {
 		}
 		a.server = server
 	}
+	if a.fallback == nil {
+		address := ""
+		lease, err := readOwnerProxyLease(c.authorityLeasePath(), c.BrowserOwnerSID)
+		if err != nil {
+			a.lastError = err.Error()
+			return
+		}
+		if lease != nil {
+			address = lease.Installed.Server
+		}
+		server, err := browserproxy.Listen(c.ctx, browserproxy.Config{Address: address, RequireClientHelloReplay: true, Authorize: c.authorityOwner, Plan: c.authorityFallbackPlan, Open: c.authorityFallbackOpen})
+		if err != nil {
+			a.lastError = "AUTHORITY_FALLBACK_LISTENER_UNAVAILABLE"
+			return
+		}
+		a.fallback = server
+	}
+	sort.Strings(guards)
+	guards = slices.Compact(guards)
 	guardKey := fmt.Sprint(strict, guards)
 	if a.pac == "" || guardKey != a.guardKey {
 		epoch := make([]byte, 16)
@@ -288,7 +311,8 @@ func (c *Controller) RetryBrowserAuthority() {
 		a.applied = false
 	}
 	at := time.Now()
-	if err := acquireOwnerProxy(ctx, c.authorityLeasePath(), c.BrowserOwnerSID, a.pac, exchange); err != nil {
+	desired := wp.OwnerProxyState{Flags: 7, PAC: a.pac, Server: a.fallback.Address()}
+	if err := acquireOwnerProxyState(ctx, c.authorityLeasePath(), c.BrowserOwnerSID, desired, exchange); err != nil {
 		a.lastError = err.Error()
 		return
 	}

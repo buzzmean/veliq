@@ -116,6 +116,7 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		{"PACNativeRequiredThenLocal", "pac-native", true},
 		{"OwnedPACBeforeNativeActivation", "policy-existing", false},
 		{"OwnedPACAppliedToRunningBrowser", "policy-live", false},
+		{"OwnerSystemPACFailureSafeFallback", "policy-live-fallback", false},
 		{"FreshRequiredAfterPACWithdrawal", "policy-withdrawal", false},
 		{"ListenerOutageGuarded", "outage-listener-guarded", false},
 		{"ListenerOutageAvailability", "outage-listener-availability", false},
@@ -138,7 +139,9 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst bool) {
 	outage := strings.HasPrefix(mode, "outage-")
 	freshAfterWithdrawal := mode == "policy-withdrawal"
-	livePolicy := mode == "policy-existing" || mode == "policy-live" || freshAfterWithdrawal || outage
+	liveInstall := mode == "policy-live" || mode == "policy-live-fallback"
+	runtimeAuthority := liveInstall && os.Getenv("VELIQ_TEST_AUTHORITY_RUNTIME") == "1"
+	livePolicy := mode == "policy-existing" || liveInstall || freshAfterWithdrawal || outage
 	native := mode == "native" || mode == "pac-native" || livePolicy
 	usePAC := mode == "pac" || mode == "pac-native" || livePolicy
 	if !native && !usePAC {
@@ -286,7 +289,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			c.browser.silent.Profiles = []string{p.ID}
 			// Exercise the real owned journal and writer. Readiness/SCM/recovery
 			// provisioning is deliberately outside this isolated transport gate.
-			if mode != "policy-live" {
+			if !liveInstall {
 				c.browser.mu.Lock()
 				err = c.reapplySilentLocked(false)
 				c.browser.mu.Unlock()
@@ -381,7 +384,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			}
 			c.network.Store(&wp.NetworkContext{Fingerprint: "isolated-origin-reuse", ObservedAt: time.Now()})
 			if stage == "local" {
-				if mode == "policy-live" {
+				if liveInstall && !runtimeAuthority {
 					c.browser.mu.Lock()
 					err = c.reapplySilentLocked(false)
 					c.browser.mu.Unlock()
@@ -438,7 +441,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 					t.Fatal(err)
 				}
 				startCapture()
-				if mode == "policy-live" && os.Getenv("VELIQ_TEST_AUTHORITY_RUNTIME") == "1" {
+				if runtimeAuthority {
 					helper := os.Getenv("VELIQ_TEST_OWNER_WORKER")
 					if helper == "" {
 						t.Fatal("compiled owner service worker required")
@@ -457,17 +460,34 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 						}
 					})
 					t.Log("ORIGIN_AUTHORITY_RUNTIME_APPLIED owner_worker=true no_browser_restart=true")
+					if mode == "policy-live-fallback" {
+						installed, err := exchangeOwnerProxyWithBinary(context.Background(), wp.OwnerProxyCommand{Owner: c.BrowserOwnerSID}, helper)
+						if err != nil {
+							t.Fatal(err)
+						}
+						broken := installed
+						broken.PAC = "data:application/x-ns-proxy-autoconfig;base64,Ly9pbnZhbGlkIFBBQwo="
+						if _, err := exchangeOwnerProxyWithBinary(context.Background(), wp.OwnerProxyCommand{Owner: c.BrowserOwnerSID, Expected: &installed, Desired: &broken}, helper); err != nil {
+							t.Fatal("fixture PAC failure", err)
+						}
+						t.Cleanup(func() {
+							if _, err := exchangeOwnerProxyWithBinary(context.Background(), wp.OwnerProxyCommand{Owner: c.BrowserOwnerSID, Expected: &broken, Desired: &installed}, helper); err != nil {
+								t.Error("fixture PAC failure cleanup", err)
+							}
+						})
+						t.Log("ORIGIN_AUTHORITY_PAC_FAILURE manual_fallback=true no_browser_restart=true")
+					}
 				}
 				compat, err := c.nativeBrowserCompatibility(p, false)
-				if err != nil || compat == nil || !compat.OwnedPolicy || compat.PolicyChanged {
+				if err != nil || (!runtimeAuthority && (compat == nil || !compat.OwnedPolicy || compat.PolicyChanged)) {
 					t.Fatal("existing owned policy compatibility missing", err)
 				}
 				activatedAt = time.Now()
-				t.Logf("ORIGIN_POLICY_ACTIVATION mode=%s warm_local=true same_pid_birth=true registry_active=%t compatibility=%s", mode, c.chromePolicyActive(), compat.Verification)
+				t.Logf("ORIGIN_POLICY_ACTIVATION mode=%s warm_local=true same_pid_birth=true registry_active=%t compatibility=%+v", mode, c.chromePolicyActive(), compat)
 				t.Logf("ORIGIN_GP_REFRESH activation=%+v", wp.BrowserPolicyRefreshStatus())
 			}
 			if stage == "required" {
-				if mode != "policy-live" {
+				if !liveInstall {
 					c.RetrySilentBrowserPolicies()
 					if !c.chromePolicyActive() {
 						t.Fatal("native maintenance withdrew the authority PAC")
@@ -517,6 +537,8 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			fault.verifyFinal(t)
 		} else if freshAfterWithdrawal {
 			verifyFreshOriginAfterWithdrawal(t, c, f, proxy, beforeFresh, r.Metrics.TCPConnections.Load()-beforeTCP, r.Metrics.RXBytes.Load()-beforeRX)
+		} else if mode == "policy-live-fallback" {
+			verifyAuthorityManualFallback(t, c, f, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
 		} else {
 			verifyLiveOriginPolicy(t, c, f, proxy, delegated, mode, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
 		}

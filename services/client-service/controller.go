@@ -273,6 +273,9 @@ func (c *Controller) Close() {
 	if c.browser.authority.server != nil {
 		c.browser.authority.server.Close()
 	}
+	if c.browser.authority.fallback != nil {
+		c.browser.authority.fallback.Close()
+	}
 	c.browser.authority.mu.Unlock()
 	if c.Backend != nil {
 		c.Backend.Stop()
