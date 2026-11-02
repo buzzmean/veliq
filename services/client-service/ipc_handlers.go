@@ -396,6 +396,9 @@ func (c *Controller) handleOptimize(ctx context.Context, raw json.RawMessage) (a
 		}
 	}
 	c.Measurements.Active.Store(v.Enabled)
+	if v.Enabled {
+		c.retryBrowserAuthority(true)
+	}
 	return c.Snapshot(), nil
 }
 

@@ -203,6 +203,12 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 		}
 		controlled := netip.AddrPortFrom(netip.MustParseAddr("192.0.2.254"), f.Port())
 		classify := func(id wp.ProcessIdentity, tuple wp.Tuple) wp.Decision {
+			// The production NETWORK filter excludes loopback. This fixture widens
+			// it only to reflect the controlled origin port. Keep other loopback
+			// sockets (the real local CONNECT listener) on their production path.
+			if tuple.Destination.Addr().IsLoopback() && tuple.Destination.Port() != f.Port() {
+				return wp.Decision{}
+			}
 			// Contain unrelated browser bootstrap traffic in this disposable
 			// VM. The tested endpoint still uses the unmodified classifier.
 			allowed := tuple.Destination == controlled

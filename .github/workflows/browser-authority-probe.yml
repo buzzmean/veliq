@@ -5,6 +5,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: owner-authority-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   authority-runtime:
     runs-on: windows-latest
@@ -32,7 +35,7 @@ jobs:
           & go test -v -count=1 -timeout 120s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
           if ($LASTEXITCODE) { throw 'AUTHORITY_RUNTIME_FAILED' }
           if ('${{ matrix.scenario }}' -eq 'OwnedPACAppliedToRunningBrowser') {
-            & go test -v -count=1 -timeout 90s ./services/client-service '-run' '^TestWindowsOwnerAuthorityWorkerAndOtherApplications$'
+            & go test -v -count=1 -timeout 90s ./services/client-service '-run' '^TestWindowsOwner(AuthorityWorkerAndOtherApplications|ProxyWorkerFromSYSTEM)$'
             if ($LASTEXITCODE) { throw 'OTHER_APPLICATION_POLICY_OR_OWNER_RESTORE_FAILED' }
           }
   owner-gp-event:

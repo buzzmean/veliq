@@ -187,6 +187,9 @@ func (c *Controller) authorityLeasePath() string {
 // user. Unselected programs pass through their own normal policy, never through
 // a browser profile. Existing per-browser owned PAC listeners remain valid.
 func (c *Controller) RetryBrowserAuthority() {
+	c.retryBrowserAuthority(false)
+}
+func (c *Controller) retryBrowserAuthority(force bool) {
 	if c.customPath == "" || c.BrowserOwnerSID == "" {
 		return
 	}
@@ -201,7 +204,7 @@ func (c *Controller) RetryBrowserAuthority() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	defer a.publish()
-	if time.Since(a.checked) < 5*time.Second {
+	if !force && time.Since(a.checked) < 5*time.Second {
 		return
 	}
 	a.checked = time.Now()
