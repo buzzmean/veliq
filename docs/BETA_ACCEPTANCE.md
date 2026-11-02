@@ -16,10 +16,30 @@ rollback ELF fixture, WPF technical preference, сохранение подтв�
 QUIC browser LOCAL не поддерживается. Состояние native H2 origin isolation и
 live-policy uptake остаётся открытым до соответствующего исправления и evidence.
 **Начальный допуск NO_GO**: шаблон намеренно не содержит PASS. На проверенной
-579acad матрица origin13PASS/3FAIL: native-only H2 в обоих порядках и применение
+Build618/code7be4f66 матрица origin13PASS/3FAIL: native-only H2 в обоих порядках и применение
 owned PAC к уже работающему браузеру за30с. Это программные блокеры; ручная приёмка
 на двух лабораторных ПК полезна параллельно, но даже её PASS не разрешает5–6ПК,
 пока все три сценария не исправлены и не прошли на выбранном exact SHA.
+
+Зафиксированный кандидат **Build618**, source_commit
+`7be4f66b06f068a59488335b38c80dbec01df641`:
+[скачать полный kit](https://github.com/buzzmean/veliq/actions/runs/41378361024/artifacts/13112765460).
+Artifact SHA256: `0a469978ee6777f4e298ffb5c979ee12e1ed35b93ec4f073408faf382753f37c`.
+`VELIQ-Setup.exe` SHA256: `7965e8022ffc1d337e1a6f3b197b69c2f958b68c857ecaa6d009d4049072bd43`.
+Срок хранения artifact — до16ноября. Все CI ниже относятся к этому **code SHA**;
+последующее уточнение этого плана не меняет бинарники Build618 и их допуск.
+В README внутри kit находится версия плана на момент сборки; актуальные результаты
+и уточнение безопасного сетевого теста приведены здесь.
+
+Подтверждено на code SHA: полный [Verify Linux+Windows](https://github.com/buzzmean/veliq/actions/runs/41378361083),
+[Beta4jobs](https://github.com/buzzmean/veliq/actions/runs/41378361024), Chrome/Edge,
+27 YouTube LOCAL сценариев, GameUDP, isolated upgrade и relay tests — PASS.
+Actual Setup install/update/uninstall и binary snapshot прошли в PS5.1 и PS7;
+отрицательная установка CLUBIMAGE без кода возвращает exit1, SCM не создаёт.
+[Origin gate](https://github.com/buzzmean/veliq/actions/runs/41378361012) — **FAIL13PASS/3FAIL**,
+все8 same-authority outage/recovery/retry PASS. Прежний Edge efdb05e дал
+HTTP_BODY_NOT_OBSERVED native-active в reflection-seam тесте; текущий PASS не
+устанавливает причину того intermittent failure.
 
 Workflow `Beta candidate kit (no deployment)` проверяет exact head: полный Windows
 Go race/vet/build в отдельном обязательном job и независимую сборку/Setup smoke, C# контракты, self-contained GUI, службу отдельно в PS5.1 и PS7,
@@ -105,11 +125,10 @@ exact checkout, существующий публичный CA, Inno6.4.3. `publ
 | Серверы | Действующий CP/relay, известный резерв, ёмкость ≥6 мест, срок сертификатов и кода покрывает пилот | Неизвестный срок/остаток мест; отключение единственного production relay для теста |
 | Секреты | Runtime identity отсутствует в базовом образе; тестовые/засвеченные коды обработаны владельцем | Общий device key на клонах или опубликованный код |
 
-Windows job125004701705 от предыдущего #54 завершился CANCELLED; завершённый
-журнал через connector недоступен. Это не PASS. Новый candidate должен получить
-собственный завершённый полный Windows прогон. Прежние Python rollback/WPF/Edge блокеры имеют независимые исправления,
-теперь включённые в candidate; их совместный CI должен подтвердиться на его SHA.
-Заменять этот прогон результатом другой ветки нельзя.
+Старый Windows job125004701705 от #54 завершился CANCELLED, не PASS. Build618
+получил собственные завершённые Windows race/vet/build и Verify на code7be4f66.
+Независимые Python rollback/WPF/Edge fixes включены; совместный прогон пройден.
+Результаты другой версии не подменяют проверки выбранного кандидата.
 
 ## 3. На двух тестовых ПК (2–4 часа, параллельно)
 
@@ -128,10 +147,17 @@ RTT/jitter/loss, NIC RX/TX и начальные счётчики VELIQ. Исп�
 | PUBG | Полный матч, сверить actual exe/UDP counters/route | Нет античит-ошибок, игровой трафик без VPS; сохранить RTT/jitter/loss |
 | Valorant/Vanguard | Полный матч, вход/выход и restart игры | Guard сохранён; античит не отключался и не требует обхода |
 | FACEIT | Полный матч с соответствующим античитом | Нет конфликтов/ошибок; непроверенный античит не считать поддержанным |
-| OFF/ON/сеть | Optimize OFF→ON, отключить сеть тестового ПК на30с→вернуть, новые и старые requests | Новые flows восстанавливаются, старые не replay/migrate, ordinary не заперт |
+| OFF/ON/сеть | Optimize OFF→ON; на ПК с локальным диском отключить сеть на30с→вернуть. На Langame сохранять NIC/iSCSI, проверять отдельно отказ Internet/relay. Новые и старые requests | Новые flows восстанавливаются, старые не replay/migrate, ordinary не заперт |
 | Отказы | Только лабораторный endpoint/правило на тестовом ПК: relay unreachable; stop/crash службы отдельно | Защищённое не становится DIRECT; ordinary работает; после восстановления новые flows корректны |
 | Freeze | Два отдельных writable overlay, две одновременные загрузки, затем по2 перезагрузки | Разные device identity между ПК, тот же слот у каждого после reboot, нет ручной активации |
 | Откат | PC02 вернуть проверенный предыдущий service/GUI/образ; повторить сайты/игру/SCM | Успешно за≤10мин, настройки/identity/слот сохранены; затем повторно проверить candidate |
+
+**Бездисковый ПК:** не отключать NIC, LAN, iSCSI3260 или общий коммутатор для
+имитации потери Internet. Полный разрыв NIC выполнять на отдельном лабораторном
+ПК с локальным системным диском. На Langame использовать только контролируемый
+отказ внешнего Internet/relay для тестового ПК, сохраняя дисковую сеть; если такой
+изоляции нет, этот тест на diskless не выполнять и не ставить PASS. Адресное
+блокирование relay проверяет отказ relay, а не смену сетевого fingerprint.
 
 Счётчики сравнивать delta за точное окно. Старые pinned relay H2, CP/билеты и DNS
 учитываются отдельно от нового googlevideo media. Не обрывать браузерные соединения
