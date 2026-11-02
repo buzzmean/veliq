@@ -45,16 +45,21 @@ jobs:
       - name: Cold CDN resume, LOCAL promotion and reset fallback over TLS and relay
         run: go test -race -v ./services/client-service -run '^TestWindowsCDNColdFlowThroughBackgroundAndLocalPromotion$' -count 1 -timeout 60s
       - name: Full Windows Go race regressions
+        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release/beta-candidate-') }}
         run: go test -race -p 1 -timeout 180s ./...
-      - run: go vet ./...
-      - run: go build ./...
+      - if: ${{ !startsWith(github.head_ref || github.ref_name, 'release/beta-candidate-') }}
+        run: go vet ./...
+      - if: ${{ !startsWith(github.head_ref || github.ref_name, 'release/beta-candidate-') }}
+        run: go build ./...
       - name: Package service with Windows PowerShell 5.1
+        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release/beta-candidate-') }}
         shell: powershell
         env:
           R1_EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:R1_EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/r1-service-ps51')
       - name: Package service with PowerShell 7 and verify identical payloads
+        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release/beta-candidate-') }}
         shell: pwsh
         env:
           R1_EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -83,6 +88,7 @@ jobs:
           if ($hash51 -ne $hash7) { throw 'R1_PACKAGE_RUNTIME_BUILD_MISMATCH' }
           Write-Host "R1_PACKAGE_VERIFIED commit=$env:R1_EXPECTED_COMMIT sequence=$sequence sha256=$hash7"
       - uses: actions/upload-artifact@v4
+        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release/beta-candidate-') }}
         with:
           name: VELIQ-R1-service-win-x64
           path: bin/r1-service-ps7/
@@ -90,3 +96,6 @@ jobs:
           retention-days: 14
 # Portable TLS fixtures run natively on Windows. This job does not install a
 # capture driver, exercise a public ISP, or prove YouTube playback/relay savings.
+
+# Beta candidates keep the 17 policy-change and 10 cold/resume/RST checks here;
+# full Windows validation and the only candidate artifact live in beta-candidate.yml.

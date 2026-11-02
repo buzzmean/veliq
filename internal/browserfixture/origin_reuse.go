@@ -33,6 +33,7 @@ const ReuseFreshRequiredHost = "api.openai.com"
 // a fresh single-fault/recovery attempt. These names never resolve publicly.
 var OutageHosts = [...]string{"outage.openai.com", "ordinary-outage.example", "recovery.openai.com", "ordinary-recovery.example"}
 var OutageSteps = [...]string{"outage_required", "outage_direct", "recovery_required", "recovery_direct"}
+var OutageRetrySteps = [...]string{"retry_required", "retry_direct"}
 var OutageAddresses = [...]string{"192.0.2.251", "192.0.2.250", "192.0.2.249", "192.0.2.248"}
 
 type OriginOutcome struct {
@@ -166,7 +167,8 @@ func (f *OriginReuse) serveReuse(w http.ResponseWriter, r *http.Request) {
 	}
 	step := r.URL.Query().Get("step")
 	fresh := host == ReuseFreshRequiredHost && (step == "fresh_required" || step == "fresh_required_again")
-	if (outageIndex >= 0 && step != OutageSteps[outageIndex]) || (outageIndex < 0 && !fresh && (host == ReuseFreshRequiredHost || (step != "local" && step != "sibling" && step != "required" && step != "required_again"))) {
+	retry := outageIndex >= 0 && outageIndex < 2 && step == OutageRetrySteps[outageIndex]
+	if (outageIndex >= 0 && !retry && step != OutageSteps[outageIndex]) || (outageIndex < 0 && !fresh && (host == ReuseFreshRequiredHost || (step != "local" && step != "sibling" && step != "required" && step != "required_again"))) {
 		http.Error(w, "bad step", 400)
 		return
 	}

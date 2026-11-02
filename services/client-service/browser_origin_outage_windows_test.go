@@ -109,6 +109,12 @@ func (o *originReuseOutage) phase(t *testing.T, stage string) {
 		o.boundary(t, true)
 	case "recovery_direct":
 		o.verifyPhase(t, true)
+	case "before_retry":
+		o.before = o.c.nativeSnapshot()
+		o.tcp, o.rx = o.relay()
+		t.Logf("ORIGIN_RETRY_BOUNDARY mode=%s same_authorities=true browser_cache_reset=false", o.mode)
+	case "retry_direct":
+		o.verifyRetry(t)
 	}
 }
 
@@ -223,10 +229,71 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 	t.Logf("ORIGIN_OUTAGE_PROOF mode=%s recovery=%t relay_tcp_delta=%d relay_rx_delta=%d complete=%d", o.mode, recovery, tcp-o.tcp, rx-o.rx, exchanges)
 }
 
+func (o *originReuseOutage) verifyRetry(t *testing.T) {
+	t.Helper()
+	requests, outcomes := o.f.OutageEvidence(t)
+	if len(outcomes) != 6 || !o.c.nativeBackendReady() || !o.proxy().Snapshot().Listening || o.c.chromePolicyActive() {
+		t.Fatal("same-authority retry lifecycle incomplete")
+	}
+	after, pac := o.c.nativeSnapshot(), o.proxy().Snapshot()
+	if after.Lost != 0 || after.Truncated || pac.Lost != 0 || pac.Truncated {
+		t.Fatal("retry evidence incomplete")
+	}
+	for i, step := range browserfixture.OutageRetrySteps {
+		outcome := outcomes[4+i]
+		t.Logf("ORIGIN_RETRY_BROWSER mode=%s step=%s complete=%t error=%s elapsed_ms=%d", o.mode, step, outcome.Complete, outcome.Error, outcome.Millis)
+		if outcome.Step != step || !outcome.Complete {
+			t.Error("same failed authority did not recover", step)
+		}
+		count := 0
+		for _, q := range requests {
+			if q.Step != step {
+				continue
+			}
+			count++
+			want := "127.0.0.1"
+			if i == 0 {
+				want = "127.0.0.2"
+			}
+			t.Logf("ORIGIN_RETRY_REQUEST mode=%s %+v", o.mode, q)
+			if q.Host != browserfixture.OutageHosts[i] || q.Source != want || q.Protocol != 2 || q.BodyBytes != len(o.f.Nonce+":"+step) {
+				t.Error("same-authority retry route/body mismatch", step)
+			}
+		}
+		if count != 1 {
+			t.Error("retry server cardinality mismatch", step, count)
+		}
+	}
+	previousSent, previousReceived := map[uint64]uint64{}, map[uint64]uint64{}
+	for _, r := range o.before.Records {
+		previousSent[r.ID] = r.Sent
+		previousReceived[r.ID] = r.Received
+	}
+	witnessed := false
+	for _, r := range after.Records {
+		if r.Domain != browserfixture.OutageHosts[0] || r.Sent <= previousSent[r.ID] || r.Received <= previousReceived[r.ID] {
+			continue
+		}
+		t.Logf("ORIGIN_RETRY_NATIVE mode=%s ingress=%s action=%s sent=%d received=%d", o.mode, r.Ingress, r.Policy.Action, r.Sent, r.Received)
+		if r.Owner.Profile != "origin-reuse" || r.Owner.PID == 0 || r.Owner.Birth == 0 || r.Policy.Action != flowpolicy.RelayRequired || r.Policy.Fallback != flowpolicy.Required || r.Ingress != "PAC_NATIVE_UPSTREAM" {
+			t.Error("retry required owner/ingress/floor mismatch")
+		}
+		witnessed = true
+	}
+	if !witnessed {
+		t.Error("retry required actual native exchange missing")
+	}
+	tcp, rx := o.relay()
+	if tcp < o.tcp || rx <= o.rx || after.CaptureIngress == nil || o.before.CaptureIngress == nil || after.CaptureIngress.TCPPackets <= o.before.CaptureIngress.TCPPackets {
+		t.Error("retry capture/authenticated relay byte increments missing")
+	}
+	t.Logf("ORIGIN_RETRY_PROOF mode=%s relay_tcp_delta=%d relay_rx_delta=%d", o.mode, tcp-o.tcp, rx-o.rx)
+}
+
 func (o *originReuseOutage) verifyFinal(t *testing.T) {
 	t.Helper()
 	requests, outcomes := o.f.OutageEvidence(t)
-	if len(outcomes) != 4 || o.c.chromePolicyActive() {
+	if len(outcomes) != 6 || o.c.chromePolicyActive() {
 		t.Fatal("outage sequence incomplete or policy unexpectedly restored")
 	}
 	connections := map[uint64]bool{o.f.Bootstrap(t).Connection: true}
@@ -235,7 +302,7 @@ func (o *originReuseOutage) verifyFinal(t *testing.T) {
 	}
 	counts := map[string]int{}
 	for _, r := range requests {
-		ordinaryWithoutCapture := r.Step == "outage_direct" && strings.Contains(o.mode, "-combined-") && strings.HasSuffix(o.mode, "-availability")
+		ordinaryWithoutCapture := r.Step == "retry_direct" || r.Step == "retry_required" || r.Step == "outage_direct" && strings.Contains(o.mode, "-combined-") && strings.HasSuffix(o.mode, "-availability")
 		if connections[r.Connection] && !ordinaryWithoutCapture {
 			t.Error("outage/recovery authority reused an earlier origin connection", r.Step)
 		}

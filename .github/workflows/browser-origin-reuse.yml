@@ -1,7 +1,7 @@
 name: Browser HTTP2 origin reuse
 on:
   push:
-    branches: ['test/r1-browser-origin-reuse-*', 'release/beta-candidate-*']
+    branches: ['test/r1-browser-origin-reuse-*']
     paths:
       - 'internal/browserfixture/origin_reuse*'
       - 'services/client-service/browser_origin_*windows_test.go'
@@ -53,6 +53,8 @@ jobs:
           path: origin-reuse-*.log
           if-no-files-found: warn
   windows-validation:
+    # The beta kit job supplies the same exact-SHA full Windows validation.
+    if: ${{ !startsWith(github.head_ref || github.ref_name, 'release/beta-candidate-') }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:

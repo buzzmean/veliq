@@ -214,3 +214,25 @@ capture: браузер не должен угадывать наличие capt
 Нужен проверенный uptake новой policy; fresh native-only без PAC и старые H2
 origin violations этим не исправлены. До их разрешения origin_isolation остаётся
 FAIL и rollout запрещён. Результаты после исправления должны быть добавлены по SHA.
+
+
+Повтор failed-authority после recovery проверяется той же последовательностью
+без сброса proxy cache и без browser restart. Required снова должен дать полный
+body через relay; ordinary может сохранить уже существующий DIRECT connection.
+Byte delta и owner-bound actual ingress проверяются отдельно от новых TCP opens:
+законный preconnect не обязан создавать ещё одно соединение в момент retry.
+
+Для beta-ветки полный Windows Go race/vet/build выполняется один раз в workflow
+Beta candidate kit по PR head. Origin workflow сохраняет actual browser/DLL gate;
+YouTube LOCAL сохраняет 17 policy-change +10 cold/resume/RST сценариев. Служебный
+R1 artifact для этой ветки не публикуется: единственный комплект — beta-kit.
+Это убирает дублирование сборок, сохраняя обязательную проверку точного SHA.
+
+
+В общем Windows прогоне кандидата обнаружена дополнительная same-clock-tick
+коллизия: cancelled background очищал Retry нового media failure, если обе
+трёхминутные задержки получили одинаковое время. Исправление сравнивает всю
+зарезервированную запись learning, сохраняя любое промежуточное изменение,
+а не считает один Retry timestamp доказательством владения. Детерминированный
+portable regression использует одинаковое now для реального foreground trial и
+его failure; unchanged-background positive control обязан освобождать Retry.

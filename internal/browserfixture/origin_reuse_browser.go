@@ -241,6 +241,8 @@ func (f *OriginReuse) runPhased(t testing.TB, chrome, address, bootstrapHost str
 	if outage {
 		hosts = append(hosts, OutageHosts[:]...)
 		steps = append(steps, OutageSteps[:]...)
+		hosts = append(hosts, OutageHosts[:2]...)
+		steps = append(steps, OutageRetrySteps[:]...)
 	}
 	for i, host := range hosts {
 		step := steps[i]
@@ -250,6 +252,9 @@ func (f *OriginReuse) runPhased(t testing.TB, chrome, address, bootstrapHost str
 			}
 			if i == 6 {
 				after("before_recovery", uint32(cmd.Process.Pid))
+			}
+			if i == 8 {
+				after("before_retry", uint32(cmd.Process.Pid))
 			}
 		}
 		if fresh && i == 4 && after != nil {

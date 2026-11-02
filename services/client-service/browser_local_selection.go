@@ -80,13 +80,15 @@ func (c *Controller) youtubeBackgroundScopeCurrent(scope youtubeBackgroundScope,
 		c.youtubeLocalAllowed(scope.network) && c.policyRevision(cur.profile) == scope.revision
 }
 
-func (r *youtubeRuntime) cancelBackgroundRecheck(key youtubeKey, retry time.Time) {
+func (r *youtubeRuntime) cancelBackgroundRecheck(key youtubeKey, reservation youtubeLearn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	v, ok := r.cache[key]
 	// Release only this worker's scheduling delay. A real flow may have
 	// installed a newer cooldown/confirmation while the probe was in flight.
-	if !ok || !v.Retry.Equal(retry) || r.trialActive && r.trialKey == key {
+	// Retry timestamps alone are not ownership: distinct Windows events can
+	// occupy the same clock tick. Preserve any intervening cache transition.
+	if !ok || v != reservation || r.trialActive && r.trialKey == key {
 		return
 	}
 	v.Retry = time.Time{}
@@ -558,7 +560,7 @@ func (c *Controller) youtubeBackgroundRecheck(cur profilesResult, q browserproxy
 		cancelled := false
 		defer func() {
 			if cancelled {
-				r.cancelBackgroundRecheck(key, learned.Retry)
+				r.cancelBackgroundRecheck(key, learned)
 			}
 			<-c.browser.probes
 			r.endRecheck()

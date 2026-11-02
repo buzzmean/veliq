@@ -1,7 +1,5 @@
 name: Beta candidate kit (no deployment)
 on:
-  push:
-    branches: ['release/beta-candidate-*']
   pull_request:
     paths:
       - '.github/workflows/beta-candidate.yml'
@@ -86,7 +84,8 @@ jobs:
           if ($process.ExitCode -ne 0) { throw 'INNO_INSTALL_FAILED' }
           $trust=Join-Path $env:RUNNER_TEMP 'beta-disposable-ca'
           New-Item $trust -ItemType Directory | Out-Null
-          $rsa=[Security.Cryptography.RSA]::Create();$rsa.KeySize=2048
+          $rsa=[Security.Cryptography.RSACryptoServiceProvider]::new(2048)
+          $rsa.PersistKeyInCsp=$false
           $request=[Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=VELIQ disposable beta installer CA',$rsa,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)
           $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true,$false,0,$true))
           $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new([Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyCertSign,$true))
