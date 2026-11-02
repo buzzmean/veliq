@@ -1,7 +1,7 @@
 package clientservice
 
-// Called with browser.mu held. Native readiness must not inherit PAC readiness
-// or fabricate a listener/nonce. Only NATIVE_TCP counters establish native ingress.
+// Called with browser.mu held. Capture readiness and raw TLS counters never
+// establish per-authority ingress. Only the live owner CONNECT lane does.
 func (c *Controller) nativeBrowserReadiness(edge bool) string {
 	for _, p := range c.Profiles.List() {
 		if !nativeBrowserProfile(p) || edgeProfile(p) != edge {

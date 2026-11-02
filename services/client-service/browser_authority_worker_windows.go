@@ -72,7 +72,7 @@ func ownerProxySessionToken(sid string) (windows.Token, error) {
 		return 0, errors.New("OWNER_PROXY_SESSION_LIMIT")
 	}
 	for _, s := range unsafe.Slice(sessions, count) {
-		if s.State != windows.WTSActive {
+		if s.State != windows.WTSActive && s.State != windows.WTSDisconnected {
 			continue
 		}
 		var token windows.Token

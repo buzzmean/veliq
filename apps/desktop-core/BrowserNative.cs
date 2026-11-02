@@ -20,7 +20,7 @@ public sealed class NativeBrowserStatus
 public sealed class BrowserAuthorityStatus
 {
     public string State { get; set; } = "";
-    public bool SystemPacApplied { get; set; }
+    public bool SystemProxyApplied { get; set; }
     public int SafeFallbackRequests { get; set; }
     public BrowserAuthorityProof[] Profiles { get; set; } = [];
 }
@@ -70,7 +70,7 @@ public sealed partial class DesktopViewModel
     public void ApplyNativeBrowserReadiness(NativeBrowserStatus status){
         var configured = Applications.Where(a => NativeBrowser(a.Profile) && a.Profile.Mode == "AUTO").Select(a => a.Profile.Id).ToArray();
         var authority=status.AuthorityTransport;
-        var observed = authority.SystemPacApplied && configured.Any(id => authority.Profiles.Any(p => p.ProfileId == id && p.Requests > 0 && p.Exchanges > 0));
+        var observed = authority.SystemProxyApplied && configured.Any(id => authority.Profiles.Any(p => p.ProfileId == id && p.Requests > 0 && p.Exchanges > 0));
         var next=!Optimizing?"Браузеры используют обычную сеть.":status.CaptureReady&&status.Optimizing&&status.State=="AUTHORITY_REQUEST_OBSERVED"&&observed
           ?"Браузер: обмен по адресатам подтверждён."
           :status.CaptureReady&&status.Optimizing&&status.State=="AUTHORITY_PENDING"

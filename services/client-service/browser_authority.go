@@ -2,19 +2,15 @@ package clientservice
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"github.com/buzzmean/neexitlag/core/browserproxy"
 	"github.com/buzzmean/neexitlag/core/flowpolicy"
 	"github.com/buzzmean/neexitlag/core/routing"
 	wp "github.com/buzzmean/neexitlag/platform/windows"
 	"net"
 	"net/netip"
+	"os"
 	"path/filepath"
-	"slices"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,19 +20,15 @@ type browserAuthorityRuntime struct {
 	published  atomic.Pointer[browserAuthorityPublished]
 	mu         sync.Mutex
 	server     *browserproxy.Server
-	fallback   *browserproxy.Server
-	pac        string
 	applied    bool
 	appliedAt  time.Time
 	verifiedAt time.Time
 	checked    time.Time
 	lastError  string
-	guardKey   string
 	exchange   ownerProxyExchange // isolated test seam; never an IPC setting
 }
 type browserAuthorityPublished struct {
 	server     *browserproxy.Server
-	fallback   *browserproxy.Server
 	applied    bool
 	appliedAt  time.Time
 	verifiedAt time.Time
@@ -44,7 +36,7 @@ type browserAuthorityPublished struct {
 }
 
 func (a *browserAuthorityRuntime) publish() {
-	a.published.Store(&browserAuthorityPublished{a.server, a.fallback, a.applied, a.appliedAt, a.verifiedAt, a.lastError})
+	a.published.Store(&browserAuthorityPublished{server: a.server, applied: a.applied, appliedAt: a.appliedAt, verifiedAt: a.verifiedAt, reason: a.lastError})
 }
 
 func (c *Controller) authorityOwner(ctx context.Context, source, local netip.AddrPort) (browserproxy.Owner, error) {
@@ -80,7 +72,7 @@ func (c *Controller) authorityCurrent(q browserproxy.Request) (wp.ProcessIdentit
 }
 func (c *Controller) authorityBrowser(q browserproxy.Request) bool {
 	p, ok := c.matchApplication(browserIdentity(q))
-	return ok && nativeBrowserProfile(p)
+	return ok && (nativeBrowserProfile(p) || riotAuto(p))
 }
 func (c *Controller) authorityPlan(ctx context.Context, q browserproxy.Request) (browserproxy.Plan, error) {
 	id, err := c.authorityCurrent(q)
@@ -183,14 +175,14 @@ func (c *Controller) authorityLeasePath() string {
 	return filepath.Join(filepath.Dir(c.customPath), "browser-owner-proxy.json")
 }
 
-// One shared owner lane is needed because Windows exposes one system PAC per
+// One shared owner lane is needed because Windows exposes one HTTP proxy per
 // user. Unselected programs pass through their own normal policy, never through
 // a browser profile. Existing per-browser owned PAC listeners remain valid.
 func (c *Controller) RetryBrowserAuthority() {
 	c.retryBrowserAuthority(false)
 }
 func (c *Controller) retryBrowserAuthority(force bool) {
-	if c.customPath == "" || c.BrowserOwnerSID == "" {
+	if c.customPath == "" || c.BrowserOwnerSID == "" || c.ctx.Err() != nil {
 		return
 	}
 	c.browser.mu.Lock()
@@ -211,8 +203,6 @@ func (c *Controller) retryBrowserAuthority(force bool) {
 	c.mu.Lock()
 	enabled := c.enabled && c.settings.Automatic
 	c.mu.Unlock()
-	guards := []string{}
-	strict := false
 	wanted := false
 	chromeWanted, edgeWanted := false, false
 	for _, p := range c.Profiles.List() {
@@ -223,9 +213,6 @@ func (c *Controller) retryBrowserAuthority(force bool) {
 			} else {
 				chromeWanted = true
 			}
-			domains, s := edgeGuard(p)
-			guards = append(guards, domains...)
-			strict = strict || s
 		}
 	}
 	exchange := a.exchange
@@ -239,6 +226,7 @@ func (c *Controller) retryBrowserAuthority(force bool) {
 			a.lastError = err.Error()
 		} else {
 			a.applied = false
+			a.appliedAt = time.Time{}
 			a.lastError = ""
 		}
 		return
@@ -271,7 +259,10 @@ func (c *Controller) retryBrowserAuthority(force bool) {
 			return
 		}
 		if lease != nil {
-			address = authorityAddress(lease.Installed.PAC)
+			address = authorityServerAddress(lease.Installed.Server)
+			if lease.Installed.PAC != "" {
+				address = authorityAddress(lease.Installed.PAC)
+			}
 			if address == "" {
 				a.lastError = "OWNER_PROXY_JOURNAL_INVALID"
 				return
@@ -284,47 +275,14 @@ func (c *Controller) retryBrowserAuthority(force bool) {
 		}
 		a.server = server
 	}
-	if a.fallback == nil {
-		address := ""
-		lease, err := readOwnerProxyLease(c.authorityLeasePath(), c.BrowserOwnerSID)
-		if err != nil {
-			a.lastError = err.Error()
-			return
-		}
-		if lease != nil {
-			address = lease.Installed.Server
-		}
-		server, err := browserproxy.Listen(c.ctx, browserproxy.Config{Address: address, RequireClientHelloReplay: true, Authorize: c.authorityOwner, Plan: c.authorityFallbackPlan, Open: c.authorityFallbackOpen})
-		if err != nil {
-			a.lastError = "AUTHORITY_FALLBACK_LISTENER_UNAVAILABLE"
-			return
-		}
-		a.fallback = server
-	}
-	sort.Strings(guards)
-	guards = slices.Compact(guards)
-	guardKey := fmt.Sprint(strict, guards)
-	if a.pac == "" || guardKey != a.guardKey {
-		epoch := make([]byte, 16)
-		if _, err := rand.Read(epoch); err != nil {
-			a.lastError = "AUTHORITY_EPOCH_UNAVAILABLE"
-			return
-		}
-		pac, err := authorityPAC(a.server.Address(), hex.EncodeToString(epoch), guards, strict)
-		if err != nil {
-			a.lastError = "AUTHORITY_PAC_UNAVAILABLE"
-			return
-		}
-		a.pac = pac
-		a.guardKey = guardKey
-		a.applied = false
-		a.appliedAt = time.Time{}
-	}
 	at := time.Now()
 	if a.appliedAt.IsZero() {
 		a.appliedAt = at
 	}
-	desired := wp.OwnerProxyState{Flags: 7, PAC: a.pac, Server: a.fallback.Address()}
+	if c.ctx.Err() != nil {
+		return
+	}
+	desired := authorityFixedState(a.server.Address())
 	if err := acquireOwnerProxyState(ctx, c.authorityLeasePath(), c.BrowserOwnerSID, desired, exchange); err != nil {
 		a.lastError = err.Error()
 		a.applied = false
@@ -361,10 +319,22 @@ func (c *Controller) releaseBrowserAuthority() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	err := releaseOwnerProxy(ctx, c.authorityLeasePath(), c.BrowserOwnerSID, exchange)
+	if errors.Is(err, errOwnerProxyForeign) {
+		a.applied = false
+		a.appliedAt = time.Time{}
+		a.lastError = errOwnerProxyForeign.Error()
+		// The deliberate OFF/uninstall operation no longer owns this Windows
+		// configuration. Preserve it and discard only our stale local journal.
+		removeErr := os.Remove(c.authorityLeasePath())
+		if removeErr != nil && !os.IsNotExist(removeErr) {
+			return errors.New("OWNER_PROXY_JOURNAL_REMOVE_FAILED")
+		}
+		return nil
+	}
 	if err == nil {
 		a.applied = false
 		a.lastError = ""
-		a.pac = ""
+		a.appliedAt = time.Time{}
 	} else {
 		a.lastError = err.Error()
 	}

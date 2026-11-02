@@ -8,9 +8,13 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type ownerProxyExchange func(context.Context, wp.OwnerProxyCommand) (wp.OwnerProxyState, error)
+
+var errOwnerProxyForeign = errors.New("OWNER_PROXY_FOREIGN_PRESERVED")
+
 type ownerProxyLease struct {
 	Version   int                 `json:"version"`
 	Owner     string              `json:"owner"`
@@ -38,7 +42,13 @@ func readOwnerProxyLease(path, owner string) (*ownerProxyLease, error) {
 	return &lease, nil
 }
 func ownedAuthorityProxy(s wp.OwnerProxyState) bool {
-	if s.Bypass != "" || !validAuthorityPAC(s.PAC) {
+	if s.Bypass != "" {
+		return false
+	}
+	if s.Flags == 3 && s.PAC == "" {
+		return authorityServerAddress(s.Server) != ""
+	}
+	if !validAuthorityPAC(s.PAC) {
 		return false
 	}
 	if s.Flags == 5 && s.Server == "" {
@@ -46,6 +56,24 @@ func ownedAuthorityProxy(s wp.OwnerProxyState) bool {
 	} // Existing journal from the first isolated proof.
 	address, err := netip.ParseAddrPort(s.Server)
 	return s.Flags == 7 && err == nil && address.Addr() == netip.MustParseAddr("127.0.0.1") && address.Port() != 0
+}
+func authorityFixedState(address string) wp.OwnerProxyState {
+	return wp.OwnerProxyState{Flags: 3, Server: "http=" + address + ";https=" + address}
+}
+func authorityServerAddress(server string) string {
+	address := server
+	if strings.HasPrefix(server, "http=") {
+		parts := strings.Split(server, ";")
+		if len(parts) != 2 || strings.TrimPrefix(parts[0], "http=") != strings.TrimPrefix(parts[1], "https=") {
+			return ""
+		}
+		address = strings.TrimPrefix(parts[0], "http=")
+	}
+	endpoint, err := netip.ParseAddrPort(address)
+	if err != nil || endpoint.Addr() != netip.MustParseAddr("127.0.0.1") || endpoint.Port() == 0 {
+		return ""
+	}
+	return endpoint.String()
 }
 func freeOwnerProxy(s wp.OwnerProxyState) bool {
 	return s.PAC == "" && s.Server == "" && s.Flags&2 == 0
@@ -100,11 +128,11 @@ func acquireOwnerProxyState(ctx context.Context, path, owner string, desired wp.
 	}
 	if lease == nil {
 		if !freeOwnerProxy(current) {
-			return errors.New("OWNER_PROXY_FOREIGN_PRESERVED")
+			return errOwnerProxyForeign
 		}
 		lease = &ownerProxyLease{Version: 1, Owner: owner, Original: current}
 	} else if current != lease.Installed && current != lease.Original && (lease.Previous == nil || current != *lease.Previous) {
-		return errors.New("OWNER_PROXY_FOREIGN_PRESERVED")
+		return errOwnerProxyForeign
 	}
 	if current == desired {
 		return nil
@@ -138,7 +166,7 @@ func releaseOwnerProxy(ctx context.Context, path, owner string, exchange ownerPr
 	}
 	if current != lease.Original {
 		if current != lease.Installed && (lease.Previous == nil || current != *lease.Previous) {
-			return errors.New("OWNER_PROXY_FOREIGN_PRESERVED")
+			return errOwnerProxyForeign
 		}
 		actual, err := exchange(ctx, wp.OwnerProxyCommand{Owner: owner, Expected: &current, Desired: &lease.Original})
 		if err != nil {

@@ -7,7 +7,7 @@ public sealed class BrowserReadinessTests {
   vm.ApplyNativeBrowserReadiness(new(){State="PREPARING"});Assert.Contains("Подготавливаем",vm.BrowserReadinessText);
   vm.ApplyNativeBrowserReadiness(new(){State="READY_NEW_CONNECTIONS",CaptureReady=true});Assert.Contains("Подготавливаем",vm.BrowserReadinessText);
   vm.ApplyNativeBrowserReadiness(new(){State="READY_NEW_CONNECTIONS",CaptureReady=true,Optimizing=true,NativeOnlyState="NATIVE_ONLY_OBSERVED",Profiles=[new(){ProfileId="chrome",NativeOnly=new(){BidirectionalExchanges=1,SentBytes=100,ReceivedBytes=200}}]});Assert.Contains("Подготавливаем",vm.BrowserReadinessText);
-  vm.ApplyNativeBrowserReadiness(new(){State="AUTHORITY_REQUEST_OBSERVED",CaptureReady=true,Optimizing=true,AuthorityTransport=new(){SystemPacApplied=true,Profiles=[new(){ProfileId="chrome",Requests=1,Exchanges=1}]}});Assert.Contains("подтверждён",vm.BrowserReadinessText);
+  vm.ApplyNativeBrowserReadiness(new(){State="AUTHORITY_REQUEST_OBSERVED",CaptureReady=true,Optimizing=true,AuthorityTransport=new(){SystemProxyApplied=true,Profiles=[new(){ProfileId="chrome",Requests=1,Exchanges=1}]}});Assert.Contains("подтверждён",vm.BrowserReadinessText);
   vm.ApplyNativeBrowserReadiness(new(){State="READY_NEW_CONNECTIONS",CaptureReady=true,Optimizing=true,Profiles=[new(){ProfileId="chrome",NativeOnly=new(){SentBytes=100}}]});Assert.Contains("Подготавливаем",vm.BrowserReadinessText);
   vm.Apply(new(){Optimizing=false},[]);Assert.Contains("обычную сеть",vm.BrowserReadinessText);
  }

@@ -118,7 +118,6 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		{"FixedProxyNativeRequiredThenLocal", "fixed-native", true},
 		{"OwnedPACBeforeNativeActivation", "policy-existing", false},
 		{"OwnedPACAppliedToRunningBrowser", "policy-live", false},
-		{"OwnerSystemPACFailureSafeFallback", "policy-live-fallback", false},
 		{"OwnerFixedProxyAppliedToRunningBrowser", "policy-live-fixed", false},
 		{"FreshRequiredAfterPACWithdrawal", "policy-withdrawal", false},
 		{"ListenerOutageGuarded", "outage-listener-guarded", false},
@@ -142,7 +141,7 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst bool) {
 	outage := strings.HasPrefix(mode, "outage-")
 	freshAfterWithdrawal := mode == "policy-withdrawal"
-	liveInstall := mode == "policy-live" || mode == "policy-live-fallback" || mode == "policy-live-fixed"
+	liveInstall := mode == "policy-live" || mode == "policy-live-fixed"
 	runtimeAuthority := liveInstall && os.Getenv("VELIQ_TEST_AUTHORITY_RUNTIME") == "1"
 	livePolicy := mode == "policy-existing" || liveInstall || freshAfterWithdrawal || outage
 	native := mode == "native" || mode == "pac-native" || mode == "fixed-native" || livePolicy
@@ -326,16 +325,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			if snap.CaptureIngress != nil {
 				t.Logf("ORIGIN_REUSE_HYBRID_CAPTURE tcp=%d reflected=%d lost=%d", snap.CaptureIngress.TCPPackets, snap.CaptureIngress.ReflectedAccepts, snap.CaptureIngress.Lost)
 			}
-			if server := c.browser.authority.fallback; server != nil {
-				for _, r := range server.Snapshot().Records {
-					t.Logf("ORIGIN_FALLBACK_FAILURE domain=%s action=%s result=%s failure=%s sent=%d received=%d", r.Domain, r.Plan.Policy.Action, r.Result, r.OpenFailure, r.Sent, r.Received)
-				}
-			}
-			for _, r := range proxy.Snapshot().Records {
-				if r.Domain == browserfixture.ReuseLocalHost || r.Domain == browserfixture.ReuseSiblingHost || r.Domain == browserfixture.ReuseRequiredHost || r.Domain == browserfixture.ReuseFreshRequiredHost {
-					t.Logf("ORIGIN_REUSE_HYBRID_OPEN host=%s result=%s failure=%s", r.Domain, r.Result, r.OpenFailure)
-				}
-			}
+
 		})
 	}
 	bootstrap := browserfixture.ReuseLocalHost
@@ -477,26 +467,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 						}
 					})
 					t.Log("ORIGIN_AUTHORITY_RUNTIME_APPLIED owner_worker=true no_browser_restart=true")
-					if mode == "policy-live-fallback" || mode == "policy-live-fixed" {
-						installed, err := exchangeOwnerProxyWithBinary(context.Background(), wp.OwnerProxyCommand{Owner: c.BrowserOwnerSID}, helper)
-						if err != nil {
-							t.Fatal(err)
-						}
-						broken := installed
-						broken.PAC = "data:application/x-ns-proxy-autoconfig;base64,Ly9pbnZhbGlkIFBBQwo="
-						if mode == "policy-live-fixed" {
-							broken = wp.OwnerProxyState{Flags: 3, Server: proxy.Address()}
-						}
-						if _, err := exchangeOwnerProxyWithBinary(context.Background(), wp.OwnerProxyCommand{Owner: c.BrowserOwnerSID, Expected: &installed, Desired: &broken}, helper); err != nil {
-							t.Fatal("fixture PAC failure", err)
-						}
-						t.Cleanup(func() {
-							if _, err := exchangeOwnerProxyWithBinary(context.Background(), wp.OwnerProxyCommand{Owner: c.BrowserOwnerSID, Expected: &broken, Desired: &installed}, helper); err != nil {
-								t.Error("fixture PAC failure cleanup", err)
-							}
-						})
-						t.Log("ORIGIN_AUTHORITY_PAC_FAILURE manual_fallback=true no_browser_restart=true")
-					}
+
 				}
 				compat, err := c.nativeBrowserCompatibility(p, false)
 				if err != nil || (!runtimeAuthority && (compat == nil || !compat.OwnedPolicy || compat.PolicyChanged)) {
@@ -557,8 +528,6 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			fault.verifyFinal(t)
 		} else if freshAfterWithdrawal {
 			verifyFreshOriginAfterWithdrawal(t, c, f, proxy, beforeFresh, r.Metrics.TCPConnections.Load()-beforeTCP, r.Metrics.RXBytes.Load()-beforeRX)
-		} else if mode == "policy-live-fallback" {
-			verifyAuthorityManualFallback(t, c, f, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
 		} else {
 			verifyLiveOriginPolicy(t, c, f, proxy, delegated, mode, r.Metrics.TCPConnections.Load(), r.Metrics.RXBytes.Load())
 		}

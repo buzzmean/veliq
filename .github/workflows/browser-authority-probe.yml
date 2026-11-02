@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [OwnedPACAppliedToRunningBrowser, OwnerSystemPACFailureSafeFallback, OwnerFixedProxyAppliedToRunningBrowser, FixedProxyNativeLocalFirst, FixedProxyNativeRequiredThenLocal, NativeRequiredThenLocal, NativeLocalFirst]
+        scenario: [OwnedPACAppliedToRunningBrowser, OwnerFixedProxyAppliedToRunningBrowser, FixedProxyNativeLocalFirst, FixedProxyNativeRequiredThenLocal, NativeRequiredThenLocal, NativeLocalFirst]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

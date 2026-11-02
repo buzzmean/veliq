@@ -17,8 +17,8 @@ type nativeBrowserCompatibility struct {
 	Verification  string   `json:"verification"`
 }
 
-// Keep legacy PAC users on a real listener. A fresh native installation does
-// not install PAC. This is compatibility, never a synthetic PAC readiness proof.
+// Keep legacy PAC users on a real listener. A fresh installation uses the
+// owner system CONNECT lane, without browser GPO. Legacy PAC remains compatible.
 func (c *Controller) nativeBrowserCompatibility(p profiles.Profile, requested bool) (*nativeBrowserCompatibility, error) {
 	c.browser.mu.Lock()
 	defer c.browser.mu.Unlock()
@@ -31,7 +31,7 @@ func (c *Controller) nativeBrowserCompatibility(p profiles.Profile, requested bo
 			if err := c.ensureBrowserListenerLocked(true); err != nil {
 				return nil, err
 			}
-			return &nativeBrowserCompatibility{Address: e.saved.Address, Verification: "CACHED_PAC_COMPATIBILITY_ONLY; native does not require policy"}, nil
+			return &nativeBrowserCompatibility{Address: e.saved.Address, Verification: "LEGACY_AUTHORITY_LISTENER; owner CONNECT uptake observed separately"}, nil
 		}
 		if err := c.listenEdge(e); err != nil {
 			return nil, errors.New("EDGE_LISTENER_BIND_FAILED")
@@ -58,7 +58,7 @@ func (c *Controller) nativeBrowserCompatibility(p profiles.Profile, requested bo
 		return &nativeBrowserCompatibility{OwnedPolicy: true, PolicyChanged: changed, Address: e.server.Address(), Verification: "LIVE_LISTENER; running browser policy refresh NOT_OBSERVED"}, nil
 	}
 	if c.browser.expectedPAC == "" && len(c.browser.silent.Owned) == 0 {
-		return nil, nil // Fresh native ingress has no policy dependency.
+		return nil, nil // Fresh owner CONNECT has no browser GPO dependency.
 	}
 	// Chrome's owner-user journal/recovery remains unchanged. Replacing its PAC
 	// here would invalidate that journal and could disable the independent guard.
@@ -66,7 +66,7 @@ func (c *Controller) nativeBrowserCompatibility(p profiles.Profile, requested bo
 		if err := c.ensureBrowserListenerLocked(false); err != nil {
 			return nil, err
 		}
-		return &nativeBrowserCompatibility{Address: c.browser.address, Verification: "CACHED_PAC_COMPATIBILITY_ONLY; native does not require policy"}, nil
+		return &nativeBrowserCompatibility{Address: c.browser.address, Verification: "LEGACY_AUTHORITY_LISTENER; owner CONNECT uptake observed separately"}, nil
 	}
 	if c.browser.server == nil {
 		server, err := browserproxy.Listen(c.ctx, browserproxy.Config{TransportCheck: c.transportCheckSettings, RequireClientHelloReplay: true, Address: c.browser.address, Authorize: c.browserOwner, AuthorizeForwarded: c.browserRecoveryOwner, Plan: c.browserPlan, Open: c.browserOpen, OpenPlan: c.browserOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered})

@@ -8,19 +8,18 @@ import (
 )
 
 type browserAuthorityView struct {
-	State            string                  `json:"state"`
-	Reason           string                  `json:"reason,omitempty"`
-	Applied          bool                    `json:"system_pac_applied"`
-	AppliedAt        time.Time               `json:"applied_at"`
-	ChromeRequests   int                     `json:"chrome_requests"`
-	EdgeRequests     int                     `json:"edge_requests"`
-	ChromeExchanges  int                     `json:"chrome_exchanges"`
-	EdgeExchanges    int                     `json:"edge_exchanges"`
-	OtherRequests    int                     `json:"other_application_requests"`
-	FallbackRequests int                     `json:"safe_fallback_requests"`
-	Profiles         []authorityProfileProof `json:"profiles"`
-	ExistingTCP      string                  `json:"existing_tcp"`
-	RawTLS           string                  `json:"raw_tls"`
+	State           string                  `json:"state"`
+	Reason          string                  `json:"reason,omitempty"`
+	Applied         bool                    `json:"system_proxy_applied"`
+	AppliedAt       time.Time               `json:"applied_at"`
+	ChromeRequests  int                     `json:"chrome_requests"`
+	EdgeRequests    int                     `json:"edge_requests"`
+	ChromeExchanges int                     `json:"chrome_exchanges"`
+	EdgeExchanges   int                     `json:"edge_exchanges"`
+	OtherRequests   int                     `json:"other_application_requests"`
+	Profiles        []authorityProfileProof `json:"profiles"`
+	ExistingTCP     string                  `json:"existing_tcp"`
+	RawTLS          string                  `json:"raw_tls"`
 }
 type authorityProfileProof struct {
 	Profile   string `json:"profile_id"`
@@ -92,15 +91,8 @@ func (c *Controller) authorityStatus() browserAuthorityView {
 		v.Profiles = append(v.Profiles, proof)
 	}
 	sort.Slice(v.Profiles, func(i, j int) bool { return v.Profiles[i].Profile < v.Profiles[j].Profile })
-	if s.fallback != nil {
-		for _, r := range s.fallback.Snapshot().Records {
-			if s.applied && !r.Started.Before(s.appliedAt) && (r.Active || time.Since(r.Started) <= 45*time.Second) {
-				v.FallbackRequests++
-			}
-		}
-	}
 	if s.applied {
-		v.State = "AUTHORITY_PAC_APPLIED_UPTAKE_PENDING"
+		v.State = "AUTHORITY_PROXY_APPLIED_UPTAKE_PENDING"
 	}
 	if v.ChromeRequests+v.EdgeRequests > 0 {
 		v.State = "AUTHORITY_REQUEST_OBSERVED"

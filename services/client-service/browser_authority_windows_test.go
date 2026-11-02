@@ -60,12 +60,8 @@ func TestWindowsOwnerAuthorityWorkerAndOtherApplications(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { server.Close() })
-	pac, err := authorityPAC(server.Address(), "owner-worker-acceptance", nil, false)
-	if err != nil {
-		t.Fatal(err)
-	}
 	path := filepath.Join(t.TempDir(), "owner-proxy.json")
-	if err := acquireOwnerProxy(ctx, path, sid, pac, exchange); err != nil {
+	if err := acquireOwnerProxyState(ctx, path, sid, authorityFixedState(server.Address()), exchange); err != nil {
 		t.Fatal("real acquire", err)
 	}
 	t.Cleanup(func() {
