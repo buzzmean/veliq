@@ -44,8 +44,8 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 WelcomeLabel1=Установка VELIQ
 WelcomeLabel2=VELIQ строит оптимальный маршрут для каждого соединения: заблокированное открывается, игры получают самый быстрый путь.%n%nWindows один раз попросит права администратора — для службы, которая строит маршруты.
 FinishedHeadingLabel=Готово
-FinishedLabelNoIcons=VELIQ установлен. Откройте программу, введите код активации и нажмите «Оптимизировать».
-FinishedLabel=VELIQ установлен. Откройте программу, введите код активации и нажмите «Оптимизировать».
+FinishedLabelNoIcons=VELIQ установлен. Откройте программу, войдите в аккаунт и нажмите «Оптимизировать».
+FinishedLabel=VELIQ установлен. Откройте программу, войдите в аккаунт и нажмите «Оптимизировать».
 [InstallDelete]
 ; Pre-rebrand installs used "VELIQ Setup"; its payload is superseded by {app}.
 Type: filesandordirs; Name: "{autopf}\VELIQ Setup"
@@ -64,7 +64,7 @@ Source: "{#StageRoot}\payload\*"; DestDir: "{app}"; Flags: ignoreversion recurse
 Source: "{#StageRoot}\payload\gui\VELIQ.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 [Run]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""& '{app}\installer\install-package.ps1' -ClubCodeFile '{code:ClubCodeFile}' {code:ClubImageArgument} {code:UpdateArgument}"""; Flags: runhidden waituntilterminated; StatusMsg: "Устанавливаем VELIQ…"; BeforeInstall: ClearInstallMarker; AfterInstall: CheckInstall
-Filename: "{app}\VELIQ.exe"; Description: "Открыть VELIQ и ввести код активации"; Flags: runasoriginaluser nowait postinstall skipifsilent; Check: NotClubImage
+Filename: "{app}\VELIQ.exe"; Description: "Открыть VELIQ и подключить аккаунт"; Flags: runasoriginaluser nowait postinstall skipifsilent; Check: ShowAccountSetup
 [Icons]
 Name: "{autoprograms}\VELIQ"; Filename: "{app}\VELIQ.exe"
 Name: "{autodesktop}\VELIQ"; Filename: "{app}\VELIQ.exe"; Tasks: desktopicon; Check: NotClubImage
@@ -96,6 +96,10 @@ end;
 function NotClubImage(): Boolean;
 begin
  Result := ExpandConstant('{param:CLUBIMAGE|0}')<>'1';
+end;
+function ShowAccountSetup(): Boolean;
+begin
+ Result := NotClubImage() or (ClubCodeFile('')='');
 end;
 procedure ClearInstallMarker;
 begin
