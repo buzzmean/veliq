@@ -19,16 +19,17 @@ func (c *Controller) nativeBrowserReadiness(edge bool) string {
 		if !c.relayConnected() {
 			return "NATIVE_RELAY_PENDING"
 		}
-		c.browser.native.mu.Lock()
-		m := c.browser.native.profiles[p.ID].NativeOnly
-		c.browser.native.mu.Unlock()
-		if m.Exchanges > 0 {
-			return "NATIVE_ONLY_OBSERVED"
+		// Native-only TLS is the explicitly degraded relay fallback, not proof
+		// that encrypted HTTP/2 authorities were isolated by SNI/capture.
+		v := c.authorityStatus()
+		observed := v.ChromeRequests
+		if edge {
+			observed = v.EdgeRequests
 		}
-		if m.Opened > 0 {
-			return "NATIVE_OPENED_NO_EXCHANGE"
+		if observed > 0 {
+			return "AUTHORITY_REQUEST_OBSERVED"
 		}
-		return "NATIVE_READY_NEW_CONNECTIONS"
+		return "AUTHORITY_TRANSPORT_PENDING; RAW_TLS_AUTHENTICATED_RELAY"
 	}
 	return ""
 }

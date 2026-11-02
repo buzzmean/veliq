@@ -269,6 +269,11 @@ func (c *Controller) Close() {
 	if bs != nil {
 		bs.Close()
 	}
+	c.browser.authority.mu.Lock()
+	if c.browser.authority.server != nil {
+		c.browser.authority.server.Close()
+	}
+	c.browser.authority.mu.Unlock()
 	if c.Backend != nil {
 		c.Backend.Stop()
 	}

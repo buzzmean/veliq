@@ -314,18 +314,21 @@ func (c *Controller) browserPolicyHealth() BrowserPolicyHealth {
 			v.EdgeConfigured = v.EdgeConfigured || edgeProfile(profile)
 		}
 	}
-	// Native health comes from actual native exchanges, never PAC listener state.
+	// Capture bytes on raw TLS are the degraded relay fallback, not authority
+	// isolation. Readiness needs this owner's actual authority listener exchange.
+	authority := c.authorityStatus()
 	for _, profile := range c.Profiles.List() {
 		if !nativeBrowserProfile(profile) {
 			continue
 		}
-		c.browser.native.mu.Lock()
-		m := c.browser.native.profiles[profile.ID].NativeOnly
-		c.browser.native.mu.Unlock()
-		ready := c.nativeBackendReady() && m.Exchanges > 0 && m.Sent > 0 && m.Received > 0
-		reason := "NATIVE_CAPTURE_ARMED_EXCHANGE_NOT_OBSERVED"
+		exchanges := authority.ChromeExchanges
+		if edgeProfile(profile) {
+			exchanges = authority.EdgeExchanges
+		}
+		ready := c.nativeBackendReady() && exchanges > 0
+		reason := "AUTHORITY_TRANSPORT_PENDING; RAW_TLS_AUTHENTICATED_RELAY"
 		if ready {
-			reason = "NATIVE_ONLY_OBSERVED"
+			reason = "AUTHORITY_EXCHANGE_OBSERVED"
 		}
 		if edgeProfile(profile) {
 			v.EdgeReady, v.EdgeReason = ready, reason

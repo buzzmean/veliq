@@ -42,6 +42,10 @@ jobs:
       - name: Required authority isolation through PAC and actual native capture
         shell: powershell
         run: |
+          & go build -o bin/veliq-service.exe ./services/client-service/cmd/service
+          if ($LASTEXITCODE) { throw 'OWNER_WORKER_BUILD_FAILED' }
+          $env:VELIQ_TEST_OWNER_WORKER=(Resolve-Path bin/veliq-service.exe).Path
+          $env:VELIQ_TEST_AUTHORITY_RUNTIME='1'
           $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
           $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
           & go test -v -count=1 -timeout 480s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$' 2>&1 | Tee-Object -FilePath origin-reuse-routing.log

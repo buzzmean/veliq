@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestNativeReadinessIndependentOfPACAndNotPageSuccess(t *testing.T) {
+func TestNativeReadinessNeedsAuthorityIngressAndNotPageSuccess(t *testing.T) {
 	c, p, b := nativeEdgeFixture(t)
 	p.Mode = profiles.Auto
 	p.BrowserTransport = "native"
@@ -20,7 +20,7 @@ func TestNativeReadinessIndependentOfPACAndNotPageSuccess(t *testing.T) {
 	b.ready = true
 	c.browser.readiness.relay = func() bool { return true }
 	s := c.nativeSnapshot()
-	if s.State != "READY_NEW_CONNECTIONS" || s.NativeOnlyState != "NATIVE_ONLY_NOT_OBSERVED" || s.ConfiguredProfiles != 1 {
+	if s.State != "AUTHORITY_PENDING" || s.NativeOnlyState != "NATIVE_ONLY_NOT_OBSERVED" || s.ConfiguredProfiles != 1 {
 		t.Fatal(s)
 	}
 	c.enabled = false
@@ -29,7 +29,7 @@ func TestNativeReadinessIndependentOfPACAndNotPageSuccess(t *testing.T) {
 	}
 }
 
-func TestFreshNativeStatusDoesNotReportPACNotPrepared(t *testing.T) {
+func TestFreshNativeStatusReportsAuthorityPendingAndSafeRelay(t *testing.T) {
 	c, p, b := nativeEdgeFixture(t)
 	b.ready = true
 	c.enabled = true
@@ -45,7 +45,7 @@ func TestFreshNativeStatusDoesNotReportPACNotPrepared(t *testing.T) {
 	raw, _ := json.Marshal(result)
 	var status map[string]any
 	json.Unmarshal(raw, &status)
-	if status["transport_mode"] != "NATIVE_NEW_TCP" || status["readiness_state"] != "NATIVE_READY_NEW_CONNECTIONS" || status["policy_ready"] != false || status["listening"] != false {
+	if status["transport_mode"] != "NATIVE_NEW_TCP" || status["readiness_state"] != "AUTHORITY_TRANSPORT_PENDING; RAW_TLS_AUTHENTICATED_RELAY" || status["policy_ready"] != false || status["listening"] != false {
 		t.Fatal(status)
 	}
 	p.Executables = []string{`C:\Apps\chrome.exe`}
@@ -56,7 +56,7 @@ func TestFreshNativeStatusDoesNotReportPACNotPrepared(t *testing.T) {
 		t.Fatal(err)
 	}
 	view := result.(browserStatusView)
-	if view.ReadinessState != "NATIVE_READY_NEW_CONNECTIONS" || view.Listening || view.PolicyReady {
+	if view.ReadinessState != "AUTHORITY_TRANSPORT_PENDING; RAW_TLS_AUTHENTICATED_RELAY" || view.Listening || view.PolicyReady {
 		t.Fatal(view)
 	}
 }

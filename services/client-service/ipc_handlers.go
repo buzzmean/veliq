@@ -360,6 +360,9 @@ func (c *Controller) handleOptimize(ctx context.Context, raw json.RawMessage) (a
 		if err := c.publishBrowserGuard(false); err != nil {
 			return nil, err
 		}
+		if err := c.releaseBrowserAuthority(); err != nil {
+			return nil, err
+		}
 		_ = c.cleanupBrowserPoliciesForMutation()
 	}
 	c.nativeBrowserActivation(v.Enabled, wasEnabled, activationStarted)

@@ -6,6 +6,35 @@ on:
 permissions:
   contents: read
 jobs:
+  authority-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [OwnedPACAppliedToRunningBrowser, NativeRequiredThenLocal, NativeLocalFirst]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Actual owner worker, live authority and safe raw TLS fallback
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go build -o bin/veliq-service.exe ./services/client-service/cmd/service
+          if ($LASTEXITCODE) { throw 'OWNER_WORKER_BUILD_FAILED' }
+          $env:VELIQ_TEST_OWNER_WORKER=(Resolve-Path bin/veliq-service.exe).Path
+          $env:VELIQ_TEST_AUTHORITY_RUNTIME='1'
+          $env:VELIQ_ORIGIN_REUSE_CASE='${{ matrix.scenario }}'
+          & ./tools/windows/fetch-windivert.ps1
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          & go test -v -count=1 -timeout 120s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
+          if ($LASTEXITCODE) { throw 'AUTHORITY_RUNTIME_FAILED' }
+          if ('${{ matrix.scenario }}' -eq 'OwnedPACAppliedToRunningBrowser') {
+            & go test -v -count=1 -timeout 90s ./services/client-service '-run' '^TestWindowsOwnerAuthorityWorkerAndOtherApplications$'
+            if ($LASTEXITCODE) { throw 'OTHER_APPLICATION_POLICY_OR_OWNER_RESTORE_FAILED' }
+          }
   owner-gp-event:
     runs-on: windows-latest
     timeout-minutes: 8

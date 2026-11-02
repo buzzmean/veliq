@@ -12,14 +12,6 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// OwnerProxyState is configuration, not diagnostic output. Never log its URLs.
-// Operations must run in the real installation owner's process, not SYSTEM
-// impersonation (WinINET maintains process-local user configuration caches).
-type OwnerProxyState struct {
-	Flags               uint32
-	PAC, Server, Bypass string
-}
-
 type ownerProxyOption struct {
 	Kind  uint32
 	Value uint64

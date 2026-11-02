@@ -25,6 +25,7 @@ import (
 )
 
 type browserRuntime struct {
+	authority browserAuthorityRuntime
 	youtube   *youtubeRuntime
 	dnsWire   *browserDNSRuntime
 	domains   browserDomainIndex

@@ -438,6 +438,26 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 					t.Fatal(err)
 				}
 				startCapture()
+				if mode == "policy-live" && os.Getenv("VELIQ_TEST_AUTHORITY_RUNTIME") == "1" {
+					helper := os.Getenv("VELIQ_TEST_OWNER_WORKER")
+					if helper == "" {
+						t.Fatal("compiled owner service worker required")
+					}
+					c.browser.authority.exchange = func(ctx context.Context, q wp.OwnerProxyCommand) (wp.OwnerProxyState, error) {
+						return exchangeOwnerProxyWithBinary(ctx, q, helper)
+					}
+					c.RetryBrowserAuthority()
+					if !c.authorityStatus().Applied {
+						t.Fatal("authority PAC not applied", c.authorityStatus())
+					}
+					proxy = c.browser.authority.server
+					t.Cleanup(func() {
+						if err := c.releaseBrowserAuthority(); err != nil {
+							t.Error("authority restore", err)
+						}
+					})
+					t.Log("ORIGIN_AUTHORITY_RUNTIME_APPLIED owner_worker=true no_browser_restart=true")
+				}
 				compat, err := c.nativeBrowserCompatibility(p, false)
 				if err != nil || compat == nil || !compat.OwnedPolicy || compat.PolicyChanged {
 					t.Fatal("existing owned policy compatibility missing", err)
@@ -449,10 +469,19 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			if stage == "required" {
 				if mode != "policy-live" {
 					c.RetrySilentBrowserPolicies()
+					if !c.chromePolicyActive() {
+						t.Fatal("native maintenance withdrew the authority PAC")
+					}
+					t.Log("ORIGIN_POLICY_RETAINED native_maintenance=true")
+					// Explicit fault injection after proving normal retention. Do not
+					// mislabel registry withdrawal as the product's maintenance path.
+					if err := c.CleanupOwnedBrowserPolicies(); err != nil {
+						t.Fatal(err)
+					}
 					if c.chromePolicyActive() || !proxy.Snapshot().Listening {
 						t.Fatal("native policy withdrawal/listener lifecycle changed")
 					}
-					t.Log("ORIGIN_POLICY_WITHDRAWAL registry_active=false compatibility_listener=true; real native maintenance path")
+					t.Log("ORIGIN_POLICY_WITHDRAWAL registry_active=false compatibility_listener=true explicit_fault_injection=true")
 					time.Sleep(3 * time.Second)
 				} else {
 					// Bounded observation, no extra RefreshPolicy, chrome://policy,
@@ -497,7 +526,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	first := f.Bootstrap(t)
 	t.Logf("ORIGIN_REUSE_BOOTSTRAP transport=%s %+v", mode, first)
 	firstSource := "127.0.0.1"
-	if requiredFirst {
+	if requiredFirst || mode == "native" {
 		firstSource = "127.0.0.2"
 	}
 	if first.Host != bootstrap || first.SNI != bootstrap || first.Source != firstSource {
@@ -507,8 +536,16 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	for _, q := range requests {
 		t.Logf("ORIGIN_REUSE_REQUEST transport=%s %+v", mode, q)
 	}
-	if (usePAC || !requiredFirst) && (requests[0].Source != "127.0.0.1" || requests[1].Source != "127.0.0.1") {
+	if usePAC && (requests[0].Source != "127.0.0.1" || requests[1].Source != "127.0.0.1") {
 		t.Fatal("local first-route precondition missing")
+	}
+	if mode == "native" {
+		for _, q := range requests {
+			if q.Source != "127.0.0.2" {
+				t.Error("raw TLS without authority must remain on degraded relay", q.Host, q.Source)
+			}
+		}
+		t.Log("ORIGIN_RAW_TLS_DEGRADED_RELAY local_admission=false ordinary_direct_claim=false")
 	}
 	requiredDirect := 0
 	for _, q := range requests[2:] {
