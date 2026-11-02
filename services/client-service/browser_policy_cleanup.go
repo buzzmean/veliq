@@ -98,8 +98,9 @@ func (c *Controller) CloseForHost(parent context.Context) error {
 		c.mu.Unlock()
 		// Cached PAC gets DIRECT at the deliberate stop boundary, before removal.
 		guardErr := c.publishBrowserGuard(false)
+		authorityErr := c.releaseBrowserAuthority()
 		c.browser.mu.Lock()
-		cleanup = errors.Join(guardErr, c.cleanupOwnedBrowserPoliciesLocked(nil))
+		cleanup = errors.Join(guardErr, authorityErr, c.cleanupOwnedBrowserPoliciesLocked(nil))
 		c.browser.mu.Unlock()
 		c.activationMu.Unlock()
 	}

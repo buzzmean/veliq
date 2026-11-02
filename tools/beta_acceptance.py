@@ -11,7 +11,7 @@ GLOBAL = ('go_linux', 'go_windows', 'filters', 'desktop', 'origin_isolation',
           'certificates', 'code_hygiene', 'pubg_match', 'valorant_match', 'faceit_match')
 PER_PC = ('install', 'standard_user', 'browser_sites', 'ordinary_direct',
           'youtube_2160p', 'discord_voice_local', 'freeze_reboot',
-          'identity_stable', 'rollback', 'network_recovery')
+          'identity_stable', 'rollback', 'network_recovery', 'owner_proxy_lifecycle')
 
 
 def validate(report, root, commit, service_hash, gui_hash):

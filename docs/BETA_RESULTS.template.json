@@ -142,6 +142,11 @@
           "status": "NOT_RUN",
           "evidence": "",
           "sha256": ""
+        },
+        "owner_proxy_lifecycle": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
         }
       }
     },
@@ -197,6 +202,11 @@
           "sha256": ""
         },
         "network_recovery": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "owner_proxy_lifecycle": {
           "status": "NOT_RUN",
           "evidence": "",
           "sha256": ""

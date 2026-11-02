@@ -79,8 +79,9 @@ type nativeBrowserRecord struct {
 	Active          bool               `json:"active"`
 }
 type nativeBrowserSnapshot struct {
-	YoutubeLocal youtubeSnapshot `json:"youtube_local_ladder"`
-	DNS          map[string]any  `json:"browser_dns"`
+	Authority    browserAuthorityView `json:"authority_transport"`
+	YoutubeLocal youtubeSnapshot      `json:"youtube_local_ladder"`
+	DNS          map[string]any       `json:"browser_dns"`
 
 	DomainCache        map[string]any               `json:"domain_cache"`
 	CaptureIngress     *wp.CaptureIngressSnapshot   `json:"capture_ingress,omitempty"`
@@ -141,7 +142,7 @@ func (c *Controller) nativeBrowserActivation(enabled, wasEnabled bool, at time.T
 	}
 }
 func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
-	s := nativeBrowserSnapshot{YoutubeLocal: c.browser.youtube.snapshot(), NativeOnlyState: "NATIVE_ONLY_NOT_OBSERVED", NativeOnlyAutoMode: "AUTOMATIC_NATIVE_NEW_CONNECTIONS_NO_PAC_DEPENDENCY", Version: 1, Ready: c.nativeBackendReady(), ExistingTCP: "PINNED_UNTIL_CLOSED; reload may reuse HTTP/2", PageVerification: "NOT_OBSERVED; bidirectional bytes are not HTTPS/page PASS", Profiles: []nativeBrowserProfileStatus{}, Records: []nativeBrowserRecord{}}
+	s := nativeBrowserSnapshot{Authority: c.authorityStatus(), YoutubeLocal: c.browser.youtube.snapshot(), NativeOnlyState: "NATIVE_ONLY_NOT_OBSERVED", NativeOnlyAutoMode: "DEGRADED_AUTHENTICATED_RELAY_WITHOUT_AUTHORITY", Version: 1, Ready: c.nativeBackendReady(), ExistingTCP: "PINNED_UNTIL_CLOSED; reload may reuse HTTP/2", PageVerification: "NOT_OBSERVED; bidirectional bytes are not HTTPS/page PASS", Profiles: []nativeBrowserProfileStatus{}, Records: []nativeBrowserRecord{}}
 	c.mu.Lock()
 	s.Enabled = c.enabled
 	c.mu.Unlock()
@@ -169,8 +170,12 @@ func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
 	case !c.relayConnected():
 		s.Reason = "RELAY_NOT_CONNECTED"
 	default:
-		s.State = "READY_NEW_CONNECTIONS"
-		s.Reason = "NATIVE_CAPTURE_ARMED; PAGE_NOT_VERIFIED"
+		s.State = "AUTHORITY_PENDING"
+		s.Reason = "AUTHORITY_NOT_OBSERVED; RAW_TLS_TEMPORARY_AUTHENTICATED_RELAY"
+		if s.Authority.ChromeRequests+s.Authority.EdgeRequests > 0 {
+			s.State = "AUTHORITY_REQUEST_OBSERVED"
+			s.Reason = "PER_AUTHORITY_INGRESS; PAGE_NOT_VERIFIED"
+		}
 	}
 	if backend, ok := c.Backend.(interface {
 		CaptureIngressStatus() wp.CaptureIngressSnapshot
@@ -396,7 +401,8 @@ func (c *Controller) handleNativeBrowser(ctx context.Context, method string, raw
 	if err != nil {
 		return nil, err
 	} // Native fail-closed capture remains armed on PAC repair failure.
-	return map[string]any{"native": true, "capture_ready": true, "profile_id": p.ID, "profiles": c.Profiles.List(), "compatibility": compat, "existing_tcp": "PINNED_UNTIL_CLOSED"}, nil
+	c.retryBrowserAuthority(true)
+	return map[string]any{"native": true, "capture_ready": true, "authority_transport": c.authorityStatus(), "profile_id": p.ID, "profiles": c.Profiles.List(), "compatibility": compat, "existing_tcp": "PINNED_UNTIL_CLOSED"}, nil
 }
 
 func (n *nativeBrowserRuntime) begin(q browserproxy.Request, t wp.Tuple) (uint64, error) {
@@ -573,6 +579,44 @@ func (c *Controller) openNativeBrowser(ctx context.Context, p profiles.Profile, 
 	q.HintOnly = opaque
 	evidence := browserDomainEvidence{Source: "CLIENTHELLO_SNI_OR_HTTP_HOST", Domain: q.Host, Confidence: "observed on this connection", Candidates: []string{}}
 	plan := browserproxy.Plan{Enabled: true, Network: current.network, Destination: t.Destination, Policy: d.Policy}
+	if nativeBrowserProfile(current.profile) && q.Secure {
+		// A ClientHello cannot identify later encrypted HTTP/2 authorities. Until
+		// the browser uses the authority PAC, keep raw TLS on an explicitly
+		// degraded authenticated relay. Never admit LOCAL/DIRECT from initial SNI,
+		// outer ECH, an IP/DNS association, or historical successful bytes.
+		relay := current.profile.RelayID
+		if relay == "" {
+			relay = "VPS-01"
+		}
+		plan.Policy = flowpolicy.Result{Action: flowpolicy.RelayRequired, RelayID: relay, Fallback: flowpolicy.Required, Source: "browser_authority_missing_relay", Reason: "authority transport pending: raw TLS cannot isolate encrypted HTTP/2 origins; temporary authenticated relay"}
+		// Keep the existing injected resolver contract for isolated endpoints.
+		// Production (nil resolver) preserves the actual captured destination.
+		if c.BrowserResolver != nil && q.Host != "" {
+			lookup, cancel := context.WithTimeout(ctx, time.Second)
+			addresses, lookupErr := c.BrowserResolver.LookupNetIP(lookup, "ip", q.Host)
+			cancel()
+			if lookupErr == nil {
+				for _, ip := range addresses {
+					if ip.Is4() {
+						plan.Destination = netip.AddrPortFrom(ip.Unmap(), q.Port)
+						break
+					}
+				}
+			}
+		}
+		if d.Policy.Action == flowpolicy.Block {
+			plan.Policy = d.Policy
+		}
+		conn, openErr := c.browserOpen(ctx, q, plan)
+		n.opened(record, plan, openErr)
+		d = applyFlowResult(current.profile, d, plan.Policy, current.network, c.Local)
+		d.BlockOnFailure = true
+		d.NewConnectionsOnly = true
+		if openErr != nil {
+			return nil, d, openErr
+		}
+		return newNativeBrowserConn(conn, n, record), d, nil
+	}
 	secureDNS := browserproxy.KnownDoHEndpoint(q.Host, t.Destination)
 	if opaque {
 		evidence = c.browser.domains.profileEvidenceFor(current.network, p.ID, t.Destination.Addr(), d.OuterSNI, time.Now(), func(host string) bool { return c.browserOriginPolicy(host).Kind != "" })

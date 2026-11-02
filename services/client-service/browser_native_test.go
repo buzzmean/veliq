@@ -491,8 +491,8 @@ func TestNativeBrowserHealthRequiresActualExchangeInsteadOfArmedCapture(t *testi
 	v.NativeOnly.Received = 10
 	n.profiles[p.ID] = v
 	n.mu.Unlock()
-	if h := c.browserPolicyHealth(); !h.EdgeReady || h.EdgeReason != "NATIVE_ONLY_OBSERVED" {
-		t.Fatal("actual exchange not reflected in common header", h)
+	if h := c.browserPolicyHealth(); h.EdgeReady || h.EdgeReason != "AUTHORITY_TRANSPORT_PENDING" {
+		t.Fatal("raw TLS bytes falsely established authority readiness", h)
 	}
 	c.enabled = false
 	if h := c.browserPolicyHealth(); h.EdgeReady {

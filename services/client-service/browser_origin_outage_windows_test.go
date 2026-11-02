@@ -59,14 +59,16 @@ func newOriginReuseRelay(t *testing.T, c *Controller) (*relay.Server, *transport
 }
 
 type originReuseOutage struct {
-	mode     string
-	c        *Controller
-	f        *browserfixture.OriginReuse
-	proxy    func() *browserproxy.Server
-	relay    func() (uint64, uint64)
-	down, up func()
-	before   nativeBrowserSnapshot
-	tcp, rx  uint64
+	mode        string
+	c           *Controller
+	f           *browserfixture.OriginReuse
+	proxy       func() *browserproxy.Server
+	relay       func() (uint64, uint64)
+	down, up    func()
+	before      nativeBrowserSnapshot
+	tcp, rx     uint64
+	independent map[uint64]bool
+	beforePAC   browserproxy.Snapshot
 }
 
 func (o *originReuseOutage) boundary(t *testing.T, recovery bool) {
@@ -111,6 +113,7 @@ func (o *originReuseOutage) phase(t *testing.T, stage string) {
 		o.verifyPhase(t, true)
 	case "before_retry":
 		o.before = o.c.nativeSnapshot()
+		o.beforePAC = o.proxy().Snapshot()
 		o.tcp, o.rx = o.relay()
 		t.Logf("ORIGIN_RETRY_BOUNDARY mode=%s same_authorities=true browser_cache_reset=false", o.mode)
 	case "retry_direct":
@@ -137,6 +140,9 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 		host, step := browserfixture.OutageHosts[i], browserfixture.OutageSteps[i]
 		outcome := outcomes[i]
 		wantSuccess := recovery || (i%2 == 1 && ((strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability")) || strings.Contains(o.mode, "-relay-")))
+		if !recovery && strings.Contains(o.mode, "-capture-") {
+			wantSuccess = true
+		}
 		if !recovery && i%2 == 1 && strings.Contains(o.mode, "-combined-") && strings.HasSuffix(o.mode, "-availability") {
 			wantSuccess = true
 		}
@@ -152,7 +158,7 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 			count++
 			t.Logf("ORIGIN_OUTAGE_REQUEST mode=%s %+v", o.mode, q)
 			wantSource := "127.0.0.1"
-			if i%2 == 0 {
+			if i%2 == 0 || !recovery && strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability") {
 				wantSource = "127.0.0.2"
 			}
 			if q.Source != wantSource {
@@ -176,7 +182,7 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 				continue
 			}
 			want := flowpolicy.Direct
-			if i%2 == 0 {
+			if i%2 == 0 || !recovery && strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability") {
 				want = flowpolicy.RelayRequired
 			}
 			if r.Owner.Profile != "origin-reuse" || r.Owner.PID == 0 || r.Owner.Birth == 0 || r.Policy.Action != want || (i%2 == 0 && r.Policy.Fallback != flowpolicy.Required) {
@@ -206,6 +212,29 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 				t.Logf("ORIGIN_OUTAGE_CONNECT mode=%s step=%s result=%s failure=%s", o.mode, step, r.Result, r.OpenFailure)
 			}
 		}
+		if !recovery && strings.Contains(o.mode, "-capture-") && outcome.Complete {
+			if o.c.nativeBackendReady() {
+				t.Fatal("capture-independent phase unexpectedly has capture")
+			}
+			for _, record := range pac.Records {
+				if record.Domain != host || record.Sent == 0 || record.Received == 0 {
+					continue
+				}
+				want := flowpolicy.Direct
+				if i%2 == 0 {
+					want = flowpolicy.RelayRequired
+				}
+				if record.Owner.Profile != "origin-reuse" || record.Owner.PID == 0 || record.Owner.Birth == 0 || record.Plan.Policy.Action != want || record.Plan.Network != "isolated-origin-reuse" || (i%2 == 0 && record.Plan.Policy.Fallback != flowpolicy.Required) {
+					t.Error("capture-independent PAC owner/route/floor mismatch", step)
+				}
+				t.Logf("ORIGIN_CAPTURE_INDEPENDENT step=%s action=%s sent=%d received=%d capture_ready=false", step, record.Plan.Policy.Action, record.Sent, record.Received)
+				if o.independent == nil {
+					o.independent = map[uint64]bool{}
+				}
+				o.independent[record.ID] = true
+				witnessed = true
+			}
+		}
 		if outcome.Complete {
 			exchanges++
 			if !witnessed && !(i%2 == 1 && !recovery && strings.Contains(o.mode, "-combined-") && strings.HasSuffix(o.mode, "-availability")) {
@@ -220,10 +249,14 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 	if outcomes[start].Complete && (tcp == o.tcp || rx == o.rx) {
 		t.Error("fresh required authenticated relay increments missing")
 	}
-	if !outcomes[start].Complete && tcp != o.tcp {
+	degradedOrdinary := !recovery && strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability") && outcomes[start+1].Complete
+	if degradedOrdinary && (tcp == o.tcp || rx == o.rx) {
+		t.Error("authority-less ordinary fallback must use authenticated relay")
+	}
+	if !outcomes[start].Complete && !degradedOrdinary && tcp != o.tcp {
 		t.Error("blocked REQUIRED or ordinary DIRECT unexpectedly opened relay")
 	}
-	if exchanges > 0 && !(!recovery && strings.Contains(o.mode, "-combined-")) && (after.CaptureIngress == nil || o.before.CaptureIngress == nil || after.CaptureIngress.TCPPackets <= o.before.CaptureIngress.TCPPackets || after.CaptureIngress.ReflectedAccepts <= o.before.CaptureIngress.ReflectedAccepts) {
+	if exchanges > 0 && !(!recovery && (strings.Contains(o.mode, "-combined-") || strings.Contains(o.mode, "-capture-"))) && (after.CaptureIngress == nil || o.before.CaptureIngress == nil || after.CaptureIngress.TCPPackets <= o.before.CaptureIngress.TCPPackets || after.CaptureIngress.ReflectedAccepts <= o.before.CaptureIngress.ReflectedAccepts) {
 		t.Error("outage phase actual capture increments missing")
 	}
 	t.Logf("ORIGIN_OUTAGE_PROOF mode=%s recovery=%t relay_tcp_delta=%d relay_rx_delta=%d complete=%d", o.mode, recovery, tcp-o.tcp, rx-o.rx, exchanges)
@@ -252,7 +285,7 @@ func (o *originReuseOutage) verifyRetry(t *testing.T) {
 			}
 			count++
 			want := "127.0.0.1"
-			if i == 0 {
+			if i == 0 || strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability") {
 				want = "127.0.0.2"
 			}
 			t.Logf("ORIGIN_RETRY_REQUEST mode=%s %+v", o.mode, q)
@@ -280,11 +313,29 @@ func (o *originReuseOutage) verifyRetry(t *testing.T) {
 		}
 		witnessed = true
 	}
+	reusedIndependent := false
+	if !witnessed && strings.Contains(o.mode, "-capture-") {
+		prior := map[uint64]browserproxy.Record{}
+		for _, record := range o.beforePAC.Records {
+			prior[record.ID] = record
+		}
+		for _, record := range pac.Records {
+			if !o.independent[record.ID] || record.Domain != browserfixture.OutageHosts[0] || record.Sent <= prior[record.ID].Sent || record.Received <= prior[record.ID].Received {
+				continue
+			}
+			if record.Owner.Profile != "origin-reuse" || record.Owner.PID == 0 || record.Owner.Birth == 0 || record.Plan.Policy.Action != flowpolicy.RelayRequired || record.Plan.Policy.Fallback != flowpolicy.Required {
+				t.Error("retry reused PAC owner/floor mismatch")
+			}
+			t.Logf("ORIGIN_RETRY_PINNED_CAPTURE_INDEPENDENT id=%d sent_delta=%d received_delta=%d", record.ID, record.Sent-prior[record.ID].Sent, record.Received-prior[record.ID].Received)
+			reusedIndependent = true
+			witnessed = true
+		}
+	}
 	if !witnessed {
-		t.Error("retry required actual native exchange missing")
+		t.Error("retry required actual transport exchange missing")
 	}
 	tcp, rx := o.relay()
-	if tcp < o.tcp || rx <= o.rx || after.CaptureIngress == nil || o.before.CaptureIngress == nil || after.CaptureIngress.TCPPackets <= o.before.CaptureIngress.TCPPackets {
+	if tcp < o.tcp || rx <= o.rx || (!reusedIndependent && (after.CaptureIngress == nil || o.before.CaptureIngress == nil || after.CaptureIngress.TCPPackets <= o.before.CaptureIngress.TCPPackets)) {
 		t.Error("retry capture/authenticated relay byte increments missing")
 	}
 	t.Logf("ORIGIN_RETRY_PROOF mode=%s relay_tcp_delta=%d relay_rx_delta=%d", o.mode, tcp-o.tcp, rx-o.rx)

@@ -44,6 +44,8 @@ public sealed partial class DesktopViewModel
         var status=await client.Call<NativeBrowserStatus>("browser.native.status",cancellationToken:ct);
         if(!profiles.Any(p=>p.Id==id&&p.Mode=="AUTO"&&NativeBrowser(p))||!status.CaptureReady||!status.Optimizing)
             throw new ChromeActivationException("Native path not armed","verify_native","NATIVE_CAPTURE_NOT_READY");
+        if(!status.AuthorityTransport.SystemProxyApplied)
+            throw new ChromeActivationException("Owner authority transport not applied","verify_native","AUTHORITY_TRANSPORT_NOT_APPLIED");
     }
 
     public async Task VerifyFreshBrowserAsync(string id, bool edge, CancellationToken ct = default)

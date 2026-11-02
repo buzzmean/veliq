@@ -25,6 +25,7 @@ import (
 )
 
 type browserRuntime struct {
+	authority browserAuthorityRuntime
 	youtube   *youtubeRuntime
 	dnsWire   *browserDNSRuntime
 	domains   browserDomainIndex
@@ -218,7 +219,14 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 		return nil, errors.New("browser route blocked")
 	}
 	if observe && current.enabled && nativeBrowserProfile(current.profile) && (q.Ingress == "PAC_CONNECT" || q.Ingress == "PAC_RECOVERY") && plan.Destination.Addr().Is4() && (c.BrowserResolver != nil || !directOnlyFlow(wp.Tuple{Protocol: "tcp", Destination: plan.Destination})) {
-		return c.openNativePAC(ctx, q, plan, d)
+		// A CONNECT already supplies the owner-validated authority. Capturing
+		// its service-owned upstream is needed for LOCAL packet transforms,
+		// while plain DIRECT/authenticated RELAY can use the existing engine
+		// when capture is down. All owner/network/protected-floor checks above
+		// still apply. Never retry here after a delegated open has begun.
+		if c.nativeBackendReady() || d.Route.Local() {
+			return c.openNativePAC(ctx, q, plan, d)
+		}
 	}
 	if d.Route.Local() {
 		if !c.browserLocalAllowed(current.network) && !(plan.Policy.Source == youtubeLadderSource && c.youtubeLocalAllowed(current.network)) {

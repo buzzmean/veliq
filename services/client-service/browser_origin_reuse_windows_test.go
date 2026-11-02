@@ -80,6 +80,16 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		k.Close()
 	}
 	chrome := browserfixture.ChromePath()
+	if os.Getenv("VELIQ_ORIGIN_BROWSER") == "edge" {
+		chrome = ""
+		for _, root := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)"), os.Getenv("LOCALAPPDATA")} {
+			candidate := filepath.Join(root, "Microsoft", "Edge", "Application", "msedge.exe")
+			if _, err := os.Stat(candidate); err == nil {
+				chrome = candidate
+				break
+			}
+		}
+	}
 	if chrome == "" {
 		t.Fatal("real Chrome required")
 	}
@@ -114,8 +124,11 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		{"PAC", "pac", false},
 		{"PACNativeLocalFirst", "pac-native", false},
 		{"PACNativeRequiredThenLocal", "pac-native", true},
+		{"FixedProxyNativeLocalFirst", "fixed-native", false},
+		{"FixedProxyNativeRequiredThenLocal", "fixed-native", true},
 		{"OwnedPACBeforeNativeActivation", "policy-existing", false},
 		{"OwnedPACAppliedToRunningBrowser", "policy-live", false},
+		{"OwnerFixedProxyAppliedToRunningBrowser", "policy-live-fixed", false},
 		{"FreshRequiredAfterPACWithdrawal", "policy-withdrawal", false},
 		{"ListenerOutageGuarded", "outage-listener-guarded", false},
 		{"ListenerOutageAvailability", "outage-listener-availability", false},
@@ -128,6 +141,9 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		{"NativeRequiredThenLocal", "native", true},
 		{"NativeLocalFirst", "native", false},
 	} {
+		if selected := os.Getenv("VELIQ_ORIGIN_REUSE_CASE"); selected != "" && selected != tc.name {
+			continue // Dedicated diagnostic workflow only; release gate leaves it unset.
+		}
 		t.Run(tc.name, func(t *testing.T) { runOriginReuseController(t, chrome, tc.mode, tc.requiredFirst) })
 	}
 }
@@ -135,9 +151,11 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst bool) {
 	outage := strings.HasPrefix(mode, "outage-")
 	freshAfterWithdrawal := mode == "policy-withdrawal"
-	livePolicy := mode == "policy-existing" || mode == "policy-live" || freshAfterWithdrawal || outage
-	native := mode == "native" || mode == "pac-native" || livePolicy
-	usePAC := mode == "pac" || mode == "pac-native" || livePolicy
+	liveInstall := mode == "policy-live" || mode == "policy-live-fixed"
+	runtimeAuthority := liveInstall && os.Getenv("VELIQ_TEST_AUTHORITY_RUNTIME") == "1"
+	livePolicy := mode == "policy-existing" || liveInstall || freshAfterWithdrawal || outage
+	native := mode == "native" || mode == "pac-native" || mode == "fixed-native" || livePolicy
+	usePAC := mode == "pac" || mode == "pac-native" || mode == "fixed-native" || livePolicy
 	if !native && !usePAC {
 		t.Fatal("unknown fixture transport")
 	}
@@ -194,6 +212,12 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 		}
 		controlled := netip.AddrPortFrom(netip.MustParseAddr("192.0.2.254"), f.Port())
 		classify := func(id wp.ProcessIdentity, tuple wp.Tuple) wp.Decision {
+			// The production NETWORK filter excludes loopback. This fixture widens
+			// it only to reflect the controlled origin port. Keep other loopback
+			// sockets (the real local CONNECT listener) on their production path.
+			if tuple.Destination.Addr().IsLoopback() && tuple.Destination.Port() != f.Port() {
+				return wp.Decision{}
+			}
 			// Contain unrelated browser bootstrap traffic in this disposable
 			// VM. The tested endpoint still uses the unmodified classifier.
 			allowed := tuple.Destination == controlled
@@ -243,6 +267,9 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			return c.browserPlan(ctx, q)
 		}
 		proxyConfig := browserproxy.Config{TransportCheck: c.transportCheckSettings, RequireClientHelloReplay: true, Authorize: c.browserOwner, AuthorizeForwarded: c.browserRecoveryOwner, Plan: plan, Open: c.browserOpen, OpenPlan: c.browserOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered}
+		if mode == "fixed-native" {
+			proxyConfig.Authorize = c.authorityOwner
+		}
 		proxy, err = browserproxy.Listen(c.ctx, proxyConfig)
 		if err != nil {
 			t.Fatal(err)
@@ -283,7 +310,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			c.browser.silent.Profiles = []string{p.ID}
 			// Exercise the real owned journal and writer. Readiness/SCM/recovery
 			// provisioning is deliberately outside this isolated transport gate.
-			if mode != "policy-live" {
+			if !liveInstall {
 				c.browser.mu.Lock()
 				err = c.reapplySilentLocked(false)
 				c.browser.mu.Unlock()
@@ -297,6 +324,9 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 				}
 			})
 		}
+		if mode == "fixed-native" {
+			args = []string{"--proxy-server=http://" + proxy.Address(), "--proxy-bypass-list=<-loopback>"}
+		}
 	}
 	if native && usePAC {
 		t.Cleanup(func() {
@@ -308,11 +338,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			if snap.CaptureIngress != nil {
 				t.Logf("ORIGIN_REUSE_HYBRID_CAPTURE tcp=%d reflected=%d lost=%d", snap.CaptureIngress.TCPPackets, snap.CaptureIngress.ReflectedAccepts, snap.CaptureIngress.Lost)
 			}
-			for _, r := range proxy.Snapshot().Records {
-				if r.Domain == browserfixture.ReuseLocalHost || r.Domain == browserfixture.ReuseSiblingHost || r.Domain == browserfixture.ReuseRequiredHost || r.Domain == browserfixture.ReuseFreshRequiredHost {
-					t.Logf("ORIGIN_REUSE_HYBRID_OPEN host=%s result=%s failure=%s", r.Domain, r.Result, r.OpenFailure)
-				}
-			}
+
 		})
 	}
 	bootstrap := browserfixture.ReuseLocalHost
@@ -378,12 +404,56 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			}
 			c.network.Store(&wp.NetworkContext{Fingerprint: "isolated-origin-reuse", ObservedAt: time.Now()})
 			if stage == "local" {
-				if mode == "policy-live" {
+				if liveInstall && !runtimeAuthority {
 					c.browser.mu.Lock()
 					err = c.reapplySilentLocked(false)
 					c.browser.mu.Unlock()
 					if err != nil {
 						t.Fatal(err)
+					}
+					if os.Getenv("VELIQ_TEST_OWNER_WININET") == "1" {
+						original, readErr := wp.ReadOwnerSystemProxy(c.BrowserOwnerSID)
+						if readErr != nil {
+							t.Fatal(readErr)
+						}
+						if original.PAC != "" || original.Server != "" || original.Flags&2 != 0 {
+							t.Fatal("foreign owner system proxy preserved")
+						}
+						desired := wp.OwnerProxyState{Flags: 5, PAC: c.browser.expectedPAC}
+						if err := wp.CompareSetOwnerSystemProxy(c.BrowserOwnerSID, original, desired); err != nil {
+							t.Fatal(err)
+						}
+						if os.Getenv("VELIQ_TEST_OWNER_WININET_PULSE") == "1" {
+							if err := wp.CompareSetOwnerSystemProxy(c.BrowserOwnerSID, desired, original); err != nil {
+								t.Fatal(err)
+							}
+							t.Log("ORIGIN_OWNER_SYSTEM_PAC_RESTORED_BEFORE_REQUESTS")
+							desired = original
+						}
+						t.Cleanup(func() {
+							if err := wp.CompareSetOwnerSystemProxy(c.BrowserOwnerSID, desired, original); err != nil {
+								t.Error("owner proxy conditional restore", err)
+							}
+						})
+						t.Log("ORIGIN_OWNER_SYSTEM_PAC_APPLIED no_browser_restart=true no_policy_page=true")
+					}
+					if helper := os.Getenv("VELIQ_TEST_GPO_COMMIT_EXEC"); helper != "" {
+						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+						command := exec.CommandContext(ctx, helper, "-test.run=^TestCommitUserGPOCanary$", "-test.v")
+						command.Env = append(os.Environ(), "VELIQ_GPO_NOTIFICATION_COMMIT=1")
+						output, commitErr := command.CombinedOutput()
+						cancel()
+						t.Log(string(output)) // Test-only constants, no policy content.
+						if commitErr != nil {
+							t.Fatal("owned diagnostic GPO commit", commitErr)
+						}
+						if os.Getenv("VELIQ_TEST_GPO_GPUPDATE") == "1" {
+							ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+							command := exec.CommandContext(ctx, "gpupdate.exe", "/target:user", "/force", "/wait:5")
+							updateErr := command.Run()
+							cancel()
+							t.Logf("ORIGIN_OWNER_GPUPDATE_AFTER_COMMIT completed=%t", updateErr == nil)
+						}
 					}
 				}
 				p.BrowserTransport = "native"
@@ -391,20 +461,51 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 					t.Fatal(err)
 				}
 				startCapture()
+				if runtimeAuthority {
+					helper := os.Getenv("VELIQ_TEST_OWNER_WORKER")
+					if helper == "" {
+						t.Fatal("compiled owner service worker required")
+					}
+					c.browser.authority.exchange = func(ctx context.Context, q wp.OwnerProxyCommand) (wp.OwnerProxyState, error) {
+						return exchangeOwnerProxyWithBinary(ctx, q, helper)
+					}
+					c.RetryBrowserAuthority()
+					if !c.authorityStatus().Applied {
+						t.Fatal("authority PAC not applied", c.authorityStatus())
+					}
+					proxy = c.browser.authority.server
+					t.Cleanup(func() {
+						if err := c.releaseBrowserAuthority(); err != nil {
+							t.Error("authority restore", err)
+						}
+					})
+					t.Log("ORIGIN_AUTHORITY_RUNTIME_APPLIED owner_worker=true no_browser_restart=true")
+
+				}
 				compat, err := c.nativeBrowserCompatibility(p, false)
-				if err != nil || compat == nil || !compat.OwnedPolicy || compat.PolicyChanged {
+				if err != nil || (!runtimeAuthority && (compat == nil || !compat.OwnedPolicy || compat.PolicyChanged)) {
 					t.Fatal("existing owned policy compatibility missing", err)
 				}
 				activatedAt = time.Now()
-				t.Logf("ORIGIN_POLICY_ACTIVATION mode=%s warm_local=true same_pid_birth=true registry_active=%t compatibility=%s", mode, c.chromePolicyActive(), compat.Verification)
+				t.Logf("ORIGIN_POLICY_ACTIVATION mode=%s warm_local=true same_pid_birth=true registry_active=%t compatibility=%+v", mode, c.chromePolicyActive(), compat)
+				t.Logf("ORIGIN_GP_REFRESH activation=%+v", wp.BrowserPolicyRefreshStatus())
 			}
 			if stage == "required" {
-				if mode != "policy-live" {
+				if !liveInstall {
 					c.RetrySilentBrowserPolicies()
+					if !c.chromePolicyActive() {
+						t.Fatal("native maintenance withdrew the authority PAC")
+					}
+					t.Log("ORIGIN_POLICY_RETAINED native_maintenance=true")
+					// Explicit fault injection after proving normal retention. Do not
+					// mislabel registry withdrawal as the product's maintenance path.
+					if err := c.CleanupOwnedBrowserPolicies(); err != nil {
+						t.Fatal(err)
+					}
 					if c.chromePolicyActive() || !proxy.Snapshot().Listening {
 						t.Fatal("native policy withdrawal/listener lifecycle changed")
 					}
-					t.Log("ORIGIN_POLICY_WITHDRAWAL registry_active=false compatibility_listener=true; real native maintenance path")
+					t.Log("ORIGIN_POLICY_WITHDRAWAL registry_active=false compatibility_listener=true explicit_fault_injection=true")
 					time.Sleep(3 * time.Second)
 				} else {
 					// Bounded observation, no extra RefreshPolicy, chrome://policy,
@@ -449,7 +550,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	first := f.Bootstrap(t)
 	t.Logf("ORIGIN_REUSE_BOOTSTRAP transport=%s %+v", mode, first)
 	firstSource := "127.0.0.1"
-	if requiredFirst {
+	if requiredFirst || mode == "native" {
 		firstSource = "127.0.0.2"
 	}
 	if first.Host != bootstrap || first.SNI != bootstrap || first.Source != firstSource {
@@ -459,8 +560,16 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	for _, q := range requests {
 		t.Logf("ORIGIN_REUSE_REQUEST transport=%s %+v", mode, q)
 	}
-	if (usePAC || !requiredFirst) && (requests[0].Source != "127.0.0.1" || requests[1].Source != "127.0.0.1") {
+	if usePAC && (requests[0].Source != "127.0.0.1" || requests[1].Source != "127.0.0.1") {
 		t.Fatal("local first-route precondition missing")
+	}
+	if mode == "native" {
+		for _, q := range requests {
+			if q.Source != "127.0.0.2" {
+				t.Error("raw TLS without authority must remain on degraded relay", q.Host, q.Source)
+			}
+		}
+		t.Log("ORIGIN_RAW_TLS_DEGRADED_RELAY local_admission=false ordinary_direct_claim=false")
 	}
 	requiredDirect := 0
 	for _, q := range requests[2:] {
@@ -575,6 +684,7 @@ func verifyLiveOriginPolicy(t *testing.T, c *Controller, f *browserfixture.Origi
 	c.browser.mu.Lock()
 	view := c.silentViewLocked(false, pac)
 	c.browser.mu.Unlock()
+	t.Logf("ORIGIN_GP_REFRESH observed=%+v", wp.BrowserPolicyRefreshStatus())
 	t.Logf("ORIGIN_POLICY_PROOF mode=%s state=%s observed=%d registry_active=%t native_pac_exchanges=%d connected=%d reflected=%d metadata_evicted=%d required_direct=%d pre_activation_reuse=%d fresh_loopback_unproven=%d relay_tcp=%d relay_rx=%d", mode, view.State, view.ObservedRequests, c.chromePolicyActive(), native.PACUpstream.Exchanges, delegated.connected.Load(), native.CaptureIngress.ReflectedAccepts, native.CaptureIngress.Lost, direct, pinnedDirect, direct-pinnedDirect, relayTCP, relayRX)
 	if !witnessed[browserfixture.ReuseSiblingHost] || !witnessed[browserfixture.ReuseRequiredHost] || delegated.connected.Load() == 0 || native.CaptureIngress.ReflectedAccepts < delegated.connected.Load() {
 		t.Error("LIVE_POLICY_UPTAKE_NOT_PROVEN: actual hybrid exchanges for new authorities missing within bounded observation")

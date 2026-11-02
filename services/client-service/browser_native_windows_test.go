@@ -280,7 +280,7 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 	if len(addresses) > 0 {
 		address = addresses[0]
 	}
-	cmd := exec.Command(executable, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--remote-debugging-port=0", "--remote-allow-origins=http://localhost", "--host-resolver-rules=MAP native-browser.test "+address, "--user-data-dir="+dir, "about:blank")
+	cmd := exec.Command(executable, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--remote-debugging-port=0", "--remote-allow-origins=http://localhost", "--host-resolver-rules=MAP *.native-browser.test "+address+", MAP native-browser.test "+address, "--user-data-dir="+dir, "about:blank")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -361,7 +361,11 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 	visit := func(stage, source string) {
 		t.Helper()
 		path := "/" + stage
-		url := fmt.Sprintf("http://native-browser.test:%d%s", port, path)
+		// A browser may keep an idle preconnect from before activation. Existing
+		// TCP is deliberately pinned, including the reflection seam. A distinct
+		// HTTP/1 authority makes this a new-flow test without closing a browser or
+		// moving its existing connection; the same suffix routing rule still applies.
+		url := fmt.Sprintf("http://%s.native-browser.test:%d%s", stage, port, path)
 		// The TEST-NET route exists only while the driver reflects it. Baseline/OFF
 		// test the same live browser against the actual local origin, with no proxy.
 		if address == "192.0.2.254" && stage != "native-active" {
@@ -377,6 +381,7 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 		}
 		end := time.Now().Add(8 * time.Second)
 		observed := false
+		lastBody := ""
 		for time.Now().Before(end) {
 			raw = call("Runtime.evaluate", map[string]any{"expression": "document.body && document.body.textContent", "returnByValue": true})
 			var result struct {
@@ -384,13 +389,19 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 					Value string `json:"value"`
 				} `json:"result"`
 			}
-			if json.Unmarshal(raw, &result) == nil && result.Result.Value == "VELIQ continuity "+path+" source="+source {
+			if json.Unmarshal(raw, &result) == nil {
+				lastBody = result.Result.Value
+			}
+			if lastBody == "VELIQ continuity "+path+" source="+source {
 				observed = true
 				break
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
 		if !observed {
+			if strings.HasPrefix(lastBody, "VELIQ continuity "+path+" source=") {
+				t.Logf("HTTP_BODY_WRONG_SOURCE stage=%s expected=%s actual=%s", stage, source, strings.TrimPrefix(lastBody, "VELIQ continuity "+path+" source="))
+			}
 			t.Fatal("HTTP_BODY_NOT_OBSERVED", stage)
 		}
 		after, e := wp.NewDiscovery().Lookup(identity.PID)

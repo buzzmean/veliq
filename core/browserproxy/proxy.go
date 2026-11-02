@@ -1,5 +1,6 @@
-// Package browserproxy provides a Chrome-only origin-bound transport. It never
-// terminates TLS, reads HTTPS content, replays requests or changes system proxy.
+// Package browserproxy provides an owner-authorized HTTP CONNECT transport.
+// The service supplies application routing; TLS stays end-to-end without request
+// replay. Windows configuration is managed outside this package.
 package browserproxy
 
 import (

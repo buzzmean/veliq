@@ -60,7 +60,7 @@ public partial class MainWindow
             var pending = report + "." + Guid.NewGuid().ToString("N") + ".pending";
             try {
                 await using (var file = new FileStream(pending, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                    await JsonSerializer.SerializeAsync(file, new { pass, stage = phase, code, browser, states, error_class = errorClass, scope = "native capture armed; no PAC or browser restart; not Internet page PASS" });
+                    await JsonSerializer.SerializeAsync(file, new { pass, stage = phase, code, browser, states, error_class = errorClass, scope = "native capture armed; owner CONNECT configured; browser uptake and Internet pages require acceptance" });
                 File.Move(pending, report);
             }
             finally { if (File.Exists(pending)) File.Delete(pending); timer.Start(); }
