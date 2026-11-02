@@ -1,5 +1,12 @@
 # Windows runtime acceptance blockers
 
+> Current beta work, 2026-11-02: draft #56 supersedes the Build618 origin
+> blockers with an owner CONNECT transport. See [BROWSER_AUTHORITY_TRANSPORT.md](BROWSER_AUTHORITY_TRANSPORT.md)
+> for the implemented contract and [BETA_ACCEPTANCE.md](BETA_ACCEPTANCE.md) for
+> exact-SHA CI plus physical PC gates. The historical matrix below is not the
+> current candidate's acceptance result. No production state was inferred.
+
+
 This matrix was written before real Windows runs. Several items are now exercised
 by native CI tests or were run on a real PC (see `docs/STATUS.md`), but it has not
 been re-reviewed line by line: the owner decides which items are closed. Anything

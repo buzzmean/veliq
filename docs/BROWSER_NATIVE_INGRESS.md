@@ -1,5 +1,13 @@
 # Нулевой native ingress Chrome/Edge: границы доказательства
 
+> Обновление 02.11.2026: beta #56 использует owner HTTP CONNECT как основной
+> источник HTTPS-адресата. Native capture обслуживает LOCAL upstream; raw TLS
+> без адресата временно идёт через authenticated RELAY. Чистый SNI не разрешает
+> DIRECT/LOCAL для поздних HTTP/2 authority. Новый контракт и lifecycle:
+> [BROWSER_AUTHORITY_TRANSPORT.md](BROWSER_AUTHORITY_TRANSPORT.md).
+> Ниже сохранено описание native ingress и его отдельных диагностических доказательств.
+
+
 Сборка владельца d3aad37: engine flows/native runtime были пусты при готовом
 backend. Это подтверждает отсутствие зарегистрированного native обмена, но
 само по себе не показывает, дошёл ли пакет до NETWORK handle.
@@ -61,9 +69,10 @@ NATIVE_DEFERRED_SYN без TCP_REFLECTION_ACCEPT локализует пробл
 локальной TCP приёмке. После ACCEPT ошибки owner/SID/ClientHello/open находятся
 также в capture flow evidence. Нулевой Engine flow не заменяет эти проверки.
 
-GUI считает браузеры готовыми только после реального native двустороннего обмена
-каждого текущего AUTO/native профиля. PAC обмен и просто armed capture этого не
-доказывают. Даже двусторонние байты не доказывают успешную HTTPS/страницу.
+GUI подтверждает браузер после наблюдаемого owner CONNECT и двустороннего обмена
+текущего AUTO/native профиля при действующем системном прокси и свежей проверке
+его владения. Raw native TLS counters и просто armed capture этого не доказывают.
+Даже двусторонние байты не доказывают успешную HTTPS/страницу.
 
 ## Автоматическая Windows проверка
 

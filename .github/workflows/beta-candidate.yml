@@ -63,6 +63,12 @@ jobs:
         with: {go-version: '1.25.x'}
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
+      - name: Safe runtime evidence (PowerShell 5.1)
+        shell: powershell
+        run: '& ./tests/windows-tools/beta-runtime-evidence-checks.ps1'
+      - name: Safe runtime evidence (PowerShell 7)
+        shell: pwsh
+        run: '& ./tests/windows-tools/beta-runtime-evidence-checks.ps1'
       - uses: actions/download-artifact@v4
         with:
           name: beta-published-public-trust
@@ -96,6 +102,7 @@ jobs:
           Copy-Item docs/BETA_ACCEPTANCE.md bin/beta-kit/README.md
           Copy-Item docs/BETA_RESULTS.template.json bin/beta-kit/
           Copy-Item tools/windows/Get-BetaSnapshot.ps1 bin/beta-kit/
+          Copy-Item tools/windows/Get-BetaRuntimeEvidence.ps1 bin/beta-kit/
           Copy-Item tools/beta_acceptance.py bin/beta-kit/
           foreach ($name in @('New-ClubCodeFile.ps1','common.ps1','club-image-common.ps1','club-code-common.ps1')) { Copy-Item (Join-Path 'tools/windows' $name) bin/beta-kit/ }
           $report=Get-Content -Raw bin/beta-kit/BETA_RESULTS.template.json | ConvertFrom-Json
@@ -103,7 +110,7 @@ jobs:
           $report.service_sha256=$b.ToLowerInvariant()
           $report.gui_sha256=(Get-FileHash bin/beta-kit/VELIQ.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           [IO.File]::WriteAllText((Join-Path $PWD 'bin/beta-kit/BETA_RESULTS.template.json'),($report|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
-          $files=@('veliq-service.exe','VELIQ.exe','README.md','BETA_RESULTS.template.json','Get-BetaSnapshot.ps1','beta_acceptance.py','New-ClubCodeFile.ps1','common.ps1','club-image-common.ps1','club-code-common.ps1')
+          $files=@('veliq-service.exe','VELIQ.exe','README.md','BETA_RESULTS.template.json','Get-BetaSnapshot.ps1','Get-BetaRuntimeEvidence.ps1','beta_acceptance.py','New-ClubCodeFile.ps1','common.ps1','club-image-common.ps1','club-code-common.ps1')
           $manifest=[ordered]@{schema_version=1;source_commit=$env:EXPECTED_COMMIT;build_sequence=$service.build_sequence;approval='NOT_APPROVED';validation='CHECK_ALL_CI_AND_MANUAL_GATES';kind='incomplete-unpublished-kit';files=@()}
           foreach ($name in $files) {
             $hash=(Get-FileHash -LiteralPath "bin/beta-kit/$name" -Algorithm SHA256).Hash.ToLowerInvariant()

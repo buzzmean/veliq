@@ -1,4 +1,9 @@
 > Кандидат беты: AvailabilityV2 закрывает DIRECT fallback для bundled RELAY
+
+> Legacy PAC остаётся совместимым. Основной автоматический browser transport
+> в beta #56 — owner CONNECT без браузерной GPO/PAC-зависимости:
+> [BROWSER_AUTHORITY_TRANSPORT.md](BROWSER_AUTHORITY_TRANSPORT.md).
+
 > floors, profile guard и strictProxy; ordinary fallback сохранён. Это patch
 > после actual compound-outage RED в run41369834272/job125037705516. Исторические
 > результаты AvailabilityV1 ниже не описывают поведение нового wrapper. Cached
