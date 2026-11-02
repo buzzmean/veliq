@@ -137,7 +137,7 @@ func (f *OriginReuse) runPhased(t testing.TB, chrome, address, bootstrapHost str
 		}
 	}
 	// All other browser DNS fails locally. No public service/credential is used.
-	rules = append(rules, "MAP * ~NOTFOUND", "EXCLUDE localhost", "EXCLUDE *.localhost")
+	rules = append(rules, "MAP * ~NOTFOUND", "EXCLUDE localhost", "EXCLUDE *.localhost", "EXCLUDE 127.0.0.1")
 	args = append(args, "--user-data-dir="+directory, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--disable-component-update", "--disable-sync", "--disable-default-apps", "--disable-domain-reliability", "--disable-features=MediaRouter,OptimizationHints", "--disable-dev-shm-usage", "--disable-quic", "--remote-debugging-port=0", "--remote-allow-origins=http://localhost", "--host-resolver-rules="+strings.Join(rules, ", "), "about:blank")
 	if runtime.GOOS == "linux" {
 		args = append(args, "--no-sandbox")
