@@ -59,14 +59,16 @@ func newOriginReuseRelay(t *testing.T, c *Controller) (*relay.Server, *transport
 }
 
 type originReuseOutage struct {
-	mode     string
-	c        *Controller
-	f        *browserfixture.OriginReuse
-	proxy    func() *browserproxy.Server
-	relay    func() (uint64, uint64)
-	down, up func()
-	before   nativeBrowserSnapshot
-	tcp, rx  uint64
+	mode        string
+	c           *Controller
+	f           *browserfixture.OriginReuse
+	proxy       func() *browserproxy.Server
+	relay       func() (uint64, uint64)
+	down, up    func()
+	before      nativeBrowserSnapshot
+	tcp, rx     uint64
+	independent map[uint64]bool
+	beforePAC   browserproxy.Snapshot
 }
 
 func (o *originReuseOutage) boundary(t *testing.T, recovery bool) {
@@ -111,6 +113,7 @@ func (o *originReuseOutage) phase(t *testing.T, stage string) {
 		o.verifyPhase(t, true)
 	case "before_retry":
 		o.before = o.c.nativeSnapshot()
+		o.beforePAC = o.proxy().Snapshot()
 		o.tcp, o.rx = o.relay()
 		t.Logf("ORIGIN_RETRY_BOUNDARY mode=%s same_authorities=true browser_cache_reset=false", o.mode)
 	case "retry_direct":
@@ -225,6 +228,10 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 					t.Error("capture-independent PAC owner/route/floor mismatch", step)
 				}
 				t.Logf("ORIGIN_CAPTURE_INDEPENDENT step=%s action=%s sent=%d received=%d capture_ready=false", step, record.Plan.Policy.Action, record.Sent, record.Received)
+				if o.independent == nil {
+					o.independent = map[uint64]bool{}
+				}
+				o.independent[record.ID] = true
 				witnessed = true
 			}
 		}
@@ -302,11 +309,29 @@ func (o *originReuseOutage) verifyRetry(t *testing.T) {
 		}
 		witnessed = true
 	}
+	reusedIndependent := false
+	if !witnessed && strings.Contains(o.mode, "-capture-") {
+		prior := map[uint64]browserproxy.Record{}
+		for _, record := range o.beforePAC.Records {
+			prior[record.ID] = record
+		}
+		for _, record := range pac.Records {
+			if !o.independent[record.ID] || record.Domain != browserfixture.OutageHosts[0] || record.Sent <= prior[record.ID].Sent || record.Received <= prior[record.ID].Received {
+				continue
+			}
+			if record.Owner.Profile != "origin-reuse" || record.Owner.PID == 0 || record.Owner.Birth == 0 || record.Plan.Policy.Action != flowpolicy.RelayRequired || record.Plan.Policy.Fallback != flowpolicy.Required {
+				t.Error("retry reused PAC owner/floor mismatch")
+			}
+			t.Logf("ORIGIN_RETRY_PINNED_CAPTURE_INDEPENDENT id=%d sent_delta=%d received_delta=%d", record.ID, record.Sent-prior[record.ID].Sent, record.Received-prior[record.ID].Received)
+			reusedIndependent = true
+			witnessed = true
+		}
+	}
 	if !witnessed {
-		t.Error("retry required actual native exchange missing")
+		t.Error("retry required actual transport exchange missing")
 	}
 	tcp, rx := o.relay()
-	if tcp < o.tcp || rx <= o.rx || after.CaptureIngress == nil || o.before.CaptureIngress == nil || after.CaptureIngress.TCPPackets <= o.before.CaptureIngress.TCPPackets {
+	if tcp < o.tcp || rx <= o.rx || (!reusedIndependent && (after.CaptureIngress == nil || o.before.CaptureIngress == nil || after.CaptureIngress.TCPPackets <= o.before.CaptureIngress.TCPPackets)) {
 		t.Error("retry capture/authenticated relay byte increments missing")
 	}
 	t.Logf("ORIGIN_RETRY_PROOF mode=%s relay_tcp_delta=%d relay_rx_delta=%d", o.mode, tcp-o.tcp, rx-o.rx)

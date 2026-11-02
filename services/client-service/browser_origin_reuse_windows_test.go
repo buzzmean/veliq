@@ -388,6 +388,25 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 					if err != nil {
 						t.Fatal(err)
 					}
+					if os.Getenv("VELIQ_TEST_OWNER_WININET") == "1" {
+						original, readErr := wp.ReadOwnerSystemProxy(c.BrowserOwnerSID)
+						if readErr != nil {
+							t.Fatal(readErr)
+						}
+						if original.PAC != "" || original.Server != "" || original.Flags&2 != 0 {
+							t.Fatal("foreign owner system proxy preserved")
+						}
+						desired := wp.OwnerProxyState{Flags: 5, PAC: c.browser.expectedPAC}
+						if err := wp.CompareSetOwnerSystemProxy(c.BrowserOwnerSID, original, desired); err != nil {
+							t.Fatal(err)
+						}
+						t.Cleanup(func() {
+							if err := wp.CompareSetOwnerSystemProxy(c.BrowserOwnerSID, desired, original); err != nil {
+								t.Error("owner proxy conditional restore", err)
+							}
+						})
+						t.Log("ORIGIN_OWNER_SYSTEM_PAC_APPLIED no_browser_restart=true no_policy_page=true")
+					}
 					if helper := os.Getenv("VELIQ_TEST_GPO_COMMIT_EXEC"); helper != "" {
 						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 						command := exec.CommandContext(ctx, helper, "-test.run=^TestCommitUserGPOCanary$", "-test.v")
