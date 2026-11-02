@@ -1,0 +1,88 @@
+name: Account onboarding without activation codes
+on:
+  push:
+    branches: ['feat/account-onboarding-beta-*']
+  pull_request:
+    paths:
+      - 'core/enrollment/**'
+      - 'services/control-plane/**'
+      - 'services/client-service/account*'
+      - 'website/**'
+      - 'tests/frontend/account_onboarding_smoke.py'
+      - '.github/workflows/account-onboarding.yml'
+permissions:
+  contents: read
+concurrency:
+  group: account-onboarding-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  browser-client-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: neexitlag
+          POSTGRES_DB: neexitlag
+          POSTGRES_PASSWORD: ci-only-account-fixture
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U neexitlag -d neexitlag"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      NEEXITLAG_TEST_DATABASE_URL: postgres://neexitlag:ci-only-account-fixture@127.0.0.1:5432/neexitlag?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Existing browser test tooling and ephemeral user trust
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libnss3-tools
+          python3 -m pip install playwright==1.56.0
+          command -v google-chrome
+      - name: Real HTTPS registration, owner approval, desktop identity and logout
+        env:
+          VELIQ_TEST_ACCOUNT_BROWSER: '1'
+          VELIQ_ACCOUNT_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+        run: go test -race -v -count=1 -timeout=180s ./services/client-service -run '^TestAccountRealBrowserRegistrationToDeviceBinding$'
+      - name: Real SQL authorization, slots, revocation and club freeze
+        run: go test -race -v -count=1 -timeout=120s ./core/enrollment ./services/control-plane ./services/client-service -run 'DeviceLink|AccountDeviceBinding|AccountHTTPS|ClubImageApproval|AccountClubTemplate|CodeFreeAccount|SubscriptionPaymentDoesNotOverrideManualOff'
+  server-bundle:
+    needs: browser-client-postgres
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Build server and static cabinet; no deployment
+        env:
+          CGO_ENABLED: '0'
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p bin/account-server-bundle
+          go build -trimpath -o bin/account-server-bundle/control-plane ./services/control-plane/cmd/control-plane
+          cp -r website bin/account-server-bundle/
+          cp docs/ACCOUNT_ONBOARDING.md bin/account-server-bundle/README.md
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          root=pathlib.Path('bin/account-server-bundle')
+          files=[{'path':str(p.relative_to(root)),'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(root.rglob('*')) if p.is_file()]
+          report={'source_commit':os.environ['EXPECTED_COMMIT'],'schema_version':5,'approval':'NOT_DEPLOYED','production_contacted':False,'files':files}
+          (root/'manifest.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+          print('ACCOUNT_SERVER_BUNDLE_BUILT source='+report['source_commit']+' approval=NOT_DEPLOYED')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VELIQ-accounts-server-linux-amd64-NOT-DEPLOYED
+          path: bin/account-server-bundle/
+          if-no-files-found: error
+          retention-days: 14

@@ -160,6 +160,7 @@ public partial class MainWindow : Window
         var wasOptimizing=model.Optimizing;
         await Execute(() => model.RefreshAsync(lifetime.Token));
         await RefreshActivationAsync();
+        await RefreshSubscriptionAsync();
         await Execute(()=>model.ObserveAuxiliaryAsync(RegisterStartupBrowsersAsync,"browser.startup",lifetime.Token));
         await Execute(()=>model.ObserveAuxiliaryAsync(()=>MonitorChromeTransportAsync(wasOptimizing),"browser.monitor",lifetime.Token));
         if(!presetsLoaded&&model.Available){try{AppPreset.ItemsSource=await model.GetPresetsAsync(lifetime.Token);AppPreset.SelectedIndex=0;presetsLoaded=true;}catch(ServiceException){}}

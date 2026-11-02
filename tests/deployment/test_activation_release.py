@@ -13,6 +13,21 @@ def load(name):
  s=importlib.util.spec_from_file_location(name,ROOT/'deploy/vps'/name);m=importlib.util.module_from_spec(s);s.loader.exec_module(m);return m
 
 class ActivationReleaseTests(unittest.TestCase):
+ def test_known_additive_schema_reaches_leaf_preflight_unknown_schema_fails_closed(self):
+  for version in (1,2,3,4,5,6):
+   with self.subTest(schema=version):
+    release=load('deploy-activation.py')
+    report={'capabilities':{'relay':{},'control-plane':{}},'applied_schema_version':version,'systemd_version':257}
+    engine=SimpleNamespace(e=SimpleNamespace(Host=lambda:None),report=lambda h:report,compatible=lambda *a:True)
+    preflight=mock.Mock(side_effect=RuntimeError('LEAF_PREFLIGHT_REACHED'))
+    leaf=SimpleNamespace(Renewal=lambda:SimpleNamespace(preflight=preflight))
+    with mock.patch.object(release,'guard'),mock.patch.object(release,'module',side_effect=[engine,leaf]),mock.patch.object(Path,'is_file',return_value=True):
+     with self.assertRaisesRegex(RuntimeError,'LEAF_PREFLIGHT_REACHED' if version<=5 else 'UNSUPPORTED_SCHEMA_VERSION'):
+      release.apply('fixture','a'*40,'ACTIVATE-CODES-2.56.177.4')
+    self.assertEqual(preflight.call_count,1 if version<=5 else 0)
+    self.assertEqual(release.PROGRESS.modified,'NO')
+    self.assertIsNone(release.PROGRESS.backup)
+
  def test_artifact_hash_and_bounded_transport_never_trusts_manifest_claim(self):
   import base64
   transport=load('activation-release-ssh.py');raw=b'public-test-artifact'

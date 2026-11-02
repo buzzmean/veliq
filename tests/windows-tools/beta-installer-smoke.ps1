@@ -18,20 +18,21 @@ function Get-OwnedServiceState([string]$Name='VELIQ'){
 }
 foreach($name in @('VELIQ','neexitlag')){if((Get-OwnedServiceState $name) -ne 'ABSENT'){throw 'EXISTING_SERVICE_PRESERVED'}}
 foreach($path in @($installed,$app,(Join-Path $env:ProgramData 'neexitlag'),(Join-Path $env:ProgramFiles 'VELIQ Setup'))){if(Test-Path -LiteralPath $path){throw 'EXISTING_INSTALLATION_PRESERVED'}}
-function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage){
+function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage,[switch]$AccountImage){
  # Inno's uninstaller delegates to _unins.tmp. Process.WaitForExit waits only
  # for the launcher; PowerShell Start-Process -Wait waits for its process tree.
  # A worker job preserves that behavior and bounds it without killing browsers.
  $log=Join-Path $env:RUNNER_TEMP ('beta-inno-'+$Stage+'-'+[guid]::NewGuid().ToString('N')+'.log')
  Write-Output ('BETA_INSTALLER_START stage='+$Stage)
  $worker=Start-Job -ScriptBlock {
-  param($Executable,$LogFile,$InvalidImage)
+  param($Executable,$LogFile,$InvalidImage,$AccountImageMode)
   $ErrorActionPreference='Stop'
   $arguments=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$LogFile+'"'))
-  if($InvalidImage){$arguments+='/CLUBIMAGE=1'}
+  if($AccountImageMode){$arguments+='/CLUBIMAGE=1'}
+  if($InvalidImage){$arguments+='/CLUBIMAGE=1';$missing=Join-Path (Split-Path $Executable -Parent) ('missing-code-'+[guid]::NewGuid().ToString('N')+'.txt');$arguments+=('/CLUBCODEFILE="'+$missing+'"')}
   $process=Start-Process -FilePath $Executable -ArgumentList $arguments -Wait -PassThru
   try{[int]$process.ExitCode}finally{$process.Dispose()}
- } -ArgumentList $Path,$log,([bool]$InvalidClubImage)
+ } -ArgumentList $Path,$log,([bool]$InvalidClubImage),([bool]$AccountImage)
  try{
   $finished=Wait-Job -Job $worker -Timeout 180
   if(!$finished){throw ('OWNED_INSTALLER_TREE_TIMEOUT stage='+$Stage)}
@@ -88,14 +89,15 @@ function Assert-InstalledCandidate {
 }
 $uninstalled=$false
 try{
- # A missing code in CLUBIMAGE mode must fail before SCM/identity creation.
+ # An explicitly supplied missing legacy file must fail before SCM/identity creation.
+ # New CLUBIMAGE mode without a file uses account approval instead.
  # Inno used to suppress the script exception and falsely return exit 0.
  Invoke-OwnedInstaller $setup 'invalid-image' -ExpectedExit 1 -InvalidClubImage
  $failure=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
- if($failure.result -cne 'FAIL' -or $failure.code -cne 'CLUB_IMAGE_CODE_FILE_REQUIRED' -or (Get-OwnedServiceState) -ne 'ABSENT'){throw 'FAILED_SETUP_FALSE_SUCCESS_OR_STATE_MUTATION'}
+ if($failure.result -cne 'FAIL' -or $failure.code -cne 'CLUB_CODE_FILE_INVALID' -or (Get-OwnedServiceState) -ne 'ABSENT'){throw 'FAILED_SETUP_FALSE_SUCCESS_OR_STATE_MUTATION'}
  Invoke-OwnedInstaller (Join-Path $app 'unins000.exe') 'invalid-image-uninstall'
  foreach($path in @($installed,$app)){if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}}
- Write-Output 'BETA_NEGATIVE_SETUP_PASS exit=1; missing club code; no SCM service'
+ Write-Output 'BETA_NEGATIVE_SETUP_PASS exit=1; invalid legacy file; no SCM service'
  Invoke-OwnedInstaller $setup 'install'
  Assert-InstalledCandidate
  # Re-install the identical package exercises the real existing-service update.
@@ -106,6 +108,24 @@ try{
  Invoke-OwnedInstaller $uninstaller 'uninstall'
  if((Get-OwnedServiceState) -ne 'ABSENT'){throw 'SERVICE_REMAINED_AFTER_UNINSTALL'}
  foreach($name in @('VELIQ.exe','installer/install-package.ps1','unins000.exe')){if(Test-Path -LiteralPath (Join-Path $app $name)){throw 'UNINSTALL_LEFT_PACKAGE_FILES'}}
+ $uninstalled=$true
+ foreach($path in @($installed,$app)){if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}}
+ $uninstalled=$false
+ Invoke-OwnedInstaller $setup 'account-image' -AccountImage
+ Assert-InstalledCandidate
+ $preparation=Get-Content -Raw -LiteralPath (Join-Path $installed 'club-account-preparation.json')|ConvertFrom-Json
+ if($preparation.version -ne 1 -or $preparation.owner_sid -cne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value){throw 'ACCOUNT_IMAGE_PREPARATION_OWNER_MISMATCH'}
+ foreach($name in @('identity.json','device.pem','probe.token','club-boot-ready.json','club-mode.json')){if(Test-Path -LiteralPath (Join-Path $installed $name)){throw 'ACCOUNT_IMAGE_ENROLLED_OR_SEALED_BEFORE_OWNER_APPROVAL'}}
+ $manifest=Get-Content -Raw -LiteralPath (Join-Path $installed 'service.json')|ConvertFrom-Json
+ if($manifest.club_image){throw 'ACCOUNT_IMAGE_ACTIVATED_BEFORE_APPROVAL'}
+ . (Join-Path $PSScriptRoot '../../tools/windows/common.ps1')
+ $account=Invoke-ServiceIPCOnce 'account.status'
+ if(!$account.image_preparation -or $account.state -cne 'NOT_LINKED'){throw 'ACCOUNT_IMAGE_IPC_NOT_PENDING'}
+ if($account.PSObject.Properties['secret'] -or $account.PSObject.Properties['bootstrap_secret']){throw 'ACCOUNT_IMAGE_IPC_EXPORTED_SECRET'}
+ $task=Get-ScheduledTask -TaskName 'VELIQ Club Boot'
+ if(!$task -or $task.Principal.UserId -notin @('SYSTEM','S-1-5-18')){throw 'ACCOUNT_IMAGE_BOOT_TASK_NOT_SYSTEM'}
+ Write-Output 'BETA_ACCOUNT_IMAGE_PASS no_code=true real_owner_IPC=true approval_pending=true no_identity=true system_boot_task=true'
+ Invoke-OwnedInstaller (Join-Path $app 'unins000.exe') 'account-image-uninstall'
  $uninstalled=$true
 }catch{
  # Preserve the initiating assertion before a cleanup failure can mask it.

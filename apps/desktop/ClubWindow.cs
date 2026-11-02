@@ -15,6 +15,7 @@ public sealed class ClubWindow : Window
     readonly TextBlock title=new(){Text="Подготовка",FontSize=52,FontWeight=FontWeights.ExtraBold,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,12)};
     readonly TextBlock status=new(){Text="Подготавливаем VELIQ…",FontSize=16,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,22)};
     readonly TextBlock games=new(){TextWrapping=TextWrapping.Wrap,HorizontalAlignment=HorizontalAlignment.Right,TextAlignment=TextAlignment.Right};
+    readonly TextBlock clubName=new(){Text="Клубный режим",TextWrapping=TextWrapping.Wrap,HorizontalAlignment=HorizontalAlignment.Right,TextAlignment=TextAlignment.Right};
     readonly Rectangle signal=new(){Visibility=Visibility.Collapsed};
     readonly Border badge=new(){Width=200,Height=200,CornerRadius=new CornerRadius(72),BorderThickness=new Thickness(2),ClipToBounds=true};
     readonly IServiceClient service=new ServiceClient();bool polling,exiting;string trayState="";System.Drawing.Icon? trayIcon;
@@ -38,6 +39,7 @@ public sealed class ClubWindow : Window
     {
         title.Foreground=Res("Text");status.Foreground=Res("TextMuted");games.Foreground=Res("TextMuted");
         var list=new StackPanel();
+        clubName.Foreground=Res("TextMuted");list.Children.Add(Row("Клуб",clubName));
         list.Children.Add(Row("Игры",games));
         list.Children.Add(Row("Если что-то не открывается",new TextBlock{Text="позовите администратора",Foreground=Res("TextMuted")}));
         var state=new StackPanel{VerticalAlignment=VerticalAlignment.Center};
@@ -92,6 +94,7 @@ public sealed class ClubWindow : Window
             else ShowState("Подготовка","Готовим подключение…","connecting");
             try{games.Text=ClubPresentation.GameLine(await service.Call<GameUdpStatus>("gameudp.status"));}
             catch{games.Text="PUBG: диагностика пока недоступна";}
+            try{var account=await service.Call<AccountConnectionView>("account.status");clubName.Text=account.Kind=="club"&&account.Name.Length>0?account.Name:"Клубный режим";}catch{}
         }
         catch {ShowState("Подготовка","Ожидаем готовность службы VELIQ…","connecting");}
         finally {polling=false;}
