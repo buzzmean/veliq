@@ -130,16 +130,16 @@ func prepareGPNotificationCanary() (func(), error) {
 	iid, _ := windows.GUIDFromString("{EA502723-A23D-11d1-A7D3-0000F87571E3}")
 	extension, _ := windows.GUIDFromString("{35378EAC-683F-11D2-A89A-00C04FBBCFA2}")
 	snapin, _ := windows.GUIDFromString("{A15C6F71-3971-4F5F-BE41-86028AC523E8}")
-	var object uintptr
+	var object unsafe.Pointer
 	result, _, _ = ole.NewProc("CoCreateInstance").Call(uintptr(unsafe.Pointer(&clsid)), 0, 1, uintptr(unsafe.Pointer(&iid)), uintptr(unsafe.Pointer(&object)))
 	if uint32(result)&0x80000000 != 0 {
 		uninit.Call()
 		return nil, fmt.Errorf("GP_COM_CREATE_%08X", uint32(result))
 	}
-	table := *(**[21]uintptr)(unsafe.Pointer(object))
-	release := func() { syscall.SyscallN(table[2], object); uninit.Call() }
+	table := *(**[21]uintptr)(object)
+	release := func() { syscall.SyscallN(table[2], uintptr(object)); uninit.Call() }
 	call := func(slot int, args ...uintptr) error {
-		values := append([]uintptr{object}, args...)
+		values := append([]uintptr{uintptr(object)}, args...)
 		result, _, _ := syscall.SyscallN(table[slot], values...)
 		if uint32(result)&0x80000000 != 0 {
 			return fmt.Errorf("GP_METHOD_%d_%08X", slot, uint32(result))

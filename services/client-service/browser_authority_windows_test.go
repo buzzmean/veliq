@@ -204,6 +204,7 @@ func TestWindowsAuthorityControllerStartAndCrashGuard(t *testing.T) {
 	seed.Close() // Simulated process crash: retain journal/settings, close sockets.
 	c := New(context.Background())
 	configure(c)
+	c.Backend = &nativeBackendFixture{}
 	t.Cleanup(c.Close)
 	c.activation.networkBlocked.Store(true)
 	if err := c.RestoreOwnerAuthorityListener(); err != nil {

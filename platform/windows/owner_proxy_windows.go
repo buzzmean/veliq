@@ -14,8 +14,13 @@ import (
 
 type ownerProxyOption struct {
 	Kind  uint32
-	Value uint64
+	_     uint32 // Native union has 8-byte alignment in the supported x64 ABI.
+	Value [8]byte
 }
+
+func (o *ownerProxyOption) stringPointer() *uint16     { return *(**uint16)(unsafe.Pointer(&o.Value[0])) }
+func (o *ownerProxyOption) setStringPointer(p *uint16) { *(**uint16)(unsafe.Pointer(&o.Value[0])) = p }
+
 type ownerProxyOptionList struct {
 	Size         uint32
 	Connection   uintptr
@@ -24,6 +29,9 @@ type ownerProxyOptionList struct {
 }
 
 func ownerProxyCaller(sid string) error {
+	if unsafe.Sizeof(uintptr(0)) != 8 {
+		return errors.New("OWNER_PROXY_X64_REQUIRED")
+	}
 	if sid == "S-1-5-18" || sid == "S-1-5-19" || sid == "S-1-5-20" {
 		return errors.New("OWNER_PROXY_INTERACTIVE_OWNER_REQUIRED")
 	}
@@ -58,8 +66,8 @@ func ReadOwnerSystemProxy(sid string) (OwnerProxyState, error) {
 	free := windows.NewLazySystemDLL("kernel32.dll").NewProc("GlobalFree")
 	defer func() {
 		for i := 1; i < len(options); i++ {
-			if options[i].Value != 0 {
-				free.Call(uintptr(options[i].Value))
+			if pointer := options[i].stringPointer(); pointer != nil {
+				free.Call(uintptr(unsafe.Pointer(pointer)))
 			}
 		}
 	}()
@@ -67,12 +75,12 @@ func ReadOwnerSystemProxy(sid string) (OwnerProxyState, error) {
 		return OwnerProxyState{}, fmt.Errorf("OWNER_PROXY_QUERY_FAILED_OPTION_%d", list.Error)
 	}
 	read := func(i int) string {
-		if options[i].Value == 0 {
+		if options[i].stringPointer() == nil {
 			return ""
 		}
-		return windows.UTF16PtrToString((*uint16)(unsafe.Pointer(uintptr(options[i].Value))))
+		return windows.UTF16PtrToString(options[i].stringPointer())
 	}
-	return OwnerProxyState{Flags: uint32(options[0].Value), Server: read(1), Bypass: read(2), PAC: read(3)}, nil
+	return OwnerProxyState{Flags: *(*uint32)(unsafe.Pointer(&options[0].Value[0])), Server: read(1), Bypass: read(2), PAC: read(3)}, nil
 }
 
 // Compare the complete snapshot immediately before mutation. Foreign values
@@ -92,7 +100,11 @@ func CompareSetOwnerSystemProxy(sid string, expected, desired OwnerProxyState) e
 			return errors.New("OWNER_PROXY_VALUE_INVALID")
 		}
 	}
-	options := []ownerProxyOption{{Kind: 1, Value: uint64(desired.Flags)}, {Kind: 2, Value: uint64(uintptr(unsafe.Pointer(values[0])))}, {Kind: 3, Value: uint64(uintptr(unsafe.Pointer(values[1])))}, {Kind: 4, Value: uint64(uintptr(unsafe.Pointer(values[2])))}}
+	options := []ownerProxyOption{{Kind: 1}, {Kind: 2}, {Kind: 3}, {Kind: 4}}
+	*(*uint32)(unsafe.Pointer(&options[0].Value[0])) = desired.Flags
+	for i, pointer := range values {
+		options[i+1].setStringPointer(pointer)
+	}
 	list := ownerProxyOptionList{Count: uint32(len(options)), Options: &options[0]}
 	list.Size = uint32(unsafe.Sizeof(list))
 	api := windows.NewLazySystemDLL("wininet.dll").NewProc("InternetSetOptionW")
