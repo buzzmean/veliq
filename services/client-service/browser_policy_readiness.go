@@ -326,7 +326,7 @@ func (c *Controller) browserPolicyHealth() BrowserPolicyHealth {
 			exchanges = authority.EdgeExchanges
 		}
 		ready := c.nativeBackendReady() && exchanges > 0
-		reason := "AUTHORITY_TRANSPORT_PENDING; RAW_TLS_AUTHENTICATED_RELAY"
+		reason := "AUTHORITY_TRANSPORT_PENDING"
 		if ready {
 			reason = "AUTHORITY_EXCHANGE_OBSERVED"
 		}

@@ -491,7 +491,7 @@ func TestNativeBrowserHealthRequiresActualExchangeInsteadOfArmedCapture(t *testi
 	v.NativeOnly.Received = 10
 	n.profiles[p.ID] = v
 	n.mu.Unlock()
-	if h := c.browserPolicyHealth(); h.EdgeReady || h.EdgeReason != "AUTHORITY_TRANSPORT_PENDING; RAW_TLS_AUTHENTICATED_RELAY" {
+	if h := c.browserPolicyHealth(); h.EdgeReady || h.EdgeReason != "AUTHORITY_TRANSPORT_PENDING" {
 		t.Fatal("raw TLS bytes falsely established authority readiness", h)
 	}
 	c.enabled = false

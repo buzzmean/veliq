@@ -2,11 +2,12 @@ using Neexitlag.Desktop;
 using Xunit;
 namespace NeExitLag.Tests;
 public sealed class BrowserReadinessTests {
- [Fact] public void NativeReadyDoesNotDependOnPACOrPretendPageWasVerified(){
+ [Fact] public void ReadinessNeedsCurrentAuthorityProofAndNeverRawTLSBytes(){
   var vm=new DesktopViewModel(new PickerService());vm.Apply(new(){Optimizing=true,Profiles=[new(){Id="chrome",Name="Chrome",Mode="AUTO",Executables=["chrome.exe"],PolicyData=new(){{"browser_transport",System.Text.Json.JsonSerializer.SerializeToElement("native")}}}]},[]);
   vm.ApplyNativeBrowserReadiness(new(){State="PREPARING"});Assert.Contains("Подготавливаем",vm.BrowserReadinessText);
   vm.ApplyNativeBrowserReadiness(new(){State="READY_NEW_CONNECTIONS",CaptureReady=true});Assert.Contains("Подготавливаем",vm.BrowserReadinessText);
-  vm.ApplyNativeBrowserReadiness(new(){State="READY_NEW_CONNECTIONS",CaptureReady=true,Optimizing=true,NativeOnlyState="NATIVE_ONLY_OBSERVED",Profiles=[new(){ProfileId="chrome",NativeOnly=new(){BidirectionalExchanges=1,SentBytes=100,ReceivedBytes=200}}]});Assert.Contains("подтверждён",vm.BrowserReadinessText);
+  vm.ApplyNativeBrowserReadiness(new(){State="READY_NEW_CONNECTIONS",CaptureReady=true,Optimizing=true,NativeOnlyState="NATIVE_ONLY_OBSERVED",Profiles=[new(){ProfileId="chrome",NativeOnly=new(){BidirectionalExchanges=1,SentBytes=100,ReceivedBytes=200}}]});Assert.Contains("Подготавливаем",vm.BrowserReadinessText);
+  vm.ApplyNativeBrowserReadiness(new(){State="AUTHORITY_REQUEST_OBSERVED",CaptureReady=true,Optimizing=true,AuthorityTransport=new(){SystemPacApplied=true,Profiles=[new(){ProfileId="chrome",Requests=1,Exchanges=1}]}});Assert.Contains("подтверждён",vm.BrowserReadinessText);
   vm.ApplyNativeBrowserReadiness(new(){State="READY_NEW_CONNECTIONS",CaptureReady=true,Optimizing=true,Profiles=[new(){ProfileId="chrome",NativeOnly=new(){SentBytes=100}}]});Assert.Contains("Подготавливаем",vm.BrowserReadinessText);
   vm.Apply(new(){Optimizing=false},[]);Assert.Contains("обычную сеть",vm.BrowserReadinessText);
  }

@@ -14,7 +14,7 @@ public sealed class HomePresentationTests {
   System.Text.Json.JsonElement native=System.Text.Json.JsonSerializer.SerializeToElement("native");
   var vm=new DesktopViewModel(new PickerService());
   vm.Apply(new(){Optimizing=true,Profiles=[new(){Id="chrome",Name="Chrome",Mode="AUTO",Executables=["chrome.exe"],PolicyData=new(){{"browser_transport",native}}},new(){Id="edge",Name="Edge",Mode="AUTO",Executables=["msedge.exe"],PolicyData=new(){{"browser_transport",native}}}]},[]);
-  vm.ApplyNativeBrowserReadiness(new(){State="READY_NEW_CONNECTIONS",CaptureReady=true,Optimizing=true,Profiles=[new(){ProfileId="chrome",NativeOnly=new(){BidirectionalExchanges=1,SentBytes=100,ReceivedBytes=200}}]});
+  vm.ApplyNativeBrowserReadiness(new(){State="AUTHORITY_REQUEST_OBSERVED",CaptureReady=true,Optimizing=true,AuthorityTransport=new(){SystemPacApplied=true,Profiles=[new(){ProfileId="chrome",Requests=1,Exchanges=1}]}});
   Assert.Contains("подтверждён",vm.BrowserReadinessText);
  }
 }

@@ -114,9 +114,12 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		{"PAC", "pac", false},
 		{"PACNativeLocalFirst", "pac-native", false},
 		{"PACNativeRequiredThenLocal", "pac-native", true},
+		{"FixedProxyNativeLocalFirst", "fixed-native", false},
+		{"FixedProxyNativeRequiredThenLocal", "fixed-native", true},
 		{"OwnedPACBeforeNativeActivation", "policy-existing", false},
 		{"OwnedPACAppliedToRunningBrowser", "policy-live", false},
 		{"OwnerSystemPACFailureSafeFallback", "policy-live-fallback", false},
+		{"OwnerFixedProxyAppliedToRunningBrowser", "policy-live-fixed", false},
 		{"FreshRequiredAfterPACWithdrawal", "policy-withdrawal", false},
 		{"ListenerOutageGuarded", "outage-listener-guarded", false},
 		{"ListenerOutageAvailability", "outage-listener-availability", false},
@@ -139,11 +142,11 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst bool) {
 	outage := strings.HasPrefix(mode, "outage-")
 	freshAfterWithdrawal := mode == "policy-withdrawal"
-	liveInstall := mode == "policy-live" || mode == "policy-live-fallback"
+	liveInstall := mode == "policy-live" || mode == "policy-live-fallback" || mode == "policy-live-fixed"
 	runtimeAuthority := liveInstall && os.Getenv("VELIQ_TEST_AUTHORITY_RUNTIME") == "1"
 	livePolicy := mode == "policy-existing" || liveInstall || freshAfterWithdrawal || outage
-	native := mode == "native" || mode == "pac-native" || livePolicy
-	usePAC := mode == "pac" || mode == "pac-native" || livePolicy
+	native := mode == "native" || mode == "pac-native" || mode == "fixed-native" || livePolicy
+	usePAC := mode == "pac" || mode == "pac-native" || mode == "fixed-native" || livePolicy
 	if !native && !usePAC {
 		t.Fatal("unknown fixture transport")
 	}
@@ -303,6 +306,9 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 				}
 			})
 		}
+		if mode == "fixed-native" {
+			args = []string{"--proxy-server=http://" + proxy.Address(), "--proxy-bypass-list=<-loopback>"}
+		}
 	}
 	if native && usePAC {
 		t.Cleanup(func() {
@@ -313,6 +319,11 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			t.Logf("ORIGIN_REUSE_HYBRID_FAILURE attempted=%d connected=%d native=%+v pac=%+v", delegated.attempted.Load(), delegated.connected.Load(), snap.NativeOnly, snap.PACUpstream)
 			if snap.CaptureIngress != nil {
 				t.Logf("ORIGIN_REUSE_HYBRID_CAPTURE tcp=%d reflected=%d lost=%d", snap.CaptureIngress.TCPPackets, snap.CaptureIngress.ReflectedAccepts, snap.CaptureIngress.Lost)
+			}
+			if server := c.browser.authority.fallback; server != nil {
+				for _, r := range server.Snapshot().Records {
+					t.Logf("ORIGIN_FALLBACK_FAILURE domain=%s action=%s result=%s failure=%s sent=%d received=%d", r.Domain, r.Plan.Policy.Action, r.Result, r.OpenFailure, r.Sent, r.Received)
+				}
 			}
 			for _, r := range proxy.Snapshot().Records {
 				if r.Domain == browserfixture.ReuseLocalHost || r.Domain == browserfixture.ReuseSiblingHost || r.Domain == browserfixture.ReuseRequiredHost || r.Domain == browserfixture.ReuseFreshRequiredHost {
@@ -460,13 +471,16 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 						}
 					})
 					t.Log("ORIGIN_AUTHORITY_RUNTIME_APPLIED owner_worker=true no_browser_restart=true")
-					if mode == "policy-live-fallback" {
+					if mode == "policy-live-fallback" || mode == "policy-live-fixed" {
 						installed, err := exchangeOwnerProxyWithBinary(context.Background(), wp.OwnerProxyCommand{Owner: c.BrowserOwnerSID}, helper)
 						if err != nil {
 							t.Fatal(err)
 						}
 						broken := installed
 						broken.PAC = "data:application/x-ns-proxy-autoconfig;base64,Ly9pbnZhbGlkIFBBQwo="
+						if mode == "policy-live-fixed" {
+							broken = wp.OwnerProxyState{Flags: 3, Server: proxy.Address()}
+						}
 						if _, err := exchangeOwnerProxyWithBinary(context.Background(), wp.OwnerProxyCommand{Owner: c.BrowserOwnerSID, Expected: &installed, Desired: &broken}, helper); err != nil {
 							t.Fatal("fixture PAC failure", err)
 						}

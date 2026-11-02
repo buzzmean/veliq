@@ -45,7 +45,7 @@ func TestFreshNativeStatusReportsAuthorityPendingAndSafeRelay(t *testing.T) {
 	raw, _ := json.Marshal(result)
 	var status map[string]any
 	json.Unmarshal(raw, &status)
-	if status["transport_mode"] != "NATIVE_NEW_TCP" || status["readiness_state"] != "AUTHORITY_TRANSPORT_PENDING; RAW_TLS_AUTHENTICATED_RELAY" || status["policy_ready"] != false || status["listening"] != false {
+	if status["transport_mode"] != "NATIVE_NEW_TCP" || status["readiness_state"] != "AUTHORITY_TRANSPORT_PENDING" || status["policy_ready"] != false || status["listening"] != false {
 		t.Fatal(status)
 	}
 	p.Executables = []string{`C:\Apps\chrome.exe`}
@@ -56,7 +56,7 @@ func TestFreshNativeStatusReportsAuthorityPendingAndSafeRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	view := result.(browserStatusView)
-	if view.ReadinessState != "AUTHORITY_TRANSPORT_PENDING; RAW_TLS_AUTHENTICATED_RELAY" || view.Listening || view.PolicyReady {
+	if view.ReadinessState != "AUTHORITY_TRANSPORT_PENDING" || view.Listening || view.PolicyReady {
 		t.Fatal(view)
 	}
 }

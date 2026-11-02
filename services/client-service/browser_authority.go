@@ -21,28 +21,30 @@ import (
 )
 
 type browserAuthorityRuntime struct {
-	published atomic.Pointer[browserAuthorityPublished]
-	mu        sync.Mutex
-	server    *browserproxy.Server
-	fallback  *browserproxy.Server
-	pac       string
-	applied   bool
-	appliedAt time.Time
-	checked   time.Time
-	lastError string
-	guardKey  string
-	exchange  ownerProxyExchange // isolated test seam; never an IPC setting
+	published  atomic.Pointer[browserAuthorityPublished]
+	mu         sync.Mutex
+	server     *browserproxy.Server
+	fallback   *browserproxy.Server
+	pac        string
+	applied    bool
+	appliedAt  time.Time
+	verifiedAt time.Time
+	checked    time.Time
+	lastError  string
+	guardKey   string
+	exchange   ownerProxyExchange // isolated test seam; never an IPC setting
 }
 type browserAuthorityPublished struct {
-	server    *browserproxy.Server
-	fallback  *browserproxy.Server
-	applied   bool
-	appliedAt time.Time
-	reason    string
+	server     *browserproxy.Server
+	fallback   *browserproxy.Server
+	applied    bool
+	appliedAt  time.Time
+	verifiedAt time.Time
+	reason     string
 }
 
 func (a *browserAuthorityRuntime) publish() {
-	a.published.Store(&browserAuthorityPublished{a.server, a.fallback, a.applied, a.appliedAt, a.lastError})
+	a.published.Store(&browserAuthorityPublished{a.server, a.fallback, a.applied, a.appliedAt, a.verifiedAt, a.lastError})
 }
 
 func (c *Controller) authorityOwner(ctx context.Context, source, local netip.AddrPort) (browserproxy.Owner, error) {
@@ -112,6 +114,10 @@ func (c *Controller) authorityPlan(ctx context.Context, q browserproxy.Request) 
 		d = d.ResolveDomain(q.Host)
 	}
 	r := d.Policy
+	if d.Block {
+		r.Action = flowpolicy.Block
+		r.Fallback = flowpolicy.FailBlock
+	}
 	if r.Action == "" {
 		r = flowpolicy.Result{Action: flowpolicy.Direct, Fallback: flowpolicy.FailOpen, Source: "owner_system_passthrough", Reason: "same-owner application keeps its existing routing policy"}
 		if d.Block {
@@ -309,17 +315,20 @@ func (c *Controller) RetryBrowserAuthority() {
 		a.pac = pac
 		a.guardKey = guardKey
 		a.applied = false
+		a.appliedAt = time.Time{}
 	}
 	at := time.Now()
+	if a.appliedAt.IsZero() {
+		a.appliedAt = at
+	}
 	desired := wp.OwnerProxyState{Flags: 7, PAC: a.pac, Server: a.fallback.Address()}
 	if err := acquireOwnerProxyState(ctx, c.authorityLeasePath(), c.BrowserOwnerSID, desired, exchange); err != nil {
 		a.lastError = err.Error()
+		a.applied = false
 		return
 	}
-	if !a.applied {
-		a.appliedAt = at
-	}
 	a.applied = true
+	a.verifiedAt = time.Now()
 	a.lastError = ""
 }
 
@@ -352,6 +361,7 @@ func (c *Controller) releaseBrowserAuthority() error {
 	if err == nil {
 		a.applied = false
 		a.lastError = ""
+		a.pac = ""
 	} else {
 		a.lastError = err.Error()
 	}

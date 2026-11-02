@@ -29,7 +29,7 @@ func (c *Controller) nativeBrowserReadiness(edge bool) string {
 		if observed > 0 {
 			return "AUTHORITY_REQUEST_OBSERVED"
 		}
-		return "AUTHORITY_TRANSPORT_PENDING; RAW_TLS_AUTHENTICATED_RELAY"
+		return "AUTHORITY_TRANSPORT_PENDING"
 	}
 	return ""
 }

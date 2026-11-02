@@ -401,7 +401,8 @@ func (c *Controller) handleNativeBrowser(ctx context.Context, method string, raw
 	if err != nil {
 		return nil, err
 	} // Native fail-closed capture remains armed on PAC repair failure.
-	return map[string]any{"native": true, "capture_ready": true, "profile_id": p.ID, "profiles": c.Profiles.List(), "compatibility": compat, "existing_tcp": "PINNED_UNTIL_CLOSED"}, nil
+	c.RetryBrowserAuthority()
+	return map[string]any{"native": true, "capture_ready": true, "authority_transport": c.authorityStatus(), "profile_id": p.ID, "profiles": c.Profiles.List(), "compatibility": compat, "existing_tcp": "PINNED_UNTIL_CLOSED"}, nil
 }
 
 func (n *nativeBrowserRuntime) begin(q browserproxy.Request, t wp.Tuple) (uint64, error) {
