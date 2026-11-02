@@ -153,6 +153,16 @@ jobs:
           EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           & ./tests/windows-tools/beta-installer-smoke.ps1 -SetupExecutable './bin/beta-installer-smoke/output/VELIQ-Setup.exe' -PackageDirectory './bin/beta-installer-smoke/payload' -ExpectedCommit $env:EXPECTED_COMMIT
+      - name: Bounded loopback Inno diagnostics on failure
+        if: failure()
+        shell: powershell
+        run: |
+          # Only this opt-in disposable fixture creates these logs, without any
+          # activation code/identity or production endpoint. Never dump config.
+          foreach ($file in Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Filter 'beta-inno-*.log' -File) {
+            Write-Host ('BETA_INNO_LOG '+$file.Name)
+            Get-Content -LiteralPath $file.FullName -Tail 20 | ForEach-Object { Write-Host $_ }
+          }
       - name: Build candidate Setup with the verified existing public CA (never execute here)
         shell: pwsh
         env:

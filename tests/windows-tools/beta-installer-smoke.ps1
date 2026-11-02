@@ -11,7 +11,12 @@ $release=Get-Content -Raw -LiteralPath (Join-Path $payload 'public/release.json'
 $package=Get-Content -Raw -LiteralPath (Join-Path $payload 'package.json')|ConvertFrom-Json
 if($package.commit -cne $ExpectedCommit -or $release.control_plane_url -cne 'https://127.0.0.1:1' -or $release.probe_target -cne '127.0.0.1:1' -or $release.tcp_probe_target -cne '127.0.0.1:1'){throw 'DISPOSABLE_LOOPBACK_PACKAGE_REQUIRED'}
 $installed=Join-Path $env:ProgramData 'VELIQ';$app=Join-Path $env:ProgramFiles 'VELIQ'
-foreach($name in @('VELIQ','neexitlag')){if(Get-Service $name -ErrorAction SilentlyContinue){throw 'EXISTING_SERVICE_PRESERVED'}}
+function Get-OwnedServiceState([string]$Name='VELIQ'){
+ $service=Get-Service $Name -ErrorAction SilentlyContinue
+ if(!$service){return 'ABSENT'}
+ try{return [string]$service.Status}finally{$service.Dispose()}
+}
+foreach($name in @('VELIQ','neexitlag')){if((Get-OwnedServiceState $name) -ne 'ABSENT'){throw 'EXISTING_SERVICE_PRESERVED'}}
 foreach($path in @($installed,$app,(Join-Path $env:ProgramData 'neexitlag'),(Join-Path $env:ProgramFiles 'VELIQ Setup'))){if(Test-Path -LiteralPath $path){throw 'EXISTING_INSTALLATION_PRESERVED'}}
 function Invoke-OwnedInstaller([string]$Path,[string]$Stage){
  # Inno's uninstaller delegates to _unins.tmp. Process.WaitForExit waits only
@@ -38,7 +43,7 @@ function Invoke-OwnedInstaller([string]$Path,[string]$Stage){
  }
 }
 function Assert-InstalledCandidate {
- if((Get-Service VELIQ).Status -ne 'Running'){throw 'INSTALLED_SERVICE_NOT_RUNNING'}
+ if((Get-OwnedServiceState) -ne 'Running'){throw 'INSTALLED_SERVICE_NOT_RUNNING'}
  $result=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
  if($result.result -cne 'PASS'){throw 'INSTALL_RESULT_NOT_PASS'}
  foreach($pair in @(@('service/veliq-service.exe',(Join-Path $installed 'veliq-service.exe')),@('gui/VELIQ.exe',(Join-Path $app 'VELIQ.exe')))){
@@ -64,12 +69,27 @@ try{
  $uninstaller=Join-Path $app 'unins000.exe'
  if(!(Test-Path -LiteralPath $uninstaller)){throw 'REAL_UNINSTALLER_REQUIRED'}
  Invoke-OwnedInstaller $uninstaller 'uninstall'
- if(Get-Service VELIQ -ErrorAction SilentlyContinue){throw 'SERVICE_REMAINED_AFTER_UNINSTALL'}
+ if((Get-OwnedServiceState) -ne 'ABSENT'){throw 'SERVICE_REMAINED_AFTER_UNINSTALL'}
+ foreach($name in @('VELIQ.exe','installer/install-package.ps1','unins000.exe')){if(Test-Path -LiteralPath (Join-Path $app $name)){throw 'UNINSTALL_LEFT_PACKAGE_FILES'}}
  $uninstalled=$true
+}catch{
+ # Preserve the initiating assertion before a cleanup failure can mask it.
+ $safe='UNEXPECTED_FIXTURE_EXCEPTION'
+ if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;|$)'){$safe=$Matches[1]}
+ Write-Output ('BETA_INSTALLER_PRIMARY_FAILURE code='+$safe+' line='+$_.InvocationInfo.ScriptLineNumber+' type='+$_.Exception.GetType().Name)
+ $resultPath=Join-Path $app 'install-result.json'
+ if(Test-Path -LiteralPath $resultPath){
+  $record=Get-Content -Raw -LiteralPath $resultPath|ConvertFrom-Json
+  foreach($field in @('result','step','code')){
+   $property=$record.PSObject.Properties[$field]
+   if($property -and [string]$property.Value -cmatch '^[A-Z][A-Z0-9_]{1,80}$'){Write-Output ('BETA_INSTALL_RESULT '+$field+'='+$property.Value)}
+  }
+ }
+ throw
 }finally{
  $uninstaller=Join-Path $app 'unins000.exe'
  if(!$uninstalled -and (Test-Path -LiteralPath $uninstaller)){Invoke-OwnedInstaller $uninstaller 'cleanup'}
- if(Get-Service VELIQ -ErrorAction SilentlyContinue){throw 'OWNED_SERVICE_CLEANUP_FAILED'}
+ if((Get-OwnedServiceState) -ne 'ABSENT'){throw 'OWNED_SERVICE_CLEANUP_FAILED'}
  # All paths were absent at entry and are owned by this isolated fixture.
  foreach($path in @($installed,$app)){
   $until=[DateTime]::UtcNow.AddSeconds(15)
