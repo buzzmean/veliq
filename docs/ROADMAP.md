@@ -3,6 +3,7 @@
 Единый план до релиза. Короткий: статус меняется одной строкой.
 Детали работ — в профильных docs. Сверка02.11.2026 относится к draft#56 поверх #55; новый кандидат
 `test/r1-browser-authority-20261102` ещё не merged в main.
+Финальный Build639/source d20e957 и CI: [BETA_CANDIDATE_2026-11-02.md](BETA_CANDIDATE_2026-11-02.md).
 Результаты CI ниже не заменяют клубную приёмку. План следующей смены и STOP gates:
 [BETA_ACCEPTANCE.md](BETA_ACCEPTANCE.md). Этапы здесь называются R1–R7
 (не путать с фазами измерений M1–M5).
@@ -23,11 +24,11 @@
 
 | # | Этап | Статус | Что осталось / критерий готовности |
 |---|---|---|---|
-| R1 | Маршрутизация браузеров | Частично, beta NO_GO | #55 объединяет #51 cold/resume и fixes PAC fail-closed/CDN cooldown; Windows CI подтверждает27 CDN сценариев. В #56 реализован owner CONNECT без PAC: fixed HTTP2 в обоих порядках и live uptake прошли изолированную Windows проверку Chrome/Edge; raw TLS честно остаётся временным authenticated RELAY. Полный финальный exact-SHA CI и ручной lifecycle проверяются перед допуском. Контракт: BROWSER_AUTHORITY_TRANSPORT.md. На exact candidate ещё нужны ISP: 2160p≥2мин, googlevideo RELAY≈0, seek/autoplay и actual Discord voice LOCAL≥10мин. HTTP80#52/QUIC#53 отдельно, browser QUIC LOCAL unsupported. |
-| R2 | Игры | Частично | PUBG gameudp DIRECT→LOCAL→RELAY и FACEIT/Vanguard guards реализованы; GameUDP Linux/Windows CI прошёл на579acad. **Реальные полные матчи PUBG/Valorant/FACEIT, anti-cheat и RTT ещё не приняты** на beta-кандидате. Без инъекции/отключения защиты; VPS для игры не использовать. |
+| R1 | Маршрутизация браузеров | Частично: ручная приёмка открыта | #55 объединяет #51 cold/resume и fixes PAC fail-closed/CDN cooldown; Windows CI подтверждает27 CDN сценариев. В #56 реализован owner CONNECT без PAC: fixed HTTP2 в обоих порядках и live uptake прошли изолированную Windows проверку Chrome/Edge; raw TLS честно остаётся временным authenticated RELAY. Финальный source d20e957/Build639:19/19 origin и13owner runtime jobs PASS, полный Windows/Linux/Setup CI завершён; отдельный duplicate Edge CDP timeout сохранён как не объяснённое наблюдение. Ручной lifecycle остаётся gate перед допуском. Контракт: BROWSER_AUTHORITY_TRANSPORT.md. На exact candidate ещё нужны ISP: 2160p≥2мин, googlevideo RELAY≈0, seek/autoplay и actual Discord voice LOCAL≥10мин. HTTP80#52/QUIC#53 отдельно, browser QUIC LOCAL unsupported. |
+| R2 | Игры | Частично | PUBG gameudp DIRECT→LOCAL→RELAY и FACEIT/Vanguard guards реализованы; GameUDP Linux/Windows CI прошёл на beta source d20e957/Build639 (run41391441256). **Реальные полные матчи PUBG/Valorant/FACEIT, anti-cheat и RTT ещё не приняты** на beta-кандидате. Без инъекции/отключения защиты; VPS для игры не использовать. |
 | R3 | Серверы | Частично | Hostkey 146.0.77.98 — основной relay и с 25.10.2026 control plane + активация (решение владельца: перенос; база, ключи и тот же CA перенесены, оба relay шлют heartbeat сюда, PC07 переключён). 2.56.177.4 — запасной relay VPS-01 (владелец 25.10 склоняется продлить его как запасной; CP/активация остаются на Hostkey) и старая копия CP для непереключённых ПК. Осталось до 12.11: переключить остальные установленные ПК (`tools/windows/switch-control-plane.ps1`), подтвердить продление/замену backup, завершить перенос renewal tooling и приёмку серверного учёта трафика/клубного подбора стратегий. veliq-codes уже перенесён на Hostkey по handoff25.10; текущую доступность production здесь не проверяли. |
-| R4 | Установщик и образ | Реализован, приёмка открыта | #55 готовит полный exact-SHA Setup с существующим публичным CA из v0.3.577, без сборочных SDK на клубных ПК; DER pin проверен офлайн, без VPS. Build618/code7be4f66: actual loopback install/update/uninstall, negative exit1/noSCM, PS5.1/7 и полный Windows race/vet/build PASS (run41378361024). Текущий план/ссылка на kit — BETA_ACCEPTANCE.md. **Ещё нужны** чистая установка/обновление, same-owner UAC, подпись/SmartScreen и2–3ПК freeze с отдельными overlay/identity и стабильным слотом после2reboots. Artifact NOT_APPROVED не означает rollout. |
-| R5 | Безопасность и чистка | Частично, production приёмка открыта | В #55 есть default NO_GO, SHA256 manifests/evidence checker и read-only binary snapshot без секретов; legacy fail-closed PAC исправлен, новый owner CONNECT и его rollback проверяются в #56. Срок/самоподпись существующего публичного CA проверены офлайн. Финальный клубный код, остаток мест, отзыв засвеченных/test-кодов и реальное продление leaf/client сертификатов требуют владельца. Production revoke-tests/CA/БД самовольно не менять. |
+| R4 | Установщик и образ | Реализован, приёмка открыта | #56 собрал полный exact-SHA Setup с существующим публичным CA из v0.3.577, без сборочных SDK на клубных ПК; DER pin проверен офлайн, без VPS. Build639/source d20e957: actual loopback install/update/uninstall, negative exit1/noSCM, PS5.1/7 и полный Windows race/vet/build PASS (run41391441230). Build618 заменён. Текущий план/ссылка на kit — BETA_ACCEPTANCE.md. **Ещё нужны** чистая установка/обновление, same-owner UAC, подпись/SmartScreen и2–3ПК freeze с отдельными overlay/identity и стабильным слотом после2reboots. Artifact NOT_APPROVED не означает rollout. |
+| R5 | Безопасность и чистка | Частично, production приёмка открыта | В #55 есть default NO_GO, SHA256 manifests/evidence checker и read-only binary snapshot без секретов; legacy fail-closed PAC исправлен, новый owner CONNECT и его rollback прошли изолированный CI #56/source d20e957; физическая приёмка открыта. Срок/самоподпись существующего публичного CA проверены офлайн. Финальный клубный код, остаток мест, отзыв засвеченных/test-кодов и реальное продление leaf/client сертификатов требуют владельца. Production revoke-tests/CA/БД самовольно не менять. |
 | R6 | Пилот 2–3 ПК, неделя | Не начато | Метрики: трафик VPS на ПК/сутки, доля LOCAL/RELAY, сбои, жалобы гостей. Критерий: нет жалоб, трафик в бюджете. |
 | R7 | Выкатка на 40 ПК | Не начато | После R1–R6. |
 | — | Параллельно, не блокирует | Идёт | Сайт, домен, бренд, перенос дизайна в WPF. |
@@ -39,11 +40,11 @@
 
 ## Порядок работ сейчас
 
-1. R1: устранить три измеренных origin/lifecycle блокера, сохранив обычный DIRECT,
-   fail-closed защищённых authority, pinning/replay и запрет принудительного restart.
-   PAC proxy identity доказал изоляцию в фиксированном контексте; registry/policy
-   nonce и один SNI на TCP не доказывают все encrypted HTTP2 authority.
-2. Параллельно R4: закончить exact-SHA CI/Setup и лабораторную приёмку на2ПК по
+1. R1: три прежних software origin/lifecycle блокера закрыты owner CONNECT на
+   source d20e957/Build639. Теперь физическая приёмка Windows/ISP/voice по
+   BETA_ACCEPTANCE.md; current CI и отдельный CDP timeout документированы в
+   BETA_CANDIDATE_2026-11-02.md. Native SNI/raw bytes не заменяют CONNECT proof.
+2. Параллельно R4: провести лабораторную приёмку готового exact-SHA Setup на2ПК по
    BETA_ACCEPTANCE.md. Проверить actual ISP/LOCAL/voice, R2 матчи/guards, freeze и
    реальный откат. Код/GUI/службу разных кандидатов не смешивать.
 3. R3/R5: владелец проверяет текущую ёмкость/срок кода/сертификаты/standby и решает

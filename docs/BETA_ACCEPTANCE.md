@@ -1,7 +1,8 @@
 # Приёмка VELIQ перед бетой на 5–6 ПК
 
-Текущий кандидат готовится в [draft #56](https://github.com/buzzmean/veliq/pull/56)
-поверх полного комплекта #55. Актуальные source SHA, BuildSequence и SHA256
+Текущий кандидат Build639/source d20e957 собран в [draft #56](https://github.com/buzzmean/veliq/pull/56)
+поверх полного комплекта #55. Ссылка на итоговый kit, SHA256 и завершённый CI:
+[BETA_CANDIDATE_2026-11-02.md](BETA_CANDIDATE_2026-11-02.md). Актуальные source SHA, BuildSequence и SHA256
 бинарников находятся в `candidate.json` внутри нового kit. Берите комплект
 `VELIQ-beta-candidate-win-x64-NOT-APPROVED` из успешного workflow **Beta candidate
 kit (no deployment)** для этого SHA. Не смешивайте разные сборки.

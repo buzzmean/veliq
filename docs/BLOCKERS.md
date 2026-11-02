@@ -1,5 +1,6 @@
 # Windows runtime acceptance blockers
 
+> Final Build639/source d20e957 and CI evidence: [BETA_CANDIDATE_2026-11-02.md](BETA_CANDIDATE_2026-11-02.md).
 > Current beta work, 2026-11-02: draft #56 supersedes the Build618 origin
 > blockers with an owner CONNECT transport. See [BROWSER_AUTHORITY_TRANSPORT.md](BROWSER_AUTHORITY_TRANSPORT.md)
 > for the implemented contract and [BETA_ACCEPTANCE.md](BETA_ACCEPTANCE.md) for

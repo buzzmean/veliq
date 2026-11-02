@@ -92,7 +92,7 @@ policy values или identity и не выставляет ручные пров
 
 Первый fixed CONNECT proof: 1569fda/run41386845694. Его три сценария прошли на
 настоящем Chrome. SYSTEM owner proof также получен на 893ceb2/run41386577765.
-Финальный exact-SHA прогон и kit проверяются по CI текущего кандидата.
+Финальный exact-SHA прогон и Build639 kit: [BETA_CANDIDATE_2026-11-02.md](BETA_CANDIDATE_2026-11-02.md). Физическая приёмка остаётся открыта.
 
 Отклонённый вариант: live GPO notification не был доказан; системный optional PAC
 не дал нужной гарантии при ошибке движка. Он не является штатным transport.
