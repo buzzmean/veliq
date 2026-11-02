@@ -3,6 +3,11 @@ on:
   push:
     branches: ['test/r1-browser-authority-*']
   workflow_dispatch:
+    inputs:
+      gp_diagnostics:
+        description: Reproduce historical Group Policy/PAC diagnostics
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -15,7 +20,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [OwnedPACAppliedToRunningBrowser, OwnerFixedProxyAppliedToRunningBrowser, FixedProxyNativeLocalFirst, FixedProxyNativeRequiredThenLocal, NativeRequiredThenLocal, NativeLocalFirst]
+        browser: [chrome, edge]
+        scenario: [OwnerFixedProxyAppliedToRunningBrowser, FixedProxyNativeLocalFirst, FixedProxyNativeRequiredThenLocal, NativeRequiredThenLocal, NativeLocalFirst]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -28,17 +34,32 @@ jobs:
           if ($LASTEXITCODE) { throw 'OWNER_WORKER_BUILD_FAILED' }
           $env:VELIQ_TEST_OWNER_WORKER=(Resolve-Path bin/veliq-service.exe).Path
           $env:VELIQ_TEST_AUTHORITY_RUNTIME='1'
+          $env:VELIQ_ORIGIN_BROWSER='${{ matrix.browser }}'
           $env:VELIQ_ORIGIN_REUSE_CASE='${{ matrix.scenario }}'
           & ./tools/windows/fetch-windivert.ps1
           $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
           $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
           & go test -v -count=1 -timeout 120s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
           if ($LASTEXITCODE) { throw 'AUTHORITY_RUNTIME_FAILED' }
-          if ('${{ matrix.scenario }}' -eq 'OwnedPACAppliedToRunningBrowser') {
-            & go test -v -count=1 -timeout 90s ./services/client-service '-run' '^TestWindowsOwner(AuthorityWorkerAndOtherApplications|ProxyWorkerFromSYSTEM)$'
-            if ($LASTEXITCODE) { throw 'OTHER_APPLICATION_POLICY_OR_OWNER_RESTORE_FAILED' }
-          }
+  owner-lifecycle:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: SYSTEM owner, full restore, other applications and startup guard
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go build -o bin/veliq-service.exe ./services/client-service/cmd/service
+          if ($LASTEXITCODE) { throw 'OWNER_WORKER_BUILD_FAILED' }
+          $env:VELIQ_TEST_OWNER_WORKER=(Resolve-Path bin/veliq-service.exe).Path
+          $env:VELIQ_TEST_AUTHORITY_RUNTIME='1'
+          & go test -v -count=1 -timeout 90s ./services/client-service '-run' '^TestWindows(OwnerAuthorityWorkerAndOtherApplications|OwnerProxyWorkerFromSYSTEM|AuthorityControllerStartAndCrashGuard)$'
+          if ($LASTEXITCODE) { throw 'OWNER_LIFECYCLE_FAILED' }
   owner-gp-event:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gp_diagnostics }}
     runs-on: windows-latest
     timeout-minutes: 8
     steps:
@@ -52,6 +73,7 @@ jobs:
           & go test -v -count=1 -timeout 90s ./platform/windows '-run' '^TestOwnerPolicyRefreshEventProbe$'
           if ($LASTEXITCODE) { throw 'OWNER_GP_PROBE_FAILED' }
   live-authority:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gp_diagnostics }}
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
@@ -108,6 +130,7 @@ jobs:
           if ($LASTEXITCODE) { throw 'CAPTURE_INDEPENDENT_ROUTE_FAILED' }
 
   owner-system-pac:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gp_diagnostics }}
     runs-on: windows-latest
     timeout-minutes: 10
     strategy:

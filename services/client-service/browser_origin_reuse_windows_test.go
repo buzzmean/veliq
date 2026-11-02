@@ -80,6 +80,16 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		k.Close()
 	}
 	chrome := browserfixture.ChromePath()
+	if os.Getenv("VELIQ_ORIGIN_BROWSER") == "edge" {
+		chrome = ""
+		for _, root := range []string{os.Getenv("ProgramFiles"), os.Getenv("ProgramFiles(x86)"), os.Getenv("LOCALAPPDATA")} {
+			candidate := filepath.Join(root, "Microsoft", "Edge", "Application", "msedge.exe")
+			if _, err := os.Stat(candidate); err == nil {
+				chrome = candidate
+				break
+			}
+		}
+	}
 	if chrome == "" {
 		t.Fatal("real Chrome required")
 	}
@@ -257,6 +267,9 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 			return c.browserPlan(ctx, q)
 		}
 		proxyConfig := browserproxy.Config{TransportCheck: c.transportCheckSettings, RequireClientHelloReplay: true, Authorize: c.browserOwner, AuthorizeForwarded: c.browserRecoveryOwner, Plan: plan, Open: c.browserOpen, OpenPlan: c.browserOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered}
+		if mode == "fixed-native" {
+			proxyConfig.Authorize = c.authorityOwner
+		}
 		proxy, err = browserproxy.Listen(c.ctx, proxyConfig)
 		if err != nil {
 			t.Fatal(err)

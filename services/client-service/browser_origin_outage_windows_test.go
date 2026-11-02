@@ -158,7 +158,7 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 			count++
 			t.Logf("ORIGIN_OUTAGE_REQUEST mode=%s %+v", o.mode, q)
 			wantSource := "127.0.0.1"
-			if i%2 == 0 {
+			if i%2 == 0 || !recovery && strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability") {
 				wantSource = "127.0.0.2"
 			}
 			if q.Source != wantSource {
@@ -182,7 +182,7 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 				continue
 			}
 			want := flowpolicy.Direct
-			if i%2 == 0 {
+			if i%2 == 0 || !recovery && strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability") {
 				want = flowpolicy.RelayRequired
 			}
 			if r.Owner.Profile != "origin-reuse" || r.Owner.PID == 0 || r.Owner.Birth == 0 || r.Policy.Action != want || (i%2 == 0 && r.Policy.Fallback != flowpolicy.Required) {
@@ -249,7 +249,11 @@ func (o *originReuseOutage) verifyPhase(t *testing.T, recovery bool) {
 	if outcomes[start].Complete && (tcp == o.tcp || rx == o.rx) {
 		t.Error("fresh required authenticated relay increments missing")
 	}
-	if !outcomes[start].Complete && tcp != o.tcp {
+	degradedOrdinary := !recovery && strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability") && outcomes[start+1].Complete
+	if degradedOrdinary && (tcp == o.tcp || rx == o.rx) {
+		t.Error("authority-less ordinary fallback must use authenticated relay")
+	}
+	if !outcomes[start].Complete && !degradedOrdinary && tcp != o.tcp {
 		t.Error("blocked REQUIRED or ordinary DIRECT unexpectedly opened relay")
 	}
 	if exchanges > 0 && !(!recovery && (strings.Contains(o.mode, "-combined-") || strings.Contains(o.mode, "-capture-"))) && (after.CaptureIngress == nil || o.before.CaptureIngress == nil || after.CaptureIngress.TCPPackets <= o.before.CaptureIngress.TCPPackets || after.CaptureIngress.ReflectedAccepts <= o.before.CaptureIngress.ReflectedAccepts) {
@@ -281,7 +285,7 @@ func (o *originReuseOutage) verifyRetry(t *testing.T) {
 			}
 			count++
 			want := "127.0.0.1"
-			if i == 0 {
+			if i == 0 || strings.Contains(o.mode, "-listener-") && strings.HasSuffix(o.mode, "-availability") {
 				want = "127.0.0.2"
 			}
 			t.Logf("ORIGIN_RETRY_REQUEST mode=%s %+v", o.mode, q)

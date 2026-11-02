@@ -17,15 +17,16 @@ import (
 )
 
 type browserAuthorityRuntime struct {
-	published  atomic.Pointer[browserAuthorityPublished]
-	mu         sync.Mutex
-	server     *browserproxy.Server
-	applied    bool
-	appliedAt  time.Time
-	verifiedAt time.Time
-	checked    time.Time
-	lastError  string
-	exchange   ownerProxyExchange // isolated test seam; never an IPC setting
+	published     atomic.Pointer[browserAuthorityPublished]
+	guardRequired atomic.Bool
+	mu            sync.Mutex
+	server        *browserproxy.Server
+	applied       bool
+	appliedAt     time.Time
+	verifiedAt    time.Time
+	checked       time.Time
+	lastError     string
+	exchange      ownerProxyExchange // isolated test seam; never an IPC setting
 }
 type browserAuthorityPublished struct {
 	server     *browserproxy.Server
@@ -80,6 +81,9 @@ func (c *Controller) authorityPlan(ctx context.Context, q browserproxy.Request) 
 		return browserproxy.Plan{}, err
 	}
 	if c.authorityBrowser(q) {
+		if c.authorityGuardPending() {
+			return c.authorityGuardPlan(ctx, q)
+		}
 		return c.browserPlan(ctx, q)
 	}
 	resolver := c.BrowserResolver
@@ -137,6 +141,15 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 		return nil, err
 	}
 	if c.authorityBrowser(q) {
+		if plan.Policy.Source == "owner_authority_boot_guard" {
+			if !c.authorityGuardPending() {
+				return nil, errors.New("AUTHORITY_BOOT_SCOPE_CHANGED")
+			}
+			if plan.Policy.Action == flowpolicy.Block {
+				return nil, errors.New("AUTHORITY_BOOT_PROTECTED_BLOCKED")
+			}
+			return openBrowserDirectCompatibility(ctx, plan)
+		}
 		return c.browserOpen(ctx, q, plan)
 	}
 	fresh, err := c.authorityPlan(ctx, q)
@@ -165,6 +178,10 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 }
 func (c *Controller) authorityOpenPlan(ctx context.Context, q browserproxy.Request, plan browserproxy.Plan) (net.Conn, browserproxy.Plan, error) {
 	if c.authorityBrowser(q) {
+		if plan.Policy.Source == "owner_authority_boot_guard" {
+			conn, err := c.authorityOpen(ctx, q, plan)
+			return conn, plan, err
+		}
 		return c.browserOpenPlan(ctx, q, plan)
 	}
 	conn, err := c.authorityOpen(ctx, q, plan)
@@ -201,7 +218,8 @@ func (c *Controller) retryBrowserAuthority(force bool) {
 	}
 	a.checked = time.Now()
 	c.mu.Lock()
-	enabled := c.enabled && c.settings.Automatic
+	automatic := c.settings.Automatic
+	enabled := c.enabled && automatic
 	c.mu.Unlock()
 	wanted := false
 	chromeWanted, edgeWanted := false, false
@@ -221,13 +239,22 @@ func (c *Controller) retryBrowserAuthority(force bool) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
-	if !enabled || !wanted {
+	if !automatic || !wanted || !enabled && c.activation.stopAutomatic.Load() {
 		if err := releaseOwnerProxy(ctx, c.authorityLeasePath(), c.BrowserOwnerSID, exchange); err != nil {
 			a.lastError = err.Error()
 		} else {
 			a.applied = false
+			a.guardRequired.Store(false)
 			a.appliedAt = time.Time{}
 			a.lastError = ""
+		}
+		return
+	}
+	if !enabled || !c.activationNetworkAllowed() {
+		if err := c.restoreAuthorityListenerLocked(a, true); err != nil {
+			a.lastError = err.Error()
+		} else {
+			a.lastError = "AUTHORITY_WAITING_FOR_ACTIVATION"
 		}
 		return
 	}
@@ -251,29 +278,9 @@ func (c *Controller) retryBrowserAuthority(force bool) {
 			}
 		}
 	}
-	if a.server == nil {
-		address := ""
-		lease, err := readOwnerProxyLease(c.authorityLeasePath(), c.BrowserOwnerSID)
-		if err != nil {
-			a.lastError = err.Error()
-			return
-		}
-		if lease != nil {
-			address = authorityServerAddress(lease.Installed.Server)
-			if lease.Installed.PAC != "" {
-				address = authorityAddress(lease.Installed.PAC)
-			}
-			if address == "" {
-				a.lastError = "OWNER_PROXY_JOURNAL_INVALID"
-				return
-			}
-		}
-		server, err := browserproxy.Listen(c.ctx, browserproxy.Config{Address: address, RequireClientHelloReplay: true, Authorize: c.authorityOwner, Plan: c.authorityPlan, Open: c.authorityOpen, OpenPlan: c.authorityOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered})
-		if err != nil {
-			a.lastError = "AUTHORITY_LISTENER_UNAVAILABLE"
-			return
-		}
-		a.server = server
+	if err := c.restoreAuthorityListenerLocked(a, false); err != nil {
+		a.lastError = err.Error()
+		return
 	}
 	at := time.Now()
 	if a.appliedAt.IsZero() {
@@ -289,6 +296,7 @@ func (c *Controller) retryBrowserAuthority(force bool) {
 		return
 	}
 	a.applied = true
+	a.guardRequired.Store(true)
 	a.verifiedAt = time.Now()
 	a.lastError = ""
 }
@@ -321,6 +329,7 @@ func (c *Controller) releaseBrowserAuthority() error {
 	err := releaseOwnerProxy(ctx, c.authorityLeasePath(), c.BrowserOwnerSID, exchange)
 	if errors.Is(err, errOwnerProxyForeign) {
 		a.applied = false
+		a.guardRequired.Store(false)
 		a.appliedAt = time.Time{}
 		a.lastError = errOwnerProxyForeign.Error()
 		// The deliberate OFF/uninstall operation no longer owns this Windows
@@ -333,6 +342,7 @@ func (c *Controller) releaseBrowserAuthority() error {
 	}
 	if err == nil {
 		a.applied = false
+		a.guardRequired.Store(false)
 		a.lastError = ""
 		a.appliedAt = time.Time{}
 	} else {

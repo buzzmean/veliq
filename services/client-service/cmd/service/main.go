@@ -46,6 +46,9 @@ func runReady(ctx context.Context, path string, ready func()) error {
 		}
 	}
 	managedActivation := controller.ConfigureActivation(manifest)
+	if err := controller.RestoreOwnerAuthorityListener(); err != nil {
+		slog.Warn("owned CONNECT listener restore incomplete", "class", "AUTHORITY_LISTENER_RESTORE_FAILED")
+	}
 	// The pipe opens before the slow stages so SCM does not wait on the network and
 	// the GUI can tell "starting" from "not installed". Methods are rejected until
 	// initialization finishes (see startupGate).
