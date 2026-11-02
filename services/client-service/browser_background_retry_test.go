@@ -41,17 +41,26 @@ func TestBackgroundCancellationKeepsSameTickMediaFailure(t *testing.T) {
 	}
 }
 
-func TestBackgroundCancellationReleasesOnlyUnchangedReservation(t *testing.T) {
-	r := newYoutubeRuntime()
-	now := time.Now()
-	key := youtubeKey{"network", "chrome", "googlevideo:sn-own", 443, false}
-	lease, ok := r.takeRecheck(key, now)
-	if !ok {
-		t.Fatal("background admission missing")
-	}
-	defer r.endRecheck()
-	r.cancelBackgroundRecheck(key, lease)
-	if !r.cache[key].Retry.IsZero() || r.cache[key].Reason != "BACKGROUND_POLICY_CHANGED" {
-		t.Fatal("unchanged cancelled reservation retained scheduling delay")
+func TestBackgroundCancellationReleasesUnchangedAndObservedReservations(t *testing.T) {
+	for _, observe := range []bool{false, true} {
+		r := newYoutubeRuntime()
+		now := time.Now()
+		key := youtubeKey{"network", "chrome", "googlevideo:sn-own", 443, false}
+		lease, ok := r.takeRecheck(key, now)
+		if !ok {
+			t.Fatal("background admission missing")
+		}
+		if observe {
+			if _, _, ok := r.takeEndpointTrial(key, now, testSibling(false), cdnEndpoint{}); ok {
+				t.Fatal("unqualified observation became a trial")
+			}
+		}
+		checks := r.cache[key].TrialChecks
+		r.cancelBackgroundRecheck(key, lease)
+		after := r.cache[key]
+		r.endRecheck()
+		if !after.Retry.IsZero() || after.Reason != "BACKGROUND_POLICY_CHANGED" || after.TrialChecks != checks {
+			t.Fatal("unchanged/observed cancelled reservation retained delay or lost diagnostics", observe)
+		}
 	}
 }

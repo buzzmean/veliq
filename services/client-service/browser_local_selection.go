@@ -80,6 +80,18 @@ func (c *Controller) youtubeBackgroundScopeCurrent(scope youtubeBackgroundScope,
 		c.youtubeLocalAllowed(scope.network) && c.policyRevision(cur.profile) == scope.revision
 }
 
+// Admission observations do not own Retry. Ignore only those diagnostics when
+// comparing the background reservation; media/qualification/cooldown state stays
+// in the comparison, including the monotonic trial identity on a shared tick.
+func backgroundRetryState(v youtubeLearn) youtubeLearn {
+	v.TrialAdmission = ""
+	v.TrialChecks, v.TrialDenials = 0, 0
+	v.Sibling = relaySiblingEvidence{}
+	v.SiblingWaits = 0
+	v.LastTrialCheck = time.Time{}
+	return v
+}
+
 func (r *youtubeRuntime) cancelBackgroundRecheck(key youtubeKey, reservation youtubeLearn) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -87,8 +99,8 @@ func (r *youtubeRuntime) cancelBackgroundRecheck(key youtubeKey, reservation you
 	// Release only this worker's scheduling delay. A real flow may have
 	// installed a newer cooldown/confirmation while the probe was in flight.
 	// Retry timestamps alone are not ownership: distinct Windows events can
-	// occupy the same clock tick. Preserve any intervening cache transition.
-	if !ok || v != reservation || r.trialActive && r.trialKey == key {
+	// occupy the same clock tick. Preserve intervening learning transitions.
+	if !ok || backgroundRetryState(v) != backgroundRetryState(reservation) || r.trialActive && r.trialKey == key {
 		return
 	}
 	v.Retry = time.Time{}

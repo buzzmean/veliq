@@ -15,6 +15,24 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - run: python3 -m unittest discover -s tests/deployment -p test_beta_acceptance.py -v
+  windows-validation:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Full Windows race, vet and build
+        shell: powershell
+        run: |
+          & go test -race -p 1 -timeout 180s ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_RACE_FAILED' }
+          & go vet ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_VET_FAILED' }
+          & go build ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_BUILD_FAILED' }
   windows:
     runs-on: windows-latest
     timeout-minutes: 30
@@ -27,15 +45,6 @@ jobs:
         with: {go-version: '1.25.x'}
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
-      - name: Full Windows race, vet and build
-        shell: powershell
-        run: |
-          & go test -race -p 1 -timeout 180s ./...
-          if ($LASTEXITCODE) { throw 'WINDOWS_RACE_FAILED' }
-          & go vet ./...
-          if ($LASTEXITCODE) { throw 'WINDOWS_VET_FAILED' }
-          & go build ./...
-          if ($LASTEXITCODE) { throw 'WINDOWS_BUILD_FAILED' }
       - name: Desktop contracts and self-contained GUI
         shell: powershell
         run: |
@@ -65,7 +74,7 @@ jobs:
           Copy-Item docs/BETA_ACCEPTANCE.md bin/beta-kit/README.md
           Copy-Item docs/BETA_RESULTS.template.json bin/beta-kit/
           $files=@('veliq-service.exe','VELIQ.exe','README.md','BETA_RESULTS.template.json')
-          $manifest=[ordered]@{schema_version=1;source_commit=$env:EXPECTED_COMMIT;build_sequence=$service.build_sequence;approval='NOT_APPROVED';kind='update-kit-existing-installation-only';files=@()}
+          $manifest=[ordered]@{schema_version=1;source_commit=$env:EXPECTED_COMMIT;build_sequence=$service.build_sequence;approval='NOT_APPROVED';validation='CHECK_ALL_CI_AND_MANUAL_GATES';kind='update-kit-existing-installation-only';files=@()}
           foreach ($name in $files) {
             $hash=(Get-FileHash -LiteralPath "bin/beta-kit/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
             $manifest.files+=@{path=$name;sha256=$hash}

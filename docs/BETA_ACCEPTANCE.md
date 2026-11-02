@@ -17,11 +17,12 @@ QUIC browser LOCAL не поддерживается. Состояние native 
 live-policy uptake остаётся открытым до соответствующего исправления и evidence.
 **Начальный допуск NO_GO**: шаблон намеренно не содержит PASS.
 
-Workflow `Beta candidate kit (no deployment)` собирает exact head, полный Windows
-Go race/vet/build, C# контракты, self-contained GUI, службу отдельно в PS5.1 и PS7,
+Workflow `Beta candidate kit (no deployment)` проверяет exact head: полный Windows
+Go race/vet/build в отдельном обязательном job и независимую сборку/Setup smoke, C# контракты, self-contained GUI, службу отдельно в PS5.1 и PS7,
 проверяет равенство exe и pinned DLL. Его artifact
 `VELIQ-beta-candidate-win-x64-NOT-APPROVED` содержит exe, candidate.json и SHA256SUMS.
-Наличие artifact означает сборку, а не разрешение раскатки: origin gate выполняется
+Build/Setup job может завершиться раньше validation job. Наличие artifact означает
+сборку, а не разрешение раскатки: origin gate выполняется
 отдельным workflow и его FAIL должен блокировать допуск. Все workflow берутся с
 ОДНОГО source_commit. candidate.json содержит `approval=NOT_APPROVED`.
 
@@ -231,8 +232,8 @@ R1 artifact для этой ветки не публикуется: единст
 
 В общем Windows прогоне кандидата обнаружена дополнительная same-clock-tick
 коллизия: cancelled background очищал Retry нового media failure, если обе
-трёхминутные задержки получили одинаковое время. Исправление сравнивает всю
-зарезервированную запись learning, сохраняя любое промежуточное изменение,
+трёхминутные задержки получили одинаковое время. Исправление сравнивает зарезервированное routing/learning/cooldown состояние, сохраняя
+промежуточные реальные изменения и игнорируя лишь диагностические admission counters,
 а не считает один Retry timestamp доказательством владения. Детерминированный
 portable regression использует одинаковое now для реального foreground trial и
 его failure; unchanged-background positive control обязан освобождать Retry.
