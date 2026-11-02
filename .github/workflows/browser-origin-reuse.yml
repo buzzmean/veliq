@@ -1,15 +1,23 @@
 name: Browser HTTP2 origin reuse
 on:
   push:
-    branches: ['test/r1-browser-origin-reuse-*']
+    branches: ['test/r1-browser-origin-reuse-*', 'feat/account-onboarding-beta-*']
     paths:
       - 'internal/browserfixture/origin_reuse*'
       - 'services/client-service/browser_origin_*windows_test.go'
+      - 'services/client-service/activation*'
+      - 'services/client-service/account*'
+      - 'services/client-service/subscription*'
+      - 'services/client-service/controller.go'
       - '.github/workflows/browser-origin-reuse.yml'
   pull_request:
     paths:
       - 'internal/browserfixture/origin_reuse*'
       - 'services/client-service/browser_origin_*windows_test.go'
+      - 'services/client-service/activation*'
+      - 'services/client-service/account*'
+      - 'services/client-service/subscription*'
+      - 'services/client-service/controller.go'
       - '.github/workflows/browser-origin-reuse.yml'
   workflow_dispatch:
 permissions:

@@ -12,6 +12,11 @@ on:
       - 'platform/windows/socket*'
       - 'platform/windows/capture*'
       - 'services/client-service/browser*'
+      - 'services/client-service/activation*'
+      - 'services/client-service/account*'
+      - 'services/client-service/subscription*'
+      - 'services/client-service/controller.go'
+      - 'services/client-service/ipc_handlers.go'
   pull_request:
     paths:
       - '.github/workflows/chrome-native.yml'
@@ -24,6 +29,11 @@ on:
       - 'platform/windows/socket*'
       - 'platform/windows/capture*'
       - 'services/client-service/browser*'
+      - 'services/client-service/activation*'
+      - 'services/client-service/account*'
+      - 'services/client-service/subscription*'
+      - 'services/client-service/controller.go'
+      - 'services/client-service/ipc_handlers.go'
 permissions:
   contents: read
 jobs:
