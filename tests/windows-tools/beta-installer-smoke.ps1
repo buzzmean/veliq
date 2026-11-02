@@ -42,6 +42,31 @@ function Invoke-OwnedInstaller([string]$Path,[string]$Stage){
   Remove-Job -Job $worker -Force
  }
 }
+function Write-PreflightEnvironmentProbe {
+ # Reproduce only the read-only package check with identical input. Comparing
+ # one environment variable distinguishes an inherited PS7 module path from a
+ # damaged payload. Output is restricted to class/command/line constants.
+ $powershell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+ $escaped=$payload.Replace("'","''")
+ $command='$ErrorActionPreference="Stop";try{. '+"'"+$escaped+"/installer/package-contract.ps1'"+';Assert-VeliqPackage '+"'"+$escaped+"'"+';Write-Output "PASS";exit 0}catch{Write-Output ("TYPE="+$_.Exception.GetType().FullName);Write-Output ("COMMAND="+$_.InvocationInfo.MyCommand.Name);Write-Output ("LINE="+$_.InvocationInfo.ScriptLineNumber);exit 1}'
+ foreach($mode in @('inherited','windows_modules')){
+  $info=[Diagnostics.ProcessStartInfo]::new()
+  $info.FileName=$powershell
+  $info.Arguments='-NoProfile -NonInteractive -EncodedCommand '+[Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+  $info.UseShellExecute=$false;$info.RedirectStandardOutput=$true;$info.RedirectStandardError=$true;$info.CreateNoWindow=$true
+  if($mode -eq 'windows_modules'){$info.EnvironmentVariables['PSModulePath']=(Join-Path (Split-Path $powershell -Parent) 'Modules')+';'+[Environment]::GetEnvironmentVariable('PSModulePath','Machine')}
+  $process=[Diagnostics.Process]::new();$process.StartInfo=$info
+  try{
+   $null=$process.Start()
+   if(!$process.WaitForExit(15000)){$process.Kill();Write-Output ('BETA_PREFLIGHT_PROBE mode='+$mode+' timeout=true');continue}
+   foreach($line in $process.StandardOutput.ReadToEnd().Split("`n")){
+    $line=$line.Trim()
+    if($line -cmatch '^(PASS|TYPE=[A-Za-z0-9_.]+|COMMAND=[A-Za-z0-9_-]+|LINE=[0-9]+)$'){Write-Output ('BETA_PREFLIGHT_PROBE mode='+$mode+' '+$line)}
+   }
+   Write-Output ('BETA_PREFLIGHT_PROBE mode='+$mode+' exit='+$process.ExitCode)
+  }finally{$process.Dispose()}
+ }
+}
 function Assert-InstalledCandidate {
  if((Get-OwnedServiceState) -ne 'Running'){throw 'INSTALLED_SERVICE_NOT_RUNNING'}
  $result=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
@@ -77,6 +102,7 @@ try{
  $safe='UNEXPECTED_FIXTURE_EXCEPTION'
  if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;|$)'){$safe=$Matches[1]}
  Write-Output ('BETA_INSTALLER_PRIMARY_FAILURE code='+$safe+' line='+$_.InvocationInfo.ScriptLineNumber+' type='+$_.Exception.GetType().Name)
+ Write-PreflightEnvironmentProbe
  $resultPath=Join-Path $app 'install-result.json'
  if(Test-Path -LiteralPath $resultPath){
   $record=Get-Content -Raw -LiteralPath $resultPath|ConvertFrom-Json
