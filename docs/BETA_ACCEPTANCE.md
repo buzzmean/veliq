@@ -26,53 +26,57 @@ Build/Setup job может завершиться раньше validation job. �
 отдельным workflow и его FAIL должен блокировать допуск. Все workflow берутся с
 ОДНОГО source_commit. candidate.json содержит `approval=NOT_APPROVED`.
 
-Это update-kit для уже установленного тестового ПК. В нём нет драйвера, CA,
-конфигурации, кодов и identity; это НЕ Setup для чистого образа. Для чистых машин
-нужен `build-setup.ps1` того же commit с существующим публичным CA владельца и
-проверенным Inno Setup6.4.3. CI дополнительно собирает настоящий Inno Setup6.4.3 с отдельным эфемерным CA и
-loopback-only endpoint и проверяет install/update/uninstall в PS5.1 и PS7. Этот
-Setup не публикуется, его CA не подходит production; это не приёмка клубной активации.
-Публичный production CA в текущей среде отсутствует; production
-VPS для его получения не используется. Нельзя подставлять новый тестовый CA:
-установленные CP/relay ему не доверяют. Сборка Setup и первый install остаются
-отдельным обязательным gate, даже если update-kit уже есть.
+Комплект содержит полный `VELIQ-Setup.exe`, оба exe, этот план, шаблон отчёта,
+`Get-BetaSnapshot.ps1`, `beta_acceptance.py` и подготовку защищённого файла кода клуба.
+Setup собран с существующим публичным CA из опубликованного v0.3.577; installer SHA256
+перед извлечением проверяется, старый Setup не исполняется. DER fingerprint CA:
+`622db56fba69041b108fc31b5b3cf81a5ed722faa3110ef2b896b8fac42abd85`.
+Парсер Inno6.4.3 закреплён commit/hash, используется только при сборке. Проверяются
+CA constraints, self-signature и срок ≥14дней. Новая CA не создаётся, приватных
+ключей, identity и кодов в комплекте нет; VPS не используется для его подготовки.
+
+Отдельный настоящий Setup с эфемерным CA и только loopback endpoints проходит
+install→update→uninstall в PS5.1 и PS7 на disposable Windows VM. Полный candidate
+Setup с существующим CA **только компилируется**, не запускается в CI: реальная
+клубная активация и сеть остаются приёмкой владельца. Это также не проверка подписи
+конечного exe/SmartScreen на клубном ПК. Публичный release и auto-update feed
+не изменяются. Начальный NO_GO сохраняется до всех gates ниже.
 
 ## 1. Подготовка перед сменой (30–45 минут)
 
 Назначить PC01/PC02 лабораторными, остальные 3–4 ПК пока оставить без беты.
 Нужны отдельный администратор, обычный гостевой пользователь, физический доступ,
-доступ к консоли Langame и исправный предыдущий образ/установщик. Сохранить точные
-hash старых exe и путь к локальной защищённой резервной копии. Identity, приватные
-ключи, токены и staged code не помещать в git, чат или публичный результат.
+консоль Langame и исправный предыдущий образ/установщик. Сохранить hash старых exe
+и путь к защищённой резервной копии. Не помещать identity/ключи/коды в чат или git.
 
-Зафиксировать source_commit и hash обоих exe из candidate.json. Распаковать kit
-в отдельную папку `bin/beta-kit` внутри exact checkout. Проверить каждый SHA256SUMS через Get-FileHash; несовпадение —
-STOP. Новый commit или пересборка после начала тестов обнуляет допуск этой сборки.
-Нельзя смешивать службу Build601 и GUI другого кандидата, а затем засчитать всё
-как одну проверенную версию. Проверить и установленный hash после обновления.
-
-У владельца: Git/Go1.25/.NET8/Inno6.4.3 нужны только для сборки Setup; Python3.10+
-для проверки отчёта. Гостевые ПК этих инструментов не требуют. Проверить версии
-реальным вызовом. В clean checkout exact commit сборка Setup без установки:
+Скачать `VELIQ-beta-candidate-win-x64-NOT-APPROVED` из успешного workflow #55
+**на выбранном exact SHA**, распаковать в отдельную папку. Не выбирать «последний
+зелёный» другой ветки. Сверить commit и hashes с журналом соответствующего CI;
+затем в PowerShell из папки kit проверить весь комплект:
 
 ```powershell
 & {
     $ErrorActionPreference='Stop'
-    $commit=(& git rev-parse HEAD).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'GIT_HEAD_FAILED' }
-    $candidate=Get-Content -Raw '.\bin\beta-kit\candidate.json' | ConvertFrom-Json
-    if ($commit -cne $candidate.source_commit) { throw 'CANDIDATE_SOURCE_MISMATCH' }
-    $trust='.e2e\activation-trust'
-    if (!(Test-Path (Join-Path $trust 'ca.pem'))) { $trust=Join-Path $env:ProgramData 'VELIQ' }
-    & .\tools\windows\build-setup.ps1 -ExpectedCommit $commit -PublicTrustDirectory $trust
+    foreach ($line in Get-Content -LiteralPath '.\SHA256SUMS') {
+        if ($line -cnotmatch '^([a-f0-9]{64})  ([A-Za-z0-9_.-]+)$') { throw 'INVALID_SUMS' }
+        $expected=$Matches[1]; $name=$Matches[2]
+        if ((Get-FileHash -LiteralPath (Join-Path $PWD $name) -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected) { throw 'KIT_HASH_MISMATCH' }
+    }
+    $candidate=Get-Content -Raw '.\candidate.json' | ConvertFrom-Json
+    if ($candidate.kind -cne 'installer-and-update-kit') { throw 'FULL_SETUP_REQUIRED' }
+    Write-Output ('CANDIDATE '+$candidate.source_commit+'; NOT_APPROVED')
 }
 ```
 
-Входная папка содержит существующий PUBLIC ca.pem. Если у установки разные
-корневые CA для CP и relay, этот одно-корневой Setup использовать нельзя: STOP
-до поддержки обоих CA; не подставлять один корень вместо другого. Не запускать publish-release:
-он подписывает на production host и включает общий канал обновлений. Не выпускать
-публичный release и не менять auto-update feed ради ограниченной беты.
+Этот блок проверяет целостность после сверки с доверенным CI, а не подпись издателя.
+Новый commit/пересборка после начала приёмки требует новых проверок. Нельзя смешивать
+службу Build601 и GUI другого кандидата. После установки проверять реальные hashes.
+Windows PowerShell5.1 уже есть на гостевых ПК; Git/Go/.NETSDK/Inno не нужны.
+Python3.10+ нужен только владельцу для проверки итогового отчёта; его также можно
+проверить в рабочей среде по очищенным файлам. Если Windows блокирует скачанные
+скрипты, разблокировать только проверенные по SHA файлы; не менять глобальную policy
+и не отключать защиту. Для самостоятельной пересборки см. INSTALLER_BUILD.md:
+exact checkout, существующий публичный CA, Inno6.4.3. `publish-release` не запускать.
 
 ## 2. Gate до установки на 5–6 ПК
 
@@ -132,37 +136,62 @@ SCM `VELIQ`, `%ProgramData%\VELIQ`, exe `veliq-service.exe`.
 не копировать их как новые параметры. Существующий service.json читается общим
 normalizer; CP/relay/CA не менять при обычном обновлении бинарника.
 
-Для update-kit в уже установленный тестовый VELIQ — elevated PowerShell того же
-owner SID, из exact checkout (папка kit задаётся явно):
+Основной путь — `VELIQ-Setup.exe` из проверенного kit: PC01 чистая установка,
+PC02 обновление тем же владельцем. GUI закрыть через трей; браузеры принудительно
+не закрывать. Установщик должен обновить службу и GUI одного кандидата. Сверить
+реальные hashes, Running, install-result.json и сохранение настроек/identity/слота.
+Не использовать отдельный per-user GUI поверх установки в ProgramFiles.
+
+Для чистого freeze-образа **до первой активации** подготовить файл кода в закрытой
+папке администратора. Из elevated PowerShell в папке kit (код вводится скрыто):
 
 ```powershell
 & {
     $ErrorActionPreference='Stop'
-    $kit=(Resolve-Path '.\bin\beta-kit').Path
-    & .\tools\windows\update-service.ps1 -ServiceExecutable (Join-Path $kit 'veliq-service.exe')
-    if ((Get-Service VELIQ).Status -ne 'Running') { throw 'SERVICE_NOT_RUNNING' }
-    foreach ($name in @('veliq-service.exe')) {
-        if ((Get-FileHash (Join-Path $kit $name)).Hash -ne (Get-FileHash (Join-Path "$env:ProgramData\VELIQ" $name)).Hash) { throw 'INSTALLED_HASH_MISMATCH' }
+    $private=Join-Path $env:ProgramData 'VELIQ-Beta-Private'
+    New-Item -ItemType Directory -Path $private -Force | Out-Null
+    $code=Join-Path $private 'club-code.txt'
+    & .\New-ClubCodeFile.ps1 -Path $code
+    $p=Start-Process -FilePath (Join-Path $PWD 'VELIQ-Setup.exe') -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CLUBIMAGE=1',('/CLUBCODEFILE="'+$code+'"')) -Wait -PassThru
+    if ($p.ExitCode -ne 0) { throw 'CLUB_IMAGE_SETUP_FAILED' }
+    if ((Get-Service VELIQ).Status -ne 'Stopped') { throw 'IMAGE_SERVICE_MUST_BE_STOPPED' }
+    foreach ($name in @('identity.json','device.pem','probe.token')) {
+        if (Test-Path -LiteralPath (Join-Path "$env:ProgramData\VELIQ" $name)) { throw 'IMAGE_CONTAINS_RUNTIME_IDENTITY' }
     }
 }
 ```
 
-GUI предварительно закрыть через трей; Chrome/Edge не закрывать принудительно.
-Проверить реальный путь установленного GUI. Если GUI принадлежит Setup и находится
-в `%ProgramFiles%\VELIQ`, обновлять GUI только Setup того же SHA; per-user installer
-ниже не обновляет этот путь и может оставить старый autostart. Не засчитывать такую
-смешанную установку как candidate PASS. Для прежней per-user установки с marker
-GUI обновляется тем же обычным пользователем (без admin):
-`& .\tools\windows\install-desktop.ps1 -SourceDirectory '.\bin\beta-kit'`.
-Сверить hash установленного `%LOCALAPPDATA%\Programs\VELIQ\VELIQ.exe`.
+Создавать образ только из чистой системы; не удалять identity работающего ПК ради
+этого блока. Не клонировать активированную машину. Файл кода остаётся закрытым,
+не входит в отчёт. На двух клонах с отдельными writable overlay проверить первый
+boot/активацию, разную identity и сохранение своего слота после двух reboot.
+Полный freeze gate включает actual boot task/ACL/исключения записи из CLUB_PILOT.md;
+остановленная служба при подготовке образа не заменяет эту проверку.
 
-При неуспешном обновлении update-service автоматически восстанавливает прежний
-binary/ACL; проверить фактический hash и Running, а не сообщение «готово».
-Для функционального отката после успешной установки тем же update-service
-передать `veliq-service.exe` из напечатанного защищённого backup path; GUI вернуть
-из его backup с сохранением install marker, либо восстановить прежний чистый образ.
-Не копировать файлы поверх работающего процесса. После отката повторить короткий
-smoke и reboot. Не клонировать активированную identity в образ.
+После обычной установки/обновления собрать безопасный binary snapshot. Из папки
+kit под тем пользователем, у которого установлен/работает GUI:
+
+```powershell
+& {
+    $ErrorActionPreference='Stop'
+    & .\Get-BetaSnapshot.ps1 -Manifest '.\candidate.json' -PCId PC01 -OutputPath '.\PC01.json'
+}
+```
+
+Для PC02 поменять id/имя файла. Существующий output не перезаписывается. Snapshot
+читает только SCM/пути/хеши бинарников: не читает токены, не вызывает IPC/сеть,
+не меняет службу/policy. Все ручные проверки в нём остаются NOT_RUN; commit пуст,
+если служба не Running или hashes не совпали. Его запись добавить в `pcs` отчёта
+(заменить соответствующую заготовку), а не считать автоматической приёмкой.
+
+Откат: до обновления сохранить предыдущий рабочий образ/Setup и закрытую копию
+бинарников и настроек. Вернуть проверенный прежний образ/Setup согласно штатной
+процедуре с сохранением identity/слота; затем проверить фактические hashes, SCM,
+сайты, игру и reboot. Для прежней script-managed установки exact checkout содержит
+`update-service.ps1`: при неуспехе он восстанавливает binary/ACL; после успешного
+обновления прежний binary берётся из напечатанного защищённого backup path.
+GUI восстанавливать через соответствующий ему Setup/marker. Не копировать поверх
+работающих процессов. Реальный откат должен уложиться в10мин; без PASS — STOP.
 
 ## 5. Отчёт и решение о расширении
 
@@ -172,17 +201,17 @@ smoke и reboot. Не клонировать активированную identi
 оставлять как есть. Записать exact SHA/hashes как сверху, так и для каждого ПК.
 Значения брать из проверенного candidate manifest, а не подгонять под отчёт.
 
-На машине владельца из exact checkout:
+На машине владельца из папки kit:
 
 ```powershell
 & {
     $ErrorActionPreference='Stop'
     & python --version
     if ($LASTEXITCODE -ne 0) { throw 'PYTHON_UNAVAILABLE' }
-    $manifest=Get-Content -Raw '.\bin\beta-kit\candidate.json' | ConvertFrom-Json
+    $manifest=Get-Content -Raw '.\candidate.json' | ConvertFrom-Json
     $service=($manifest.files | Where-Object path -eq 'veliq-service.exe').sha256
     $gui=($manifest.files | Where-Object path -eq 'VELIQ.exe').sha256
-    & python .\tools\beta_acceptance.py '.\beta-evidence\report.json' --commit $manifest.source_commit --service-sha256 $service --gui-sha256 $gui
+    & python .\beta_acceptance.py '.\beta-evidence\report.json' --commit $manifest.source_commit --service-sha256 $service --gui-sha256 $gui
     if ($LASTEXITCODE -ne 0) { throw 'BETA_NO_GO' }
 }
 ```

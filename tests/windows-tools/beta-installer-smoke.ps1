@@ -17,7 +17,7 @@ function Invoke-OwnedInstaller([string]$Path){
  $process=Start-Process -FilePath $Path -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru
  try{
   if(!$process.WaitForExit(180000)){$process.Kill();throw 'OWNED_INSTALLER_TIMEOUT'}
-  if($process.ExitCode -ne 0){throw 'OWNED_INSTALLER_EXIT_FAILED'}
+  if($process.ExitCode -ne 0){throw ('OWNED_INSTALLER_EXIT_FAILED exit='+$process.ExitCode)}
  }finally{$process.Dispose()}
 }
 function Assert-InstalledCandidate {
@@ -27,8 +27,17 @@ function Assert-InstalledCandidate {
  foreach($pair in @(@('service/veliq-service.exe',(Join-Path $installed 'veliq-service.exe')),@('gui/VELIQ.exe',(Join-Path $app 'VELIQ.exe')))){
   if((Get-FileHash -LiteralPath (Join-Path $payload $pair[0])).Hash -cne (Get-FileHash -LiteralPath $pair[1]).Hash){throw 'INSTALLED_CANDIDATE_HASH_MISMATCH'}
  }
+ $snapshotFile=Join-Path $env:RUNNER_TEMP ('beta-snapshot-'+[guid]::NewGuid().ToString('N')+'.json')
+ & (Join-Path $PSScriptRoot '../../tools/windows/Get-BetaSnapshot.ps1') -Manifest (Join-Path $PSScriptRoot '../../bin/beta-kit/candidate.json') -PCId 'PC01' -OutputPath $snapshotFile
+ $snapshot=Get-Content -Raw -LiteralPath $snapshotFile|ConvertFrom-Json
+ if($snapshot.source_commit -cne $ExpectedCommit -or @($snapshot.checks.PSObject.Properties|Where-Object {$_.Value.status -cne 'NOT_RUN'}).Count){throw 'BETA_SNAPSHOT_FALSE_ACCEPTANCE'}
+ $overwriteRejected=$false
+ try{& (Join-Path $PSScriptRoot '../../tools/windows/Get-BetaSnapshot.ps1') -Manifest (Join-Path $PSScriptRoot '../../bin/beta-kit/candidate.json') -PCId 'PC01' -OutputPath $snapshotFile}catch{$overwriteRejected=$true}
+ if(!$overwriteRejected){throw 'BETA_SNAPSHOT_OVERWROTE_EVIDENCE'}
+ Remove-Item -LiteralPath $snapshotFile
  foreach($name in @('identity.json','device.pem','probe.token')){if(Test-Path -LiteralPath (Join-Path $installed $name)){throw 'UNEXPECTED_ENROLLMENT_STATE'}}
 }
+$uninstalled=$false
 try{
  Invoke-OwnedInstaller $setup
  Assert-InstalledCandidate
@@ -39,11 +48,21 @@ try{
  if(!(Test-Path -LiteralPath $uninstaller)){throw 'REAL_UNINSTALLER_REQUIRED'}
  Invoke-OwnedInstaller $uninstaller
  if(Get-Service VELIQ -ErrorAction SilentlyContinue){throw 'SERVICE_REMAINED_AFTER_UNINSTALL'}
- Write-Output 'BETA_INSTALLER_SMOKE_PASS real Inno install/update/uninstall; loopback-only inactive activation; no production acceptance'
+ $uninstalled=$true
 }finally{
  $uninstaller=Join-Path $app 'unins000.exe'
- if(Test-Path -LiteralPath $uninstaller){Invoke-OwnedInstaller $uninstaller}
+ if(!$uninstalled -and (Test-Path -LiteralPath $uninstaller)){Invoke-OwnedInstaller $uninstaller}
  if(Get-Service VELIQ -ErrorAction SilentlyContinue){throw 'OWNED_SERVICE_CLEANUP_FAILED'}
  # All paths were absent at entry and are owned by this isolated fixture.
- foreach($path in @($installed,$app)){if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}}
+ foreach($path in @($installed,$app)){
+  $until=[DateTime]::UtcNow.AddSeconds(15)
+  while(Test-Path -LiteralPath $path){
+   try{Remove-Item -LiteralPath $path -Recurse -Force;break}catch{
+    if([DateTime]::UtcNow -ge $until){throw 'OWNED_INSTALLER_FILES_CLEANUP_FAILED'}
+    Start-Sleep -Milliseconds 100
+   }
+  }
+ }
 }
+
+Write-Output 'BETA_INSTALLER_SMOKE_PASS real Inno install/update/uninstall and cleanup; loopback-only inactive activation; no production acceptance'
