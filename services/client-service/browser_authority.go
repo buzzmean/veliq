@@ -73,7 +73,7 @@ func (c *Controller) authorityCurrent(q browserproxy.Request) (wp.ProcessIdentit
 }
 func (c *Controller) authorityBrowser(q browserproxy.Request) bool {
 	p, ok := c.matchApplication(browserIdentity(q))
-	return ok && (nativeBrowserProfile(p) || riotAuto(p))
+	return ok && (browserAuto(p) || riotAuto(p))
 }
 func (c *Controller) authorityPlan(ctx context.Context, q browserproxy.Request) (browserproxy.Plan, error) {
 	id, err := c.authorityCurrent(q)
