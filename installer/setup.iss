@@ -1,4 +1,4 @@
-; Build dependency only. Runtime uses Windows PowerShell 5.1, no SDK/Git/Go.
+﻿; Build dependency only. Runtime uses Windows PowerShell 5.1, no SDK/Git/Go.
 #ifndef StageRoot
  #define StageRoot "..\bin\installer"
 #endif
@@ -107,10 +107,24 @@ begin
  Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
   '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& ' + #39 + ExpandConstant('{app}\installer\install-package.ps1') + #39 + ' -Remove"', '', SW_HIDE, ewWaitUntilTerminated, Code);
  Result := Result and (Code=0);
- if not Result then MsgBox('VELIQ: удаление остановлено. Данные сохранены; проверьте install-result.json.', mbError, MB_OK);
+ if not Result then begin
+   Log('VELIQ_UNINSTALL_FAILED; existing state preserved; check install-result.json');
+   if not UninstallSilent then
+     MsgBox('VELIQ: удаление остановлено. Данные сохранены; проверьте install-result.json.', mbError, MB_OK);
+ end;
 end;
 procedure CheckInstall;
 begin
  if not FileExists(ExpandConstant('{app}\install-success.json')) then
    RaiseException('Установка VELIQ не завершена. Состояние сохранено; код причины в install-result.json.');
+end;
+
+function GetCustomSetupExitCode(): Integer;
+begin
+ Result := 0;
+ { Exceptions from AfterInstall can be suppressed by /SUPPRESSMSGBOXES while
+   Inno otherwise returns success. The durable marker is written only by a
+   successful package script and cleared before every invocation. }
+ if not FileExists(ExpandConstant('{app}\install-success.json')) then
+   Result := 1;
 end;

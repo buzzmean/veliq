@@ -1,0 +1,201 @@
+name: Beta candidate kit (no deployment)
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/beta-candidate.yml'
+      - 'tools/beta_acceptance.py'
+      - 'docs/BETA*'
+permissions:
+  contents: read
+jobs:
+  acceptance-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: python3 -m unittest discover -s tests/deployment -p test_beta_acceptance.py -v
+  published-trust:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Build-only offline parser dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends cmake make g++ libboost-filesystem-dev libboost-program-options-dev libboost-iostreams-dev libboost-date-time-dev libboost-system-dev liblzma-dev
+      - name: Recover pinned existing public CA without executing published Setup
+        run: python3 tools/extract_published_trust.py --output bin/published-trust
+      - uses: actions/upload-artifact@v4
+        with:
+          name: beta-published-public-trust
+          path: bin/published-trust/
+          if-no-files-found: error
+          retention-days: 14
+  windows-validation:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Full Windows race, vet and build
+        shell: powershell
+        run: |
+          & go test -race -p 1 -timeout 180s ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_RACE_FAILED' }
+          & go vet ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_VET_FAILED' }
+          & go build ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_BUILD_FAILED' }
+  windows:
+    needs: published-trust
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: beta-published-public-trust
+          path: bin/published-trust
+      - name: Desktop contracts and self-contained GUI
+        shell: powershell
+        run: |
+          & dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+          if ($LASTEXITCODE) { throw 'DESKTOP_CONTRACTS_FAILED' }
+          & ./tools/windows/build-desktop.ps1
+      - name: Build service and verify pinned DLL (PowerShell 5.1)
+        shell: powershell
+        env:
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/beta-service-ps51')
+      - name: Verify service parity and assemble unapproved candidate (PowerShell 7)
+        shell: pwsh
+        env:
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/beta-service-ps7')
+          $a=(Get-FileHash bin/beta-service-ps51/veliq-service.exe -Algorithm SHA256).Hash
+          $b=(Get-FileHash bin/beta-service-ps7/veliq-service.exe -Algorithm SHA256).Hash
+          if ($a -cne $b) { throw 'BETA_SERVICE_PARITY_FAILED' }
+          $service=Get-Content -Raw bin/beta-service-ps7/manifest.json | ConvertFrom-Json
+          if ($service.vcs_modified -or $service.source_commit -cne $env:EXPECTED_COMMIT) { throw 'BETA_SOURCE_MISMATCH' }
+          New-Item bin/beta-kit -ItemType Directory | Out-Null
+          Copy-Item bin/beta-service-ps7/veliq-service.exe bin/beta-kit/
+          Copy-Item bin/release/VELIQ.exe bin/beta-kit/
+          Copy-Item docs/BETA_ACCEPTANCE.md bin/beta-kit/README.md
+          Copy-Item docs/BETA_RESULTS.template.json bin/beta-kit/
+          Copy-Item tools/windows/Get-BetaSnapshot.ps1 bin/beta-kit/
+          Copy-Item tools/beta_acceptance.py bin/beta-kit/
+          foreach ($name in @('New-ClubCodeFile.ps1','common.ps1','club-image-common.ps1','club-code-common.ps1')) { Copy-Item (Join-Path 'tools/windows' $name) bin/beta-kit/ }
+          $report=Get-Content -Raw bin/beta-kit/BETA_RESULTS.template.json | ConvertFrom-Json
+          $report.source_commit=$env:EXPECTED_COMMIT
+          $report.service_sha256=$b.ToLowerInvariant()
+          $report.gui_sha256=(Get-FileHash bin/beta-kit/VELIQ.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          [IO.File]::WriteAllText((Join-Path $PWD 'bin/beta-kit/BETA_RESULTS.template.json'),($report|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
+          $files=@('veliq-service.exe','VELIQ.exe','README.md','BETA_RESULTS.template.json','Get-BetaSnapshot.ps1','beta_acceptance.py','New-ClubCodeFile.ps1','common.ps1','club-image-common.ps1','club-code-common.ps1')
+          $manifest=[ordered]@{schema_version=1;source_commit=$env:EXPECTED_COMMIT;build_sequence=$service.build_sequence;approval='NOT_APPROVED';validation='CHECK_ALL_CI_AND_MANUAL_GATES';kind='incomplete-unpublished-kit';files=@()}
+          foreach ($name in $files) {
+            $hash=(Get-FileHash -LiteralPath "bin/beta-kit/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+            $manifest.files+=@{path=$name;sha256=$hash}
+          }
+          [IO.File]::WriteAllText((Join-Path $PWD 'bin/beta-kit/candidate.json'),($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+          $guiHash=(Get-FileHash bin/beta-kit/VELIQ.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "BETA_KIT_BUILT commit=$env:EXPECTED_COMMIT sequence=$($service.build_sequence) service_sha256=$($b.ToLowerInvariant()) gui_sha256=$guiHash approval=NOT_APPROVED"
+          $sums=@($files+@('candidate.json') | ForEach-Object { (Get-FileHash -LiteralPath "bin/beta-kit/$_" -Algorithm SHA256).Hash.ToLowerInvariant()+'  '+$_ })
+          [IO.File]::WriteAllLines((Join-Path $PWD 'bin/beta-kit/SHA256SUMS'),$sums,[Text.UTF8Encoding]::new($false))
+      - name: Compile actual Setup with a disposable public CA (no artifact publication)
+        shell: powershell
+        run: |
+          $download=Join-Path $env:RUNNER_TEMP 'innosetup-6.4.3.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe' -OutFile $download
+          $signature=Get-AuthenticodeSignature -LiteralPath $download
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Jordan Russell|O=Pyrsys B\.V\.') { throw 'INNO_INSTALLER_SIGNATURE_INVALID' }
+          $compilerHome=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3'
+          $process=Start-Process -FilePath $download -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$compilerHome+'"')) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'INNO_INSTALL_FAILED' }
+          $trust=Join-Path $env:RUNNER_TEMP 'beta-disposable-ca'
+          New-Item $trust -ItemType Directory | Out-Null
+          $rsa=[Security.Cryptography.RSACryptoServiceProvider]::new(2048)
+          $rsa.PersistKeyInCsp=$false
+          $request=[Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=VELIQ disposable beta installer CA',$rsa,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)
+          $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509BasicConstraintsExtension]::new($true,$false,0,$true))
+          $request.CertificateExtensions.Add([Security.Cryptography.X509Certificates.X509KeyUsageExtension]::new([Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyCertSign,$true))
+          $cert=$request.CreateSelfSigned([DateTimeOffset]::UtcNow.AddMinutes(-5),[DateTimeOffset]::UtcNow.AddDays(2))
+          try {
+            $pem='-----BEGIN CERTIFICATE-----'+"`n"+[Convert]::ToBase64String($cert.RawData)+"`n"+'-----END CERTIFICATE-----'+"`n"
+            [IO.File]::WriteAllText((Join-Path $trust 'ca.pem'),$pem,[Text.UTF8Encoding]::new($false))
+          } finally { $cert.Dispose();$rsa.Dispose() }
+          New-Item bin/windows-e2e -ItemType Directory -Force | Out-Null
+          Copy-Item bin/beta-service-ps7/veliq-service.exe bin/windows-e2e/
+          & ./installer/build.ps1 -PublicTrustDirectory $trust -ControlPlaneUrl 'https://127.0.0.1:1' -ProbeTarget '127.0.0.1:1' -TCPProbeTarget '127.0.0.1:1' -Compiler (Join-Path $compilerHome 'ISCC.exe') -Output (Join-Path $PWD 'bin/beta-installer-smoke')
+      - name: Actual Setup lifecycle (PowerShell 5.1)
+        shell: powershell
+        env:
+          VELIQ_BETA_INSTALL_SMOKE: '1'
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          & ./tests/windows-tools/beta-installer-smoke.ps1 -SetupExecutable './bin/beta-installer-smoke/output/VELIQ-Setup.exe' -PackageDirectory './bin/beta-installer-smoke/payload' -ExpectedCommit $env:EXPECTED_COMMIT
+      - name: Actual Setup lifecycle (PowerShell 7)
+        shell: pwsh
+        env:
+          VELIQ_BETA_INSTALL_SMOKE: '1'
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          & ./tests/windows-tools/beta-installer-smoke.ps1 -SetupExecutable './bin/beta-installer-smoke/output/VELIQ-Setup.exe' -PackageDirectory './bin/beta-installer-smoke/payload' -ExpectedCommit $env:EXPECTED_COMMIT
+      - name: Bounded loopback Inno diagnostics on failure
+        if: failure()
+        shell: powershell
+        run: |
+          # Only this opt-in disposable fixture creates these logs, without any
+          # activation code/identity or production endpoint. Never dump config.
+          foreach ($file in Get-ChildItem -LiteralPath $env:RUNNER_TEMP -Filter 'beta-inno-*.log' -File) {
+            Write-Host ('BETA_INNO_LOG '+$file.Name)
+            Get-Content -LiteralPath $file.FullName -Tail 20 | ForEach-Object { Write-Host $_ }
+          }
+      - name: Build candidate Setup with the verified existing public CA (never execute here)
+        shell: pwsh
+        env:
+          EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $der=[IO.File]::ReadAllBytes((Join-Path $PWD 'bin/published-trust/ca.der'))
+          $caPin=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($der)).ToLowerInvariant()
+          if ($caPin -cne '622db56fba69041b108fc31b5b3cf81a5ed722faa3110ef2b896b8fac42abd85') { throw 'PUBLISHED_CA_PIN_MISMATCH' }
+          $trust=Join-Path $env:RUNNER_TEMP 'beta-existing-public-ca'
+          New-Item $trust -ItemType Directory | Out-Null
+          $pem='-----BEGIN CERTIFICATE-----'+"`n"+[Convert]::ToBase64String($der)+"`n"+'-----END CERTIFICATE-----'+"`n"
+          [IO.File]::WriteAllText((Join-Path $trust 'ca.pem'),$pem,[Text.UTF8Encoding]::new($false))
+          $compiler=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3/ISCC.exe'
+          & ./installer/build.ps1 -PublicTrustDirectory $trust -ControlPlaneUrl 'https://146.0.77.98:8443' -ProbeTarget '146.0.77.98:40000' -TCPProbeTarget '146.0.77.98:40000' -Compiler $compiler -Output (Join-Path $PWD 'bin/beta-candidate-setup')
+          Copy-Item bin/beta-candidate-setup/output/VELIQ-Setup.exe bin/beta-kit/
+          $manifest=Get-Content -Raw bin/beta-kit/candidate.json | ConvertFrom-Json -AsHashtable
+          if ($manifest.source_commit -cne $env:EXPECTED_COMMIT) { throw 'BETA_SETUP_SOURCE_MISMATCH' }
+          $setupHash=(Get-FileHash bin/beta-kit/VELIQ-Setup.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifest.kind='installer-and-update-kit'
+          $manifest.public_ca_der_sha256=$caPin
+          $manifest.public_ca_source_release='v0.3.577'
+          $manifest.files+=@{path='VELIQ-Setup.exe';sha256=$setupHash}
+          [IO.File]::WriteAllText((Join-Path $PWD 'bin/beta-kit/candidate.json'),($manifest|ConvertTo-Json -Depth 5),[Text.UTF8Encoding]::new($false))
+          $names=@($manifest.files.path)+@('candidate.json')
+          $sums=@($names | ForEach-Object { (Get-FileHash -LiteralPath "bin/beta-kit/$_" -Algorithm SHA256).Hash.ToLowerInvariant()+'  '+$_ })
+          [IO.File]::WriteAllLines((Join-Path $PWD 'bin/beta-kit/SHA256SUMS'),$sums,[Text.UTF8Encoding]::new($false))
+          Write-Host "BETA_SETUP_BUILT commit=$env:EXPECTED_COMMIT setup_sha256=$setupHash ca_der_sha256=$caPin approval=NOT_APPROVED"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VELIQ-beta-candidate-win-x64-NOT-APPROVED
+          path: bin/beta-kit/
+          if-no-files-found: error
+          retention-days: 14
+# Setup contains only the same public CA already shipped in v0.3.577. No code,
+# device identity/private key, public release or automatic updater manifest is published. Routing failures
+# remain failures in the independent Browser HTTP2 workflow.

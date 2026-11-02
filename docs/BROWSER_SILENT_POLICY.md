@@ -1,4 +1,29 @@
+> Кандидат беты: AvailabilityV2 закрывает DIRECT fallback для bundled RELAY
+> floors, profile guard и strictProxy; ordinary fallback сохранён. Это patch
+> после actual compound-outage RED в run41369834272/job125037705516. Исторические
+> результаты AvailabilityV1 ниже не описывают поведение нового wrapper. Cached
+> V1 в работающем браузере требует отдельного подтверждения uptake.
+
 # Вариант A: тихий owned PAC Chrome и Edge
+
+> Актуальная граница native AUTO, 02.11.2026 MSK: ниже описан исторический
+> PAC-вариант от 20.10. Текущий `nativeBrowserCompatibility` может сохранить
+> existing owned PAC при активации, но `RetrySilentBrowserPolicies` удаляет
+> принадлежащую службе policy для native-only профилей; cached PAC продолжает
+> обслуживаться compatibility listener. Поэтому утверждения ниже о постоянном
+> PAC guard и восстановлении policy на boot не являются гарантиями native AUTO.
+> Подхват, сохранение старых H2 и фактический egress проверяются отдельно в
+> [HTTP/2 origin gate](BROWSER_ORIGIN_REUSE.md). Запись registry и сохранённый
+> listener сами по себе не доказывают изоляцию каждого запроса. На code `17f6273`
+> после удаления registry policy новый REQUIRED authority всё ещё прошёл через
+> cached PAC + native upstream; это не переход к native-only и не основание
+> считать compatibility listener ненужным. На code `d7ecc28` шесть одиночных
+> outage/recovery сценариев PASS: AvailabilityPAC при потере listener перешёл
+> через NATIVE_TCP в RELAY для REQUIRED; при потере capture оба PAC блокировали
+> CONNECT, включая ordinary; при потере relay ordinary остался DIRECT.
+> Все recovery новых authority прошли через PAC_NATIVE_UPSTREAM без browser restart.
+> Одновременная потеря listener+capture и весь SCM/readiness lifecycle ещё не приняты;
+> эти результаты не подтверждают независимый crash guard.
 
 Решение владельца, 20.10.2026: независимый WFP guard отложен (вариант B в
 BROWSER_NATIVE_GUARD.md). PAC остаётся обязательным crash-guard. Пользователь
@@ -89,13 +114,16 @@ policy, с пустым временным профилем и `about:blank`. Н
 measurement; существующий Edge HTTPS/mTLS acceptance остаётся отдельно.
 Только изолированные браузеры теста завершаются в teardown, продукт этого не делает.
 
-На Linux подготовлены и компилируются тесты, но **живой подхват Chrome/Edge в новой
-итерации ещё не измерен**. Число миллисекунд появится в `silent-policy.log` workflow
-Edge policy acceptance и в диагностике ПК; до этого результат NOT_MEASURED.
+Первоначальные Linux preparation и последующие результаты 20.10 приведены ниже
+как история. Новое измерение Chrome на code `079e731` описано в
+[HTTP/2 origin gate](BROWSER_ORIGIN_REUSE.md#работающий-chromium-и-owned-policy):
+existing owned PAC выдержал переход к native, но live-install за 30031 ms не дал
+CONNECT, сохранив `POLICY_PENDING_BROWSER_REFRESH`. Это не результат для Edge
+и не гарантия дальнейшего срока подхвата.
 
-Владельцу достаточно обычного обновления службы/GUI и открытых браузеров; для
-необязательного отчёта: `& .\tools\windows\diag-no-vpn.ps1 -Only browser,youtube`.
-Закрывать браузеры для проверки не требуется. Действия с VPS не предусмотрены.
+Проверки владельца на ПК/ISP отложены отдельно. Эти CI результаты не требуют
+переустановки, закрытия браузеров или действий с VPS и не заменяют пользовательскую
+приёмку.
 
 
 ### Первый Windows CI на 5d47ff0 (20.10.2026)

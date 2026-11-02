@@ -22,7 +22,16 @@ with sync_playwright() as p:
     button=page.locator("#routes button:enabled").first
     stopped=button.locator("xpath=ancestor::tr").locator("td").first.inner_text()
     button.click()
-    page.wait_for_function("id => [...document.querySelectorAll('#routes tr')].some(row=>row.firstChild.textContent===id && row.textContent.includes('unavailable'))", arg=stopped, timeout=15000)
+    page.wait_for_function("id => [...document.querySelectorAll('#routes tr')].some(row=>row.firstChild.textContent===id && row.children[5].textContent==='unhealthy' && row.querySelector('button').disabled)", arg=stopped, timeout=15000)
+    # Unavailable means no observations; a stopped, measured relay is unhealthy.
+    # Require failed real probes too, rather than passing on a display label alone.
+    page.wait_for_function("""async id => {
+        const s=await rpc('status');
+        const r=s.routes.find(r=>r.id===id);
+        return r && r.status==='unhealthy' && r.quality &&
+            s.history.measurements.some(m=>m.route_id===id && !m.available) &&
+            (s.primary||s.Primary)!==id;
+    }""", arg=stopped, timeout=15000)
     page.get_by_role("button", name="Statistics", exact=True).click()
     page.wait_for_function("() => document.querySelectorAll('#measureHistory tr').length > 0", timeout=10000)
     assert page.locator("#measureHistory tr").first.locator("td").count() == 5

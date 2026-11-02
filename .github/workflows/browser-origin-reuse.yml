@@ -1,0 +1,77 @@
+name: Browser HTTP2 origin reuse
+on:
+  push:
+    branches: ['test/r1-browser-origin-reuse-*']
+    paths:
+      - 'internal/browserfixture/origin_reuse*'
+      - 'services/client-service/browser_origin_*windows_test.go'
+      - '.github/workflows/browser-origin-reuse.yml'
+  pull_request:
+    paths:
+      - 'internal/browserfixture/origin_reuse*'
+      - 'services/client-service/browser_origin_*windows_test.go'
+      - '.github/workflows/browser-origin-reuse.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: All filters through the pinned signed DLL
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go test ./platform/windows '-run' '^TestServiceWinDivertFilterInventory$'
+          if ($LASTEXITCODE) { throw 'FILTER_INVENTORY_FAILED' }
+          & go test -c -o bin/filter-tests.exe ./platform/windows
+          if ($LASTEXITCODE) { throw 'FILTER_TEST_BUILD_FAILED' }
+          & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
+      - name: Real Chromium coalescing precondition with verified TLS
+        shell: powershell
+        run: |
+          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          & go test -v -count=1 -timeout 70s ./internal/browserfixture '-run' '^TestChromiumOriginReuseBaseline$' 2>&1 | Tee-Object -FilePath origin-reuse-baseline.log
+          if ($LASTEXITCODE) { throw 'COALESCING_PRECONDITION_NOT_OBSERVED' }
+      - name: Required authority isolation through PAC and actual native capture
+        shell: powershell
+        run: |
+          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          & go test -v -count=1 -timeout 480s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$' 2>&1 | Tee-Object -FilePath origin-reuse-routing.log
+          if ($LASTEXITCODE) { throw 'ORIGIN_REUSE_ROUTING_GATE_FAILED' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-origin-reuse-evidence
+          path: origin-reuse-*.log
+          if-no-files-found: warn
+  windows-validation:
+    # The beta kit job supplies the same exact-SHA full Windows validation.
+    if: ${{ !startsWith(github.head_ref || github.ref_name, 'release/beta-candidate-') }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Full Windows Go race, vet and build
+        shell: powershell
+        run: |
+          & go test -race -p 1 -timeout 180s ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_RACE_FAILED' }
+          & go vet ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_VET_FAILED' }
+          & go build ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_BUILD_FAILED' }
+# Linux race/vet/build with PostgreSQL is supplied by relay-release.yml.
+# A routing violation deliberately fails this gate. No continue-on-error,
+# production credentials or owner PC acceptance; policy/trust only on disposable VM.
