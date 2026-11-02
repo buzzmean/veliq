@@ -60,11 +60,17 @@ STOP. Новый commit или пересборка после начала те
     $ErrorActionPreference='Stop'
     $commit=(& git rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'GIT_HEAD_FAILED' }
-    & .\tools\windows\build-setup.ps1 -ExpectedCommit $commit -PublicTrustDirectory '.e2e\activation-trust'
+    $candidate=Get-Content -Raw '.\bin\beta-kit\candidate.json' | ConvertFrom-Json
+    if ($commit -cne $candidate.source_commit) { throw 'CANDIDATE_SOURCE_MISMATCH' }
+    $trust='.e2e\activation-trust'
+    if (!(Test-Path (Join-Path $trust 'ca.pem'))) { $trust=Join-Path $env:ProgramData 'VELIQ' }
+    & .\tools\windows\build-setup.ps1 -ExpectedCommit $commit -PublicTrustDirectory $trust
 }
 ```
 
-Входная папка содержит существующий PUBLIC ca.pem. Не запускать publish-release:
+Входная папка содержит существующий PUBLIC ca.pem. Если у установки разные
+корневые CA для CP и relay, этот одно-корневой Setup использовать нельзя: STOP
+до поддержки обоих CA; не подставлять один корень вместо другого. Не запускать publish-release:
 он подписывает на production host и включает общий канал обновлений. Не выпускать
 публичный release и не менять auto-update feed ради ограниченной беты.
 
