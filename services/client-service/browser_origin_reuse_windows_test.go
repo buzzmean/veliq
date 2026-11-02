@@ -400,6 +400,13 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 						if err := wp.CompareSetOwnerSystemProxy(c.BrowserOwnerSID, original, desired); err != nil {
 							t.Fatal(err)
 						}
+						if os.Getenv("VELIQ_TEST_OWNER_WININET_PULSE") == "1" {
+							if err := wp.CompareSetOwnerSystemProxy(c.BrowserOwnerSID, desired, original); err != nil {
+								t.Fatal(err)
+							}
+							t.Log("ORIGIN_OWNER_SYSTEM_PAC_RESTORED_BEFORE_REQUESTS")
+							desired = original
+						}
 						t.Cleanup(func() {
 							if err := wp.CompareSetOwnerSystemProxy(c.BrowserOwnerSID, desired, original); err != nil {
 								t.Error("owner proxy conditional restore", err)
@@ -416,6 +423,13 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 						t.Log(string(output)) // Test-only constants, no policy content.
 						if commitErr != nil {
 							t.Fatal("owned diagnostic GPO commit", commitErr)
+						}
+						if os.Getenv("VELIQ_TEST_GPO_GPUPDATE") == "1" {
+							ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+							command := exec.CommandContext(ctx, "gpupdate.exe", "/target:user", "/force", "/wait:5")
+							updateErr := command.Run()
+							cancel()
+							t.Logf("ORIGIN_OWNER_GPUPDATE_AFTER_COMMIT completed=%t", updateErr == nil)
 						}
 					}
 				}
