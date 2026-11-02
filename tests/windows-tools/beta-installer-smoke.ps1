@@ -18,24 +18,26 @@ function Get-OwnedServiceState([string]$Name='VELIQ'){
 }
 foreach($name in @('VELIQ','neexitlag')){if((Get-OwnedServiceState $name) -ne 'ABSENT'){throw 'EXISTING_SERVICE_PRESERVED'}}
 foreach($path in @($installed,$app,(Join-Path $env:ProgramData 'neexitlag'),(Join-Path $env:ProgramFiles 'VELIQ Setup'))){if(Test-Path -LiteralPath $path){throw 'EXISTING_INSTALLATION_PRESERVED'}}
-function Invoke-OwnedInstaller([string]$Path,[string]$Stage){
+function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage){
  # Inno's uninstaller delegates to _unins.tmp. Process.WaitForExit waits only
  # for the launcher; PowerShell Start-Process -Wait waits for its process tree.
  # A worker job preserves that behavior and bounds it without killing browsers.
  $log=Join-Path $env:RUNNER_TEMP ('beta-inno-'+$Stage+'-'+[guid]::NewGuid().ToString('N')+'.log')
  Write-Output ('BETA_INSTALLER_START stage='+$Stage)
  $worker=Start-Job -ScriptBlock {
-  param($Executable,$LogFile)
+  param($Executable,$LogFile,$InvalidImage)
   $ErrorActionPreference='Stop'
-  $process=Start-Process -FilePath $Executable -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$LogFile+'"')) -Wait -PassThru
+  $arguments=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$LogFile+'"'))
+  if($InvalidImage){$arguments+='/CLUBIMAGE=1'}
+  $process=Start-Process -FilePath $Executable -ArgumentList $arguments -Wait -PassThru
   try{[int]$process.ExitCode}finally{$process.Dispose()}
- } -ArgumentList $Path,$log
+ } -ArgumentList $Path,$log,([bool]$InvalidClubImage)
  try{
   $finished=Wait-Job -Job $worker -Timeout 180
   if(!$finished){throw ('OWNED_INSTALLER_TREE_TIMEOUT stage='+$Stage)}
   if($worker.State -ne 'Completed'){throw ('OWNED_INSTALLER_WORKER_FAILED stage='+$Stage)}
   $codes=@(Receive-Job -Job $worker -ErrorAction Stop)
-  if($codes.Count -ne 1 -or $codes[0] -ne 0){throw ('OWNED_INSTALLER_EXIT_FAILED stage='+$Stage)}
+  if($codes.Count -ne 1 -or $codes[0] -ne $ExpectedExit){throw ('OWNED_INSTALLER_EXIT_FAILED stage='+$Stage)}
   Write-Output ('BETA_INSTALLER_FINISHED stage='+$Stage)
  }finally{
   if($worker.State -in @('Running','NotStarted')){Stop-Job -Job $worker}
@@ -86,6 +88,14 @@ function Assert-InstalledCandidate {
 }
 $uninstalled=$false
 try{
+ # A missing code in CLUBIMAGE mode must fail before SCM/identity creation.
+ # Inno used to suppress the script exception and falsely return exit 0.
+ Invoke-OwnedInstaller $setup 'invalid-image' -ExpectedExit 1 -InvalidClubImage
+ $failure=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
+ if($failure.result -cne 'FAIL' -or $failure.code -cne 'CLUB_IMAGE_CODE_FILE_REQUIRED' -or (Get-OwnedServiceState) -ne 'ABSENT'){throw 'FAILED_SETUP_FALSE_SUCCESS_OR_STATE_MUTATION'}
+ Invoke-OwnedInstaller (Join-Path $app 'unins000.exe') 'invalid-image-uninstall'
+ foreach($path in @($installed,$app)){if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}}
+ Write-Output 'BETA_NEGATIVE_SETUP_PASS exit=1; missing club code; no SCM service'
  Invoke-OwnedInstaller $setup 'install'
  Assert-InstalledCandidate
  # Re-install the identical package exercises the real existing-service update.

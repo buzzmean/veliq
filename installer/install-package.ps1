@@ -5,7 +5,15 @@ $root=Split-Path $PSScriptRoot -Parent
 $result=Join-Path $root 'install-result.json';$success=Join-Path $root 'install-success.json'
 Remove-Item -LiteralPath $success -Force -ErrorAction SilentlyContinue
 $step='PACKAGE_PREFLIGHT'
+$installerModulePath=$env:PSModulePath
 try{
+ # Inno inherits the launching shell's environment. A PS7 PSModulePath can hide
+ # Windows PowerShell's Get-FileHash even though other cmdlets still resolve.
+ # Use trusted Windows/machine modules for this privileged PS5.1 invocation;
+ # preserve the caller's environment when the script is invoked directly.
+ if($PSVersionTable.PSEdition -eq 'Desktop'){
+  $env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')+';'+[Environment]::GetEnvironmentVariable('PSModulePath','Machine')
+ }
  . (Join-Path $PSScriptRoot 'package-contract.ps1')
  Assert-VeliqPackage $root
  $installed=Join-Path $env:ProgramData 'VELIQ';$manifest=Join-Path $installed 'service.json'
@@ -88,4 +96,6 @@ try{
  $safe='INSTALL_STEP_FAILED';if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;|$)'){$safe=$Matches[1]}
  @{result='FAIL';step=$step;code=$safe;reboot_required=$false;credentials='PRESERVED'}|ConvertTo-Json|Set-Content -LiteralPath $result -Encoding UTF8
  throw ('VELIQ_SETUP_FAILED stage='+$step+' code='+$safe+'; existing state preserved')
+}finally{
+ $env:PSModulePath=$installerModulePath
 }
