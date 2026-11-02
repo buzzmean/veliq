@@ -38,7 +38,7 @@ func checkNativeRouteProof(s nativeBrowserSnapshot, driver bool) ([]uint64, erro
 	controlled, exchanges := 0, 0
 	var pending []uint64
 	for _, r := range s.Records {
-		if driver && r.Domain != "native-browser.test" {
+		if driver && r.Domain != "native-active.native-browser.test" {
 			continue
 		}
 		controlled++
@@ -92,7 +92,7 @@ func nativeRouteProofFixture(t *testing.T) (*Controller, browserproxy.Request, w
 	t.Helper()
 	c := New(context.Background())
 	t.Cleanup(c.Close)
-	q := browserproxy.Request{Ingress: "NATIVE_TCP", Host: "native-browser.test", Owner: browserproxy.Owner{PID: 7, Birth: 13, Exe: `C:\Fixture\chrome.exe`, Profile: "native-browser"}}
+	q := browserproxy.Request{Ingress: "NATIVE_TCP", Host: "native-active.native-browser.test", Owner: browserproxy.Owner{PID: 7, Birth: 13, Exe: `C:\Fixture\chrome.exe`, Profile: "native-browser"}}
 	tuple := policyTuple("tcp", 443)
 	plan := browserproxy.Plan{Destination: netip.MustParseAddrPort("127.0.0.2:443"), Policy: flowpolicy.Result{Action: flowpolicy.RelayRequired, RelayID: "VPS-01", Fallback: flowpolicy.Required}}
 	c.browser.native.activate(q.Owner.Profile, true)
