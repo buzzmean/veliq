@@ -89,6 +89,7 @@ func (c *Controller) cleanupOwnedBrowserPoliciesLocked(only *bool) error {
 // Host cancellation represents an intentional stop/shutdown. Initialization
 // errors and process crashes do not authorize removal of the fail-closed guard.
 func (c *Controller) CloseForHost(parent context.Context) error {
+	if c.emergencyClosed.Load() {c.Close();return nil}
 	var cleanup error
 	if parent.Err() != nil {
 		c.activationMu.Lock()

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"github.com/buzzmean/neexitlag/core/ipc"
+	"github.com/buzzmean/neexitlag/core/emergency"
 	windowsplatform "github.com/buzzmean/neexitlag/platform/windows"
 	clientservice "github.com/buzzmean/neexitlag/services/client-service"
 	"log/slog"
@@ -16,6 +17,10 @@ import (
 
 func run(ctx context.Context, path string) error { return runReady(ctx, path, nil) }
 func runReady(ctx context.Context, path string, ready func()) error {
+	ctx,cancelHost:=context.WithCancel(ctx)
+	defer cancelHost()
+	initCtx,cancelInit:=context.WithCancel(ctx)
+	defer cancelInit()
 	manifest, e := clientservice.LoadManifest(path)
 	if e != nil {
 		return e
@@ -53,18 +58,29 @@ func runReady(ctx context.Context, path string, ready func()) error {
 	// the GUI can tell "starting" from "not installed". Methods are rejected until
 	// initialization finishes (see startupGate).
 	var gate startupGate
-	server, e := ipc.New(strings.TrimSpace(string(token)), gate.wrap(controller.HandleOwnerIPC))
+	initDone := make(chan struct{})
+	emergencyManager:=emergency.NewManager(emergency.New(manifest.OwnerSID,windowsplatform.ReadEmergencyVerifier),func()error{
+		controller.BeginEmergencyStop()
+		cancelInit()
+		<-initDone
+		return controller.FinishEmergencyStop()
+	})
+	emergencyManager.IdleStatus=func()any{return controller.Snapshot()}
+	server, e := ipc.New(strings.TrimSpace(string(token)), emergencyManager.Wrap(gate.wrap(controller.HandleOwnerIPC)))
 	if e != nil {
 		return e
+	}
+	server.AfterReply=func(method string,reply ipc.Response,writeError error){
+		if method=="emergency.finish" && reply.OK && writeError==nil {cancelHost()}
 	}
 	listener, e := clientservice.ListenIPC(manifest.OwnerSID)
 	if e != nil {
 		return e
 	}
 	defer listener.Close()
-	initDone := make(chan struct{})
 	go func() {
 		defer close(initDone)
+		if initCtx.Err()!=nil {return}
 		// Restore listener and owned PAC before remote CP/network initialization.
 		// A code-managed boot restores policy only after binding/authentication;
 		// its activation worker owns that transition, never this parallel stage.
@@ -74,10 +90,11 @@ func runReady(ctx context.Context, path string, ready func()) error {
 			}
 		}
 		if manifest.ControlPlaneURL != "" && !managedActivation {
-			if e := controller.ConnectRemote(ctx, manifest); e != nil {
+			if e := controller.ConnectRemote(initCtx, manifest); e != nil {
 				slog.Warn("control plane initialization unavailable; capture remains DIRECT", "error", e)
 			}
 		}
+		if initCtx.Err()!=nil {return}
 		controller.Start()
 		if !managedActivation && controller.Snapshot().Settings.Automatic {
 			if _, e := controller.Handle(ctx, "optimize", []byte(`{"enabled":true}`)); e != nil {
@@ -87,7 +104,7 @@ func runReady(ctx context.Context, path string, ready func()) error {
 		gate.ready.Store(true)
 		slog.Info("service initialization complete")
 	}()
-	defer func() { <-initDone }() // cancelled ctx unblocks the stages; Close must not race them
+	defer func() { cancelInit(); <-initDone }() // cancelled ctx unblocks the stages; Close must not race them
 	if ready != nil {
 		ready()
 	}

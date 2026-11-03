@@ -87,6 +87,9 @@ type Snapshot struct {
 	ActiveApps       []string                      `json:"active_apps"`
 }
 type Controller struct {
+	emergencyStopped atomic.Bool
+	emergencyClosed atomic.Bool
+	closeOnce sync.Once
 	updater         atomic.Pointer[updater]
 	traffic         *traffic.Client
 	remoteTraffic   remoteTrafficState
@@ -252,6 +255,9 @@ func (c *Controller) Start() {
 	go func() { defer c.wg.Done(); c.Measurements.Run(c.ctx, c.Selector.Observe) }()
 }
 func (c *Controller) Close() {
+	c.closeOnce.Do(c.closeResources)
+}
+func (c *Controller) closeResources() {
 	if c.browser.readiness.enforced.Load() {
 		_ = c.CleanupOwnedBrowserPolicies() // Before listeners, relay workers or capture stop.
 	}
@@ -585,6 +591,7 @@ func (c *Controller) Snapshot() Snapshot {
 	return snapshot
 }
 func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMessage) (result any, err error) {
+	if c.emergencyStopped.Load() {return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")}
 	if method == "club.status" {
 		return c.clubStatus(), nil
 	}
@@ -619,6 +626,7 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 	if isEdgeMutation(method) {
 		c.activationMu.Lock()
 		defer c.activationMu.Unlock()
+		if c.emergencyStopped.Load() {return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")}
 		// Include guard-publication failures before/after handleEdge in the same
 		// bounded status diagnostic; otherwise a failure before listener was invisible.
 		defer func() {
@@ -643,6 +651,7 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 	case "optimize", "profile.set", "profile.delete", "settings.set", "local.set", "local.preset.apply", "auto.commit", "browser.silent.guard", "browser.silent.apply", "browser.prepare", "browser.start", "browser.confirm", "browser.native.enable":
 		c.activationMu.Lock()
 		defer c.activationMu.Unlock()
+		if c.emergencyStopped.Load() {return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")}
 		if e := c.publishBrowserGuard(true); e != nil {
 			return nil, e
 		}

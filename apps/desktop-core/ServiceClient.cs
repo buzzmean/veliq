@@ -25,6 +25,7 @@ public sealed class ServiceClient : IServiceClient
     }
     public async Task<T> Call<T>(string method, object? payload = null, CancellationToken cancellationToken = default)
     {
+        byte[]? request = null;
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(timeout);
         var ct = deadline.Token;
@@ -36,7 +37,7 @@ public sealed class ServiceClient : IServiceClient
             if (string.IsNullOrWhiteSpace(token))
                 throw new ServiceException(ServiceFailure.Unavailable);
             var id = Guid.NewGuid().ToString("N");
-            var request = JsonSerializer.SerializeToUtf8Bytes(new
+            request = JsonSerializer.SerializeToUtf8Bytes(new
             {
                 version = 1,
                 id,
@@ -75,5 +76,6 @@ public sealed class ServiceClient : IServiceClient
         catch (InvalidOperationException) { throw new ServiceException(ServiceFailure.Incompatible); }
         catch (FormatException) { throw new ServiceException(ServiceFailure.Incompatible); }
         catch (KeyNotFoundException) { throw new ServiceException(ServiceFailure.Incompatible); }
+        finally { if (request is not null) System.Security.Cryptography.CryptographicOperations.ZeroMemory(request); }
     }
 }

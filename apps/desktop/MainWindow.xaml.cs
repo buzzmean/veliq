@@ -7,6 +7,7 @@ namespace Neexitlag.Desktop;
 public partial class MainWindow : Window
 {
     readonly GameCatalogViewModel games;
+    readonly IServiceClient emergencyService;
     readonly DesktopViewModel model; readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(2) }; readonly CancellationTokenSource lifetime = new();
     readonly LocalPreferences preferences; readonly bool shutdownOnClose; readonly string? preferencesPath; readonly System.Windows.Forms.NotifyIcon tray; readonly System.Drawing.Icon trayImage; bool exiting, settingsLoaded, startupApplied;
     public MainWindow() : this(LocalPreferences.Load(), true, true) { }
@@ -15,6 +16,7 @@ public partial class MainWindow : Window
     internal MainWindow(LocalPreferences preferences, bool background, bool shutdownOnClose, string? preferencesPath = null, IServiceClient? serviceClient = null)
     {
         var service=serviceClient ?? new WindowsServiceClient();
+        emergencyService=service;
         model = new(service);games=new(service);
         this.preferences = preferences;
         this.shutdownOnClose = shutdownOnClose;
@@ -53,6 +55,8 @@ public partial class MainWindow : Window
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add(Text.Get("TrayDiagnostics"), null, (_, _) => Dispatcher.Invoke(() => { ShowFromTray(); ShowPage("Diagnostics"); }));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+        menu.Items.Add("Настроить пароль отключения…", null, (_, _) => Dispatcher.Invoke(OpenEmergencyPasswordSetup));
+        menu.Items.Add("Аварийно отключить VELIQ…", null, (_, _) => Dispatcher.Invoke(EmergencyExit));
         menu.Items.Add(Text.Get("Exit"), null, (_, _) => Dispatcher.Invoke(Exit));
         TrayMenuRenderer.Apply(menu);
         menu.Opening += (_, _) => { enable.Enabled = model.Available && !model.Busy && !model.Optimizing; disable.Enabled = model.Available && !model.Busy && model.Optimizing; };
@@ -116,6 +120,23 @@ public partial class MainWindow : Window
         if (WindowState == WindowState.Minimized)
             WindowState = WindowState.Normal;
         Activate();
+    }
+    void EmergencySetupClick(object sender,RoutedEventArgs e) => OpenEmergencyPasswordSetup();
+    void OpenEmergencyPasswordSetup()
+    {
+        try { EmergencyPasswordStore.OpenSetup(); }
+        catch (System.ComponentModel.Win32Exception) { } // UAC cancelled; no settings changed.
+        catch (Exception error) { model.ReportActionFailure(error); }
+    }
+    void EmergencyExitClick(object sender,RoutedEventArgs e) => EmergencyExit();
+    void EmergencyExit()
+    {
+        timer.Stop();
+        var dialog = new EmergencyPasswordWindow(false,emergencyService);
+        if (IsVisible) dialog.Owner=this;
+        dialog.ShowDialog();
+        if (dialog.Succeeded) { closingReady=true; exiting=true; Close(); }
+        else timer.Start();
     }
     internal void Exit()
     {

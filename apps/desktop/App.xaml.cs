@@ -11,6 +11,12 @@ public partial class App : System.Windows.Application
         CultureInfo.DefaultThreadCurrentCulture = Text.Russian;
         CultureInfo.DefaultThreadCurrentUICulture = Text.Russian;
         base.OnStartup(e);
+        if (e.Args.Contains("--configure-emergency-password",StringComparer.OrdinalIgnoreCase))
+        {
+            MainWindow = new EmergencyPasswordWindow(true);
+            MainWindow.Show();
+            return;
+        }
         var sid = (WindowsIdentity.GetCurrent().User?.Value ?? Environment.UserName) + "-" + System.Diagnostics.Process.GetCurrentProcess().SessionId;
         activationPipe = "NeExitLag-activate-" + sid;
         instance = new Mutex(true, "Local\\NeExitLag-" + sid, out ownsMutex);

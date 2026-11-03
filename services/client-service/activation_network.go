@@ -12,7 +12,7 @@ import (
 // before any WinDivert handle or browser policy is activated.
 // An ended subscription blocks the same way until the next successful payment.
 func (c *Controller) activationNetworkAllowed() bool {
-	return !c.activation.networkBlocked.Load() && !c.subscription.suspended.Load()
+	return !c.emergencyStopped.Load() && !c.activation.networkBlocked.Load() && !c.subscription.suspended.Load()
 }
 func (c *Controller) activationHardware(ctx context.Context, salt []byte) (string, error) {
 	c.activation.mu.Lock()

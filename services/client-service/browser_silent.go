@@ -267,6 +267,7 @@ func (c *Controller) reapplySilentLocked(edge bool) (err error) {
 // Recheck after owner logon (HKU may not be mounted at SCM boot). No HKLM,
 // browser process manipulation, or foreign-policy overwrite. Serialized with IPC.
 func (c *Controller) RetrySilentBrowserPolicies() {
+	if c.emergencyStopped.Load() {return}
 	c.RetryBrowserAuthority()
 	c.retireDisabledBrowserListeners(time.Now(), 3*time.Minute)
 	if !c.browser.readiness.enforced.Load() && !c.activationNetworkAllowed() {
@@ -290,6 +291,7 @@ func (c *Controller) RetrySilentBrowserPolicies() {
 	}
 	c.activationMu.Lock()
 	defer c.activationMu.Unlock()
+	if c.emergencyStopped.Load() {return}
 	c.browser.mu.Lock()
 	defer c.browser.mu.Unlock()
 	for _, edge := range []bool{false, true} {
