@@ -59,6 +59,7 @@
   emailForm.addEventListener('submit', function (e) {
     e.preventDefault();
     var btn = emailForm.querySelector('button'); busy(btn, true); say($('[data-email-error]'), '');
+    if (!emailForm.reportValidity()) { busy(btn, false); return; }
     state.email = emailForm.email.value.trim();
     call('POST', '/login/start', { email: state.email }).then(function () {
       $('[data-sent-to]').textContent = state.email; show('code'); codeForm.code.value = ''; codeForm.code.focus();
@@ -68,6 +69,7 @@
   codeForm.addEventListener('submit', function (e) {
     e.preventDefault();
     var btn = codeForm.querySelector('button[type=submit]'); busy(btn, true); say($('[data-code-error]'), '');
+    if (!/^[0-9]{6}$/.test(codeForm.code.value.trim())) { say($('[data-code-error]'), 'Введите шесть цифр из письма.'); busy(btn, false); return; }
     call('POST', '/login/verify', { email: state.email, code: codeForm.code.value.trim() }).then(load)
       .catch(function (err) { say($('[data-code-error]'), message(err.message)); })
       .then(function () { busy(btn, false); });
@@ -80,7 +82,11 @@
 
   function renderPlans(target) {
     target.textContent = '';
-    state.plans.filter(function(p){ return !state.kind || p.kind === state.kind; }).forEach(function (p) {
+    var plans = state.plans.filter(function(p){ return !state.kind || p.kind === state.kind; });
+    $('[data-plans-empty]').hidden = plans.length > 0;
+    $('[data-choose-plan]').hidden = plans.length === 0;
+    $('[data-subs-hint]').textContent = plans.length ? 'Выберите тариф, чтобы подключить компьютеры к VELIQ.' : 'Здесь появятся ваша подписка и подключённые компьютеры.';
+    plans.forEach(function (p) {
       var card = el('form', 'card acc-plan');
       card.appendChild(el('h3', 'h3', p.title));
       card.appendChild(el('p', 'muted', p.price_per_seat_rub ? (rub(p.price_per_seat_rub) + (p.kind === 'club' ? ' за компьютер' : '') + ' на ' + p.period_days + ' дней') : 'Цена появится перед началом продаж'));
@@ -151,7 +157,7 @@
   function load() {
     return call('GET', '').then(function (data) {
       state.plans = data.plans || []; state.kind=data.kind || ''; state.subscriptions=data.subscriptions || []; state.enforced=!!data.subscription_enforced;
-      if(!state.kind){ show('profile'); return; }
+      if(!state.kind){ updateProfileFields(); show('profile'); return; }
       $('[data-account-email]').textContent = data.email;
       $('[data-account-kind]').textContent = (data.kind === 'club' ? 'Клуб' : 'Пользователь') + (data.name ? ' · ' + data.name : '');
       var subs = $('[data-subs]'); subs.textContent = '';
@@ -172,7 +178,23 @@
       say($('[data-email-error]'), message(err.message)); show('email');
     });
   }
-  $('[data-profile-form]').addEventListener('submit',function(e){
+  var profileForm = $('[data-profile-form]');
+  function updateProfileFields() {
+    var kind = profileForm.elements.namedItem('kind').value;
+    var chosen = kind === 'player' || kind === 'club';
+    var name = profileForm.elements.namedItem('name');
+    $('[data-profile-name-field]').hidden = !chosen;
+    $('[data-profile-name-help]').hidden = !chosen;
+    $('[data-profile-continue]').disabled = !chosen;
+    name.disabled = !chosen;
+    name.required = kind === 'club';
+    name.autocomplete = kind === 'club' ? 'organization' : 'name';
+    $('[data-profile-name-label]').textContent = kind === 'club' ? 'Название клуба' : 'Ваше имя';
+    $('[data-profile-name-help]').textContent = kind === 'club' ? 'Так клуб будет называться в вашем кабинете.' : 'Как к вам обращаться. Можно оставить пустым.';
+  }
+  profileForm.elements.namedItem('kind').addEventListener('change', updateProfileFields);
+  updateProfileFields();
+  profileForm.addEventListener('submit',function(e){
     e.preventDefault();var form=e.currentTarget,button=form.querySelector('button');busy(button,true);
     call('POST','/profile',{kind:form.elements.namedItem('kind').value,name:form.elements.namedItem('name').value.trim()}).then(load)
       .catch(function(err){say($('[data-profile-error]'),message(err.message));}).then(function(){busy(button,false);});
@@ -198,8 +220,10 @@
   });
   function renderImages(){
     var target=$('[data-images]');target.textContent='';
+    $('[data-images-section]').hidden=state.kind!=='club';
+    $('[data-images-empty]').hidden=true;
     if(state.kind!=='club')return;
-    call('GET','/club-images').then(function(data){(data.images||[]).forEach(function(image){
+    call('GET','/club-images').then(function(data){$('[data-images-empty]').hidden=(data.images||[]).length>0;(data.images||[]).forEach(function(image){
       var card=el('article','card'),button=el('button','btn btn--quiet','Запретить новые подключения');
       card.appendChild(el('h3','h3',image.name));card.appendChild(el('p','muted',image.revoked?'Разрешение отозвано':'Разрешение до '+date(image.expires_at)));
       var err=el('p','acc-error');err.hidden=true;button.disabled=image.revoked;

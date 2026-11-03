@@ -54,16 +54,33 @@ try:
         page.locator('[data-email-form] input[name=email]').fill(email)
         page.locator('[data-email-form] button[type=submit]').click()
         page.locator('[data-code-form]').wait_for(state='visible')
+        code_input = page.locator('[data-code-form] input[name=code]')
+        for width in (390, 1280):
+            page.set_viewport_size({'width': width, 'height': 844})
+            box = code_input.bounding_box()
+            if not box or box['width'] < 200 or box['height'] < 48:
+                raise RuntimeError('OTP input is too small')
+            if page.evaluate('document.documentElement.scrollWidth > document.documentElement.clientWidth'):
+                raise RuntimeError('account page overflows horizontally')
         code = call('inbox')['code']
         if not code:
             raise RuntimeError('fixture mail did not arrive')
         page.locator('[data-code-form] input[name=code]').fill(code)
         page.locator('[data-code-form] button[type=submit]').click()
         page.locator('[data-profile-form]').wait_for(state='visible')
+        if page.locator('[data-profile-name-field]').is_visible():
+            raise RuntimeError('profile name appears before account type is selected')
+        if page.locator('[data-profile-continue]').is_enabled():
+            raise RuntimeError('profile submit enabled before account type selection')
         page.locator('[data-profile-form] select[name=kind]').select_option(fixture['kind'])
+        expected_label = 'Название клуба' if fixture['kind'] == 'club' else 'Ваше имя'
+        if page.locator('[data-profile-name-label]').inner_text() != expected_label:
+            raise RuntimeError('profile label does not match account type')
         page.locator('[data-profile-form] input[name=name]').fill('Browser Test Club' if fixture['kind'] == 'club' else 'Browser Test Player')
         page.locator('[data-profile-form] button').click()
         page.locator('[data-step=cabinet]').wait_for(state='visible')
+        if page.locator('[data-images-section]').is_visible() != (fixture['kind'] == 'club'):
+            raise RuntimeError('club images section shown for the wrong account type')
         expected = 'Клуб' if fixture['kind'] == 'club' else 'Пользователь'
         if expected not in page.locator('[data-account-kind]').inner_text():
             raise RuntimeError('account type is not shown')

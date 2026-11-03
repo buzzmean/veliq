@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Личный кабинет — VELIQ</title>
   <meta name="description" content="Вход в личный кабинет VELIQ: аккаунт, подписка и подключение компьютеров.">
-  <link rel="canonical" href="https://veliq.app/account.html">
+  <link rel="canonical" href="https://veliqapp.ru/account.html">
   <meta name="theme-color" content="#0A0A0B">
   <meta name="color-scheme" content="light dark">
   <meta property="og:type" content="website">
@@ -13,13 +13,13 @@
   <meta property="og:locale" content="ru_RU">
   <meta property="og:title" content="Личный кабинет — VELIQ">
   <meta property="og:description" content="Вход в личный кабинет VELIQ: аккаунт, подписка и подключение компьютеров.">
-  <meta property="og:url" content="https://veliq.app/account.html">
-  <meta property="og:image" content="https://veliq.app/assets/img/og-image.png">
+  <meta property="og:url" content="https://veliqapp.ru/account.html">
+  <meta property="og:image" content="https://veliqapp.ru/assets/img/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="VELIQ: нажал — работает.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="https://veliq.app/assets/img/og-image.png">
+  <meta name="twitter:image" content="https://veliqapp.ru/assets/img/og-image.png">
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="assets/img/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="assets/img/app-icon-180.png">
@@ -27,7 +27,7 @@
   <link rel="preload" href="assets/fonts/Onest-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/components.css">
-  <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/site.css?v=279f14b43ad3">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head>
 <body>
@@ -58,54 +58,78 @@
 </header>
 <main id="main">
 
-<section class="page-head"><div class="wrap"><div class="crumbs"><a href="index.html">Главная</a> / Личный кабинет</div><h1 class="h1">Личный кабинет</h1><p class="lede">Аккаунт, подписка и ваши компьютеры — в одном месте.</p></div></section>
-<section class="sec sec--tight"><div class="wrap" data-account>
+<section class="page-head acc-page-head"><div class="wrap"><div class="crumbs"><a href="index.html">Главная</a> / Личный кабинет</div><h1 class="h1">Личный кабинет</h1><p class="lede">Подписка и ваши компьютеры — в одном месте.</p></div></section>
+<section class="sec acc-section"><div class="wrap" data-account>
   <div data-step="email">
-    <form class="acc-form" data-email-form novalidate>
-      <label class="field"><span>Почта</span><input class="input" type="email" name="email" autocomplete="email" required placeholder="you@example.ru"></label>
+    <form class="acc-form card" data-email-form novalidate>
+      <div class="acc-form__intro"><p class="acc-eyebrow">Вход в VELIQ</p><h2 class="h2">Начнём с почты</h2><p class="muted">Пришлём код для входа. Запоминать пароль не нужно.</p></div>
+      <label class="field"><span>Электронная почта</span><input class="input" type="email" name="email" autocomplete="email" required placeholder="you@example.ru"></label>
       <button class="btn" type="submit">Получить код для входа</button>
-      <p class="acc-error" data-email-error hidden></p>
-      <p class="muted acc-small">Пароль не нужен: пришлём на почту код из шести цифр. Входя, вы принимаете <a href="terms.html">оферту</a> и <a href="privacy.html">политику конфиденциальности</a>.</p>
+      <p class="acc-error" data-email-error role="alert" hidden></p>
+      <p class="muted acc-small">Входя, вы принимаете <a href="terms.html">оферту</a> и <a href="privacy.html">политику конфиденциальности</a>.</p>
     </form>
   </div>
   <div data-step="code" hidden>
-    <form class="acc-form" data-code-form novalidate>
-      <p>Код отправлен на <b data-sent-to></b>. Письмо может прийти через минуту, проверьте и «Спам».</p>
-      <label class="field"><span>Код из письма</span><input class="input mono" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></label>
+    <form class="acc-form card" data-code-form novalidate>
+      <div class="acc-form__intro"><p class="acc-eyebrow">Подтверждение почты</p><h2 class="h2">Проверьте почту</h2><p class="muted">Отправили код на <b class="acc-email" data-sent-to></b>.</p></div>
+      <label class="field"><span>Код из письма</span><input class="input acc-otp" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]6" minlength="6" maxlength="6" placeholder="000000" aria-describedby="code-help" required></label>
+      <p class="muted acc-small" id="code-help">Введите все шесть цифр. Код действует 10 минут. Если письма нет, проверьте «Спам».</p>
       <button class="btn" type="submit">Войти</button>
       <button class="btn btn--quiet btn--sm" type="button" data-change-email>Другая почта</button>
-      <p class="acc-error" data-code-error hidden></p>
+      <p class="acc-error" data-code-error role="alert" hidden></p>
     </form>
   </div>
   <div data-step="profile" hidden>
-    <form class="acc-form" data-profile-form>
-      <h2 class="h2">Как вы будете использовать VELIQ?</h2>
-      <label class="field"><span>Тип аккаунта</span><select class="input" name="kind"><option value="player">Пользователь — для себя</option><option value="club">Клуб — для нескольких компьютеров</option></select></label>
-      <label class="field"><span>Имя или название клуба</span><input class="input" name="name" maxlength="80" autocomplete="organization"></label>
-      <button class="btn" type="submit">Продолжить</button><p class="acc-error" data-profile-error hidden></p>
+    <form class="acc-form card" data-profile-form>
+      <div class="acc-form__intro"><p class="acc-eyebrow">Последний шаг</p><h2 class="h2">Настроим ваш кабинет</h2><p class="muted">Выберите, для кого подключаете VELIQ.</p></div>
+      <label class="field"><span>Тип аккаунта</span><span class="acc-select"><select class="input" name="kind" required aria-controls="account-name-field"><option value="" disabled selected>Выберите тип аккаунта</option><option value="player">Пользователь — для себя</option><option value="club">Компьютерный клуб</option></select></span></label>
+      <label class="field" id="account-name-field" data-profile-name-field hidden><span data-profile-name-label>Ваше имя</span><input class="input" name="name" maxlength="80" autocomplete="name" aria-describedby="account-name-help" disabled></label>
+      <p class="muted acc-small" id="account-name-help" data-profile-name-help hidden></p>
+      <button class="btn" type="submit" data-profile-continue disabled>Продолжить</button>
+      <p class="acc-error" data-profile-error role="alert" hidden></p>
     </form>
   </div>
-  <div data-step="cabinet" hidden>
-    <div class="acc-head"><p class="muted" style="margin:0">Вы вошли как <b data-account-email></b> · <span data-account-kind></span></p><button class="btn btn--ghost btn--sm" type="button" data-logout>Выйти</button></div>
-    <section class="card" data-link-panel hidden>
+  <div class="acc-dashboard" data-step="cabinet" hidden>
+    <div class="acc-head card"><div class="acc-identity"><span class="acc-avatar" aria-hidden="true">V</span><div><p class="acc-account-email" data-account-email></p><p class="muted acc-small" data-account-kind></p></div></div><button class="btn btn--ghost btn--sm" type="button" data-logout>Выйти</button></div>
+    <section class="card acc-panel" data-link-panel hidden>
       <h2 class="h2" data-link-title>Подключить компьютер</h2><p data-link-name></p>
-      <form data-link-form><label class="field"><span>Подписка</span><select class="input" name="subscription" data-link-subscription></select></label>
+      <form class="acc-link-form" data-link-form><label class="field"><span>Подписка</span><span class="acc-select"><select class="input" name="subscription" data-link-subscription></select></span></label>
       <button class="btn" type="submit" data-link-approve>Подтвердить подключение</button></form>
-      <p class="muted" data-link-message></p><p class="acc-error" data-link-error hidden></p>
+      <p class="muted" data-link-message></p><p class="acc-error" data-link-error role="alert" hidden></p>
     </section>
-    <h2 class="h2">Подписки</h2>
-    <p class="muted" data-subs-empty>Подписок пока нет. Выберите тариф ниже.</p>
-    <div class="acc-subs" data-subs></div>
-    <h2 class="h2">Оформить подписку</h2>
-    <div class="acc-plans" data-plans></div>
-    <h2 class="h2">Клубные образы</h2><p class="muted">Разрешения для автоматического подключения ПК после отката диска. Секреты не показываются.</p><div data-images></div>
-    <h2 class="h2">Платежи</h2>
-    <p class="muted" data-payments-empty>Платежей пока не было.</p>
-    <ul class="acc-pays" data-payments></ul>
-    <p class="muted acc-small">Вопросы об оплате и возврате — <a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a>. Условия — в <a href="pricing.html#refund">разделе о возврате</a>.</p>
+    <div class="acc-dashboard__grid">
+      <div class="acc-dashboard__main">
+        <section class="card acc-panel" aria-labelledby="account-subscriptions-title">
+          <div class="acc-panel__head"><h2 class="h2" id="account-subscriptions-title">Мои подписки</h2></div>
+          <div class="acc-empty" data-subs-empty><span class="acc-empty__icon" aria-hidden="true"><svg class="i"><use href="#i-games"/></svg></span><h3 class="h3">Пока нет подписок</h3><p class="muted" data-subs-hint>Здесь появятся ваша подписка и подключённые компьютеры.</p><a class="btn btn--sm" href="#account-plans" data-choose-plan hidden>Выбрать тариф</a></div>
+          <div class="acc-subs" data-subs></div>
+        </section>
+        <section class="card acc-panel" id="account-plans" aria-labelledby="account-plans-title">
+          <div class="acc-panel__head"><h2 class="h2" id="account-plans-title">Тарифы</h2><p class="muted acc-small">Для вашего типа аккаунта</p></div>
+          <div class="acc-plans-empty" data-plans-empty hidden><p class="acc-empty__title">Тарифы пока не опубликованы</p><p class="muted">Напишите нам — поможем подобрать подключение и расскажем об условиях.</p><a class="acc-text-link" href="mailto:support@veliqapp.ru">Связаться с поддержкой <span aria-hidden="true">↗</span></a></div>
+          <div class="acc-plans" data-plans></div>
+        </section>
+        <section class="card acc-panel" data-images-section hidden aria-labelledby="account-images-title">
+          <div class="acc-panel__head"><h2 class="h2" id="account-images-title">Образы клуба</h2><p class="muted acc-small">Для автоматического подключения компьютеров после восстановления образа.</p></div>
+          <p class="muted" data-images-empty hidden>Разрешений пока нет. Настройте клубный образ через VELIQ на компьютере.</p><div class="acc-images" data-images></div>
+        </section>
+      </div>
+      <aside class="acc-dashboard__aside" aria-label="Платежи и помощь">
+        <section class="card acc-panel" aria-labelledby="account-payments-title">
+          <h2 class="h2" id="account-payments-title">Платежи</h2>
+          <div class="acc-payments-empty" data-payments-empty><p class="acc-empty__title">Платежей пока нет</p><p class="muted acc-small">После оплаты здесь появится история платежей.</p></div>
+          <ul class="acc-pays" data-payments></ul>
+          <a class="acc-text-link acc-small" href="pricing.html#refund">Условия оплаты и возврата</a>
+        </section>
+        <section class="card acc-panel acc-support" aria-labelledby="account-help-title">
+          <h2 class="h2" id="account-help-title">Нужна помощь?</h2><p class="muted acc-small">Поможем с подпиской и подключением компьютеров.</p><a class="acc-text-link" href="mailto:support@veliqapp.ru">support@veliqapp.ru <span aria-hidden="true">↗</span></a>
+        </section>
+      </aside>
+    </div>
   </div>
 </div></section>
-<script src="assets/account.js"></script>
+<script src="assets/account.js?v=26318b582432"></script>
+
 
 </main>
 <footer class="foot">
@@ -139,5 +163,6 @@
 </footer>
 <script src="assets/charts.js"></script>
 <script src="assets/site.js"></script>
+<script src="assets/release.js?v=014d2d929431"></script>
 </body>
 </html>
