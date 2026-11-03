@@ -1,4 +1,5 @@
 using System.Windows;
+using Microsoft.Win32;
 using System.Windows.Controls;
 using Button = System.Windows.Controls.Button;
 using System.Windows.Threading;
@@ -23,8 +24,29 @@ internal static class EmergencyUiChecks
         Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>frame.Continue=false));
         Dispatcher.PushFrame(frame);
     }
+    static void ProtectedVerifier()
+    {
+        using var parent=Microsoft.Win32.RegistryKey.OpenBaseKey(Microsoft.Win32.RegistryHive.CurrentUser,Microsoft.Win32.RegistryView.Registry64);
+        var name=@"Software\VELIQ-Emergency-Fixture-"+Guid.NewGuid().ToString("N");
+        byte[] value=System.Text.Encoding.UTF8.GetBytes("fixture-only-verifier");
+        try
+        {
+            EmergencyPasswordStore.SaveVerifier(parent,name,value);
+            using var key=parent.OpenSubKey(name)!;
+            if(!((byte[])key.GetValue("Verifier")!).SequenceEqual(value))
+                throw new Exception("Protected verifier readback failed");
+            var acl=key.GetAccessControl(System.Security.AccessControl.AccessControlSections.Owner|System.Security.AccessControl.AccessControlSections.Access);
+            var owner=new System.Security.Principal.SecurityIdentifier(System.Security.Principal.WellKnownSidType.BuiltinAdministratorsSid,null);
+            if(!acl.AreAccessRulesProtected||!owner.Equals(acl.GetOwner(typeof(System.Security.Principal.SecurityIdentifier))))
+                throw new Exception("Protected verifier owner/DACL failed");
+        }
+        finally { parent.DeleteSubKeyTree(name,false); }
+        Console.WriteLine("PASS native emergency verifier: protected disposable registry key, owner and exact value readback");
+    }
+
     internal static void Run()
     {
+        ProtectedVerifier();
         var service=new Fixture();
         var window=new EmergencyPasswordWindow(false,service);
         window.Show();Pump();
@@ -43,6 +65,6 @@ internal static class EmergencyUiChecks
         setup.Show();Pump();
         if(setup.PasswordInput.ActualWidth<350)throw new Exception("Setup field clipped");
         setup.Close();
-        Console.WriteLine("PASS native emergency dialog: masked input, wrong-password failure, acknowledged close; no live service/registry writes");
+        Console.WriteLine("PASS native emergency dialog: masked input, wrong-password failure, acknowledged close; no live service or production registry writes");
     }
 }
