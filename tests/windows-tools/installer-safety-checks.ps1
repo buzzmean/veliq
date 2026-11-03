@@ -60,6 +60,10 @@ try{
  $cleanup=@(('\??\'+$clone),'',('\??\'+$cloneDir),'')
  $evidence=Get-VeliqPendingFileEvidence $cleanup $root
  Check (!$evidence.required -and $evidence.cleanup -eq 2) 'verified Inno cleanup requires reboot'
+ $fso=New-Object -ComObject Scripting.FileSystemObject
+ $shortDirectory=$fso.GetFolder($cloneDir).ShortPath
+ Check (Test-VeliqInnoCleanupDirectory $shortDirectory $root) 'short TEMP alias lost cleanup ownership'
+ [void][Runtime.InteropServices.Marshal]::ReleaseComObject($fso)
  $script:registry=@{'SYSTEM\CurrentControlSet\Control\Session Manager|PendingFileRenameOperations'=$cleanup}
  $state=Get-VeliqRebootState $root
  Check ($state.known -and !$state.required -and $state.deferred_cleanup_count -eq 2) 'cleanup evidence lost'

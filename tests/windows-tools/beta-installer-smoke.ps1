@@ -33,6 +33,20 @@ function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0
    try{$handle=[IO.File]::Open($file.FullName,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);$handle.Dispose()}
    catch{Write-Output ('BETA_UNINSTALL_LOCKED '+$file.FullName.Substring($app.Length+1))}
   }
+  # This fixture owns the entire disposable VM. Show only Inno temp metadata;
+  # never print arbitrary registry values or installation/activation contents.
+  . $helper
+  foreach($value in @(Read-VeliqRebootRegistry 'SYSTEM\CurrentControlSet\Control\Session Manager' 'PendingFileRenameOperations')){
+   if([string]$value -match '^\\\?\?\\([a-zA-Z]:\\.*\\iu-[a-zA-Z0-9]+\.tmp)$'){
+    $directory=$Matches[1];$clone=Join-Path $directory '_unins.tmp'
+    if(Test-Path -LiteralPath $clone){
+     $metadata=Read-VeliqFileVersion $clone
+     $same=(Get-FileHash -LiteralPath $clone).Hash -ceq (Get-FileHash -LiteralPath (Join-Path $app 'unins000.exe')).Hash
+     $diagnostic=[ordered]@{temp_roots=@(Get-VeliqTemporaryRoots);clone_directory=$directory;child_count=@(Get-ChildItem -LiteralPath $directory -Force).Count;description=$metadata.FileDescription;product=$metadata.ProductName;company=$metadata.CompanyName;same_hash=$same;recognized=(Test-VeliqInnoCleanupDirectory $directory $app)}
+     Write-Output ('BETA_INNO_CLEANUP_METADATA '+($diagnostic|ConvertTo-Json -Compress))
+    }
+   }
+  }
  }
  $worker=Start-Job -ScriptBlock {
   param($Executable,$LogFile,$InvalidImage,$AccountImageMode,$UnsafeArguments,$ServiceUpdate)

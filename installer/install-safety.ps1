@@ -21,8 +21,12 @@ function Test-VeliqInnoCleanupDirectory([string]$Directory,[string]$ApplicationD
  # Never exempt arbitrary TEMP deletes or any rename/replacement operation.
  if([IO.Path]::GetFileName($Directory) -notmatch '^iu-[a-z0-9]+\.tmp$'){return $false}
  $parent=[IO.Path]::GetDirectoryName($Directory)
+ if(!(Test-Path -LiteralPath $parent -PathType Container)){return $false}
+ $canonicalParent=(Get-Item -LiteralPath $parent -Force -ErrorAction Stop).FullName.TrimEnd('\')
  $trusted=$false
- foreach($temp in Get-VeliqTemporaryRoots){if($parent -ieq [IO.Path]::GetFullPath($temp).TrimEnd('\')){$trusted=$true}}
+ foreach($temp in Get-VeliqTemporaryRoots){
+  if((Test-Path -LiteralPath $temp -PathType Container) -and $canonicalParent -ieq (Get-Item -LiteralPath $temp -Force -ErrorAction Stop).FullName.TrimEnd('\')){$trusted=$true}
+ }
  if(!$trusted -or !(Test-Path -LiteralPath $Directory -PathType Container)){return $false}
  foreach($path in @($parent,$Directory)){
   if((Get-Item -LiteralPath $path -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint){return $false}
@@ -31,7 +35,7 @@ function Test-VeliqInnoCleanupDirectory([string]$Directory,[string]$ApplicationD
  if($children.Count -ne 1 -or $children[0].PSIsContainer -or $children[0].Name -ine '_unins.tmp' -or ($children[0].Attributes -band [IO.FileAttributes]::ReparsePoint)){return $false}
  $clone=$children[0].FullName
  $version=Read-VeliqFileVersion $clone
- if($version.FileDescription -cne 'Setup/Uninstall' -or $version.ProductName.Trim() -cne 'VELIQ' -or $version.CompanyName.Trim() -cne 'VELIQ'){return $false}
+ if($version.FileDescription.Trim() -cne 'Setup/Uninstall' -or $version.ProductName.Trim() -cne 'VELIQ' -or $version.CompanyName.Trim() -cne 'VELIQ'){return $false}
  if($ApplicationDirectory){
   $original=Join-Path $ApplicationDirectory 'unins000.exe'
   if(Test-Path -LiteralPath $original -PathType Leaf){
