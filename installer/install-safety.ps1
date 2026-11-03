@@ -15,6 +15,136 @@ function Read-VeliqRebootRegistry([string]$Path,[string]$Name='') {
 }
 function Get-VeliqTemporaryRoots { @([IO.Path]::GetTempPath(),(Join-Path $env:SystemRoot 'Temp')) }
 function Read-VeliqFileVersion([string]$Path) { [Diagnostics.FileVersionInfo]::GetVersionInfo($Path) }
+function Get-VeliqVendorCleanupRoots {
+ @{
+  temp=Join-Path ([Environment]::GetFolderPath('Windows')) 'Temp'
+  nvidia=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'NVIDIA Corporation\Installer2\InstallerCore\NVI2.dll'
+  edge=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft\EdgeUpdate'
+ }
+}
+function Initialize-VeliqCleanupReader {
+ if('VeliqCleanupReadHandle' -as [type]){return}
+ # Read handles only: OPEN_EXISTING, no write/delete access or sharing.
+ # Final DOS path and link count come from the opened object, not its name.
+ Add-Type -TypeDefinition @'
+using System;
+using System.IO;
+using System.Text;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using Microsoft.Win32.SafeHandles;
+public sealed class VeliqCleanupReadHandle : IDisposable {
+ [StructLayout(LayoutKind.Sequential)]
+ struct Info {
+  public uint Attributes;
+  public System.Runtime.InteropServices.ComTypes.FILETIME Creation, Access, Write;
+  public uint Volume, SizeHigh, SizeLow, Links, IndexHigh, IndexLow;
+ }
+ [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+ static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
+ [DllImport("kernel32.dll", SetLastError=true)]
+ static extern bool GetFileInformationByHandle(SafeFileHandle handle, out Info info);
+ [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+ static extern uint GetFinalPathNameByHandleW(SafeFileHandle handle, StringBuilder path, uint size, uint flags);
+ SafeFileHandle handle;
+ FileStream stream;
+ public string FinalPath {get; private set;}
+ public uint Links {get; private set;}
+ public uint Attributes {get; private set;}
+ public VeliqCleanupReadHandle(string path, bool directory) {
+  handle=CreateFileW(@"\\?\"+path,0x80000000,1,IntPtr.Zero,3,0x00200000U | (directory ? 0x02000000U : 0U),IntPtr.Zero);
+  try {
+   if(handle.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+   Info info;
+   if(!GetFileInformationByHandle(handle,out info)) throw new Win32Exception(Marshal.GetLastWin32Error());
+   Attributes=info.Attributes; Links=info.Links;
+   if((Attributes & 0x400)!=0 || ((Attributes & 0x10)!=0)!=directory || (!directory && Links!=1))
+    throw new IOException("CLEANUP_OBJECT_TYPE_OR_LINK_REJECTED");
+   var buffer=new StringBuilder(32768);
+   uint count=GetFinalPathNameByHandleW(handle,buffer,(uint)buffer.Capacity,0);
+   if(count==0 || count>=buffer.Capacity) throw new IOException("CLEANUP_FINAL_PATH_UNAVAILABLE");
+   FinalPath=buffer.ToString();
+   if(!FinalPath.StartsWith(@"\\?\",StringComparison.Ordinal)) throw new IOException("CLEANUP_FINAL_PATH_INVALID");
+   FinalPath=FinalPath.Substring(4);
+   if(!String.Equals(FinalPath,path,StringComparison.OrdinalIgnoreCase)) throw new IOException("CLEANUP_PATH_ALIAS_REJECTED");
+   if(!directory) stream=new FileStream(handle,FileAccess.Read);
+  } catch {Dispose();throw;}
+ }
+ public string Hash() {
+  if(stream==null) throw new IOException("CLEANUP_NOT_A_FILE");
+  stream.Position=0;
+  using(var sha=SHA256.Create()) return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-","");
+ }
+ public void Dispose() {
+  if(stream!=null){stream.Dispose();stream=null;}
+  if(handle!=null){handle.Dispose();handle=null;}
+ }
+}
+'@ -ErrorAction Stop
+}
+function Assert-VeliqCleanupPath([string]$Path) {
+ # Reject ambiguous DOS syntax, streams, traversal, short aliases and links
+ # before reading vendor identity. The handle independently verifies the path.
+ if($Path -notmatch '^[a-zA-Z]:\\' -or $Path.Substring(2) -match '[:/*?]' -or $Path.EndsWith('\')){throw 'CLEANUP_PATH_INVALID'}
+ foreach($part in $Path.Substring(3).Split('\')){
+  if(!$part -or $part -in @('.','..') -or $part.EndsWith('.') -or $part.EndsWith(' ')){throw 'CLEANUP_PATH_INVALID'}
+ }
+ $current=$Path
+ while($current){
+  $item=Get-Item -LiteralPath $current -Force -ErrorAction Stop
+  if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'CLEANUP_REPARSE_POINT_REJECTED'}
+  $current=[IO.Path]::GetDirectoryName($current)
+ }
+}
+function Open-VeliqCleanupReadHandle([string]$Path,[bool]$Directory) {
+ Assert-VeliqCleanupPath $Path
+ Initialize-VeliqCleanupReader
+ $handle=[VeliqCleanupReadHandle]::new($Path,$Directory)
+ try{Assert-VeliqCleanupPath $Path;return $handle}catch{$handle.Dispose();throw}
+}
+function Test-VeliqVendorCleanup([string]$Path) {
+ $roots=Get-VeliqVendorCleanupRoots
+ $parent=[IO.Path]::GetDirectoryName($Path)
+ $name=[IO.Path]::GetFileName($Path)
+ if($parent -ieq $roots.temp -and $name -match '^INS_[a-f0-9]{8}\.TMP$'){
+  $copy=$null;$original=$null
+  try{
+   $copy=Open-VeliqCleanupReadHandle $Path $false
+   $original=Open-VeliqCleanupReadHandle $roots.nvidia $false
+   $version=Read-VeliqFileVersion $Path
+   $installed=Read-VeliqFileVersion $roots.nvidia
+   foreach($v in @($version,$installed)){
+    if($v.CompanyName -cne 'NVIDIA Corporation' -or $v.ProductName -cne 'NVIDIA Install Application' -or
+       $v.FileDescription -cne 'NVIDIA Install Core' -or $v.OriginalFilename -cne 'NVI2.dll' -or !$v.FileVersion){return $false}
+   }
+   if($version.FileVersion -cne $installed.FileVersion -or $copy.Hash() -cne $original.Hash()){return $false}
+   Assert-VeliqCleanupPath $Path;Assert-VeliqCleanupPath $roots.nvidia
+   return $true
+  }finally{if($original){$original.Dispose()};if($copy){$copy.Dispose()}}
+ }
+ if($parent -ieq $roots.edge -and $name -match '^\d+\.\d+\.\d+\.\d+$'){
+  # A neighbouring version directory alone does not prove this one obsolete.
+  # Require the registered updater version and its actual matching executable.
+  $registration='SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3C4FE00-EFD5-403B-9569-398A20F1BA4A}'
+  $active=Read-VeliqRebootRegistry $registration 'pv'
+  if($active -isnot [string] -or $active -notmatch '^\d+\.\d+\.\d+\.\d+$' -or [version]$active -le [version]$name){return $false}
+  $directory=$null;$updater=$null
+  try{
+   $directory=Open-VeliqCleanupReadHandle $Path $true
+   if(@(Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop).Count){return $false}
+   $exe=Join-Path (Join-Path $roots.edge $active) 'MicrosoftEdgeUpdate.exe'
+   $updater=Open-VeliqCleanupReadHandle $exe $false
+   $version=Read-VeliqFileVersion $exe
+   if($version.CompanyName -cne 'Microsoft Corporation' -or $version.ProductName -cne 'Microsoft Edge Update' -or
+      $version.OriginalFilename -cne 'MicrosoftEdgeUpdate.exe' -or $version.FileVersion -cne $active){return $false}
+   if((Read-VeliqRebootRegistry $registration 'pv') -cne $active){throw 'CLEANUP_REGISTRATION_CHANGED'}
+   Assert-VeliqCleanupPath $Path;Assert-VeliqCleanupPath $exe
+   return (@(Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop).Count -eq 0)
+  }finally{if($updater){$updater.Dispose()};if($directory){$directory.Dispose()}}
+ }
+ return $false
+}
 function Test-VeliqInnoCleanupDirectory([string]$Directory,[string]$ApplicationDirectory) {
  # Inno 6.4.3 queues its own clone and directory BEFORE InitializeUninstall.
  # This is housekeeping, not a replacement of application/Windows files.
@@ -46,17 +176,18 @@ function Test-VeliqInnoCleanupDirectory([string]$Directory,[string]$ApplicationD
 }
 function Get-VeliqPendingFileEvidence($Value,[string]$ApplicationDirectory) {
  $items=@($Value);$required=$false;$cleanup=0
- if(!$items.Count -or @($items | Where-Object {![string]::IsNullOrWhiteSpace([string]$_)}).Count -eq 0){return @{required=$false;cleanup=0}}
+ if($null -eq $Value -or !$items.Count){return @{required=$false;cleanup=0}}
  if($items.Count % 2){return @{required=$true;cleanup=0}}
  $deletes=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
  for($i=0;$i -lt $items.Count;$i+=2){
-  $source=[string]$items[$i];$destination=[string]$items[$i+1]
+  if($items[$i] -isnot [string] -or $items[$i+1] -isnot [string] -or [string]::IsNullOrWhiteSpace($items[$i])){$required=$true;continue}
+  $source=$items[$i];$destination=$items[$i+1]
   if($destination -ne ''){$required=$true;continue}
   # Current Windows records MoveFileEx deletes with *1/*2 before the NT path.
   # Accept only the observed forms; all other prefixes stay blocking.
   if($source.StartsWith('*1\??\') -or $source.StartsWith('*2\??\')){$source=$source.Substring(2)}
   if($source.StartsWith('\??\')){$source=$source.Substring(4)}
-  if($source -notmatch '^[a-zA-Z]:\\' -or $source.Split('\') -contains '..'){$required=$true;continue}
+  if($source -notmatch '^[a-zA-Z]:\\' -or $source.Substring(2) -match '[:/*?]' -or $source.Split('\') -contains '..'){$required=$true;continue}
   # MoveFileEx can record the not-yet-created clone with a short parent name
   # and the existing directory with its long name. Match their actual paths.
   if($source.TrimEnd('\') -match '\\iu-[a-z0-9]+\.tmp(?:\\_unins\.tmp)?$' -and (Test-Path -LiteralPath $source)){
@@ -68,6 +199,7 @@ function Get-VeliqPendingFileEvidence($Value,[string]$ApplicationDirectory) {
   $directory=$path
   if([IO.Path]::GetFileName($path) -ieq '_unins.tmp'){$directory=[IO.Path]::GetDirectoryName($path)}
   if($deletes.Contains($directory) -and $deletes.Contains((Join-Path $directory '_unins.tmp')) -and (Test-VeliqInnoCleanupDirectory $directory $ApplicationDirectory)){$cleanup++}
+  elseif(Test-VeliqVendorCleanup $path){$cleanup++}
   else{$required=$true}
  }
  return @{required=$required;cleanup=$cleanup}
