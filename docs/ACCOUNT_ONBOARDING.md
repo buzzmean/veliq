@@ -65,6 +65,16 @@ fixture-only endpoints компилируются только в тестовы
 
 ## Сервер до живого теста
 
+Адреса почты: `no-reply@veliqapp.ru` для писем регистрации/входа,
+`support@veliqapp.ru` для обращений пользователей. Провайдер — Timeweb Cloud.
+Наличие ящиков не подтверждает настройку SMTP на CP или доставку письма.
+Параметры: `-smtp-addr smtp.timeweb.ru:465` (TLS сразу),
+`-smtp-from no-reply@veliqapp.ru`, `-smtp-user no-reply@veliqapp.ru`.
+Пароль ящика передаётся только через защищённый `-smtp-password-file`, не в Setup
+или командной строке. [Документация Timeweb Cloud](https://timeweb.cloud/docs/mail/email-clients-configuration).
+Параметры подготовлены; SMTP AUTH, DNS-аутентификация домена и реальная доставка
+ещё не проверены. Старый план подключения Gmail к этим ящикам не применяется.
+
 Клиентский Setup и серверный пакет собираются из одного source SHA. Пакет
 `VELIQ-accounts-server-linux-amd64-NOT-DEPLOYED` содержит control-plane,
 статический сайт и SHA256 manifest, без credentials/identity/ключей.

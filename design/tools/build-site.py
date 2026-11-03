@@ -15,7 +15,7 @@ OUT = ROOT / "website"
 
 SITE = {
     "url": "https://veliq.app",          # ДОПУЩЕНИЕ: домен не выбран, заменить здесь
-    "email": "support@veliq.app",        # ДОПУЩЕНИЕ: адрес поддержки не выбран
+    "email": "support@veliqapp.ru",
     "name": "VELIQ",
 }
 # Продавец и цены. Пока поле пустое, на страницах оплаты и правовых документах показывается пометка «Черновик».
@@ -662,7 +662,7 @@ clubs_body = f"""
       <p class="install-more">Подробные инструкции и ответы на частые вопросы скоро появятся в вики VELIQ.</p>
     </div>
     <aside class="aside">
-      <div class="note">{icon('info')}<div><strong>Нужна помощь?</strong> Напишите на <a href="mailto:{SITE['email']}">{SITE['email']}</a> — расскажем, как подключить клуб, и пришлём код активации.</div></div>
+      <div class="note">{icon('info')}<div><strong>Нужна помощь?</strong> Напишите на <a href="mailto:{SITE['email']}">{SITE['email']}</a> — поможем подключить клуб через личный кабинет.</div></div>
     </aside>
   </div>
 </section>
