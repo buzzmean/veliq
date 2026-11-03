@@ -57,6 +57,11 @@ function Get-VeliqPendingFileEvidence($Value,[string]$ApplicationDirectory) {
   if($source.StartsWith('*1\??\') -or $source.StartsWith('*2\??\')){$source=$source.Substring(2)}
   if($source.StartsWith('\??\')){$source=$source.Substring(4)}
   if($source -notmatch '^[a-zA-Z]:\\' -or $source.Split('\') -contains '..'){$required=$true;continue}
+  # MoveFileEx can record the not-yet-created clone with a short parent name
+  # and the existing directory with its long name. Match their actual paths.
+  if($source.TrimEnd('\') -match '\\iu-[a-z0-9]+\.tmp(?:\\_unins\.tmp)?$' -and (Test-Path -LiteralPath $source)){
+   $source=(Get-Item -LiteralPath $source -Force -ErrorAction Stop).FullName
+  }
   [void]$deletes.Add($source.TrimEnd('\'))
  }
  foreach($path in $deletes){
