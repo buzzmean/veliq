@@ -32,7 +32,7 @@ PRICES = {                               # рубли; None — цена ещё 
     "club_pc_month": None,               # «Клуб», за компьютер в месяц
 }
 OFFER_DATE = "1 ноября 2026"             # дата редакции оферты и политики
-ACCOUNT_URL = "account.html"             # API кабинета включается отдельно на том же origin
+ACCOUNT_URL = "/account"             # API кабинета включается отдельно на том же origin
 PAYMENT_AGENT = "ЮKassa (ООО НКО «ЮМани»)"  # платёжный сервис для карт и СБП
 LOG_RETENTION = None                     # срок хранения журналов соединений на серверах, например "30 дней"
 
@@ -65,12 +65,12 @@ def asset_version(path):
 
 
 NAV = [
-    ("how.html", "Как работает", "how"),
-    ("index.html#games", "Игры", "games"),
-    ("clubs.html", "Клубам", "clubs"),
-    ("pricing.html", "Цены", "pricing"),
-    ("support.html", "Помощь", "support"),
-    ("account.html", "Личный кабинет", "account"),
+    ("/how", "Как работает", "how"),
+    ("/#games", "Игры", "games"),
+    ("/clubs", "Клубам", "clubs"),
+    ("/pricing", "Цены", "pricing"),
+    ("/support", "Помощь", "support"),
+    ("/account", "Личный кабинет", "account"),
 ]
 
 
@@ -79,7 +79,7 @@ def icon(name, cls="i"):
 
 
 def head(title, desc, path, extra_ld=None, og="og-image.png", og_alt="VELIQ: нажал — работает."):
-    url = f'{SITE["url"]}/{path if path != "index.html" else ""}'
+    url = SITE["url"] + ("/" if path == "index.html" else "/" + path.removesuffix(".html"))
     ld = ""
     if extra_ld:
         ld = f'\n  <script type="application/ld+json">{json.dumps(extra_ld, ensure_ascii=False)}</script>'
@@ -129,7 +129,7 @@ def header(active):
     )
     return f"""<header class="top">
   <div class="wrap top__in">
-    <a class="logo" href="index.html" aria-label="VELIQ — на главную">
+    <a class="logo" href="/" aria-label="VELIQ — на главную">
       <img class="on-light" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" width="144" height="66">
       <img class="on-dark" src="assets/img/veliq-wordmark-dark.svg" alt="" width="144" height="66">
     </a>
@@ -140,7 +140,7 @@ def header(active):
       <button class="btn btn--quiet btn--icon btn--sm theme-btn" type="button" data-theme-toggle aria-label="Сменить тему">
         <svg class="i i-sun-use" aria-hidden="true"><use href="#i-sun"/></svg><svg class="i i-moon-use" aria-hidden="true"><use href="#i-moon"/></svg>
       </button>
-      <a class="btn btn--sm top__cta" href="download.html">Скачать</a>
+      <a class="btn btn--sm top__cta" href="/download">Скачать</a>
       <button class="btn btn--quiet btn--icon btn--sm menu-btn" type="button" data-menu aria-expanded="false" aria-controls="nav" aria-label="Меню">{icon('menu')}</button>
     </div>
   </div>
@@ -153,7 +153,7 @@ def footer():
   <div class="wrap">
     <div class="foot__grid">
       <div>
-        <a class="logo" href="index.html" aria-label="VELIQ — на главную">
+        <a class="logo" href="/" aria-label="VELIQ — на главную">
           <img class="on-light" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" width="144" height="66">
           <img class="on-dark" src="assets/img/veliq-wordmark-dark.svg" alt="" width="144" height="66">
         </a>
@@ -161,20 +161,20 @@ def footer():
       </div>
       <div>
         <h2>Продукт</h2>
-        <ul><li><a href="download.html">Скачать</a></li><li><a href="how.html">Как работает</a></li><li><a href="index.html#privacy">Что видит сервер</a></li><li><a href="index.html#games">Для игр</a></li><li><a href="pricing.html">Цены</a></li><li><a href="roadmap.html">План развития</a></li></ul>
+        <ul><li><a href="/download">Скачать</a></li><li><a href="/how">Как работает</a></li><li><a href="/#privacy">Что видит сервер</a></li><li><a href="/#games">Для игр</a></li><li><a href="/pricing">Цены</a></li><li><a href="/roadmap">План развития</a></li></ul>
       </div>
       <div>
         <h2>Клубам</h2>
-        <ul><li><a href="clubs.html">VELIQ для клубов</a></li><li><a href="clubs.html#calc">Расчёт выгоды</a></li><li><a href="clubs.html#setup">Установка в клубе</a></li></ul>
+        <ul><li><a href="/clubs">VELIQ для клубов</a></li><li><a href="/clubs#calc">Расчёт выгоды</a></li><li><a href="/clubs#setup">Установка в клубе</a></li></ul>
       </div>
       <div>
         <h2>Помощь</h2>
-        <ul><li><a href="support.html">Вопросы и ответы</a></li><li><a href="support.html#errors">Ошибки и решения</a></li><li><a href="contacts.html">Контакты и реквизиты</a></li><li><a href="mailto:{SITE['email']}">{SITE['email']}</a></li></ul>
+        <ul><li><a href="/support">Вопросы и ответы</a></li><li><a href="/support#errors">Ошибки и решения</a></li><li><a href="/contacts">Контакты и реквизиты</a></li><li><a href="mailto:{SITE['email']}">{SITE['email']}</a></li></ul>
       </div>
     </div>
     <div class="foot__bottom">
       <span>© 2026 VELIQ{" · " + seller_line() if seller_line() else ""}</span>
-      <span><a href="privacy.html">Конфиденциальность</a>&nbsp;&nbsp;&nbsp;<a href="terms.html">Оферта</a>&nbsp;&nbsp;&nbsp;<a href="contacts.html">Контакты</a></span>
+      <span><a href="/privacy">Конфиденциальность</a>&nbsp;&nbsp;&nbsp;<a href="/terms">Оферта</a>&nbsp;&nbsp;&nbsp;<a href="/contacts">Контакты</a></span>
     </div>
   </div>
 </footer>
@@ -259,13 +259,13 @@ def privacy_block(head_tag="h2"):
 
 
 FAQ_MAIN = [
-    ("Как VELIQ выбирает путь?", "<p>Программа замеряет задержку и потери до сервера игры или сервиса и выбирает лучший путь: прямой — через провайдера, или через серверы VELIQ, если так доступнее, быстрее или стабильнее. Всё, что и так работает хорошо, не трогает. <a href=\"how.html\">Как работает VELIQ</a>.</p>"),
+    ("Как VELIQ выбирает путь?", "<p>Программа замеряет задержку и потери до сервера игры или сервиса и выбирает лучший путь: прямой — через провайдера, или через серверы VELIQ, если так доступнее, быстрее или стабильнее. Всё, что и так работает хорошо, не трогает. <a href=\"/how\">Как работает VELIQ</a>.</p>"),
     ("Нужно ли что-то перезапускать?", "<p>Нет. Маршруты работают сразу после нажатия «Оптимизировать» — ничего закрывать и перезапускать не нужно.</p>"),
     ("Как VELIQ влияет на пинг в играх?", "<p>VELIQ сравнивает пути до игрового сервера и выбирает самый быстрый. Если путь через сеть VELIQ не быстрее обычного, маршрут не меняется. Замеры видно в программе.</p>"),
-    ("Вы видите, что я открываю?", "<p>Нет. Мы не расшифровываем и не подменяем HTTPS. Сервер видит адрес назначения и объём данных — этого достаточно, чтобы переслать трафик. <a href=\"index.html#privacy\">Что видит сервер</a>. Подробности — в <a href=\"privacy.html\">политике конфиденциальности</a>.</p>"),
+    ("Вы видите, что я открываю?", "<p>Нет. Мы не расшифровываем и не подменяем HTTPS. Сервер видит адрес назначения и объём данных — этого достаточно, чтобы переслать трафик. <a href=\"/#privacy\">Что видит сервер</a>. Подробности — в <a href=\"/privacy\">политике конфиденциальности</a>.</p>"),
     ("Какие системы поддерживаются?", "<p>Сейчас VELIQ работает на компьютерах с Windows. Версия для телефона готовится.</p>"),
-    ("Сколько стоит и как оплатить?", "<p>Тарифы — на странице <a href=\"pricing.html\">«Цены»</a>. Оплатить можно картой или через СБП в личном кабинете, клубы могут платить по счёту.</p>"),
-    ("Подходит ли VELIQ для клубов?", "<p>Да. Выберите клубный аккаунт: подписка, компьютеры и разрешения для образов управляются в личном кабинете. <a href=\"clubs.html\">VELIQ для клубов</a>.</p>"),
+    ("Сколько стоит и как оплатить?", "<p>Тарифы — на странице <a href=\"/pricing\">«Цены»</a>. Оплатить можно картой или через СБП в личном кабинете, клубы могут платить по счёту.</p>"),
+    ("Подходит ли VELIQ для клубов?", "<p>Да. Выберите клубный аккаунт: подписка, компьютеры и разрешения для образов управляются в личном кабинете. <a href=\"/clubs\">VELIQ для клубов</a>.</p>"),
 ]
 
 # ---------------------------------------------------------------- главная
@@ -284,8 +284,8 @@ index_body = f"""
       </h1>
       <p class="lede">VELIQ сам выстраивает оптимальный маршрут для каждого соединения: игры получают самый быстрый путь до сервера, голосовые чаты и стримы — стабильную связь.</p>
       <div class="hero__actions">
-        <a class="btn btn--lg" href="download.html">{icon('download')}Скачать</a>
-        <a class="btn btn--lg btn--ghost" href="clubs.html">Для компьютерных клубов</a>
+        <a class="btn btn--lg" href="/download">{icon('download')}Скачать</a>
+        <a class="btn btn--lg btn--ghost" href="/clubs">Для компьютерных клубов</a>
       </div>
       <p class="hero__meta">Бета-версия</p>
     </div>
@@ -351,7 +351,7 @@ index_body = f"""
         <p class="split__note">VELIQ замеряет задержку и выбирает путь, на котором она меньше.</p>
       </div>
     </div>
-    <a class="more" href="how.html">Как работает VELIQ {icon('chevron-right','i i--sm')}</a>
+    <a class="more" href="/how">Как работает VELIQ {icon('chevron-right','i i--sm')}</a>
   </div>
 </section>
 
@@ -397,7 +397,7 @@ index_body = f"""
     <div>
       <h2 class="h2">VELIQ для компьютерных клубов</h2>
       <p class="lede" style="margin-top:20px">Быстрый путь для игр и стабильная связь на всех компьютерах клуба. Гостю ничего настраивать не нужно.</p>
-      <div class="hero__actions" style="margin-top:32px"><a class="btn btn--lg" href="clubs.html">VELIQ для клубов</a><a class="btn btn--lg btn--ghost" href="clubs.html#calc">Посчитать выгоду</a></div>
+      <div class="hero__actions" style="margin-top:32px"><a class="btn btn--lg" href="/clubs">VELIQ для клубов</a><a class="btn btn--lg btn--ghost" href="/clubs#calc">Посчитать выгоду</a></div>
     </div>
     <div class="club-band__pcs" aria-hidden="true">{''.join('<i></i>' for _ in range(27))}</div>
   </div>
@@ -411,14 +411,14 @@ index_body = f"""
         <h2 class="h3" style="font-size:var(--fs-3xl)">VELIQ</h2>
         <ul class="get__meta"><li>Версия <span data-release-version>{RELEASE['version']}</span></li></ul>
       </div>
-      <a class="btn btn--lg" href="download.html">{icon('download')}Скачать</a>
+      <a class="btn btn--lg" href="/download">{icon('download')}Скачать</a>
     </div>
   </div>
 </section>
 
 <section class="sec sec--tight" id="faq" style="padding-top:0">
   <div class="wrap">
-    <div class="sec__head"><h2 class="h2">Частые вопросы</h2><p>Не нашли ответ — <a href="support.html">все вопросы и ошибки</a> или напишите на {SITE['email']}.</p></div>
+    <div class="sec__head"><h2 class="h2">Частые вопросы</h2><p>Не нашли ответ — <a href="/support">все вопросы и ошибки</a> или напишите на {SITE['email']}.</p></div>
     <div class="faq">
 {faq(FAQ_MAIN)}
     </div>
@@ -451,7 +451,7 @@ how_table = "\n".join(f'<tr><th scope="row">{a}</th><td data-l="Без VELIQ">{b
 how_body = f"""
 <section class="page-head">
   <div class="wrap">
-    <div class="crumbs"><a href="index.html">Главная</a> / Как работает</div>
+    <div class="crumbs"><a href="/">Главная</a> / Как работает</div>
     <h1 class="h1" style="max-width:16ch">Как работает VELIQ</h1>
     <p class="lede">Обычно все соединения компьютера идут одним путём, который выбрал провайдер. VELIQ замеряет пути и для каждого соединения выбирает лучший — поэтому игры получают быстрый путь, голосовые чаты и стримы — стабильный, а остальное не замедляется.</p>
   </div>
@@ -497,7 +497,7 @@ how_body = f"""
     <div>
       <h2 class="h2">Нажал — работает.</h2>
       <p class="lede" style="margin-top:20px">Никаких серверов на выбор и настроек. VELIQ строит маршруты сам.</p>
-      <div class="hero__actions" style="margin-top:32px"><a class="btn btn--lg" href="download.html">{icon('download')}Скачать</a><a class="btn btn--lg btn--ghost" href="support.html">Вопросы и ответы</a></div>
+      <div class="hero__actions" style="margin-top:32px"><a class="btn btn--lg" href="/download">{icon('download')}Скачать</a><a class="btn btn--lg btn--ghost" href="/support">Вопросы и ответы</a></div>
     </div>
   </div>
 </section>
@@ -510,7 +510,7 @@ page("how.html", "Как работает VELIQ",
 download_body = f"""
 <section class="page-head">
   <div class="wrap">
-    <div class="crumbs"><a href="index.html">Главная</a> / Скачать</div>
+    <div class="crumbs"><a href="/">Главная</a> / Скачать</div>
     <h1 class="h1">Скачать VELIQ</h1>
     <p class="lede">Скачайте установщик с GitHub. В новой версии подключение компьютера выполняется через ваш аккаунт.</p>
     <div class="platforms" role="group" aria-label="Устройство">
@@ -577,7 +577,7 @@ CLUB_FAQ = [
     ("Нужно ли что-то делать гостю?", "<p>Нет. Гостю ничего настраивать не нужно.</p>"),
     ("Как VELIQ влияет на пинг в играх?", "<p>VELIQ выбирает самый быстрый путь до игрового сервера. Если обычный путь быстрее, маршрут не меняется.</p>"),
     ("Подходит ли VELIQ для моей системы управления клубом?", "<p>Напишите нам, подскажем.</p>"),
-    ("Сколько это стоит?", "<p>Тариф «Клуб» считается за компьютер в месяц — цена на странице <a href=\"pricing.html\">«Цены»</a>. Оплатить можно картой в личном кабинете или по счёту. Выгоду можно прикинуть <a href=\"#calc\">в калькуляторе</a>.</p>"),
+    ("Сколько это стоит?", "<p>Тариф «Клуб» считается за компьютер в месяц — цена на странице <a href=\"/pricing\">«Цены»</a>. Оплатить можно картой в личном кабинете или по счёту. Выгоду можно прикинуть <a href=\"#calc\">в калькуляторе</a>.</p>"),
 ]
 club_calc = f"""
 <div class="calc" data-calc>
@@ -604,7 +604,7 @@ club_calc = f"""
 clubs_body = f"""
 <section class="page-head">
   <div class="wrap">
-    <div class="crumbs"><a href="index.html">Главная</a> / Клубам</div>
+    <div class="crumbs"><a href="/">Главная</a> / Клубам</div>
     <h1 class="h1" style="max-width:15ch">VELIQ для компьютерных клубов</h1>
     <p class="lede">Гости приходят играть, общаться в голосовых чатах и смотреть стримы между матчами. Когда игра лагает или связь рвётся, они уходят туда, где всё в порядке.</p>
     <div class="hero__actions" style="margin-top:32px"><a class="btn btn--lg" href="#apply">Оставить заявку</a><a class="btn btn--lg btn--ghost" href="#calc">Посчитать выгоду</a></div>
@@ -686,7 +686,7 @@ clubs_body = f"""
     <div>
       <h2 class="h2">Поставим на один ПК — решите по факту</h2>
       <p class="lede" style="margin-top:20px">Напишите, сколько у вас компьютеров и какая система управления. Поможем настроить аккаунт клуба и подключить первые компьютеры.</p>
-      <div class="hero__actions" style="margin-top:32px"><a class="btn btn--lg" href="mailto:{SITE['email']}?subject=VELIQ%20для%20клуба">Оставить заявку</a><a class="btn btn--lg btn--ghost" href="pricing.html">Тарифы</a></div>
+      <div class="hero__actions" style="margin-top:32px"><a class="btn btn--lg" href="mailto:{SITE['email']}?subject=VELIQ%20для%20клуба">Оставить заявку</a><a class="btn btn--lg btn--ghost" href="/pricing">Тарифы</a></div>
     </div>
     <div class="club-band__pcs" aria-hidden="true">{''.join('<i></i>' for _ in range(27))}</div>
   </div>
@@ -709,7 +709,7 @@ PRICE_NOTE = "" if PRICES_READY and SELLER_READY else f'<div class="note note--d
 pricing_body = f"""
 <section class="page-head">
   <div class="wrap">
-    <div class="crumbs"><a href="index.html">Главная</a> / Цены</div>
+    <div class="crumbs"><a href="/">Главная</a> / Цены</div>
     <h1 class="h1">Цены</h1>
     <p class="lede">Подписка на месяц. Платите за число компьютеров, на которых работает VELIQ.</p>
   </div>
@@ -740,7 +740,7 @@ pricing_body = f"""
         <a class="btn btn--ghost" href="mailto:{SITE['email']}?subject=Сеть%20клубов">Написать нам</a>
       </div>
     </div>
-    <p class="faint" style="font-size:var(--fs-sm);margin:var(--sp-4) 0 0">Цены в рублях, НДС не облагается.{" Продавец: " + seller_line() + "." if seller_line() else ""} Полные условия — в <a href="terms.html">публичной оферте</a>.</p>
+    <p class="faint" style="font-size:var(--fs-sm);margin:var(--sp-4) 0 0">Цены в рублях, НДС не облагается.{" Продавец: " + seller_line() + "." if seller_line() else ""} Полные условия — в <a href="/terms">публичной оферте</a>.</p>
   </div>
 </section>
 <section class="sec band--sunken" id="pay">
@@ -787,7 +787,7 @@ SUPPORT_FAQ = FAQ_MAIN + [
 support_body = f"""
 <section class="page-head">
   <div class="wrap">
-    <div class="crumbs"><a href="index.html">Главная</a> / Помощь</div>
+    <div class="crumbs"><a href="/">Главная</a> / Помощь</div>
     <h1 class="h1">Помощь</h1>
     <p class="lede">Ответы на частые вопросы и что делать при каждой ошибке, которую показывает программа.</p>
   </div>
@@ -828,7 +828,7 @@ SELLER_BLOCK = f"""<ul>
 </ul>"""
 
 privacy_body = f"""
-<section class="page-head"><div class="wrap"><div class="crumbs"><a href="index.html">Главная</a> / Конфиденциальность</div><h1 class="h1">Политика конфиденциальности</h1><p class="lede">Какие данные получает VELIQ, зачем и сколько их хранит. Редакция от {OFFER_DATE}.</p></div></section>
+<section class="page-head"><div class="wrap"><div class="crumbs"><a href="/">Главная</a> / Конфиденциальность</div><h1 class="h1">Политика конфиденциальности</h1><p class="lede">Какие данные получает VELIQ, зачем и сколько их хранит. Редакция от {OFFER_DATE}.</p></div></section>
 <section class="sec sec--tight"><div class="wrap prose">
 {DRAFT}
 <h2>Коротко</h2>
@@ -869,7 +869,7 @@ privacy_body = f"""
 page("privacy.html", "Политика конфиденциальности", "Какие данные получает VELIQ, зачем и сколько хранит. HTTPS не расшифровывается, данные не продаются.", "", privacy_body)
 
 terms_body = f"""
-<section class="page-head"><div class="wrap"><div class="crumbs"><a href="index.html">Главная</a> / Оферта</div><h1 class="h1">Публичная оферта</h1><p class="lede">Договор на предоставление доступа к сервису VELIQ. Редакция от {OFFER_DATE}.</p></div></section>
+<section class="page-head"><div class="wrap"><div class="crumbs"><a href="/">Главная</a> / Оферта</div><h1 class="h1">Публичная оферта</h1><p class="lede">Договор на предоставление доступа к сервису VELIQ. Редакция от {OFFER_DATE}.</p></div></section>
 <section class="sec sec--tight"><div class="wrap prose">
 {DRAFT}
 <p>{SELLER['name'] or '[ФИО продавца]'}, {SELLER['status']}, ИНН {SELLER['inn'] or '[ИНН]'} (далее — Исполнитель), предлагает любому лицу (далее — Пользователь) заключить договор на условиях ниже. Это публичная оферта по ст. 437 Гражданского кодекса РФ.</p>
@@ -886,7 +886,7 @@ terms_body = f"""
 <p>Оплата Подписки означает полное и безоговорочное принятие этой оферты (п. 3 ст. 438 ГК РФ). Договор действует до окончания оплаченного периода и продлевается при каждой следующей оплате.</p>
 <h2>4. Стоимость и оплата</h2>
 <ul>
-<li>Цены указаны на странице <a href="pricing.html">«Цены»</a> в рублях. НДС не облагается: Исполнитель применяет налог на профессиональный доход.</li>
+<li>Цены указаны на странице <a href="/pricing">«Цены»</a> в рублях. НДС не облагается: Исполнитель применяет налог на профессиональный доход.</li>
 <li>Оплата — банковской картой или через СБП на платёжной странице {PAYMENT_AGENT}, либо по счёту для организаций и ИП.</li>
 <li>После оплаты Исполнитель формирует чек в приложении «Мой налог» и направляет его на электронную почту Пользователя.</li>
 <li>Изменение цен не затрагивает уже оплаченный период. О новой цене для автопродления сообщим письмом не позднее чем за 7 дней.</li>
@@ -925,7 +925,7 @@ terms_body = f"""
 <li>Ответственность Исполнителя ограничена суммой, уплаченной за текущий период, кроме случаев, когда ограничение запрещено законом.</li>
 </ul>
 <h2>10. Персональные данные</h2>
-<p>Исполнитель обрабатывает данные Пользователя по <a href="privacy.html">политике конфиденциальности</a>. Принимая оферту, Пользователь соглашается с ней.</p>
+<p>Исполнитель обрабатывает данные Пользователя по <a href="/privacy">политике конфиденциальности</a>. Принимая оферту, Пользователь соглашается с ней.</p>
 <h2>11. Изменение оферты и споры</h2>
 <p>Новая редакция публикуется на этой странице и действует для новых оплат. Споры решаются переговорами; претензию нужно направить на электронную почту, ответ — в течение 10 рабочих дней. Если договориться не удалось — в суде по законодательству РФ.</p>
 <h2>12. Реквизиты Исполнителя</h2>
@@ -935,7 +935,7 @@ terms_body = f"""
 page("terms.html", "Публичная оферта", "Условия предоставления доступа к VELIQ: оплата, автопродление, возврат, ответственность.", "", terms_body)
 
 contacts_body = f"""
-<section class="page-head"><div class="wrap"><div class="crumbs"><a href="index.html">Главная</a> / Контакты</div><h1 class="h1">Контакты и реквизиты</h1><p class="lede">Как с нами связаться и кто продаёт VELIQ.</p></div></section>
+<section class="page-head"><div class="wrap"><div class="crumbs"><a href="/">Главная</a> / Контакты</div><h1 class="h1">Контакты и реквизиты</h1><p class="lede">Как с нами связаться и кто продаёт VELIQ.</p></div></section>
 <section class="sec sec--tight"><div class="wrap cols">
   <div class="prose">
     {DRAFT if not SELLER_READY else ""}
@@ -943,13 +943,13 @@ contacts_body = f"""
     <p>Поддержка, вопросы об оплате и возврате, заявки клубов — <a href="mailto:{SITE['email']}">{SITE['email']}</a>{f", {SELLER['phone']}" if SELLER['phone'] else ""}. Отвечаем в течение рабочего дня.</p>
     <h2>Реквизиты</h2>
     {SELLER_BLOCK}
-    <p>Документы: <a href="terms.html">публичная оферта</a>, <a href="privacy.html">политика конфиденциальности</a>, <a href="pricing.html#refund">условия возврата</a>.</p>
+    <p>Документы: <a href="/terms">публичная оферта</a>, <a href="/privacy">политика конфиденциальности</a>, <a href="/pricing#refund">условия возврата</a>.</p>
   </div>
   <aside class="aside">
     <div class="card">
       <h2 class="h3" style="margin-bottom:10px">Нужна помощь с программой?</h2>
       <p class="muted" style="margin:0 0 16px;font-size:var(--fs-sm)">Ответы на частые вопросы и решения ошибок — на странице помощи.</p>
-      <a class="btn btn--sm btn--ghost" href="support.html">Помощь</a>
+      <a class="btn btn--sm btn--ghost" href="/support">Помощь</a>
     </div>
   </aside>
 </div></section>
@@ -959,7 +959,7 @@ page("contacts.html", "Контакты и реквизиты", "Контакт�
 # ---------------------------------------------------------------- личный кабинет
 # Разметку оживляет assets/account.js; API — /api/v1/account на том же домене (docs/ACCOUNTS.md).
 account_body = f"""
-<section class="page-head acc-page-head"><div class="wrap"><div class="crumbs"><a href="index.html">Главная</a> / Личный кабинет</div><h1 class="h1">Личный кабинет</h1><p class="lede">Подписка и ваши компьютеры — в одном месте.</p></div></section>
+<section class="page-head acc-page-head"><div class="wrap"><div class="crumbs"><a href="/">Главная</a> / Личный кабинет</div><h1 class="h1">Личный кабинет</h1><p class="lede">Подписка и ваши компьютеры — в одном месте.</p></div></section>
 <section class="sec acc-section"><div class="wrap" data-account>
   <div data-step="email">
     <form class="acc-form card" data-email-form novalidate>
@@ -967,7 +967,7 @@ account_body = f"""
       <label class="field"><span>Электронная почта</span><input class="input" type="email" name="email" autocomplete="email" required placeholder="you@example.ru"></label>
       <button class="btn" type="submit">Получить код для входа</button>
       <p class="acc-error" data-email-error role="alert" hidden></p>
-      <p class="muted acc-small">Входя, вы принимаете <a href="terms.html">оферту</a> и <a href="privacy.html">политику конфиденциальности</a>.</p>
+      <p class="muted acc-small">Входя, вы принимаете <a href="/terms">оферту</a> и <a href="/privacy">политику конфиденциальности</a>.</p>
     </form>
   </div>
   <div data-step="code" hidden>
@@ -1020,7 +1020,7 @@ account_body = f"""
           <h2 class="h2" id="account-payments-title">Платежи</h2>
           <div class="acc-payments-empty" data-payments-empty><p class="acc-empty__title">Платежей пока нет</p><p class="muted acc-small">После оплаты здесь появится история платежей.</p></div>
           <ul class="acc-pays" data-payments></ul>
-          <a class="acc-text-link acc-small" href="pricing.html#refund">Условия оплаты и возврата</a>
+          <a class="acc-text-link acc-small" href="/pricing#refund">Условия оплаты и возврата</a>
         </section>
         <section class="card acc-panel acc-support" aria-labelledby="account-help-title">
           <h2 class="h2" id="account-help-title">Нужна помощь?</h2><p class="muted acc-small">Поможем с подпиской и подключением компьютеров.</p><a class="acc-text-link" href="mailto:{SITE['email']}">{SITE['email']} <span aria-hidden="true">↗</span></a>
@@ -1038,7 +1038,7 @@ nf_body = f"""
 <section class="center-stack"><div class="wrap">
   <h1 class="h-display"><span class="slit-line" style="margin:0 auto"><span class="slit">404</span></span></h1>
   <p class="lede" style="margin:24px auto 32px">Такой страницы нет. Возможно, её перенесли.</p>
-  <a class="btn btn--lg" href="index.html">На главную</a>
+  <a class="btn btn--lg" href="/">На главную</a>
 </div></section>
 """
 page("404.html", "Страница не найдена", "Страница не найдена.", "", nf_body)
@@ -1084,7 +1084,7 @@ roadmap_stages = "\n".join(
 roadmap_body = f"""
 <section class="page-head">
   <div class="wrap">
-    <div class="crumbs"><a href="index.html">Главная</a> / План развития</div>
+    <div class="crumbs"><a href="/">Главная</a> / План развития</div>
     <h1 class="h1">План развития</h1>
     <p class="lede">Что VELIQ уже умеет, над чем работаем сейчас и что будет дальше.</p>
   </div>
@@ -1096,7 +1096,7 @@ roadmap_body = f"""
     </ol>
     <div class="rm__foot">
       <p>Обновлено {ROADMAP_UPDATED}. Сроки не объявляем: пункт переходит в «Готово» только после проверки на реальных компьютерах и у реальных провайдеров.</p>
-      <div class="hero__actions"><a class="btn btn--lg" href="download.html">{icon('download')}Скачать</a><a class="btn btn--lg btn--ghost" href="clubs.html">Для компьютерных клубов</a></div>
+      <div class="hero__actions"><a class="btn btn--lg" href="/download">{icon('download')}Скачать</a><a class="btn btn--lg btn--ghost" href="/clubs">Для компьютерных клубов</a></div>
     </div>
   </div>
 </section>
@@ -1104,13 +1104,13 @@ roadmap_body = f"""
 page("roadmap.html", "План развития", "Что VELIQ уже умеет, над чем работаем сейчас и что будет дальше.", "", roadmap_body)
 
 # ---------------------------------------------------------------- служебные файлы
-pages = ["", "how.html", "download.html", "clubs.html", "pricing.html", "support.html", "privacy.html", "terms.html", "contacts.html", "roadmap.html"]
+pages = ["", "how", "download", "clubs", "pricing", "support", "privacy", "terms", "contacts", "roadmap"]
 (OUT / "sitemap.xml").write_text(
     '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     + "".join(f"  <url><loc>{SITE['url']}/{p}</loc></url>\n" for p in pages) + "</urlset>\n", encoding="utf-8")
-(OUT / "robots.txt").write_text(f"User-agent: *\nAllow: /\nDisallow: /account.html\nDisallow: /api/\nSitemap: {SITE['url']}/sitemap.xml\n", encoding="utf-8")
+(OUT / "robots.txt").write_text(f"User-agent: *\nAllow: /\nDisallow: /account\nDisallow: /api/\nSitemap: {SITE['url']}/sitemap.xml\n", encoding="utf-8")
 (OUT / "site.webmanifest").write_text(json.dumps({
-    "name": "VELIQ", "short_name": "VELIQ", "lang": "ru", "start_url": "index.html", "display": "browser",
+    "name": "VELIQ", "short_name": "VELIQ", "lang": "ru", "start_url": "/", "display": "browser",
     "background_color": "#0A0A0B", "theme_color": "#0A0A0B",
     "icons": [{"src": "assets/img/app-icon-192.png", "sizes": "192x192", "type": "image/png"},
               {"src": "assets/img/app-icon-512.png", "sizes": "512x512", "type": "image/png"}]}, ensure_ascii=False, indent=2), encoding="utf-8")
