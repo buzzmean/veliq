@@ -36,6 +36,14 @@ function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0
   # This fixture owns the entire disposable VM. Show only Inno temp metadata;
   # never print arbitrary registry values or installation/activation contents.
   . $helper
+  $pendingItems=@(Read-VeliqRebootRegistry 'SYSTEM\CurrentControlSet\Control\Session Manager' 'PendingFileRenameOperations')
+  $shapes=@(foreach($pendingItem in $pendingItems){
+   $text=[string]$pendingItem;$parts=$text.Split('\');$tail=($parts | Select-Object -Last 2) -join '\'
+   if($tail -notmatch '^[a-zA-Z0-9_.~!\\-]{0,100}$'){$tail='REDACTED'}
+   [ordered]@{empty=($text.Length -eq 0);prefix_codes=@($text.ToCharArray()|Select-Object -First 4|ForEach-Object {[int]$_});tail=$tail}
+  })
+  Write-Output ('BETA_PENDING_FILE_SHAPES '+($shapes|ConvertTo-Json -Depth 4 -Compress))
+  Write-Output ('BETA_REBOOT_STATE '+((Get-VeliqRebootState $app)|ConvertTo-Json -Compress))
   foreach($value in @(Read-VeliqRebootRegistry 'SYSTEM\CurrentControlSet\Control\Session Manager' 'PendingFileRenameOperations')){
    if([string]$value -match '^\\\?\?\\([a-zA-Z]:\\.*\\iu-[a-zA-Z0-9]+\.tmp)$'){
     $directory=$Matches[1];$clone=Join-Path $directory '_unins.tmp'
