@@ -5,6 +5,9 @@ on:
       - '.github/workflows/beta-candidate.yml'
       - 'tools/beta_acceptance.py'
       - 'docs/BETA*'
+      - 'installer/**'
+      - 'tests/windows-tools/installer-*.ps1'
+      - 'tests/windows-tools/beta-installer-smoke.ps1'
 permissions:
   contents: read
 jobs:
@@ -65,10 +68,18 @@ jobs:
         with: {dotnet-version: '8.0.x'}
       - name: Safe runtime evidence (PowerShell 5.1)
         shell: powershell
-        run: '& ./tests/windows-tools/beta-runtime-evidence-checks.ps1'
+        run: |
+          & ./tests/windows-tools/beta-runtime-evidence-checks.ps1
+          & ./tests/windows-tools/installer-safety-checks.ps1
+          & ./tests/windows-tools/installer-package-checks.ps1
+          & python -m unittest discover -s tests/installer -v
+          if ($LASTEXITCODE) { throw 'INSTALLER_CONTRACTS_FAILED' }
       - name: Safe runtime evidence (PowerShell 7)
         shell: pwsh
-        run: '& ./tests/windows-tools/beta-runtime-evidence-checks.ps1'
+        run: |
+          & ./tests/windows-tools/beta-runtime-evidence-checks.ps1
+          & ./tests/windows-tools/installer-safety-checks.ps1
+          & ./tests/windows-tools/installer-package-checks.ps1
       - uses: actions/download-artifact@v4
         with:
           name: beta-published-public-trust

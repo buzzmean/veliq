@@ -18,27 +18,29 @@ function Get-OwnedServiceState([string]$Name='VELIQ'){
 }
 foreach($name in @('VELIQ','neexitlag')){if((Get-OwnedServiceState $name) -ne 'ABSENT'){throw 'EXISTING_SERVICE_PRESERVED'}}
 foreach($path in @($installed,$app,(Join-Path $env:ProgramData 'neexitlag'),(Join-Path $env:ProgramFiles 'VELIQ Setup'))){if(Test-Path -LiteralPath $path){throw 'EXISTING_INSTALLATION_PRESERVED'}}
-function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage,[switch]$AccountImage){
+function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage,[switch]$AccountImage,[switch]$OmitNoRestart,[switch]$UpdateMode){
  # Inno's uninstaller delegates to _unins.tmp. Process.WaitForExit waits only
  # for the launcher; PowerShell Start-Process -Wait waits for its process tree.
  # A worker job preserves that behavior and bounds it without killing browsers.
  $log=Join-Path $env:RUNNER_TEMP ('beta-inno-'+$Stage+'-'+[guid]::NewGuid().ToString('N')+'.log')
  Write-Output ('BETA_INSTALLER_START stage='+$Stage)
  $worker=Start-Job -ScriptBlock {
-  param($Executable,$LogFile,$InvalidImage,$AccountImageMode)
+  param($Executable,$LogFile,$InvalidImage,$AccountImageMode,$UnsafeArguments,$ServiceUpdate)
   $ErrorActionPreference='Stop'
-  $arguments=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$LogFile+'"'))
+  $arguments=@('/VERYSILENT','/SUPPRESSMSGBOXES',('/LOG="'+$LogFile+'"'))
+  if(!$UnsafeArguments){$arguments+='/NORESTART';$arguments+='/RESTARTEXITCODE=3010'}
+  if($ServiceUpdate){$arguments+='/UPDATE=1'}
   if($AccountImageMode){$arguments+='/CLUBIMAGE=1'}
   if($InvalidImage){$arguments+='/CLUBIMAGE=1';$missing=Join-Path (Split-Path $Executable -Parent) ('missing-code-'+[guid]::NewGuid().ToString('N')+'.txt');$arguments+=('/CLUBCODEFILE="'+$missing+'"')}
-  $process=Start-Process -FilePath $Executable -ArgumentList $arguments -Wait -PassThru
+  $process=Start-Process -FilePath $Executable -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
   try{[int]$process.ExitCode}finally{$process.Dispose()}
- } -ArgumentList $Path,$log,([bool]$InvalidClubImage),([bool]$AccountImage)
+ } -ArgumentList $Path,$log,([bool]$InvalidClubImage),([bool]$AccountImage),([bool]$OmitNoRestart),([bool]$UpdateMode)
  try{
   $finished=Wait-Job -Job $worker -Timeout 180
   if(!$finished){throw ('OWNED_INSTALLER_TREE_TIMEOUT stage='+$Stage)}
   if($worker.State -ne 'Completed'){throw ('OWNED_INSTALLER_WORKER_FAILED stage='+$Stage)}
   $codes=@(Receive-Job -Job $worker -ErrorAction Stop)
-  if($codes.Count -ne 1 -or $codes[0] -ne $ExpectedExit){throw ('OWNED_INSTALLER_EXIT_FAILED stage='+$Stage)}
+  if($codes.Count -ne 1 -or $codes[0] -ne $ExpectedExit){throw ('OWNED_INSTALLER_EXIT_FAILED stage='+$Stage+' expected='+$ExpectedExit+' actual='+($codes -join ','))}
   Write-Output ('BETA_INSTALLER_FINISHED stage='+$Stage)
  }finally{
   if($worker.State -in @('Running','NotStarted')){Stop-Job -Job $worker}
@@ -73,10 +75,11 @@ function Write-PreflightEnvironmentProbe {
 function Assert-InstalledCandidate {
  if((Get-OwnedServiceState) -ne 'Running'){throw 'INSTALLED_SERVICE_NOT_RUNNING'}
  $result=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
- if($result.result -cne 'PASS'){throw 'INSTALL_RESULT_NOT_PASS'}
+ if($result.result -cne 'PASS' -or !$result.reboot_check_known -or $result.reboot_required -ne $false -or @($result.reboot_reasons).Count){throw 'INSTALL_RESULT_NOT_PASS'}
  foreach($pair in @(@('service/veliq-service.exe',(Join-Path $installed 'veliq-service.exe')),@('gui/VELIQ.exe',(Join-Path $app 'VELIQ.exe')))){
   if((Get-FileHash -LiteralPath (Join-Path $payload $pair[0])).Hash -cne (Get-FileHash -LiteralPath $pair[1]).Hash){throw 'INSTALLED_CANDIDATE_HASH_MISMATCH'}
  }
+ if($result.gui_sha256 -cne (Get-FileHash -LiteralPath (Join-Path $app 'VELIQ.exe')).Hash.ToLowerInvariant() -or $result.service_sha256 -cne (Get-FileHash -LiteralPath (Join-Path $installed 'veliq-service.exe')).Hash.ToLowerInvariant()){throw 'INSTALL_RESULT_HASH_EVIDENCE_MISMATCH'}
  $snapshotFile=Join-Path $env:RUNNER_TEMP ('beta-snapshot-'+[guid]::NewGuid().ToString('N')+'.json')
  & (Join-Path $PSScriptRoot '../../tools/windows/Get-BetaSnapshot.ps1') -Manifest (Join-Path $PSScriptRoot '../../bin/beta-kit/candidate.json') -PCId 'PC01' -OutputPath $snapshotFile
  $snapshot=Get-Content -Raw -LiteralPath $snapshotFile|ConvertFrom-Json
@@ -89,6 +92,9 @@ function Assert-InstalledCandidate {
 }
 $uninstalled=$false
 try{
+ # This negative case must exit during initialization, before any file or SCM change.
+ Invoke-OwnedInstaller $setup 'missing-norestart' -ExpectedExit 1 -OmitNoRestart
+ foreach($path in @($installed,$app)){if(Test-Path -LiteralPath $path){throw 'UNSAFE_SETUP_ARGUMENTS_MUTATED_MACHINE'}}
  # An explicitly supplied missing legacy file must fail before SCM/identity creation.
  # New CLUBIMAGE mode without a file uses account approval instead.
  # Inno used to suppress the script exception and falsely return exit 0.
@@ -100,6 +106,26 @@ try{
  Write-Output 'BETA_NEGATIVE_SETUP_PASS exit=1; invalid legacy file; no SCM service'
  Invoke-OwnedInstaller $setup 'install'
  Assert-InstalledCandidate
+ # A real incompatible file handle must stop both interactive-owner and SYSTEM
+ # update modes BEFORE [InstallDelete], preserving the running service and GUI.
+ $beforeService=Get-CimInstance Win32_Service -Filter "Name='VELIQ'"
+ $beforeHash=(Get-FileHash -LiteralPath (Join-Path $app 'VELIQ.exe')).Hash
+ $held=[IO.File]::Open((Join-Path $app 'VELIQ.exe'),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+ try{
+  Invoke-OwnedInstaller $setup 'locked-gui' -ExpectedExit 7
+  Invoke-OwnedInstaller $setup 'locked-gui-update-mode' -ExpectedExit 7 -UpdateMode
+ }finally{$held.Dispose()}
+ if((Get-CimInstance Win32_Service -Filter "Name='VELIQ'").ProcessId -ne $beforeService.ProcessId -or (Get-FileHash -LiteralPath (Join-Path $app 'VELIQ.exe')).Hash -cne $beforeHash){throw 'LOCKED_GUI_PREFLIGHT_MUTATED_INSTALLATION'}
+ Assert-InstalledCandidate
+ # Simulate the old false-success case: payload is valid but installed GUI is old.
+ [IO.File]::AppendAllText((Join-Path $app 'VELIQ.exe'),'mismatched-installed-gui')
+ $powershell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+ $packageScript=Join-Path $app 'installer/install-package.ps1'
+ $check=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',('"& '''+$packageScript+''' -Update"')) -WindowStyle Hidden -Wait -PassThru
+ try{if($check.ExitCode -eq 0){throw 'WRONG_INSTALLED_GUI_ACCEPTED'}}finally{$check.Dispose()}
+ $failure=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
+ if($failure.result -cne 'FAIL' -or $failure.code -cne 'INSTALL_GUI_HASH_MISMATCH' -or (Test-Path -LiteralPath (Join-Path $app 'install-success.json'))){throw 'WRONG_INSTALLED_GUI_FALSE_SUCCESS'}
+ Write-Output 'BETA_NO_REBOOT_PASS unsafe argv refused; locked GUI leaves service/files unchanged; installed GUI mismatch cannot PASS'
  # Re-install the identical package exercises the real existing-service update.
  Invoke-OwnedInstaller $setup 'update'
  Assert-InstalledCandidate

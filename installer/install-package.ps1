@@ -6,6 +6,7 @@ $result=Join-Path $root 'install-result.json';$success=Join-Path $root 'install-
 Remove-Item -LiteralPath $success -Force -ErrorAction SilentlyContinue
 $step='PACKAGE_PREFLIGHT'
 $installerModulePath=$env:PSModulePath
+. (Join-Path $PSScriptRoot 'install-safety.ps1')
 try{
  # Inno inherits the launching shell's environment. A PS7 PSModulePath can hide
  # Windows PowerShell's Get-FileHash even though other cmdlets still resolve.
@@ -16,6 +17,7 @@ try{
  }
  . (Join-Path $PSScriptRoot 'package-contract.ps1')
  Assert-VeliqPackage $root
+ Assert-VeliqNoPendingReboot (Get-VeliqRebootState)
  $installed=Join-Path $env:ProgramData 'VELIQ';$manifest=Join-Path $installed 'service.json'
  if($Update){
   # Service-driven update (SYSTEM): the installed owner stays the owner.
@@ -31,8 +33,8 @@ try{
  }
  if($ClubImage){if($Remove){throw 'CLUB_IMAGE_REMOVE_CONFLICT'};if($ClubCodeFile -and !(Test-Path -LiteralPath $ClubCodeFile -PathType Leaf)){throw 'CLUB_CODE_FILE_INVALID'};. (Join-Path $root 'tools\windows\club-image-common.ps1');Assert-ClubImageClean $installed;Protect-ClubPackageTree -Root $root -OwnerSid $owner}
  if(Test-Path $manifest){$existing=Get-Content -Raw -LiteralPath $manifest|ConvertFrom-Json;if($existing.owner_sid -ne $owner){throw 'INSTALL_OWNER_MISMATCH'}}
- # The GUI lives in {app} (Setup copies it; a running copy is closed by Setup or
- # replaced at reboot). Earlier builds installed it per-user; that copy is removed.
+ # Setup refuses locked files before copying. No replacement is queued for boot.
+ # Earlier builds installed the GUI per-user; that copy is removed.
  $gui=Join-Path $root 'VELIQ.exe'
  $legacyGui=if($Update){''}else{Join-Path $env:LOCALAPPDATA 'Programs\VELIQ\VELIQ.exe'}
  if($legacyGui){
@@ -87,14 +89,18 @@ try{
   if($ClubImage){$step='CLUB_IMAGE_SEAL';& (Join-Path $scripts 'configure-club-image.ps1') -InstallDirectory $installed -ClubCodeFile $ClubCodeFile}
   elseif($ClubCodeFile -ne ''){$step='CLUB_STAGE';& (Join-Path $scripts 'stage-club-activation.ps1') -ProtectedCodeFile $ClubCodeFile -InstallDirectory $installed}
   $step='VERIFY';$state=Get-Service VELIQ;if(($ClubImage -and $ClubCodeFile -and $state.Status -ne 'Stopped') -or ((!$ClubImage -or !$ClubCodeFile) -and $state.Status -ne 'Running')){throw 'INSTALL_SERVICE_NOT_RUNNING'}
-  if((Get-FileHash (Join-Path $root 'service\veliq-service.exe')).Hash -ne (Get-FileHash (Join-Path $installed 'veliq-service.exe')).Hash){throw 'INSTALL_SERVICE_HASH_MISMATCH'}
+  $installedHashes=Assert-VeliqInstalledBinaries $root $installed
  }
- @{result='PASS';step=$step;reboot_required=$false;browser_processes='UNTOUCHED';credentials='PRESERVED'}|ConvertTo-Json|Set-Content -LiteralPath $success -Encoding UTF8
+ $reboot=Get-VeliqRebootState
+ Assert-VeliqNoPendingReboot $reboot
+ $hashes=$null;if(!$Remove){$hashes=$installedHashes}
+ New-VeliqInstallResult 'PASS' $step $reboot -Hashes $hashes|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $success -Encoding UTF8
  Copy-Item -LiteralPath $success -Destination $result -Force
 }catch{
  # Preserve safe constant error codes only; never print arbitrary exception text.
  $safe='INSTALL_STEP_FAILED';if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;|$)'){$safe=$Matches[1]}
- @{result='FAIL';step=$step;code=$safe;reboot_required=$false;credentials='PRESERVED'}|ConvertTo-Json|Set-Content -LiteralPath $result -Encoding UTF8
+ Remove-Item -LiteralPath $success -Force -ErrorAction SilentlyContinue
+ New-VeliqInstallResult 'FAIL' $step (Get-VeliqRebootState) -Code $safe|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $result -Encoding UTF8
  throw ('VELIQ_SETUP_FAILED stage='+$step+' code='+$safe+'; existing state preserved')
 }finally{
  $env:PSModulePath=$installerModulePath

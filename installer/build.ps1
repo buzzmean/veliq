@@ -17,7 +17,7 @@ Copy-Item (Join-Path $repo 'bin\windows-e2e\veliq-service.exe') (Join-Path $payl
 foreach($f in @('VELIQ.exe')){Copy-Item (Join-Path $repo ('bin\release\'+$f)) (Join-Path $payload 'gui')}
 foreach($f in @('WinDivert.dll','WinDivert64.sys','pins.json','WinDivert-LICENSE.txt','SOURCE.txt')){Copy-Item (Join-Path $repo ('.e2e\windivert\'+$f)) (Join-Path $payload 'driver')}
 foreach($f in @('common','install','update-service','migrate-legacy-install','uninstall','reinstall-state','install-desktop','native-tcp-firewall','browser-policy-watchdog','service-startup','stage-club-activation','Get-ClubStatus','club-code-common','New-ClubCodeFile','Set-ClubActivationCode','club-image-common','configure-club-image','club-image-boot')){Copy-Item (Join-Path $repo ('tools\windows\'+$f+'.ps1')) (Join-Path $payload 'tools\windows')}
-foreach($f in @('install-package.ps1','package-contract.ps1')){Copy-Item (Join-Path $PSScriptRoot $f) (Join-Path $payload 'installer')}
+foreach($f in @('install-package.ps1','package-contract.ps1','install-safety.ps1')){Copy-Item (Join-Path $PSScriptRoot $f) (Join-Path $payload 'installer')}
 Copy-Item (Join-Path $trust 'ca.pem') (Join-Path $payload 'public')
 @{fixture=[bool]$Fixture;control_plane_url=$ControlPlaneUrl;probe_target=$ProbeTarget;tcp_probe_target=$TCPProbeTarget;ca_der_sha256=$pin}|ConvertTo-Json|Set-Content (Join-Path $payload 'public\release.json') -Encoding UTF8
 $files=@(Get-ChildItem -LiteralPath $payload -Recurse -File|ForEach-Object {@{path=$_.FullName.Substring([IO.Path]::GetFullPath($payload).Length+1).Replace('\','/');sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}})
