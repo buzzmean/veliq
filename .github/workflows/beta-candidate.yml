@@ -111,6 +111,7 @@ jobs:
           Copy-Item bin/beta-service-ps7/veliq-service.exe bin/beta-kit/
           Copy-Item bin/release/VELIQ.exe bin/beta-kit/
           Copy-Item docs/BETA_ACCEPTANCE.md bin/beta-kit/README.md
+          Copy-Item docs/INSTALLER_NO_RESTART.md bin/beta-kit/
           Copy-Item docs/BETA_RESULTS.template.json bin/beta-kit/
           Copy-Item tools/windows/Get-BetaSnapshot.ps1 bin/beta-kit/
           Copy-Item tools/windows/Get-BetaRuntimeEvidence.ps1 bin/beta-kit/
@@ -121,7 +122,7 @@ jobs:
           $report.service_sha256=$b.ToLowerInvariant()
           $report.gui_sha256=(Get-FileHash bin/beta-kit/VELIQ.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           [IO.File]::WriteAllText((Join-Path $PWD 'bin/beta-kit/BETA_RESULTS.template.json'),($report|ConvertTo-Json -Depth 8),[Text.UTF8Encoding]::new($false))
-          $files=@('veliq-service.exe','VELIQ.exe','README.md','BETA_RESULTS.template.json','Get-BetaSnapshot.ps1','Get-BetaRuntimeEvidence.ps1','beta_acceptance.py','New-ClubCodeFile.ps1','common.ps1','club-image-common.ps1','club-code-common.ps1')
+          $files=@('veliq-service.exe','VELIQ.exe','README.md','INSTALLER_NO_RESTART.md','BETA_RESULTS.template.json','Get-BetaSnapshot.ps1','Get-BetaRuntimeEvidence.ps1','beta_acceptance.py','New-ClubCodeFile.ps1','common.ps1','club-image-common.ps1','club-code-common.ps1')
           $manifest=[ordered]@{schema_version=1;source_commit=$env:EXPECTED_COMMIT;build_sequence=$service.build_sequence;approval='NOT_APPROVED';validation='CHECK_ALL_CI_AND_MANUAL_GATES';kind='incomplete-unpublished-kit';files=@()}
           foreach ($name in $files) {
             $hash=(Get-FileHash -LiteralPath "bin/beta-kit/$name" -Algorithm SHA256).Hash.ToLowerInvariant()

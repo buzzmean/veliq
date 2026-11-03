@@ -71,13 +71,15 @@ Name: "{autoprograms}\VELIQ"; Filename: "{app}\VELIQ.exe"
 Name: "{autodesktop}\VELIQ"; Filename: "{app}\VELIQ.exe"; Tasks: desktopicon; Check: NotClubImage
 [Code]
 function SafeSessionArguments(): Boolean;
-var I: Integer; Arg: String; NoRestart: Boolean;
+var I, Separator: Integer; Arg: String; NoRestart: Boolean;
 begin
  NoRestart := False;
  Result := False;
  for I := 1 to ParamCount do begin
    Arg := Uppercase(ParamStr(I));
    if Arg='/NORESTART' then NoRestart := True;
+   Separator := Pos('=', Arg);
+   if Separator>0 then Arg := Copy(Arg, 1, Separator-1);
    if (Arg='/CLOSEAPPLICATIONS') or (Arg='/FORCECLOSEAPPLICATIONS') or
       (Arg='/RESTARTAPPLICATIONS') then Exit;
  end;
