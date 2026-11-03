@@ -125,7 +125,7 @@ begin
    Exit;
  end;
  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-  '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& ' + #39 + Script + #39 + ' -Preflight -AppDirectory ' + #39 + ExpandConstant('{app}') + #39 + '"',
+  '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& ' + #39 + Script + #39 + ' -Preflight -AppDirectory ' + #39 + ExpandConstant('{app}') + #39 + '; exit $LASTEXITCODE"',
   '', SW_HIDE, ewWaitUntilTerminated, Code) then begin
    Result := 'INSTALL_PREFLIGHT_UNAVAILABLE';
    Exit;
@@ -158,7 +158,7 @@ begin
    Exit;
  end;
  Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-  '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& ' + #39 + ExpandConstant('{app}\installer\install-safety.ps1') + #39 + ' -Preflight -AppDirectory ' + #39 + ExpandConstant('{app}') + #39 + '"', '', SW_HIDE, ewWaitUntilTerminated, Code);
+  '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& ' + #39 + ExpandConstant('{app}\installer\install-safety.ps1') + #39 + ' -Preflight -AppDirectory ' + #39 + ExpandConstant('{app}') + #39 + '; exit $LASTEXITCODE"', '', SW_HIDE, ewWaitUntilTerminated, Code);
  Result := Result and (Code=0);
  if not Result then begin
    Log('VELIQ_UNINSTALL_PREFLIGHT_FAILED; no service/file changes performed');
