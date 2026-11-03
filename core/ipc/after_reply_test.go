@@ -13,7 +13,8 @@ func TestAfterReplyRunsOnlyAfterWriteResultAndPasswordPayloadIsCleared(t *testin
 	for _,fail:=range []bool{false,true}{
 		var frame bytes.Buffer
 		Write(&frame,Request{Version:1,ID:"fixture",SentAt:time.Now(),Token:"01234567890123456789012345678901ab",Method:"emergency.finish",Payload:json.RawMessage(`{"fixture":true}`)})
-		server,_:=New("01234567890123456789012345678901ab",func(context.Context,string,json.RawMessage)(any,error){return "confirmed",nil})
+		var captured json.RawMessage
+		server,_:=New("01234567890123456789012345678901ab",func(_ context.Context,_ string,raw json.RawMessage)(any,error){captured=raw;return "confirmed",nil})
 		called:=false
 		server.AfterReply=func(method string,reply Response,writeError error){
 			called=true
@@ -23,5 +24,6 @@ func TestAfterReplyRunsOnlyAfterWriteResultAndPasswordPayloadIsCleared(t *testin
 		var err error
 		if fail{err=server.Serve(context.Background(),replyFailure{bytes.NewReader(frame.Bytes())})}else{err=server.Serve(context.Background(),&frame)}
 		if !called||(err!=nil)!=fail{t.Fatal("missing completion hook")}
+		for _,b:=range captured{if b!=0{t.Fatal("request payload retained")}}
 	}
 }

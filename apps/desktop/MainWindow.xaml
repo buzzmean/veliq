@@ -18,7 +18,7 @@
      </StackPanel>
     </Border>
     <StackPanel x:Name="NavBottom" DockPanel.Dock="Bottom">
-     <Button Content="Аварийное отключение…" Click="EmergencyExitClick" Margin="0,0,0,8" MinHeight="36" ToolTip="Отключить VELIQ по отдельному паролю без перезагрузки"/>
+     <Button Content="{ui:Tr EmergencyAction}" Click="EmergencyExitClick" Margin="0,0,0,8" MinHeight="36" ToolTip="{ui:Tr EmergencyHint}"/>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr NavAbout}" Tag="About" Click="Navigate" ui:Nav.Icon="{StaticResource IconInfo}"/>
     </StackPanel>
     <Border/>
@@ -241,7 +241,7 @@
 
     <!-- ============ Настройки ============ -->
     <ScrollViewer x:Name="Settings" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><StackPanel Width="620" HorizontalAlignment="Left">
-     <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="Пароль аварийного отключения" FontWeight="Bold"/><TextBlock Text="Отдельный пароль VELIQ работает без интернета. Задайте его при настройке этой установки." TextWrapping="Wrap" Margin="0,8,0,12"/><Button Content="Настроить пароль отключения…" Click="EmergencySetupClick" HorizontalAlignment="Left"/></StackPanel></Border>
+     <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="{ui:Tr EmergencyPasswordHeading}" FontWeight="Bold"/><TextBlock Text="{ui:Tr EmergencyPasswordHelp}" TextWrapping="Wrap" Margin="0,8,0,12"/><Button Content="{ui:Tr EmergencyPasswordSetup}" Click="EmergencySetupClick" HorizontalAlignment="Left"/></StackPanel></Border>
      <TextBlock Text="{ui:Tr AccountHeading}" Style="{StaticResource GroupTitle}"/>
      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><DockPanel Margin="16,12">
       <Button DockPanel.Dock="Right" Content="{ui:Tr AccountCabinet}" Click="OpenAccountCabinet" Margin="12,0,0,0" VerticalAlignment="Center"/>

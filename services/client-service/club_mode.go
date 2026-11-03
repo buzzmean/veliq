@@ -107,7 +107,7 @@ func clubReadMethod(method string) bool {
 	}
 }
 func (c *Controller) HandleOwnerIPC(ctx context.Context, method string, raw json.RawMessage) (any, error) {
-	if c.clubMode.Load() && !clubReadMethod(method) {
+	if c.clubMode.Load() && !clubReadMethod(method) && !emergencyMethod(method) {
 		return nil, errors.New("CLUB_ADMIN_MANAGED")
 	}
 	return c.Handle(ctx, method, raw)

@@ -87,6 +87,7 @@ type Snapshot struct {
 	ActiveApps       []string                      `json:"active_apps"`
 }
 type Controller struct {
+	emergencyHandler func(context.Context,string,json.RawMessage)(any,error)
 	emergencyStopped atomic.Bool
 	emergencyClosed atomic.Bool
 	closeOnce sync.Once
@@ -591,7 +592,10 @@ func (c *Controller) Snapshot() Snapshot {
 	return snapshot
 }
 func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMessage) (result any, err error) {
-	if c.emergencyStopped.Load() {return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")}
+	if c.emergencyStopped.Load() && !emergencyMethod(method) {
+		if method=="status" {return c.Snapshot(),nil}
+		return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")
+	}
 	if method == "club.status" {
 		return c.clubStatus(), nil
 	}
@@ -663,6 +667,9 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		}()
 	}
 	switch method {
+	case "emergency.status", "emergency.stop", "emergency.finish":
+		if c.emergencyHandler==nil {return nil,errors.New("EMERGENCY_PASSWORD_NOT_CONFIGURED")}
+		return c.emergencyHandler(ctx,method,raw)
 	case "update.status":
 		if u := c.updater.Load(); u != nil {
 			return u.snapshot(), nil

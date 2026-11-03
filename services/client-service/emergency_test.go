@@ -35,7 +35,8 @@ func TestClubEmergencyIsPasswordExceptionOnly(t *testing.T) {
 	r,err:=emergency.Create([]byte("fixture-password"),"fixture-owner");if err!=nil {t.Fatal(err)}
 	rawRecord,_:=json.Marshal(r)
 	manager:=emergency.NewManager(emergency.New("fixture-owner",func()([]byte,error){return append([]byte(nil),rawRecord...),nil}),func()error{c.BeginEmergencyStop();return c.FinishEmergencyStop()})
-	h:=manager.Wrap(c.HandleOwnerIPC)
+	c.ConfigureEmergencyManager(manager)
+	h:=c.HandleOwnerIPC
 	if _,err:=h(context.Background(),"optimize",[]byte(`{"enabled":false}`));err==nil {t.Fatal("club mutation bypass")}
 	raw,_:=json.Marshal(map[string][]byte{"password":[]byte("wrong")})
 	if _,err:=h(context.Background(),"emergency.stop",raw);err==nil||!c.enabled {t.Fatal("wrong password stopped club")}

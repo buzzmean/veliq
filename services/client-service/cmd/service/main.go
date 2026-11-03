@@ -65,8 +65,9 @@ func runReady(ctx context.Context, path string, ready func()) error {
 		<-initDone
 		return controller.FinishEmergencyStop()
 	})
-	emergencyManager.IdleStatus=func()any{return controller.Snapshot()}
-	server, e := ipc.New(strings.TrimSpace(string(token)), emergencyManager.Wrap(gate.wrap(controller.HandleOwnerIPC)))
+	controller.ConfigureEmergencyManager(emergencyManager)
+	gate.emergencyStopping=controller.EmergencyStopping
+	server, e := ipc.New(strings.TrimSpace(string(token)), gate.wrap(controller.HandleOwnerIPC))
 	if e != nil {
 		return e
 	}

@@ -652,4 +652,9 @@
   <data name="AccountSignIn" xml:space="preserve"><value>Войти или зарегистрироваться</value></data>
   <data name="AccountLegacyCode" xml:space="preserve"><value>Ранее выданный код</value></data>
   <data name="AccountLabel" xml:space="preserve"><value>Аккаунт VELIQ</value></data>
+  <data name="EmergencyAction" xml:space="preserve"><value>Аварийное отключение…</value></data>
+  <data name="EmergencyHint" xml:space="preserve"><value>Отключить VELIQ по отдельному паролю без перезагрузки</value></data>
+  <data name="EmergencyPasswordHeading" xml:space="preserve"><value>Пароль аварийного отключения</value></data>
+  <data name="EmergencyPasswordHelp" xml:space="preserve"><value>Отдельный пароль VELIQ работает без интернета. Задайте его при настройке этой установки.</value></data>
+  <data name="EmergencyPasswordSetup" xml:space="preserve"><value>Настроить пароль отключения…</value></data>
 </root>

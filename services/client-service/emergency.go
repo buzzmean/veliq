@@ -2,7 +2,13 @@ package clientservice
 
 import (
 	"errors"
+	"github.com/buzzmean/neexitlag/core/emergency"
 )
+
+// ConfigureEmergencyManager is called before opening the authenticated pipe.
+func(c *Controller) ConfigureEmergencyManager(manager *emergency.Manager){c.emergencyHandler=manager.Wrap(nil)}
+func(c *Controller) EmergencyStopping()bool{return c.emergencyStopped.Load()}
+func emergencyMethod(method string)bool{return method=="emergency.status"||method=="emergency.stop"||method=="emergency.finish"}
 
 // BeginEmergencyStop is called only after the service verifies the independent
 // offline password. Block background activation/retries before waiting for slow
