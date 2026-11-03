@@ -49,6 +49,34 @@ $base=[IO.Path]::GetFullPath((Join-Path $repo 'bin'))
 $root=Join-Path $base ('installer-safety-'+[guid]::NewGuid().ToString('N'))
 try{
  foreach($directory in @($root,(Join-Path $root 'gui'),(Join-Path $root 'service'),(Join-Path $root 'installed'))){[void][IO.Directory]::CreateDirectory($directory)}
+ # Only paired deletion of VELIQ's verified Inno temp clone is housekeeping.
+ # The registry remains synthetic; no pending operation is added or removed.
+ function Get-VeliqTemporaryRoots { @($root) }
+ $script:fixtureProduct='VELIQ'
+ function Read-VeliqFileVersion([string]$Path){[pscustomobject]@{FileDescription='Setup/Uninstall';ProductName=$script:fixtureProduct;CompanyName='VELIQ'}}
+ $cloneDir=Join-Path $root 'iu-fixture.tmp';[void][IO.Directory]::CreateDirectory($cloneDir)
+ $clone=Join-Path $cloneDir '_unins.tmp';$original=Join-Path $root 'unins000.exe'
+ foreach($path in @($clone,$original)){[IO.File]::WriteAllText($path,'same Inno clone')}
+ $cleanup=@(('\??\'+$clone),'',('\??\'+$cloneDir),'')
+ $evidence=Get-VeliqPendingFileEvidence $cleanup $root
+ Check (!$evidence.required -and $evidence.cleanup -eq 2) 'verified Inno cleanup requires reboot'
+ $script:registry=@{'SYSTEM\CurrentControlSet\Control\Session Manager|PendingFileRenameOperations'=$cleanup}
+ $state=Get-VeliqRebootState $root
+ Check ($state.known -and !$state.required -and $state.deferred_cleanup_count -eq 2) 'cleanup evidence lost'
+ Check ((New-VeliqInstallResult 'PASS' 'VERIFY' $state).deferred_cleanup_count -eq 2) 'cleanup omitted from result'
+ Check ((Get-VeliqPendingFileEvidence @($clone,'') $root).required) 'unpaired cleanup bypass'
+ Check ((Get-VeliqPendingFileEvidence @($clone,$original) $root).required) 'rename bypass'
+ Check ((Get-VeliqPendingFileEvidence @($clone) $root).required) 'malformed operation bypass'
+ $script:fixtureProduct='Foreign'
+ Check ((Get-VeliqPendingFileEvidence $cleanup $root).required) 'foreign uninstaller bypass'
+ $script:fixtureProduct='VELIQ'
+ [IO.File]::WriteAllText($clone,'different clone')
+ Check ((Get-VeliqPendingFileEvidence $cleanup $root).required) 'clone hash mismatch bypass'
+ [IO.File]::WriteAllText($clone,'same Inno clone')
+ $extra=Join-Path $cloneDir 'foreign.dat';[IO.File]::WriteAllText($extra,'foreign')
+ Check ((Get-VeliqPendingFileEvidence $cleanup $root).required) 'nonempty foreign directory bypass'
+ Remove-Item -LiteralPath $extra
+ $script:registry=@{}
  foreach($name in @('gui/VELIQ.exe','VELIQ.exe')){[IO.File]::WriteAllText((Join-Path $root $name),'GUI fixture')}
  foreach($name in @('service/veliq-service.exe','installed/veliq-service.exe')){[IO.File]::WriteAllText((Join-Path $root $name),'service fixture')}
  $hashes=Assert-VeliqInstalledBinaries $root (Join-Path $root 'installed')
@@ -67,7 +95,7 @@ try{
  Assert-VeliqInstallPreflight $root
  $script:registry=@{'SOFTWARE\Microsoft\Updates|UpdateExeVolatile'=1}
  Reject {Assert-VeliqInstallPreflight $root} 'INSTALL_REBOOT_REQUIRED'
- Write-Output 'PASS installer safety: real GUI/service hashes, held-file refusal without mutation, six reboot signals, unknown fail-closed, truthful result; no installation'
+ Write-Output 'PASS installer safety: GUI/service hashes, held-file refusal, six reboot signals, verified Inno cleanup, unknown fail-closed, truthful result; no installation'
 }finally{
  $full=[IO.Path]::GetFullPath($root)
  if(!$full.StartsWith($base+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'FIXTURE_CLEANUP_PATH_INVALID'}

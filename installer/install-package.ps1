@@ -17,7 +17,7 @@ try{
  }
  . (Join-Path $PSScriptRoot 'package-contract.ps1')
  Assert-VeliqPackage $root
- Assert-VeliqNoPendingReboot (Get-VeliqRebootState)
+ Assert-VeliqNoPendingReboot (Get-VeliqRebootState $root)
  $installed=Join-Path $env:ProgramData 'VELIQ';$manifest=Join-Path $installed 'service.json'
  if($Update){
   # Service-driven update (SYSTEM): the installed owner stays the owner.
@@ -91,7 +91,7 @@ try{
   $step='VERIFY';$state=Get-Service VELIQ;if(($ClubImage -and $ClubCodeFile -and $state.Status -ne 'Stopped') -or ((!$ClubImage -or !$ClubCodeFile) -and $state.Status -ne 'Running')){throw 'INSTALL_SERVICE_NOT_RUNNING'}
   $installedHashes=Assert-VeliqInstalledBinaries $root $installed
  }
- $reboot=Get-VeliqRebootState
+ $reboot=Get-VeliqRebootState $root
  Assert-VeliqNoPendingReboot $reboot
  $hashes=$null;if(!$Remove){$hashes=$installedHashes}
  New-VeliqInstallResult 'PASS' $step $reboot -Hashes $hashes|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $success -Encoding UTF8
@@ -100,7 +100,7 @@ try{
  # Preserve safe constant error codes only; never print arbitrary exception text.
  $safe='INSTALL_STEP_FAILED';if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;|$)'){$safe=$Matches[1]}
  Remove-Item -LiteralPath $success -Force -ErrorAction SilentlyContinue
- New-VeliqInstallResult 'FAIL' $step (Get-VeliqRebootState) -Code $safe|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $result -Encoding UTF8
+ New-VeliqInstallResult 'FAIL' $step (Get-VeliqRebootState $root) -Code $safe|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $result -Encoding UTF8
  throw ('VELIQ_SETUP_FAILED stage='+$step+' code='+$safe+'; existing state preserved')
 }finally{
  $env:PSModulePath=$installerModulePath

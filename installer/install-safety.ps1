@@ -13,8 +13,55 @@ function Read-VeliqRebootRegistry([string]$Path,[string]$Name='') {
   }finally{$key.Dispose()}
  }finally{$base.Dispose()}
 }
-function Get-VeliqRebootState {
- $reasons=@()
+function Get-VeliqTemporaryRoots { @([IO.Path]::GetTempPath(),(Join-Path $env:SystemRoot 'Temp')) }
+function Read-VeliqFileVersion([string]$Path) { [Diagnostics.FileVersionInfo]::GetVersionInfo($Path) }
+function Test-VeliqInnoCleanupDirectory([string]$Directory,[string]$ApplicationDirectory) {
+ # Inno 6.4.3 queues its own clone and directory BEFORE InitializeUninstall.
+ # This is housekeeping, not a replacement of application/Windows files.
+ # Never exempt arbitrary TEMP deletes or any rename/replacement operation.
+ if([IO.Path]::GetFileName($Directory) -notmatch '^iu-[a-z0-9]+\.tmp$'){return $false}
+ $parent=[IO.Path]::GetDirectoryName($Directory)
+ $trusted=$false
+ foreach($temp in Get-VeliqTemporaryRoots){if($parent -ieq [IO.Path]::GetFullPath($temp).TrimEnd('\')){$trusted=$true}}
+ if(!$trusted -or !(Test-Path -LiteralPath $Directory -PathType Container)){return $false}
+ foreach($path in @($parent,$Directory)){
+  if((Get-Item -LiteralPath $path -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint){return $false}
+ }
+ $children=@(Get-ChildItem -LiteralPath $Directory -Force -ErrorAction Stop)
+ if($children.Count -ne 1 -or $children[0].PSIsContainer -or $children[0].Name -ine '_unins.tmp' -or ($children[0].Attributes -band [IO.FileAttributes]::ReparsePoint)){return $false}
+ $clone=$children[0].FullName
+ $version=Read-VeliqFileVersion $clone
+ if($version.FileDescription -cne 'Setup/Uninstall' -or $version.ProductName.Trim() -cne 'VELIQ' -or $version.CompanyName.Trim() -cne 'VELIQ'){return $false}
+ if($ApplicationDirectory){
+  $original=Join-Path $ApplicationDirectory 'unins000.exe'
+  if(Test-Path -LiteralPath $original -PathType Leaf){
+   if((Get-FileHash -LiteralPath $clone).Hash -cne (Get-FileHash -LiteralPath $original).Hash){return $false}
+  }
+ }
+ return $true
+}
+function Get-VeliqPendingFileEvidence($Value,[string]$ApplicationDirectory) {
+ $items=@($Value);$required=$false;$cleanup=0
+ if(!$items.Count -or @($items | Where-Object {![string]::IsNullOrWhiteSpace([string]$_)}).Count -eq 0){return @{required=$false;cleanup=0}}
+ if($items.Count % 2){return @{required=$true;cleanup=0}}
+ $deletes=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+ for($i=0;$i -lt $items.Count;$i+=2){
+  $source=[string]$items[$i];$destination=[string]$items[$i+1]
+  if($destination -ne ''){$required=$true;continue}
+  if($source.StartsWith('\??\')){$source=$source.Substring(4)}
+  if($source -notmatch '^[a-zA-Z]:\\' -or $source.Split('\') -contains '..'){$required=$true;continue}
+  [void]$deletes.Add($source.TrimEnd('\'))
+ }
+ foreach($path in $deletes){
+  $directory=$path
+  if([IO.Path]::GetFileName($path) -ieq '_unins.tmp'){$directory=[IO.Path]::GetDirectoryName($path)}
+  if($deletes.Contains($directory) -and $deletes.Contains((Join-Path $directory '_unins.tmp')) -and (Test-VeliqInnoCleanupDirectory $directory $ApplicationDirectory)){$cleanup++}
+  else{$required=$true}
+ }
+ return @{required=$required;cleanup=$cleanup}
+}
+function Get-VeliqRebootState([string]$ApplicationDirectory='') {
+ $reasons=@();$cleanup=0
  try {
   foreach($pair in @(
    @('SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending','CBS_REBOOT_PENDING'),
@@ -22,17 +69,19 @@ function Get-VeliqRebootState {
   )) {if(Read-VeliqRebootRegistry $pair[0]){$reasons+=,$pair[1]}}
   foreach($name in @('PendingFileRenameOperations','PendingFileRenameOperations2')){
    $value=Read-VeliqRebootRegistry 'SYSTEM\CurrentControlSet\Control\Session Manager' $name
-   if(@($value | Where-Object {![string]::IsNullOrWhiteSpace([string]$_)}).Count){$reasons+=,$name.ToUpperInvariant()}
+   $pending=Get-VeliqPendingFileEvidence $value $ApplicationDirectory
+   $cleanup+=$pending.cleanup
+   if($pending.required){$reasons+=,$name.ToUpperInvariant()}
   }
   $volatile=Read-VeliqRebootRegistry 'SOFTWARE\Microsoft\Updates' 'UpdateExeVolatile'
   if($null -ne $volatile -and [int]$volatile -ne 0){$reasons+=,'UPDATE_EXE_VOLATILE'}
   $active=Read-VeliqRebootRegistry 'SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName' 'ComputerName'
   $pending=Read-VeliqRebootRegistry 'SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName' 'ComputerName'
   if($active -and $pending -and $active -ine $pending){$reasons+=,'COMPUTER_RENAME_PENDING'}
-  return [pscustomobject]@{known=$true;required=($reasons.Count -gt 0);reasons=$reasons}
+  return [pscustomobject]@{known=$true;required=($reasons.Count -gt 0);reasons=$reasons;deferred_cleanup_count=$cleanup}
  }catch{
   # Unknown is never reported as false; registry values/paths are not exported.
-  return [pscustomobject]@{known=$false;required=$null;reasons=@('REBOOT_STATE_UNAVAILABLE')}
+  return [pscustomobject]@{known=$false;required=$null;reasons=@('REBOOT_STATE_UNAVAILABLE');deferred_cleanup_count=$null}
  }
 }
 function Assert-VeliqNoPendingReboot($State) {
@@ -51,7 +100,7 @@ function Assert-VeliqReplaceableFile([string]$Path) {
  }catch{throw 'INSTALL_FILE_IN_USE_OR_NOT_WRITABLE'}
 }
 function Assert-VeliqInstallPreflight([string]$Directory) {
- Assert-VeliqNoPendingReboot (Get-VeliqRebootState)
+ Assert-VeliqNoPendingReboot (Get-VeliqRebootState $Directory)
  if(!$Directory -or ![IO.Path]::IsPathRooted($Directory)){throw 'INSTALL_PREFLIGHT_PATH_INVALID'}
  if(!(Test-Path -LiteralPath $Directory)){return}
  $root=Get-Item -LiteralPath $Directory -Force -ErrorAction Stop
@@ -85,6 +134,7 @@ function Assert-VeliqInstalledBinaries([string]$Root,[string]$ServiceDirectory) 
 function New-VeliqInstallResult([string]$Result,[string]$Step,$Reboot,[string]$Code='',$Hashes=$null) {
  if($Result -eq 'PASS'){Assert-VeliqNoPendingReboot $Reboot}
  $record=[ordered]@{result=$Result;step=$Step;reboot_required=$Reboot.required;reboot_check_known=$Reboot.known;reboot_reasons=@($Reboot.reasons);checked_at=[DateTime]::UtcNow.ToString('o');browser_processes='UNTOUCHED';credentials='PRESERVED'}
+ $record.deferred_cleanup_count=$Reboot.deferred_cleanup_count
  if($Code){$record.code=$Code}
  if($null -ne $Hashes){foreach($name in @('gui_sha256','service_sha256')){$record[$name]=$Hashes[$name]}}
  return $record
