@@ -52,6 +52,9 @@ function Get-VeliqPendingFileEvidence($Value,[string]$ApplicationDirectory) {
  for($i=0;$i -lt $items.Count;$i+=2){
   $source=[string]$items[$i];$destination=[string]$items[$i+1]
   if($destination -ne ''){$required=$true;continue}
+  # Current Windows records MoveFileEx deletes with *1/*2 before the NT path.
+  # Accept only the observed forms; all other prefixes stay blocking.
+  if($source.StartsWith('*1\??\') -or $source.StartsWith('*2\??\')){$source=$source.Substring(2)}
   if($source.StartsWith('\??\')){$source=$source.Substring(4)}
   if($source -notmatch '^[a-zA-Z]:\\' -or $source.Split('\') -contains '..'){$required=$true;continue}
   [void]$deletes.Add($source.TrimEnd('\'))

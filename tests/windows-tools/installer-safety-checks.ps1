@@ -60,6 +60,11 @@ try{
  $cleanup=@(('\??\'+$clone),'',('\??\'+$cloneDir),'')
  $evidence=Get-VeliqPendingFileEvidence $cleanup $root
  Check (!$evidence.required -and $evidence.cleanup -eq 2) 'verified Inno cleanup requires reboot'
+ $modernCleanup=@(('*2\??\'+$clone),'',('*1\??\'+$cloneDir),'')
+ $modern=Get-VeliqPendingFileEvidence $modernCleanup $root
+ Check (!$modern.required -and $modern.cleanup -eq 2) 'modern Windows cleanup prefixes lost'
+ Check ((Get-VeliqPendingFileEvidence @(('*3\??\'+$clone),'',('*1\??\'+$cloneDir),'') $root).required) 'unknown Windows prefix bypass'
+ Check ((Get-VeliqPendingFileEvidence @(('*2\??\'+$clone),$original) $root).required) 'modern replacement bypass'
  $fso=New-Object -ComObject Scripting.FileSystemObject
  $shortDirectory=$fso.GetFolder($cloneDir).ShortPath
  Check (Test-VeliqInnoCleanupDirectory $shortDirectory $root) 'short TEMP alias lost cleanup ownership'

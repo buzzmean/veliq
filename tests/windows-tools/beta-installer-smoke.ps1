@@ -45,7 +45,7 @@ function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0
   Write-Output ('BETA_PENDING_FILE_SHAPES '+($shapes|ConvertTo-Json -Depth 4 -Compress))
   Write-Output ('BETA_REBOOT_STATE '+((Get-VeliqRebootState $app)|ConvertTo-Json -Compress))
   foreach($value in @(Read-VeliqRebootRegistry 'SYSTEM\CurrentControlSet\Control\Session Manager' 'PendingFileRenameOperations')){
-   if([string]$value -match '^\\\?\?\\([a-zA-Z]:\\.*\\iu-[a-zA-Z0-9]+\.tmp)$'){
+   if([string]$value -match '^(?:\*[12])?\\\?\?\\([a-zA-Z]:\\.*\\iu-[a-zA-Z0-9]+\.tmp)$'){
     $directory=$Matches[1];$clone=Join-Path $directory '_unins.tmp'
     if(Test-Path -LiteralPath $clone){
      $metadata=Read-VeliqFileVersion $clone
