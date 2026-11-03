@@ -135,7 +135,7 @@ public partial class MainWindow : Window
         var dialog = new EmergencyPasswordWindow(false,emergencyService);
         if (IsVisible) dialog.Owner=this;
         dialog.ShowDialog();
-        if (dialog.Succeeded) { closingReady=true; exiting=true; Close(); }
+        if (dialog.Succeeded) { BrowserNativePolicy.RequestRefresh(); closingReady=true; exiting=true; Close(); }
         else timer.Start();
     }
     internal void Exit()

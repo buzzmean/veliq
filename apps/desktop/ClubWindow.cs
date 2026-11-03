@@ -108,7 +108,7 @@ public sealed class ClubWindow : Window
         var dialog=new EmergencyPasswordWindow(false,service);
         if(IsVisible)dialog.Owner=this;
         dialog.ShowDialog();
-        if(dialog.Succeeded)Exit();else timer.Start();
+        if(dialog.Succeeded){BrowserNativePolicy.RequestRefresh();Exit();}else timer.Start();
     }
     public void ShowFromTray(){Show();WindowState=WindowState.Normal;Activate();}
     // Same-owner installer activation pipe only; never disables service or browsers.
