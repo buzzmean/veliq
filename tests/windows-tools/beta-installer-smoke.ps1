@@ -28,7 +28,11 @@ function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0
   # Read-only diagnostics for a refusal, without registry values or user paths.
   $helper=Join-Path $app 'installer/install-safety.ps1'
   $probeCommand='. '''+$helper+'''; try { Assert-VeliqInstallPreflight '''+$app+'''; Write-Output "BETA_UNINSTALL_PREFLIGHT_PASS" } catch { Write-Output ("BETA_UNINSTALL_PREFLIGHT_FAILURE type="+$_.Exception.GetType().Name+" line="+$_.InvocationInfo.ScriptLineNumber); if($_.Exception.Message -cmatch "^[A-Z][A-Z0-9_]{3,80}$"){Write-Output $_.Exception.Message}; exit 1 }'
-  & (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') -NoProfile -NonInteractive -Command $probeCommand
+  & (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probeCommand)))
+  foreach($file in @(Get-ChildItem -LiteralPath $app -Recurse -File | Where-Object {$_.Name -notmatch '^unins000\.'})){
+   try{$handle=[IO.File]::Open($file.FullName,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);$handle.Dispose()}
+   catch{Write-Output ('BETA_UNINSTALL_LOCKED '+$file.FullName.Substring($app.Length+1))}
+  }
  }
  $worker=Start-Job -ScriptBlock {
   param($Executable,$LogFile,$InvalidImage,$AccountImageMode,$UnsafeArguments,$ServiceUpdate)
@@ -162,7 +166,7 @@ try{
 }catch{
  # Preserve the initiating assertion before a cleanup failure can mask it.
  $safe='UNEXPECTED_FIXTURE_EXCEPTION'
- if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;|$)'){$safe=$Matches[1]}
+ if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;| |$)'){$safe=$Matches[1]}
  Write-Output ('BETA_INSTALLER_PRIMARY_FAILURE code='+$safe+' line='+$_.InvocationInfo.ScriptLineNumber+' type='+$_.Exception.GetType().Name)
  Write-PreflightEnvironmentProbe
  $resultPath=Join-Path $app 'install-result.json'

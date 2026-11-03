@@ -91,6 +91,11 @@ function New-VeliqInstallResult([string]$Result,[string]$Step,$Reboot,[string]$C
 }
 if($Preflight){
  $ErrorActionPreference='Stop'
+ # Inno may inherit PS7's module search path. Resolve PS5.1 cmdlets only from
+ # Windows/machine modules, as install-package.ps1 does for its own process.
+ if($PSVersionTable.PSEdition -eq 'Desktop'){
+  $env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')+';'+[Environment]::GetEnvironmentVariable('PSModulePath','Machine')
+ }
  try{Assert-VeliqInstallPreflight $AppDirectory;exit 0}
  catch{
   $safe='INSTALL_PREFLIGHT_FAILED'
