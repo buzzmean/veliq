@@ -20,7 +20,8 @@ public sealed class ActivationView {
   "ACTIVATION_REVOKED"=>"Код отозван администратором. Запросите новый код.",
   "ACTIVATION_EXPIRED"=>"Срок действия кода истёк. Запросите новый код.",
   "DEVICE_REVOKED"=>"Доступ этого компьютера отозван. Обратитесь к администратору.",
-  "ACTIVATION_LIMIT"=>"Достигнут лимит компьютеров для этого кода. Администратор может освободить место или выдать другой код.",
+  "ACTIVATION_LIMIT"=>"Достигнут лимит компьютеров. Для изменения состава клуба обратитесь в поддержку.",
+  "CLUB_ENROLLMENT_CLOSED"=>"Компьютеры клуба уже закреплены. Для добавления или замены ПК обратитесь в поддержку.",
   "MACHINE_DISABLED"=>"Этот компьютер отключён. Обратитесь к администратору.",
   "ACTIVATION_RATE_LIMIT"=>"Слишком много попыток. Подождите немного и повторите.",
   "ACTIVATION_TRUST_NOT_CONFIGURED"=>"Установка не готова к активации. Обновите VELIQ.",
@@ -37,7 +38,7 @@ public sealed class ActivationModel(IServiceClient client){
  public ActivationView Status {get;private set;}=new();
  public async Task RefreshAsync(CancellationToken ct=default){try{Status=await client.Call<ActivationView>("activation.status",cancellationToken:ct);}catch(Exception)when(!ct.IsCancellationRequested){Status=new(){State="UNAVAILABLE",Error="ACTIVATION_UNAVAILABLE"};}}
  public async Task ActivateAsync(string code,CancellationToken ct=default){try{Status=await client.Call<ActivationView>("activation.set",new{code},ct);}catch(Exception e)when(!ct.IsCancellationRequested){Status=new(){State="ACTIVATION_ERROR",Error=KnownError(e.Message)};}}
- static string KnownError(string s){string[] codes=["DEVICE_REVOKED","ACTIVATION_STORAGE_FAILED","ACTIVATION_IDENTITY_CONFLICT","ACTIVATION_INVALID","ACTIVATION_REVOKED","ACTIVATION_EXPIRED","ACTIVATION_LIMIT","MACHINE_DISABLED","ACTIVATION_RATE_LIMIT","ACTIVATION_TRUST_NOT_CONFIGURED","HARDWARE_ID_UNAVAILABLE"];return codes.FirstOrDefault(c=>s==c||s.EndsWith(": "+c,StringComparison.Ordinal))??"ACTIVATION_UNAVAILABLE";}
+ static string KnownError(string s){string[] codes=["DEVICE_REVOKED","ACTIVATION_STORAGE_FAILED","ACTIVATION_IDENTITY_CONFLICT","ACTIVATION_INVALID","ACTIVATION_REVOKED","ACTIVATION_EXPIRED","ACTIVATION_LIMIT","CLUB_ENROLLMENT_CLOSED","MACHINE_DISABLED","ACTIVATION_RATE_LIMIT","ACTIVATION_TRUST_NOT_CONFIGURED","HARDWARE_ID_UNAVAILABLE"];return codes.FirstOrDefault(c=>s==c||s.EndsWith(": "+c,StringComparison.Ordinal))??"ACTIVATION_UNAVAILABLE";}
 }
 public sealed partial class DesktopViewModel {
  public ActivationModel? Activation {get;private set;}
