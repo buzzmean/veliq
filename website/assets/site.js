@@ -225,3 +225,13 @@
     });
   });
 })();
+
+/* Shared website support widget. */
+(function () {
+  if (document.querySelector('script[data-veliq-support]')) return;
+  var css = document.createElement('link');
+  css.rel = 'stylesheet'; css.href = '/assets/support-chat.css?v=4619b2e0f1fd'; document.head.appendChild(css);
+  var script = document.createElement('script');
+  script.src = '/assets/support-chat.js?v=68fd66d245f7'; script.defer = true;
+  script.setAttribute('data-veliq-support', ''); document.body.appendChild(script);
+})();
