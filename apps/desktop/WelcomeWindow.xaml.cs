@@ -5,28 +5,42 @@ namespace Neexitlag.Desktop;
 
 public partial class WelcomeWindow : Window
 {
+    enum SignInStage { Email, Code, Profile, Account, Connecting }
     readonly AccountConnectionModel account;
     readonly ActivationModel activation;
     readonly SubscriptionModel subscription;
     readonly Action connected;
     readonly bool shutdownOnClose;
+    readonly Func<Uri, INativeAccountClient> nativeFactory;
     readonly CancellationTokenSource lifetime = new();
     readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(2) };
-    bool refreshing, busy, codeSelected, transitioned, initial = true, choosing;
+    INativeAccountClient? native;
+    NativeAccountSnapshot? nativeAccount;
+    SignInStage stage;
+    string email = "";
+    DateTime resendAfter;
+    bool refreshing, busy, codeSelected, transitioned, initial = true, registration, forceSignIn, nativeApproved;
     WelcomeAccess access = new("CHECKING", "Проверяем подключение", "Подождите немного…", false);
     public WelcomeWindow(Action connected) : this(new WindowsServiceClient(), connected, true) { }
-    internal WelcomeWindow(IServiceClient service, Action connected, bool shutdownOnClose)
+    internal WelcomeWindow(IServiceClient service, Action connected, bool shutdownOnClose,
+        Func<Uri, INativeAccountClient>? nativeFactory = null, bool forceSignIn = false)
     {
-        this.connected = connected; this.shutdownOnClose = shutdownOnClose;
+        this.connected = connected; this.shutdownOnClose = shutdownOnClose; this.forceSignIn = forceSignIn;
+        this.nativeFactory = nativeFactory ?? (uri => new NativeAccountClient(uri));
         account = new(service); activation = new(service); subscription = new(service);
         InitializeComponent(); WindowTheme.UseDarkCaption(this); Render();
         Loaded += async (_, _) => { await RefreshAsync(); if (!transitioned) timer.Start(); };
         timer.Tick += async (_, _) => await RefreshAsync();
-        Closed += (_, _) => { timer.Stop(); lifetime.Cancel(); ConnectionCode.Clear(); if (!transitioned && shutdownOnClose) System.Windows.Application.Current.Shutdown(); };
+        Closed += (_, _) => {
+            timer.Stop(); lifetime.Cancel(); native?.Dispose(); native = null;
+            ConnectionCode.Clear(); LoginCode.Clear(); EmailField.Clear();
+            if (!transitioned && shutdownOnClose) System.Windows.Application.Current.Shutdown();
+        };
     }
     internal WelcomeAccess Access => access;
     internal System.Windows.Controls.PasswordBox CodeInput => ConnectionCode;
     internal System.Windows.Controls.Button CodeSubmit => ActivateButton;
+    bool Ready => access.CanContinue && (!forceSignIn || nativeApproved);
     internal async Task RefreshAsync(bool recheck = false)
     {
         if (refreshing || busy || lifetime.IsCancellationRequested) return;
@@ -37,67 +51,163 @@ public partial class WelcomeWindow : Window
             await account.RefreshAsync(lifetime.Token);
             await subscription.RefreshAsync(recheck, lifetime.Token);
             access = WelcomeAccess.Evaluate(activation.Status, account.Status, subscription.Status);
-            Render();
-            // A confirmed saved account resumes without demanding another login.
-            // Code-only legacy activation is shown explicitly instead of being
-            // presented as a personal account session.
-            if (initial && access.CanContinue && account.Status.Linked) Enter();
+            if (initial && Ready && account.Status.Linked) Enter();
             initial = false;
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         finally { refreshing = false; if (!lifetime.IsCancellationRequested) Render(); }
     }
+    static Visibility Visible(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
     void Render()
     {
-        Heading.Text = access.Title; Lead.Text = access.Message;
-        bool ready = access.CanContinue, waiting = access.State == "WAITING" && !choosing;
-        if (ready) Feedback.Text = "";
-        ReadyPanel.Visibility = ready ? Visibility.Visible : Visibility.Collapsed;
-        WaitingPanel.Visibility = waiting ? Visibility.Visible : Visibility.Collapsed;
-        ChoicePanel.Visibility = ready || waiting ? Visibility.Collapsed : Visibility.Visible;
-        PersonalPanel.Visibility = !ready && !waiting && !codeSelected ? Visibility.Visible : Visibility.Collapsed;
-        CodePanel.Visibility = !ready && !waiting && codeSelected ? Visibility.Visible : Visibility.Collapsed;
-        AccountLabel.Text = account.Status.Linked ? account.Status.Summary : "Доступ по сохранённому коду подключения";
-        SignInButton.IsEnabled = RegisterButton.IsEnabled = ActivateButton.IsEnabled = !busy && access.State != "CHECKING";
-        PersonalTab.IsEnabled = CodeTab.IsEnabled = !busy;
-        RetryButton.IsEnabled = !busy && !refreshing;
-        ContinueButton.IsEnabled = ready && !busy;
+        bool ready = Ready, personal = !ready && !codeSelected;
+        bool available = !busy && !refreshing && access.State != "CHECKING";
+        ChoicePanel.Visibility = Visible(!ready && (codeSelected || stage == SignInStage.Email));
+        EmailPanel.Visibility = Visible(personal && stage == SignInStage.Email);
+        OtpPanel.Visibility = Visible(personal && stage == SignInStage.Code);
+        ProfilePanel.Visibility = Visible(personal && stage == SignInStage.Profile);
+        AccountPanel.Visibility = Visible(personal && stage == SignInStage.Account);
+        ConnectingPanel.Visibility = Visible(personal && stage == SignInStage.Connecting);
+        CodePanel.Visibility = Visible(!ready && codeSelected);
+        ReadyPanel.Visibility = Visible(ready);
+        AuthBack.Visibility = Visible(personal && stage != SignInStage.Email);
+        RetryButton.Visibility = Visible(access.State is "UNAVAILABLE" or "ERROR" or "EXPIRED" or "BLOCKED");
+        PersonalInsteadButton.Visibility = Visible(ready && !account.Status.Linked);
+        EmailSubmit.IsEnabled = VerifySubmit.IsEnabled = ProfileSubmit.IsEnabled = ActivateButton.IsEnabled = available;
+        PersonalTab.IsEnabled = CodeTab.IsEnabled = RegisterButton.IsEnabled = AuthBack.IsEnabled = !busy;
+        ReloadAccountButton.IsEnabled = available && native is not null;
+        ApproveButton.IsEnabled = available && nativeAccount?.Kind == "player" && SubscriptionChoices.Items.Count > 0;
+        ContinueButton.IsEnabled = ready && available;
+        RetryButton.IsEnabled = available;
         PersonalTab.BorderBrush = (System.Windows.Media.Brush)FindResource(codeSelected ? "LineStrong" : "Accent");
         CodeTab.BorderBrush = (System.Windows.Media.Brush)FindResource(codeSelected ? "Accent" : "LineStrong");
-        ReopenButton.IsEnabled = account.Status.VerificationUri is not null && !busy;
-        CabinetButton.Visibility = account.Status.CabinetUri is not null && access.State is "EXPIRED" or "BLOCKED" or "ERROR" ? Visibility.Visible : Visibility.Collapsed;
-    }
-    void SelectPersonal(object sender, RoutedEventArgs e) { codeSelected = false; choosing = true; Feedback.Text = ""; Render(); }
-    void SelectCode(object sender, RoutedEventArgs e) { codeSelected = true; choosing = true; Feedback.Text = ""; Render(); ConnectionCode.Focus(); }
-    void BackToChoice(object sender, RoutedEventArgs e) { choosing = true; Render(); }
-    async void SignIn(object sender, RoutedEventArgs e) => await StartAccountAsync(false);
-    async void Register(object sender, RoutedEventArgs e) => await StartAccountAsync(true);
-    async Task StartAccountAsync(bool registration)
-    {
-        if (busy || refreshing) return;
-        busy = true; choosing = false; Feedback.Text = registration ? "Открываем регистрацию в личном кабинете…" : "Открываем вход в личный кабинет…"; Render();
-        try
+        RegisterButton.Content = registration ? "Уже есть аккаунт? Войти" : "Создать аккаунт";
+        int remaining = Math.Max(0, (int)Math.Ceiling((resendAfter - DateTime.UtcNow).TotalSeconds));
+        ResendButton.Content = remaining > 0 ? $"Отправить ещё раз через {remaining} с" : "Отправить код ещё раз";
+        ResendButton.IsEnabled = available && remaining == 0;
+        if (ready)
         {
-            await account.StartAsync(lifetime.Token);
-            for (int i = 0; i < 20 && account.Status.State == "STARTING"; i++)
-            { await Task.Delay(500, lifetime.Token); await account.RefreshAsync(lifetime.Token); }
-            if (account.Status.VerificationUri is { } uri) { Open(uri); Feedback.Text = "Подтвердите компьютер в открывшемся личном кабинете."; }
-            else Feedback.Text = account.Status.Message;
+            Heading.Text = "Всё готово";
+            Lead.Text = account.Status.Linked ? account.Status.Summary : "Этот компьютер уже подключён по коду.";
+            Feedback.Text = "";
         }
+        else if (codeSelected) { Heading.Text = "Подключение к клубу"; Lead.Text = "Введите код, который выдал администратор."; }
+        else switch (stage)
+        {
+            case SignInStage.Email:
+                Heading.Text = registration ? "Создать аккаунт" : "Войти в VELIQ";
+                Lead.Text = "Получите код на свою электронную почту."; break;
+            case SignInStage.Code:
+                Heading.Text = "Проверьте почту"; Lead.Text = "Код отправлен на " + email; break;
+            case SignInStage.Profile:
+                Heading.Text = "Завершите регистрацию"; Lead.Text = "Личный аккаунт для вашего компьютера."; break;
+            case SignInStage.Account:
+                Heading.Text = "Подключить компьютер"; Lead.Text = nativeAccount?.Email ?? ""; break;
+            default:
+                Heading.Text = "Подключаем компьютер"; Lead.Text = "Проверяем доступ. Это займёт немного времени."; break;
+        }
+        if (access.State == "UNAVAILABLE" && Feedback.Text.Length == 0)
+            Feedback.Text = "Служба VELIQ недоступна. Повторите проверку.";
+        if (stage == SignInStage.Connecting && access.State is "ERROR" or "EXPIRED" or "BLOCKED")
+            Feedback.Text = access.Message;
+        FooterNote.Text = codeSelected ? "Личный аккаунт игрока не требуется." : "Без пароля. Подключение сохранится на этом ПК.";
+    }
+    void ResetNative()
+    {
+        native?.Dispose(); native = null; nativeAccount = null; nativeApproved = false;
+        LoginCode.Clear(); ProfileName.Clear(); stage = SignInStage.Email; Feedback.Text = "";
+    }
+    void SelectPersonal(object sender, RoutedEventArgs e) { if (busy) return; codeSelected = false; ResetNative(); Render(); EmailField.Focus(); }
+    void SelectCode(object sender, RoutedEventArgs e) { if (busy) return; codeSelected = true; ResetNative(); Render(); ConnectionCode.Focus(); }
+    void ToggleRegistration(object sender, RoutedEventArgs e) { registration = !registration; Feedback.Text = ""; Render(); EmailField.Focus(); }
+    void RestartSignIn(object sender, RoutedEventArgs e) { if (busy) return; ResetNative(); Render(); EmailField.Focus(); }
+    void PersonalInstead(object sender, RoutedEventArgs e) { forceSignIn = true; codeSelected = false; ResetNative(); Render(); EmailField.Focus(); }
+    async Task RunAsync(Func<Task> operation)
+    {
+        if (busy || refreshing || lifetime.IsCancellationRequested) return;
+        busy = true; Feedback.Text = ""; Render();
+        try { await operation(); }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        catch { Feedback.Text = "Не удалось открыть страницу входа. Повторите попытку."; }
-        finally { busy = false; await RefreshAsync(); Render(); }
+        catch (NativeAccountException error) { Feedback.Text = error.UserMessage; }
+        catch { Feedback.Text = "Не удалось подключиться. Проверьте интернет и повторите попытку."; }
+        finally
+        {
+            busy = false;
+            if (!lifetime.IsCancellationRequested) { await RefreshAsync(); Render(); }
+        }
     }
-    static void Open(Uri uri) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-    void ReopenBrowser(object sender, RoutedEventArgs e)
+    async Task EnsureNativeAsync()
     {
-        try { if (account.Status.VerificationUri is { } uri) Open(uri); }
-        catch { Feedback.Text = "Не удалось открыть браузер. Повторите попытку."; }
+        if (native is not null) return;
+        await account.StartAsync(lifetime.Token);
+        for (int i = 0; i < 30 && account.Status.State == "STARTING"; i++)
+        { await Task.Delay(500, lifetime.Token); await account.RefreshAsync(lifetime.Token); }
+        if (account.Status.ImagePreparation) throw new NativeAccountException("ACCOUNT_PROFILE_CONFLICT");
+        if (account.Status.VerificationUri is not { } uri)
+            throw new NativeAccountException(account.Status.Error.Length > 0 ? account.Status.Error : "ACCOUNT_UNAVAILABLE");
+        native = nativeFactory(uri);
     }
-    void OpenCabinet(object sender, RoutedEventArgs e)
+    async void SendEmailCode(object sender, RoutedEventArgs e) => await SendEmailAsync();
+    async void EmailKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) { e.Handled = true; await SendEmailAsync(); } }
+    async Task SendEmailAsync() => await RunAsync(async () => {
+        email = NativeAccountClient.NormalizeEmail(EmailField.Text);
+        await EnsureNativeAsync();
+        await native!.SendCodeAsync(email, lifetime.Token);
+        stage = SignInStage.Code; resendAfter = DateTime.UtcNow.AddSeconds(60); Render(); LoginCode.Focus();
+    });
+    async void ResendEmailCode(object sender, RoutedEventArgs e)
     {
-        try { if (account.Status.CabinetUri is { } uri) Open(uri); }
-        catch { Feedback.Text = "Не удалось открыть личный кабинет. Повторите попытку."; }
+        if (DateTime.UtcNow < resendAfter || native is null) return;
+        await RunAsync(async () => { await native.SendCodeAsync(email, lifetime.Token); resendAfter = DateTime.UtcNow.AddSeconds(60); LoginCode.Clear(); Feedback.Text = "Новый код отправлен."; });
+    }
+    async void VerifyEmailCode(object sender, RoutedEventArgs e) => await VerifyEmailAsync();
+    async void OtpKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) { e.Handled = true; await VerifyEmailAsync(); } }
+    async Task VerifyEmailAsync()
+    {
+        if (busy || refreshing || native is null) return;
+        string code = LoginCode.Password.Trim(); LoginCode.Clear();
+        await RunAsync(async () => { try { await ShowAccountAsync(await native.VerifyAsync(email, code, lifetime.Token)); } finally { code = ""; } });
+    }
+    async Task ShowAccountAsync(NativeAccountSnapshot snapshot)
+    {
+        nativeAccount = snapshot;
+        if (snapshot.Kind == "") { stage = SignInStage.Profile; return; }
+        stage = SignInStage.Account;
+        var choices = snapshot.Subscriptions.Where(s => snapshot.Kind == "player" && s.Kind == "player" && s.CanConnect).ToList();
+        SubscriptionChoices.ItemsSource = choices; SubscriptionChoices.SelectedIndex = choices.Count > 0 ? 0 : -1;
+        SubscriptionChoices.Visibility = Visible(choices.Count > 0);
+        SubscriptionNotice.Text = snapshot.Kind == "club" ? "Это аккаунт клуба. Для клубного компьютера используйте код администратора." :
+            choices.Count == 0 ? "Аккаунт подтверждён. Действующая личная подписка пока не найдена." : "";
+        SubscriptionNotice.Visibility = Visible(SubscriptionNotice.Text.Length > 0);
+        DeviceName.Text = "";
+        if (snapshot.Kind == "player")
+        {
+            var device = await native!.DeviceAsync(lifetime.Token);
+            if (device.Mode != "device") throw new NativeAccountException("ACCOUNT_LINK_INVALID");
+            DeviceName.Text = "Компьютер: " + device.Name;
+        }
+    }
+    async void CreateProfile(object sender, RoutedEventArgs e)
+    {
+        if (native is null) return;
+        await RunAsync(async () => await ShowAccountAsync(await native.CreatePersonalProfileAsync(ProfileName.Text, lifetime.Token)));
+    }
+    async void ReloadAccount(object sender, RoutedEventArgs e)
+    {
+        if (native is null) return;
+        await RunAsync(async () => await ShowAccountAsync(await native.RefreshAsync(lifetime.Token)));
+    }
+    async void ApproveAccount(object sender, RoutedEventArgs e)
+    {
+        if (native is null || SubscriptionChoices.SelectedItem is not NativeSubscription selected) return;
+        await RunAsync(async () => {
+            await native.ApproveAsync(selected.Id, lifetime.Token);
+            nativeApproved = true; stage = SignInStage.Connecting;
+            using var logout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+            logout.CancelAfter(TimeSpan.FromSeconds(3));
+            try { await native.LogoutAsync(logout.Token); } catch { }
+            native.Dispose(); native = null;
+        });
     }
     async void ActivateCode(object sender, RoutedEventArgs e) => await ActivateAsync();
     async void CodeKeyDown(object sender, KeyEventArgs e) { if (e.Key == Key.Enter) { e.Handled = true; await ActivateAsync(); } }
@@ -105,24 +215,16 @@ public partial class WelcomeWindow : Window
     {
         if (busy || refreshing) return;
         string code = ConnectionCode.Password.Trim(); ConnectionCode.Clear();
-        if (code.Length == 0) { Feedback.Text = "Введите код, выданный администратором."; ConnectionCode.Focus(); return; }
-        busy = true; Feedback.Text = "Проверяем код подключения…"; Render();
-        try { await activation.ActivateAsync(code, lifetime.Token); Feedback.Text = activation.Status.Message; }
-        catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
-        finally { code = ""; busy = false; await RefreshAsync(); Render(); }
+        if (code.Length == 0) { Feedback.Text = "Введите код администратора."; return; }
+        await RunAsync(async () => { try { await activation.ActivateAsync(code, lifetime.Token); Feedback.Text = activation.Status.Message; } finally { code = ""; } });
     }
-    async void Retry(object sender, RoutedEventArgs e) { await RefreshAsync(true); Render(); }
-    async void Continue(object sender, RoutedEventArgs e)
-    {
-        await RefreshAsync();
-        if (access.CanContinue && !busy && !refreshing) Enter();
-    }
+    async void Retry(object sender, RoutedEventArgs e) { Feedback.Text = ""; await RefreshAsync(true); }
+    async void Continue(object sender, RoutedEventArgs e) { await RefreshAsync(); if (Ready && !busy && !refreshing) Enter(); }
     void Enter()
     {
-        if (transitioned || !access.CanContinue) return;
+        if (transitioned || !Ready) return;
         transitioned = true; timer.Stop(); connected(); Close();
     }
-    void ExitClick(object sender, RoutedEventArgs e) => Close();
     public void ShowFromTray() { Show(); WindowState = WindowState.Normal; Activate(); }
     public void Exit() => Close();
 }

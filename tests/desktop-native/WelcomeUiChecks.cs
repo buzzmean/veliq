@@ -1,30 +1,56 @@
 using System.IO;
 using System.Windows;
-using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Neexitlag.Desktop;
 using Button = System.Windows.Controls.Button;
+using TextBox = System.Windows.Controls.TextBox;
+using PasswordBox = System.Windows.Controls.PasswordBox;
 
 internal static class WelcomeUiChecks
 {
     sealed class Fixture : IServiceClient
     {
         internal string State="CODE_REQUIRED";
+        internal bool Started, Linked;
         internal List<string> Methods=[];
         public Task<T> Call<T>(string method,object? payload=null,CancellationToken cancellationToken=default)
         {
             Methods.Add(method);
+            if(method=="account.link.start")Started=true;
             object value=method switch {
                 "activation.status" => new ActivationView{State=State,HasIdentity=State=="ACTIVATED",CapturePermitted=true},
                 "activation.set" => new ActivationView{State="ACTIVATION_ERROR",Error="ACTIVATION_INVALID"},
-                "account.status" => new AccountConnectionView(),
+                "account.status" or "account.link.start" => new AccountConnectionView{
+                    State=Linked?"LINKED":Started?"WAITING_FOR_BROWSER":"NOT_LINKED", Kind=Linked?"player":"",
+                    VerificationUrl=Started?"https://account.example.test/account.html#device=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa":""},
                 "subscription.status" or "subscription.refresh" => new SubscriptionView(),
                 _ => throw new InvalidOperationException("Unexpected IPC: "+method)
             };
             return Task.FromResult((T)value);
         }
+    }
+    sealed class Account : INativeAccountClient
+    {
+        internal bool Approved, Disposed;
+        NativeAccountSnapshot snapshot=new(){Email="fixture@example.test"};
+        public Task SendCodeAsync(string email,CancellationToken ct)=>Task.CompletedTask;
+        public Task<NativeAccountSnapshot> VerifyAsync(string email,string code,CancellationToken ct)
+        {
+            if(code!="123456")throw new NativeAccountException("LOGIN_CODE_INVALID");
+            return Task.FromResult(snapshot);
+        }
+        public Task<NativeAccountSnapshot> CreatePersonalProfileAsync(string name,CancellationToken ct)
+        {
+            snapshot=new(){Email="fixture@example.test",Kind="player",Subscriptions=[new(){Id="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",Kind="player",Seats=1,CanConnect=true,Lifetime=true}]};
+            return Task.FromResult(snapshot);
+        }
+        public Task<NativeAccountSnapshot> RefreshAsync(CancellationToken ct)=>Task.FromResult(snapshot);
+        public Task<NativeDeviceLink> DeviceAsync(CancellationToken ct)=>Task.FromResult(new NativeDeviceLink{Name="Тестовый компьютер",Mode="device"});
+        public Task ApproveAsync(string subscription,CancellationToken ct){Approved=true;return Task.CompletedTask;}
+        public Task LogoutAsync(CancellationToken ct)=>Task.CompletedTask;
+        public void Dispose()=>Disposed=true;
     }
     static void Pump()
     {
@@ -32,6 +58,8 @@ internal static class WelcomeUiChecks
         Dispatcher.CurrentDispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle,new Action(()=>frame.Continue=false));
         Dispatcher.PushFrame(frame);
     }
+    static void Click(Window w,string name){((Button)w.FindName(name)).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();}
+    static void Panel(Window w,string name){if(((FrameworkElement)w.FindName(name)).Visibility!=Visibility.Visible)throw new Exception("Missing step: "+name);}
     static void Screenshot(Window window,string name)
     {
         window.UpdateLayout();
@@ -43,41 +71,40 @@ internal static class WelcomeUiChecks
     }
     internal static void Run()
     {
-        var fixture=new Fixture();bool entered=false;
-        var window=new WelcomeWindow(fixture,()=>entered=true,false);
+        var fixture=new Fixture();var api=new Account();bool entered=false;
+        var window=new WelcomeWindow(fixture,()=>entered=true,false,_=>api);
         window.Show();Pump();
         if(window.Access.CanContinue||entered)throw new Exception("Unactivated install entered desktop");
-        var steps = (System.Windows.Controls.Grid)window.FindName("Steps");
-        var labels = steps.Children.Cast<System.Windows.Controls.TextBlock>().Where(x => System.Windows.Controls.Grid.GetColumn(x) == 1).ToArray();
-        var positions = labels.Select(x => x.TransformToAncestor(steps).Transform(new System.Windows.Point(0, 0))).ToArray();
-        if (positions.Length != 3 || positions.Any(x => Math.Abs(x.X - 28) > 0.5) || Math.Abs((positions[1].Y - positions[0].Y) - (positions[2].Y - positions[1].Y)) > 0.5)
-            throw new Exception("Onboarding step labels are not aligned in fixed columns and equal rows");
-        Screenshot(window,"welcome-personal");
-        window.Width = window.MinWidth; window.Height = window.MinHeight; Pump();
-        var hero = (FrameworkElement)window.FindName("HeroPanel");
-        var brand = (FrameworkElement)window.FindName("WelcomeBrand");
-        var footer = (FrameworkElement)window.FindName("LeftFooter");
-        double heroTop = hero.TransformToAncestor(window).Transform(new System.Windows.Point()).Y;
-        double brandBottom = brand.TransformToAncestor(window).Transform(new System.Windows.Point(0, brand.ActualHeight)).Y;
-        double footerTop = footer.TransformToAncestor(window).Transform(new System.Windows.Point()).Y;
-        if (heroTop < brandBottom || heroTop + hero.ActualHeight > footerTop + 0.5)
-            throw new Exception("Minimum welcome window clips hero or onboarding steps");
+        Panel(window,"EmailPanel");Screenshot(window,"welcome-personal");
+        window.Width=window.MinWidth;window.Height=window.MinHeight;Pump();
         Screenshot(window,"welcome-minimum");
-        window.Width = 960; window.Height = 660; Pump();
-        ((Button)window.FindName("CodeTab")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
-        if(window.CodeInput.ActualHeight<42||window.CodeInput.ActualWidth<280||window.CodeInput.PasswordChar=='\0')throw new Exception("Connection code field clipped or unmasked");
-        Screenshot(window,"welcome-code");
-        fixture.Methods.Clear();
-        window.CodeInput.Password="fixture-invalid-code";
-        window.CodeSubmit.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
-        if(window.CodeInput.SecurePassword.Length!=0||entered||!fixture.Methods.Contains("activation.set"))throw new Exception("Code failure leaked input or granted access");
-        fixture.State="ACTIVATED";
+        ((TextBox)window.FindName("EmailField")).Text="fixture@example.test";
+        Click(window,"EmailSubmit");Panel(window,"OtpPanel");Screenshot(window,"welcome-email-code");
+        var otp=(PasswordBox)window.FindName("LoginCode");
+        otp.Password="000000";Click(window,"VerifySubmit");
+        if(otp.SecurePassword.Length!=0||entered||api.Approved)throw new Exception("Bad OTP leaked or granted access");
+        Panel(window,"OtpPanel");
+        otp.Password="123456";Click(window,"VerifySubmit");Panel(window,"ProfilePanel");
+        Screenshot(window,"welcome-profile");
+        Click(window,"ProfileSubmit");Panel(window,"AccountPanel");Screenshot(window,"welcome-account");
+        Click(window,"ApproveButton");Panel(window,"ConnectingPanel");
+        if(!api.Approved||!api.Disposed||entered)throw new Exception("Approval bypassed service or retained account client");
+        fixture.Linked=true;fixture.State="ACTIVATED";
         window.RefreshAsync().GetAwaiter().GetResult();Pump();
-        if(!window.Access.CanContinue)throw new Exception("Valid code activation not recognized");
-        if (((System.Windows.Controls.TextBlock)window.FindName("Feedback")).Text.Length != 0) throw new Exception("Confirmed connection retained stale activation error");
-        Screenshot(window,"welcome-connected");
-        ((Button)window.FindName("ContinueButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
+        Panel(window,"ReadyPanel");Screenshot(window,"welcome-connected");
+        Click(window,"ContinueButton");
         if(!entered||window.IsVisible)throw new Exception("Confirmed connection did not enter desktop");
-        Console.WriteLine("PASS native welcome: personal/code/connected layout, masked code, failed activation gate, confirmed transition; no live credentials");
+
+        fixture=new();entered=false;
+        window=new WelcomeWindow(fixture,()=>entered=true,false);
+        window.Show();Pump();Click(window,"CodeTab");Panel(window,"CodePanel");
+        if(window.CodeInput.ActualHeight<42||window.CodeInput.ActualWidth<280||window.CodeInput.PasswordChar=='\0')throw new Exception("Connection code clipped or unmasked");
+        Screenshot(window,"welcome-code");
+        window.CodeInput.Password="fixture-invalid-code";Click(window,"ActivateButton");
+        if(window.CodeInput.SecurePassword.Length!=0||entered||!fixture.Methods.Contains("activation.set"))throw new Exception("Code failure leaked input or granted access");
+        fixture.State="ACTIVATED";window.RefreshAsync().GetAwaiter().GetResult();Pump();
+        Panel(window,"ReadyPanel");Click(window,"ContinueButton");
+        if(!entered||window.IsVisible)throw new Exception("Legacy code connection not recognized");
+        Console.WriteLine("PASS native welcome: email/OTP/profile/approval/service gate/club code; fixture only, no live credentials");
     }
 }

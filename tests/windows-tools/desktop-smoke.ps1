@@ -25,7 +25,7 @@ try {
  $deadline=[DateTime]::UtcNow.AddSeconds(15)
  do {
   $names=@($window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)|ForEach-Object {$_.Current.Name})
-  $missing=@(@('Личный компьютер','Клубный компьютер','Войти','Создать аккаунт','Проверить подключение','Закрыть')|Where-Object {$_ -notin $names})
+  $missing=@(@('Личный компьютер','Клубный компьютер','Электронная почта','Получить код','Создать аккаунт')|Where-Object {$_ -notin $names})
   if(!$missing.Count){break};Start-Sleep -Milliseconds 200
  }while([DateTime]::UtcNow -lt $deadline)
  if($missing.Count){throw ('Отсутствуют русские элементы окна: '+($missing -join ', '))}
@@ -39,8 +39,8 @@ try {
  Write-Output 'PASS: опубликованный EXE, русский стартовый экран без доступа к маршрутизации и единственный экземпляр'
  if(!(Get-Service VELIQ -ErrorAction SilentlyContinue)) {
   $deadline=[DateTime]::UtcNow.AddSeconds(15)
-  do {$names=@($window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)|ForEach-Object {$_.Current.Name});if('Не удалось связаться с VELIQ' -in $names){break};Start-Sleep -Milliseconds 200}while([DateTime]::UtcNow -lt $deadline)
-  if('Не удалось связаться с VELIQ' -notin $names){throw 'Отсутствующая служба не отображена по-русски'}
+  do {$names=@($window.FindAll([Windows.Automation.TreeScope]::Descendants,[Windows.Automation.Condition]::TrueCondition)|ForEach-Object {$_.Current.Name});if('Служба VELIQ недоступна. Повторите проверку.' -in $names){break};Start-Sleep -Milliseconds 200}while([DateTime]::UtcNow -lt $deadline)
+  if('Служба VELIQ недоступна. Повторите проверку.' -notin $names){throw 'Отсутствующая служба не отображена по-русски'}
   Write-Output 'PASS: отсутствие службы без падения'
  }
  [void]$first.CloseMainWindow();if(!$first.WaitForExit(10000)){throw 'X не завершил опубликованный GUI при MinimizeToTray OFF'}
