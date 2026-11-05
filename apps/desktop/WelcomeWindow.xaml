@@ -17,9 +17,16 @@
      <Border Width="48" Height="5" Background="{StaticResource Accent}" HorizontalAlignment="Left" Margin="0,0,0,24" CornerRadius="2"/>
      <TextBlock Text="Начните&#10;с подключения." FontSize="38" FontWeight="ExtraBold" TextWrapping="Wrap" LineHeight="44"/>
      <TextBlock Text="Игры, общение и работа —&#10;в одном приложении." Style="{StaticResource Lead}" FontSize="16" Margin="0,22,0,28" LineHeight="25"/>
-     <TextBlock Text="01   Подключите компьютер" Style="{StaticResource Small}" Margin="0,0,0,13"/>
-     <TextBlock Text="02   Выберите приложения" Style="{StaticResource Small}" Margin="0,0,0,13"/>
-     <TextBlock Text="03   Включите VELIQ" Style="{StaticResource Small}"/>
+     <Grid x:Name="Steps" Margin="0,0,0,0">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="30"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <TextBlock Text="01" Style="{StaticResource Small}"/>
+      <TextBlock Grid.Column="1" Text="Подключите компьютер" Style="{StaticResource Small}"/>
+      <TextBlock Grid.Row="1" Text="02" Style="{StaticResource Small}"/>
+      <TextBlock Grid.Row="1" Grid.Column="1" Text="Выберите приложения" Style="{StaticResource Small}"/>
+      <TextBlock Grid.Row="2" Text="03" Style="{StaticResource Small}"/>
+      <TextBlock Grid.Row="2" Grid.Column="1" Text="Включите VELIQ" Style="{StaticResource Small}"/>
+     </Grid>
     </StackPanel>
    </DockPanel>
   </Border>

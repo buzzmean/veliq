@@ -47,7 +47,15 @@ internal static class WelcomeUiChecks
         var window=new WelcomeWindow(fixture,()=>entered=true,false);
         window.Show();Pump();
         if(window.Access.CanContinue||entered)throw new Exception("Unactivated install entered desktop");
+        var steps = (System.Windows.Controls.Grid)window.FindName("Steps");
+        var labels = steps.Children.Cast<System.Windows.Controls.TextBlock>().Where(x => System.Windows.Controls.Grid.GetColumn(x) == 1).ToArray();
+        var positions = labels.Select(x => x.TransformToAncestor(steps).Transform(new System.Windows.Point(0, 0))).ToArray();
+        if (positions.Length != 3 || positions.Any(x => Math.Abs(x.X - 28) > 0.5) || Math.Abs((positions[1].Y - positions[0].Y) - (positions[2].Y - positions[1].Y)) > 0.5)
+            throw new Exception("Onboarding step labels are not aligned in fixed columns and equal rows");
         Screenshot(window,"welcome-personal");
+        window.Width = window.MinWidth; window.Height = window.MinHeight; Pump();
+        Screenshot(window,"welcome-minimum");
+        window.Width = 960; window.Height = 660; Pump();
         ((Button)window.FindName("CodeTab")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
         if(window.CodeInput.ActualHeight<42||window.CodeInput.ActualWidth<280||window.CodeInput.PasswordChar=='\0')throw new Exception("Connection code field clipped or unmasked");
         Screenshot(window,"welcome-code");
