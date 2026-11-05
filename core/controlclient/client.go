@@ -15,6 +15,13 @@ import (
 	"time"
 )
 
+// ErrSubscriptionExpired: the control plane refuses relay tickets because the
+// paid period (plus grace) ended. The device identity and seat stay valid.
+var ErrSubscriptionExpired = errors.New("SUBSCRIPTION_EXPIRED")
+
+// ErrNotSupported: the control plane predates the endpoint.
+var ErrNotSupported = errors.New("control plane endpoint not supported")
+
 type Client struct {
 	BaseURL              string
 	HTTP                 *http.Client
@@ -66,6 +73,12 @@ func (c *Client) request(ctx context.Context, method, path string, value any, to
 	b, e := io.ReadAll(io.LimitReader(response.Body, int64(limit+1)))
 	if e != nil || len(b) > limit {
 		return nil, errors.New("invalid control plane response size")
+	}
+	if response.StatusCode == http.StatusPaymentRequired {
+		return nil, ErrSubscriptionExpired
+	}
+	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusMethodNotAllowed {
+		return nil, ErrNotSupported
 	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, errors.New("control plane rejected request")
@@ -136,4 +149,32 @@ func (c *Client) Register(ctx context.Context, name, publicKey, adminToken strin
 func (c *Client) Heartbeat(ctx context.Context, id, token string, load float64) error {
 	_, e := c.request(ctx, "POST", "/api/v1/relays/heartbeat", map[string]any{"id": id, "healthy": true, "load": load}, token)
 	return e
+}
+
+// SubscriptionStatus is this device's own paid period as the control plane sees it.
+type SubscriptionStatus struct {
+	Managed    bool       `json:"managed"`
+	Enforced   bool       `json:"enforced"`
+	Active     bool       `json:"active"`
+	PaidUntil  *time.Time `json:"paid_until,omitempty"`
+	GraceUntil *time.Time `json:"grace_until,omitempty"`
+}
+
+func (c *Client) SubscriptionStatus(ctx context.Context) (SubscriptionStatus, error) {
+	var out SubscriptionStatus
+	if len(c.DeviceKey) != ed25519.PrivateKeySize {
+		return out, errors.New("device identity required")
+	}
+	proof, e := security.NewProof(c.DeviceID, security.SubscriptionAudience, c.DeviceKey, time.Now())
+	if e != nil {
+		return out, e
+	}
+	raw, e := c.request(ctx, "POST", "/api/v1/subscription/status", proof, "")
+	if e != nil {
+		return out, e
+	}
+	if e = security.Parse(raw, &out); e != nil {
+		return out, errors.New("invalid subscription response")
+	}
+	return out, nil
 }

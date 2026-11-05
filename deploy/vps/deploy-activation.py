@@ -152,7 +152,9 @@ def apply(stage,commit,confirm):
  report=engine.report(engine.e.Host());print('ACTIVATION_PREFLIGHT='+json.dumps(report),file=sys.stderr,flush=True)
  if not engine.compatible(report['capabilities']['relay'],'relay') or not engine.compatible(report['capabilities']['control-plane'],'control-plane'):
   raise RuntimeError('CURRENT_PROTOCOL_3_BASELINE_REQUIRED')
- if report['applied_schema_version'] not in (1,2,3):raise RuntimeError('UNSUPPORTED_SCHEMA_VERSION')
+ # Migration 4 is additive; current control-plane applies it on startup.
+ # Keep rejecting unreviewed future schemas before any deployment mutation.
+ if report['applied_schema_version'] not in (1,2,3,4,5):raise RuntimeError('UNSUPPORTED_SCHEMA_VERSION')
  if report['systemd_version']<247:raise RuntimeError('SYSTEMD_LOADCREDENTIAL_REQUIRES_247')
  if not Path('/etc/neexitlag/echo/echo.token').is_file():raise RuntimeError('EXISTING_ECHO_CREDENTIAL_REQUIRED')
  # Read-only preflight verifies same CA/SAN/root key before any upgrade writes.

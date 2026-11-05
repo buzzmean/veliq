@@ -1,9 +1,12 @@
 import importlib.util
 import json
 import os
+import io
+import contextlib
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
+import tempfile
 from unittest import mock
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -12,6 +15,37 @@ def load():
  m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m);return m
 
 class IsolatedEnvironmentTests(unittest.TestCase):
+ def test_activation_child_failure_keeps_private_log_and_returns_original_exit(self):
+  m=load();secret=b'PRIVATE_FIXTURE_CHILD_OUTPUT'
+  with tempfile.TemporaryDirectory() as tmp:
+   log=Path(tmp)/'activation.log';real_path=m.Path
+   def path(value):
+    return log if str(value)=='/var/tmp/neexitlag-upgrade-private/activation.log' else real_path(value)
+   def child(args,**kwargs):
+    self.assertEqual(args,['python3','tests/deployment/isolated-activation.py'])
+    self.assertEqual(kwargs['stderr'],m.subprocess.STDOUT)
+    kwargs['stdout'].write(secret+b'\nRuntimeError: UNSUPPORTED_SCHEMA_VERSION\n')
+    return SimpleNamespace(returncode=7)
+   output=io.StringIO()
+   with mock.patch.object(m,'require') as guard,mock.patch.object(m,'Path',side_effect=path),mock.patch.object(m.subprocess,'run',side_effect=child),contextlib.redirect_stderr(output):
+    self.assertEqual(m.run_activation(),7)
+   guard.assert_called_once()
+   self.assertIn(secret,log.read_bytes());self.assertNotIn(secret.decode(),output.getvalue())
+   self.assertIn('UNSUPPORTED_SCHEMA_VERSION',output.getvalue())
+
+ def test_activation_failure_exposes_only_safe_codes_exit_and_frame_locations(self):
+  m=load();secret='PRIVATE_FIXTURE_SECRET_DO_NOT_EXPORT'
+  raw=('password='+secret+'\n-----BEGIN CERTIFICATE-----\n'+secret+'\n'
+       '  File "/src/deploy/vps/deploy-activation.py", line 155, in apply\n'
+       '    raise RuntimeError("'+secret+'")\n'
+       'RuntimeError: UNSUPPORTED_SCHEMA_VERSION\n'
+       '  File "/private/'+secret+'.py", line 2, in hidden\n').encode()
+  report=m.activation_failure(raw,7)
+  self.assertNotIn(secret,json.dumps(report));self.assertNotIn('CERTIFICATE',json.dumps(report))
+  self.assertEqual(report['stage'],'ISOLATED_ACTIVATION');self.assertEqual(report['exit_code'],7)
+  self.assertEqual(report['log_summary']['codes'],['UNSUPPORTED_SCHEMA_VERSION'])
+  self.assertEqual(report['traceback'],[{'file':'deploy-activation.py','line':155}])
+
  def test_ordinary_host_and_nonroot_are_rejected(self):
   m=load()
   with mock.patch.dict(os.environ,{},clear=True),mock.patch.object(m.os,'geteuid',return_value=1000):

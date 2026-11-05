@@ -9,6 +9,7 @@ public partial class MainWindow {
   ActivationSummary.Text=status.Message;ActivationCertificates.Text=status.CertificateStatus;
   if(!activationEdit){ActivationPanel.Visibility=!status.HasIdentity&&status.State is "CODE_REQUIRED" or "ACTIVATING" or "ACTIVATION_ERROR"?Visibility.Visible:Visibility.Collapsed;}
   ActivationError.Text=status.Message;
+  await RefreshAccountConnectionAsync();
   if(status.State=="ACTIVATED"&&(!activationEdit||activationSubmitted)){activationEdit=false;ActivationPanel.Visibility=Visibility.Collapsed;ActivationCode.Password="";}
  }
  void ChangeActivation(object sender,RoutedEventArgs e){activationEdit=true;activationSubmitted=false;ActivationPanel.Visibility=Visibility.Visible;ActivationCode.Password="";ActivationError.Text="Введите новый код активации";ActivationCode.Focus();}

@@ -31,15 +31,23 @@ type ActivationStatus struct {
 	ServerNotAfter   string                         `json:"server_not_after"`
 }
 type activationRecord struct {
-	Code           string `json:"code"`
-	RequestID      string `json:"request_id"`
-	Pending        bool   `json:"pending"`
-	Machine        string `json:"machine_hash"`
-	Salt           string `json:"hardware_salt"`
-	CANotAfter     string `json:"ca_not_after,omitempty"`
-	ServerNotAfter string `json:"server_not_after,omitempty"`
+	AccountLink     *enrollment.DeviceLink    `json:"account_link,omitempty"`
+	AccountStarted  int64                     `json:"account_started,omitempty"`
+	Account         enrollment.AccountBinding `json:"account,omitempty"`
+	AccountOrigin   string                    `json:"account_origin,omitempty"`
+	BootstrapID     string                    `json:"club_bootstrap_id,omitempty"`
+	BootstrapSecret string                    `json:"club_bootstrap_secret,omitempty"`
+	ImageTemplate   bool                      `json:"image_template,omitempty"`
+	Code            string                    `json:"code"`
+	RequestID       string                    `json:"request_id"`
+	Pending         bool                      `json:"pending"`
+	Machine         string                    `json:"machine_hash"`
+	Salt            string                    `json:"hardware_salt"`
+	CANotAfter      string                    `json:"ca_not_after,omitempty"`
+	ServerNotAfter  string                    `json:"server_not_after,omitempty"`
 }
 type activationRuntime struct {
+	account              atomic.Pointer[accountConnectionStatus]
 	networkBlocked       atomic.Bool
 	stopAutomatic        atomic.Bool
 	preactivationCleanup bool
@@ -132,7 +140,11 @@ func readActivationRecord(path string) (activationRecord, error) {
 	if len(b) > 4096 || security.Parse(b, &r) != nil {
 		return r, errors.New("ACTIVATION_STORAGE_FAILED")
 	}
-	if _, e = enrollment.CodeHash(r.Code); e != nil {
+	if r.AccountLink == nil && r.BootstrapID == "" && r.Account.Kind == "" {
+		if _, e = enrollment.CodeHash(r.Code); e != nil {
+			return r, e
+		}
+	} else if e = validateAccountActivationRecord(r); e != nil {
 		return r, e
 	}
 	if len(r.RequestID) != 32 {
@@ -298,6 +310,9 @@ func (c *Controller) activationAttempt(ctx context.Context, m Manifest, r activa
 	if !policy.Ready {
 		return r, policy, errors.New("ACTIVATION_UNAVAILABLE")
 	}
+	if r.AccountLink != nil && r.AccountLink.Mode == "image" {
+		return c.accountImageAttempt(ctx, m, r, policy, client)
+	}
 	salt, e := hex.DecodeString(policy.HardwareSalt)
 	if e != nil || len(salt) != 32 {
 		return r, policy, errors.New("ACTIVATION_INVALID_RESPONSE")
@@ -310,6 +325,9 @@ func (c *Controller) activationAttempt(ctx context.Context, m Manifest, r activa
 	// A cloned image cannot reuse a candidate key from a different physical PC.
 	dir := filepath.Join(m.StateDirectory, "activation-pending", machine, r.RequestID)
 	identityPath := filepath.Join(dir, "identity.json")
+	if r.AccountLink != nil && validActivationIdentity(m) {
+		identityPath = m.DeviceIdentityFile
+	}
 	id, key, e := security.LoadOrCreateIdentity(identityPath)
 	if e != nil {
 		return r, policy, errors.New("ACTIVATION_KEY_FAILED")
@@ -323,7 +341,7 @@ func (c *Controller) activationAttempt(ctx context.Context, m Manifest, r activa
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
-	response, e := client.Enroll(ctx, r.Code, request, roots)
+	response, e := accountEnrollmentResponse(ctx, c, m, &r, policy, client, request, key, roots)
 	if e != nil {
 		return r, policy, e
 	}
@@ -457,6 +475,11 @@ func (c *Controller) activationLoop(managed bool) {
 				}
 				c.activation.mu.Unlock()
 			}
+			if current, err := readActivation(m); e == nil && err == nil && current.ImageTemplate {
+				if e = c.finishAccountImage(m, current); e == nil {
+					return
+				}
+			}
 			if c.ctx.Err() != nil {
 				return
 			}
@@ -479,6 +502,10 @@ func (c *Controller) activationLoop(managed bool) {
 				if e != nil {
 					c.activation.status.State = "ACTIVATION_ERROR"
 					c.activation.status.Error = activationSafeError(e)
+					if e.Error() == "ACCOUNT_APPROVAL_PENDING" {
+						c.activation.status.State = "ACTIVATING"
+						c.activation.status.Error = ""
+					}
 				}
 			}
 			c.activation.mu.Unlock()
@@ -516,6 +543,9 @@ func (c *Controller) activationLoop(managed bool) {
 				backoff = time.Minute
 			}
 		}
+		if e != nil && e.Error() == "ACCOUNT_APPROVAL_PENDING" {
+			backoff = 3 * time.Second
+		}
 		if captureRetry {
 			backoff = captureBackoff
 			if captureBackoff < 30*time.Second {
@@ -540,7 +570,7 @@ func (c *Controller) activationLoop(managed bool) {
 }
 func activationSafeError(e error) string {
 	switch e.Error() {
-	case "ACTIVATION_INVALID", "ACTIVATION_REVOKED", "ACTIVATION_EXPIRED", "ACTIVATION_LIMIT", "MACHINE_DISABLED", "ACTIVATION_RATE_LIMIT", "ACTIVATION_TRUST_NOT_CONFIGURED", "HARDWARE_ID_UNAVAILABLE", "ACTIVATION_STORAGE_FAILED", "ACTIVATION_IDENTITY_CONFLICT":
+	case "ACTIVATION_INVALID", "ACTIVATION_REVOKED", "ACTIVATION_EXPIRED", "ACTIVATION_LIMIT", "MACHINE_DISABLED", "ACTIVATION_RATE_LIMIT", "ACTIVATION_TRUST_NOT_CONFIGURED", "HARDWARE_ID_UNAVAILABLE", "ACTIVATION_STORAGE_FAILED", "ACTIVATION_IDENTITY_CONFLICT", "ACCOUNT_NOT_CONFIGURED", "ACCOUNT_LINK_INVALID", "ACCOUNT_LINK_EXPIRED", "ACCOUNT_APPROVAL_PENDING", "ACCOUNT_DEVICE_ALREADY_OWNED", "ACCOUNT_SUBSCRIPTION_REQUIRED", "ACCOUNT_IMAGE_NOT_CLEAN", "ACCOUNT_IMAGE_STORAGE_FAILED", "ACCOUNT_IMAGE_REVOKED", "ACCOUNT_IMAGE_LIMIT", "ACCOUNT_SIGN_IN_REQUIRED", "SUBSCRIPTION_EXPIRED":
 		return e.Error()
 	}
 	return "ACTIVATION_UNAVAILABLE"

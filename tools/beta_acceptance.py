@@ -5,11 +5,11 @@ import json
 from pathlib import Path
 import re
 
-GLOBAL = ('go_linux', 'go_windows', 'filters', 'desktop', 'origin_isolation',
+GLOBAL = ('account_onboarding', 'go_linux', 'go_windows', 'filters', 'desktop', 'origin_isolation',
           'relay_fail_closed', 'listener_capture_fail_closed', 'installer_vm',
           'artifact_integrity', 'server_readiness', 'activation_capacity',
           'certificates', 'code_hygiene', 'pubg_match', 'valorant_match', 'faceit_match')
-PER_PC = ('install', 'standard_user', 'browser_sites', 'ordinary_direct',
+PER_PC = ('account_sign_in', 'install', 'standard_user', 'browser_sites', 'ordinary_direct',
           'youtube_2160p', 'discord_voice_local', 'freeze_reboot',
           'identity_stable', 'rollback', 'network_recovery', 'owner_proxy_lifecycle')
 

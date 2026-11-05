@@ -5,6 +5,11 @@
   "pilot_size": 6,
   "owner_reviewed": false,
   "global": {
+    "account_onboarding": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
     "go_linux": {
       "status": "NOT_RUN",
       "evidence": "",
@@ -93,6 +98,11 @@
       "service_sha256": "",
       "gui_sha256": "",
       "checks": {
+        "account_sign_in": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
         "install": {
           "status": "NOT_RUN",
           "evidence": "",
@@ -156,6 +166,11 @@
       "service_sha256": "",
       "gui_sha256": "",
       "checks": {
+        "account_sign_in": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
         "install": {
           "status": "NOT_RUN",
           "evidence": "",

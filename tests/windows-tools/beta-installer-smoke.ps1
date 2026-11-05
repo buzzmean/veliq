@@ -18,26 +18,61 @@ function Get-OwnedServiceState([string]$Name='VELIQ'){
 }
 foreach($name in @('VELIQ','neexitlag')){if((Get-OwnedServiceState $name) -ne 'ABSENT'){throw 'EXISTING_SERVICE_PRESERVED'}}
 foreach($path in @($installed,$app,(Join-Path $env:ProgramData 'neexitlag'),(Join-Path $env:ProgramFiles 'VELIQ Setup'))){if(Test-Path -LiteralPath $path){throw 'EXISTING_INSTALLATION_PRESERVED'}}
-function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage){
+function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage,[switch]$AccountImage,[switch]$OmitNoRestart,[switch]$UpdateMode){
  # Inno's uninstaller delegates to _unins.tmp. Process.WaitForExit waits only
  # for the launcher; PowerShell Start-Process -Wait waits for its process tree.
  # A worker job preserves that behavior and bounds it without killing browsers.
  $log=Join-Path $env:RUNNER_TEMP ('beta-inno-'+$Stage+'-'+[guid]::NewGuid().ToString('N')+'.log')
  Write-Output ('BETA_INSTALLER_START stage='+$Stage)
+ if([IO.Path]::GetFileName($Path) -eq 'unins000.exe'){
+  # Read-only diagnostics for a refusal, without registry values or user paths.
+  $helper=Join-Path $app 'installer/install-safety.ps1'
+  $probeCommand='. '''+$helper+'''; try { Assert-VeliqInstallPreflight '''+$app+'''; Write-Output "BETA_UNINSTALL_PREFLIGHT_PASS" } catch { Write-Output ("BETA_UNINSTALL_PREFLIGHT_FAILURE type="+$_.Exception.GetType().Name+" line="+$_.InvocationInfo.ScriptLineNumber); if($_.Exception.Message -cmatch "^[A-Z][A-Z0-9_]{3,80}$"){Write-Output $_.Exception.Message}; exit 1 }'
+  & (Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe') -NoProfile -NonInteractive -OutputFormat Text -EncodedCommand ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probeCommand)))
+  foreach($file in @(Get-ChildItem -LiteralPath $app -Recurse -File | Where-Object {$_.Name -notmatch '^unins000\.'})){
+   try{$handle=[IO.File]::Open($file.FullName,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);$handle.Dispose()}
+   catch{Write-Output ('BETA_UNINSTALL_LOCKED '+$file.FullName.Substring($app.Length+1))}
+  }
+  # This fixture owns the entire disposable VM. Show only Inno temp metadata;
+  # never print arbitrary registry values or installation/activation contents.
+  . $helper
+  $pendingItems=@(Read-VeliqRebootRegistry 'SYSTEM\CurrentControlSet\Control\Session Manager' 'PendingFileRenameOperations')
+  $shapes=@(foreach($pendingItem in $pendingItems){
+   $text=[string]$pendingItem;$parts=$text.Split('\');$tail=($parts | Select-Object -Last 2) -join '\'
+   if($tail -notmatch '^[a-zA-Z0-9_.~!\\-]{0,100}$'){$tail='REDACTED'}
+   [ordered]@{empty=($text.Length -eq 0);prefix_codes=@($text.ToCharArray()|Select-Object -First 4|ForEach-Object {[int]$_});tail=$tail}
+  })
+  Write-Output ('BETA_PENDING_FILE_SHAPES '+($shapes|ConvertTo-Json -Depth 4 -Compress))
+  Write-Output ('BETA_REBOOT_STATE '+((Get-VeliqRebootState $app)|ConvertTo-Json -Compress))
+  foreach($value in @(Read-VeliqRebootRegistry 'SYSTEM\CurrentControlSet\Control\Session Manager' 'PendingFileRenameOperations')){
+   if([string]$value -match '^(?:\*[12])?\\\?\?\\([a-zA-Z]:\\.*\\iu-[a-zA-Z0-9]+\.tmp)$'){
+    $directory=$Matches[1];$clone=Join-Path $directory '_unins.tmp'
+    if(Test-Path -LiteralPath $clone){
+     $metadata=Read-VeliqFileVersion $clone
+     $same=(Get-FileHash -LiteralPath $clone).Hash -ceq (Get-FileHash -LiteralPath (Join-Path $app 'unins000.exe')).Hash
+     $diagnostic=[ordered]@{temp_roots=@(Get-VeliqTemporaryRoots);clone_directory=$directory;child_count=@(Get-ChildItem -LiteralPath $directory -Force).Count;description=$metadata.FileDescription;product=$metadata.ProductName;company=$metadata.CompanyName;same_hash=$same;recognized=(Test-VeliqInnoCleanupDirectory $directory $app)}
+     Write-Output ('BETA_INNO_CLEANUP_METADATA '+($diagnostic|ConvertTo-Json -Compress))
+    }
+   }
+  }
+ }
  $worker=Start-Job -ScriptBlock {
-  param($Executable,$LogFile,$InvalidImage)
+  param($Executable,$LogFile,$InvalidImage,$AccountImageMode,$UnsafeArguments,$ServiceUpdate)
   $ErrorActionPreference='Stop'
-  $arguments=@('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/LOG="'+$LogFile+'"'))
-  if($InvalidImage){$arguments+='/CLUBIMAGE=1'}
-  $process=Start-Process -FilePath $Executable -ArgumentList $arguments -Wait -PassThru
+  $arguments=@('/VERYSILENT','/SUPPRESSMSGBOXES',('/LOG="'+$LogFile+'"'))
+  if(!$UnsafeArguments){$arguments+='/NORESTART';$arguments+='/RESTARTEXITCODE=3010'}
+  if($ServiceUpdate){$arguments+='/UPDATE=1'}
+  if($AccountImageMode){$arguments+='/CLUBIMAGE=1'}
+  if($InvalidImage){$arguments+='/CLUBIMAGE=1';$missing=Join-Path (Split-Path $Executable -Parent) ('missing-code-'+[guid]::NewGuid().ToString('N')+'.txt');$arguments+=('/CLUBCODEFILE="'+$missing+'"')}
+  $process=Start-Process -FilePath $Executable -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
   try{[int]$process.ExitCode}finally{$process.Dispose()}
- } -ArgumentList $Path,$log,([bool]$InvalidClubImage)
+ } -ArgumentList $Path,$log,([bool]$InvalidClubImage),([bool]$AccountImage),([bool]$OmitNoRestart),([bool]$UpdateMode)
  try{
   $finished=Wait-Job -Job $worker -Timeout 180
   if(!$finished){throw ('OWNED_INSTALLER_TREE_TIMEOUT stage='+$Stage)}
   if($worker.State -ne 'Completed'){throw ('OWNED_INSTALLER_WORKER_FAILED stage='+$Stage)}
   $codes=@(Receive-Job -Job $worker -ErrorAction Stop)
-  if($codes.Count -ne 1 -or $codes[0] -ne $ExpectedExit){throw ('OWNED_INSTALLER_EXIT_FAILED stage='+$Stage)}
+  if($codes.Count -ne 1 -or $codes[0] -ne $ExpectedExit){throw ('OWNED_INSTALLER_EXIT_FAILED stage='+$Stage+' expected='+$ExpectedExit+' actual='+($codes -join ','))}
   Write-Output ('BETA_INSTALLER_FINISHED stage='+$Stage)
  }finally{
   if($worker.State -in @('Running','NotStarted')){Stop-Job -Job $worker}
@@ -72,10 +107,11 @@ function Write-PreflightEnvironmentProbe {
 function Assert-InstalledCandidate {
  if((Get-OwnedServiceState) -ne 'Running'){throw 'INSTALLED_SERVICE_NOT_RUNNING'}
  $result=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
- if($result.result -cne 'PASS'){throw 'INSTALL_RESULT_NOT_PASS'}
+ if($result.result -cne 'PASS' -or !$result.reboot_check_known -or $result.reboot_required -ne $false -or @($result.reboot_reasons).Count){throw 'INSTALL_RESULT_NOT_PASS'}
  foreach($pair in @(@('service/veliq-service.exe',(Join-Path $installed 'veliq-service.exe')),@('gui/VELIQ.exe',(Join-Path $app 'VELIQ.exe')))){
   if((Get-FileHash -LiteralPath (Join-Path $payload $pair[0])).Hash -cne (Get-FileHash -LiteralPath $pair[1]).Hash){throw 'INSTALLED_CANDIDATE_HASH_MISMATCH'}
  }
+ if($result.gui_sha256 -cne (Get-FileHash -LiteralPath (Join-Path $app 'VELIQ.exe')).Hash.ToLowerInvariant() -or $result.service_sha256 -cne (Get-FileHash -LiteralPath (Join-Path $installed 'veliq-service.exe')).Hash.ToLowerInvariant()){throw 'INSTALL_RESULT_HASH_EVIDENCE_MISMATCH'}
  $snapshotFile=Join-Path $env:RUNNER_TEMP ('beta-snapshot-'+[guid]::NewGuid().ToString('N')+'.json')
  & (Join-Path $PSScriptRoot '../../tools/windows/Get-BetaSnapshot.ps1') -Manifest (Join-Path $PSScriptRoot '../../bin/beta-kit/candidate.json') -PCId 'PC01' -OutputPath $snapshotFile
  $snapshot=Get-Content -Raw -LiteralPath $snapshotFile|ConvertFrom-Json
@@ -88,16 +124,40 @@ function Assert-InstalledCandidate {
 }
 $uninstalled=$false
 try{
- # A missing code in CLUBIMAGE mode must fail before SCM/identity creation.
+ # This negative case must exit during initialization, before any file or SCM change.
+ Invoke-OwnedInstaller $setup 'missing-norestart' -ExpectedExit 1 -OmitNoRestart
+ foreach($path in @($installed,$app)){if(Test-Path -LiteralPath $path){throw 'UNSAFE_SETUP_ARGUMENTS_MUTATED_MACHINE'}}
+ # An explicitly supplied missing legacy file must fail before SCM/identity creation.
+ # New CLUBIMAGE mode without a file uses account approval instead.
  # Inno used to suppress the script exception and falsely return exit 0.
  Invoke-OwnedInstaller $setup 'invalid-image' -ExpectedExit 1 -InvalidClubImage
  $failure=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
- if($failure.result -cne 'FAIL' -or $failure.code -cne 'CLUB_IMAGE_CODE_FILE_REQUIRED' -or (Get-OwnedServiceState) -ne 'ABSENT'){throw 'FAILED_SETUP_FALSE_SUCCESS_OR_STATE_MUTATION'}
+ if($failure.result -cne 'FAIL' -or $failure.code -cne 'CLUB_CODE_FILE_INVALID' -or (Get-OwnedServiceState) -ne 'ABSENT'){throw 'FAILED_SETUP_FALSE_SUCCESS_OR_STATE_MUTATION'}
  Invoke-OwnedInstaller (Join-Path $app 'unins000.exe') 'invalid-image-uninstall'
  foreach($path in @($installed,$app)){if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}}
- Write-Output 'BETA_NEGATIVE_SETUP_PASS exit=1; missing club code; no SCM service'
+ Write-Output 'BETA_NEGATIVE_SETUP_PASS exit=1; invalid legacy file; no SCM service'
  Invoke-OwnedInstaller $setup 'install'
  Assert-InstalledCandidate
+ # A real incompatible file handle must stop both interactive-owner and SYSTEM
+ # update modes BEFORE [InstallDelete], preserving the running service and GUI.
+ $beforeService=Get-CimInstance Win32_Service -Filter "Name='VELIQ'"
+ $beforeHash=(Get-FileHash -LiteralPath (Join-Path $app 'VELIQ.exe')).Hash
+ $held=[IO.File]::Open((Join-Path $app 'VELIQ.exe'),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+ try{
+  Invoke-OwnedInstaller $setup 'locked-gui' -ExpectedExit 7
+  Invoke-OwnedInstaller $setup 'locked-gui-update-mode' -ExpectedExit 7 -UpdateMode
+ }finally{$held.Dispose()}
+ if((Get-CimInstance Win32_Service -Filter "Name='VELIQ'").ProcessId -ne $beforeService.ProcessId -or (Get-FileHash -LiteralPath (Join-Path $app 'VELIQ.exe')).Hash -cne $beforeHash){throw 'LOCKED_GUI_PREFLIGHT_MUTATED_INSTALLATION'}
+ Assert-InstalledCandidate
+ # Simulate the old false-success case: payload is valid but installed GUI is old.
+ [IO.File]::AppendAllText((Join-Path $app 'VELIQ.exe'),'mismatched-installed-gui')
+ $powershell=Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+ $packageScript=Join-Path $app 'installer/install-package.ps1'
+ $check=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',('"& '''+$packageScript+''' -Update"')) -WindowStyle Hidden -Wait -PassThru
+ try{if($check.ExitCode -eq 0){throw 'WRONG_INSTALLED_GUI_ACCEPTED'}}finally{$check.Dispose()}
+ $failure=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
+ if($failure.result -cne 'FAIL' -or $failure.code -cne 'INSTALL_GUI_HASH_MISMATCH' -or (Test-Path -LiteralPath (Join-Path $app 'install-success.json'))){throw 'WRONG_INSTALLED_GUI_FALSE_SUCCESS'}
+ Write-Output 'BETA_NO_REBOOT_PASS unsafe argv refused; locked GUI leaves service/files unchanged; installed GUI mismatch cannot PASS'
  # Re-install the identical package exercises the real existing-service update.
  Invoke-OwnedInstaller $setup 'update'
  Assert-InstalledCandidate
@@ -107,10 +167,28 @@ try{
  if((Get-OwnedServiceState) -ne 'ABSENT'){throw 'SERVICE_REMAINED_AFTER_UNINSTALL'}
  foreach($name in @('VELIQ.exe','installer/install-package.ps1','unins000.exe')){if(Test-Path -LiteralPath (Join-Path $app $name)){throw 'UNINSTALL_LEFT_PACKAGE_FILES'}}
  $uninstalled=$true
+ foreach($path in @($installed,$app)){if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}}
+ $uninstalled=$false
+ Invoke-OwnedInstaller $setup 'account-image' -AccountImage
+ Assert-InstalledCandidate
+ $preparation=Get-Content -Raw -LiteralPath (Join-Path $installed 'club-account-preparation.json')|ConvertFrom-Json
+ if($preparation.version -ne 1 -or $preparation.owner_sid -cne [Security.Principal.WindowsIdentity]::GetCurrent().User.Value){throw 'ACCOUNT_IMAGE_PREPARATION_OWNER_MISMATCH'}
+ foreach($name in @('identity.json','device.pem','probe.token','club-boot-ready.json','club-mode.json')){if(Test-Path -LiteralPath (Join-Path $installed $name)){throw 'ACCOUNT_IMAGE_ENROLLED_OR_SEALED_BEFORE_OWNER_APPROVAL'}}
+ $manifest=Get-Content -Raw -LiteralPath (Join-Path $installed 'service.json')|ConvertFrom-Json
+ if($manifest.club_image){throw 'ACCOUNT_IMAGE_ACTIVATED_BEFORE_APPROVAL'}
+ . (Join-Path $PSScriptRoot '../../tools/windows/common.ps1')
+ $account=Invoke-ServiceIPCOnce 'account.status'
+ if(!$account.image_preparation -or $account.state -cne 'NOT_LINKED'){throw 'ACCOUNT_IMAGE_IPC_NOT_PENDING'}
+ if($account.PSObject.Properties['secret'] -or $account.PSObject.Properties['bootstrap_secret']){throw 'ACCOUNT_IMAGE_IPC_EXPORTED_SECRET'}
+ $task=Get-ScheduledTask -TaskName 'VELIQ Club Boot'
+ if(!$task -or $task.Principal.UserId -notin @('SYSTEM','S-1-5-18')){throw 'ACCOUNT_IMAGE_BOOT_TASK_NOT_SYSTEM'}
+ Write-Output 'BETA_ACCOUNT_IMAGE_PASS no_code=true real_owner_IPC=true approval_pending=true no_identity=true system_boot_task=true'
+ Invoke-OwnedInstaller (Join-Path $app 'unins000.exe') 'account-image-uninstall'
+ $uninstalled=$true
 }catch{
  # Preserve the initiating assertion before a cleanup failure can mask it.
  $safe='UNEXPECTED_FIXTURE_EXCEPTION'
- if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;|$)'){$safe=$Matches[1]}
+ if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;| |$)'){$safe=$Matches[1]}
  Write-Output ('BETA_INSTALLER_PRIMARY_FAILURE code='+$safe+' line='+$_.InvocationInfo.ScriptLineNumber+' type='+$_.Exception.GetType().Name)
  Write-PreflightEnvironmentProbe
  $resultPath=Join-Path $app 'install-result.json'

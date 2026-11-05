@@ -1,7 +1,7 @@
 name: Owner browser authority probe (isolated)
 on:
   push:
-    branches: ['test/r1-browser-authority-*']
+    branches: ['test/r1-browser-authority-*', 'feat/account-onboarding-beta-*']
   workflow_dispatch:
     inputs:
       gp_diagnostics:

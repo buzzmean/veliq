@@ -602,6 +602,10 @@
   <data name="TransportOutcome" xml:space="preserve"><value>Результат транспорта</value></data>
   <data name="ActivationStatusChecking" xml:space="preserve"><value>Код активации: проверяем</value></data>
   <data name="ChangeActivationCode" xml:space="preserve"><value>Сменить</value></data>
+  <data name="RenewSubscription" xml:space="preserve"><value>Продлить</value></data>
+  <data name="SubscriptionEnded" xml:space="preserve"><value>Подписка закончилась</value></data>
+  <data name="SubscriptionEndedLead" xml:space="preserve"><value>Интернет работает как без VELIQ. Продлите подписку в личном кабинете — VELIQ включится сам.</value></data>
+  <data name="SubscriptionRecheck" xml:space="preserve"><value>Я уже оплатил — проверить</value></data>
   <data name="EnterActivationCode" xml:space="preserve"><value>Введите код активации</value></data>
   <data name="ActivateCode" xml:space="preserve"><value>Активировать</value></data>
   <data name="Games" xml:space="preserve"><value>Игры</value></data>
@@ -641,4 +645,11 @@
   <data name="MetricServer" xml:space="preserve"><value>Сервер</value></data>
   <data name="ServerAuto" xml:space="preserve"><value>Выбран автоматически</value></data>
   <data name="ServerPending" xml:space="preserve"><value>Выбирается автоматически</value></data>
+  <data name="AccountHeading" xml:space="preserve"><value>Аккаунт</value></data>
+  <data name="AccountCabinet" xml:space="preserve"><value>Личный кабинет</value></data>
+  <data name="AccountTitle" xml:space="preserve"><value>Войти в VELIQ</value></data>
+  <data name="AccountLead" xml:space="preserve"><value>Войдите или зарегистрируйтесь в браузере.</value></data>
+  <data name="AccountSignIn" xml:space="preserve"><value>Войти или зарегистрироваться</value></data>
+  <data name="AccountLegacyCode" xml:space="preserve"><value>Ранее выданный код</value></data>
+  <data name="AccountLabel" xml:space="preserve"><value>Аккаунт VELIQ</value></data>
 </root>

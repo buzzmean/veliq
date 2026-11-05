@@ -115,9 +115,17 @@ func (s *Store) EnrollCode(ctx context.Context, hash []byte, machine string, d D
 	if !time.Now().Before(expires) {
 		return errors.New("ACTIVATION_EXPIRED")
 	}
+	if e = enrollSlotTx(ctx, tx, id, limit, machine, d, kid, key, public, ""); e != nil {
+		return e
+	}
+	return tx.Commit(ctx)
+}
+
+// Caller holds the global enrollment lock and the authorization row.
+func enrollSlotTx(ctx context.Context, tx pgx.Tx, id string, limit int, machine string, d Device, kid string, key []byte, public map[string]string, account string) error {
 	var old string
 	var disabled bool
-	e = tx.QueryRow(ctx, "SELECT device_id,disabled FROM activation_slots WHERE code_id=$1 AND machine_hash=$2 FOR UPDATE", id, machine).Scan(&old, &disabled)
+	e := tx.QueryRow(ctx, "SELECT device_id,disabled FROM activation_slots WHERE code_id=$1 AND machine_hash=$2 FOR UPDATE", id, machine).Scan(&old, &disabled)
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
 		return e
 	}
@@ -137,8 +145,17 @@ func (s *Store) EnrollCode(ctx context.Context, hash []byte, machine string, d D
 	var dead bool
 	e = tx.QueryRow(ctx, "SELECT public_key,revoked FROM devices WHERE id=$1 FOR UPDATE", d.ID).Scan(&pub, &dead)
 	if e == nil {
-		if old != d.ID || pub != d.PublicKey || dead {
+		if pub != d.PublicKey || dead || old != d.ID && account == "" {
 			return errors.New("ACTIVATION_IDENTITY_CONFLICT")
+		}
+		if old != d.ID {
+			var foreign bool
+			if e = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id JOIN subscriptions sub ON sub.id=c.subscription_id WHERE sl.device_id=$1 AND NOT sl.disabled AND sub.account_id<>$2)", d.ID, account).Scan(&foreign); e != nil {
+				return e
+			}
+			if foreign {
+				return errors.New("ACCOUNT_DEVICE_ALREADY_OWNED")
+			}
 		}
 	} else if errors.Is(e, pgx.ErrNoRows) {
 		if _, e = tx.Exec(ctx, "INSERT INTO devices(id,user_id,name,public_key) VALUES($1,'owner',$2,$3)", d.ID, d.Name, d.PublicKey); e != nil {
@@ -147,8 +164,13 @@ func (s *Store) EnrollCode(ctx context.Context, hash []byte, machine string, d D
 	} else {
 		return e
 	}
+	if account != "" {
+		if _, e = tx.Exec(ctx, "INSERT INTO account_device_bindings(device_id,subscription_id) SELECT $1,subscription_id FROM activation_codes WHERE id=$2 ON CONFLICT(device_id) DO UPDATE SET subscription_id=excluded.subscription_id", d.ID, id); e != nil {
+			return e
+		}
+	}
 	if old == d.ID {
-		return tx.Commit(ctx)
+		return nil
 	}
 	if old != "" && old != d.ID {
 		if _, e = tx.Exec(ctx, "UPDATE devices SET revoked=true WHERE id=$1", old); e != nil {
@@ -164,7 +186,7 @@ func (s *Store) EnrollCode(ctx context.Context, hash []byte, machine string, d D
 	if _, e = publishConfigTx(ctx, tx, kid, key, public); e != nil {
 		return e
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 func (s *Store) RevokeCode(ctx context.Context, id, machine string, kid string, key []byte, public map[string]string) error {
 	tx, e := s.DB.Begin(ctx)

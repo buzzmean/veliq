@@ -112,6 +112,9 @@ func (v *TicketVerifier) AcceptForDevice(raw []byte, peer ed25519.PublicKey, dev
 // RenewalAudience is the Proof.RelayID value reserved for client certificate renewal.
 const RenewalAudience = "certificate-renewal"
 
+// SubscriptionAudience is the Proof.RelayID value reserved for subscription status checks.
+const SubscriptionAudience = "subscription-status"
+
 type Proof struct {
 	DeviceID  string    `json:"device_id"`
 	RelayID   string    `json:"relay_id"`

@@ -335,6 +335,11 @@ func (c *Controller) handleOptimize(ctx context.Context, raw json.RawMessage) (a
 	if e := security.Parse(raw, &v); e != nil {
 		return nil, e
 	}
+	if !v.Enabled && ctx.Value(subscriptionSuspendContext{}) != true {
+		c.subscription.mu.Lock()
+		c.subscription.resume = false
+		c.subscription.mu.Unlock()
+	}
 	c.activation.stopAutomatic.Store(!v.Enabled)
 	if v.Enabled && !c.activationNetworkAllowed() {
 		return nil, errors.New("ACTIVATION_REQUIRED")

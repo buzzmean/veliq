@@ -297,3 +297,5 @@ git pull --ff-only origin main
 Полный pg_restore/DROP не выполнять: nonce/отзывы сохраняются. Наличие старых
 бинарников со schema 2 не означает, что коды уже работают; нужен подтверждённый
 новый deployment и активный renewal timer. Production этим не меняется.
+
+Подписки, личный кабинет и привязка кодов к оплате — [ACCOUNTS.md](ACCOUNTS.md).

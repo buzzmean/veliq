@@ -19,6 +19,10 @@ func (a *API) enrollmentPolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := enrollment.Policy{Ready: len(a.Settings.EnrollmentProbeToken) >= 24, HardwareSalt: salt, CANotAfter: a.Settings.CA.NotAfter.UTC().Format(time.RFC3339)}
+	p.AccountReady = a.accountLinkAvailable()
+	if p.AccountReady {
+		p.AccountOrigin = a.Settings.AccountOrigin
+	}
 	if a.Settings.ServerCertificate != nil {
 		p.ServerNotAfter = a.Settings.ServerCertificate.NotAfter.UTC().Format(time.RFC3339)
 	}
