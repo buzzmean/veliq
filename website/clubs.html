@@ -29,6 +29,7 @@
   <link rel="stylesheet" href="assets/components.css">
   <link rel="stylesheet" href="assets/site.css">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<link rel="stylesheet" href="assets/club-application.css?v=d925cadcc80e">
 </head>
 <body>
 <script src="assets/icons.js"></script>
@@ -157,14 +158,51 @@
   </div>
 </section>
 
-<section class="sec band--ink" id="apply">
-  <div class="wrap club-band">
-    <div>
-      <h2 class="h2">Поставим на один ПК — решите по факту</h2>
-      <p class="lede" style="margin-top:20px">Напишите, сколько у вас компьютеров и какая система управления. Пришлём код активации и поможем с первой установкой.</p>
-      <div class="hero__actions" style="margin-top:32px"><a class="btn btn--lg" href="mailto:support@veliq.app?subject=VELIQ%20для%20клуба">Оставить заявку</a><a class="btn btn--lg btn--ghost" href="pricing.html">Тарифы</a></div>
+<section class="sec club-apply" id="apply" aria-labelledby="club-apply-title">
+  <div class="wrap club-apply__layout">
+    <div class="club-apply__intro">
+      <span class="club-apply__eyebrow">ПОДКЛЮЧЕНИЕ КЛУБА</span>
+      <h2 class="h2" id="club-apply-title">Начнём<br>с одного ПК.</h2>
+      <p class="lede">Расскажите о клубе. Поможем настроить VELIQ на первом компьютере — дальше решите по результату.</p>
+      <ol class="club-apply__steps">
+        <li><span>01</span><div><strong>Знакомимся с клубом</strong><p>Уточним вашу задачу и систему управления.</p></div></li>
+        <li><span>02</span><div><strong>Помогаем подключиться</strong><p>Подготовим аккаунт и пройдём настройку вместе.</p></div></li>
+        <li><span>03</span><div><strong>Проверяем в работе</strong><p>Вы оцените результат на своих играх и сервисах.</p></div></li>
+      </ol>
+      <p class="club-apply__aside">Регистрация и оплата для отправки заявки не нужны. <a href="/pricing">Посмотреть тарифы →</a></p>
     </div>
-    <div class="club-band__pcs" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="club-apply__card">
+      <div class="club-apply__card-head"><h3>Заявка на подключение</h3><p>Около двух минут. Поля со звёздочкой обязательны.</p></div>
+      <form id="club-application" aria-label="Заявка на подключение клуба">
+        <fieldset class="club-apply__fields"><legend>О клубе</legend>
+          <div class="club-apply__grid">
+            <label>Название клуба <span aria-hidden="true">*</span><input name="club" autocomplete="organization" maxlength="80" placeholder="Например, VIONIX" required></label>
+            <label>Город <span aria-hidden="true">*</span><input name="city" autocomplete="address-level2" maxlength="80" placeholder="Где находится клуб" required></label>
+            <label>Количество ПК <span aria-hidden="true">*</span><input name="pcs" type="number" inputmode="numeric" min="1" max="2000" step="1" placeholder="36" required></label>
+            <label>Система управления <span aria-hidden="true">*</span><input name="management" maxlength="100" placeholder="Название или «пока выбираем»" required></label>
+            <label class="club-apply__wide">Как установлена Windows<select name="installation"><option value="Не указано">Выберите, если знаете</option><option>На диске каждого ПК</option><option>Бездисковая загрузка по сети</option><option>Смешанная схема</option><option>Пока не знаю</option></select></label>
+          </div>
+        </fieldset>
+        <fieldset class="club-apply__fields"><legend>Как с вами связаться</legend>
+          <div class="club-apply__grid">
+            <label>Ваше имя <span aria-hidden="true">*</span><input name="name" autocomplete="name" maxlength="80" placeholder="Как к вам обращаться" required></label>
+            <label>Ваша роль<select name="role"><option>Владелец</option><option>Управляющий</option><option>Администратор</option><option>Технический специалист</option><option>Другое</option></select></label>
+            <label>Удобный способ связи<select name="channel"><option value="telegram">Telegram</option><option value="phone">Телефон</option><option value="email">Email</option></select></label>
+            <label><span id="club-contact-label">Имя в Telegram *</span><input name="contact" aria-labelledby="club-contact-label" aria-describedby="club-contact-hint" autocomplete="off" maxlength="120" placeholder="@username" required><small id="club-contact-hint">Проверьте, что вам можно написать.</small></label>
+            <label class="club-apply__wide">Когда удобно связаться <span class="club-apply__optional">необязательно</span><input name="time" maxlength="100" placeholder="Например, будни 12–18, по Москве"></label>
+          </div>
+        </fieldset>
+        <label class="club-apply__comment">Что хотите решить <span class="club-apply__optional">необязательно</span><textarea name="comment" rows="4" maxlength="600" placeholder="Какие игры или сервисы работают нестабильно? Что важно учесть при подключении?"></textarea><small>До 600 символов. Пароли и коды доступа не нужны.</small></label>
+        <label class="club-apply__consent"><input type="checkbox" name="consent" required><span>Согласен на обработку данных заявки для связи и подключения клуба по <a href="/privacy" target="_blank" rel="noopener">политике конфиденциальности</a>. Заявка передаётся команде VELIQ через Telegram.</span></label>
+        <p id="club-application-error" class="club-apply__error" role="alert" hidden></p>
+        <button class="btn btn--lg club-apply__submit" type="submit">Отправить заявку <span aria-hidden="true">↗</span></button>
+        <p class="club-apply__footnote">Ответим по выбранному контакту. Переписка также будет доступна в чате поддержки на сайте.</p>
+      </form>
+      <div id="club-application-success" class="club-apply__success" role="status" tabindex="-1" hidden>
+        <div class="club-apply__check" aria-hidden="true">✓</div><h3>Заявка принята</h3><p>Номер <strong data-application-reference></strong></p><p>Данные сохранены. Команда VELIQ свяжется с вами по указанному контакту.</p><p class="club-apply__footnote">Если хотите что-то добавить, напишите в чат. На общем компьютере после разговора завершите сессию поддержки.</p><button class="btn btn--lg" type="button" data-application-chat>Открыть переписку</button><p data-chat-error role="alert" hidden></p>
+      </div>
+      <noscript><p>Для отправки заявки включите JavaScript. Также можно написать на <a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a>.</p></noscript>
+    </div>
   </div>
 </section>
 
@@ -210,5 +248,6 @@
 </footer>
 <script src="assets/charts.js"></script>
 <script src="assets/site.js"></script>
+<script src="assets/club-application.js?v=03d157e7533c" defer></script>
 </body>
 </html>
