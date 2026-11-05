@@ -51,7 +51,10 @@ public sealed class ResourceTests
         foreach (var path in productionFiles)
         {
             string code = File.ReadAllText(path);
-            Assert.DoesNotContain("HttpClient", code);
+            // The native account API is the only desktop HTTPS transport.
+            // Browser/proxy transport and loopback servers remain prohibited.
+            if (Path.GetFullPath(path) != Path.GetFullPath(Path.Combine(root, "apps/desktop-core/NativeAccountClient.cs")))
+                Assert.DoesNotContain("HttpClient", code);
             Assert.DoesNotContain("--demo-url", code);
             Assert.DoesNotContain("WebBrowser", code);
             Assert.DoesNotContain("127.0.0.1", code);
