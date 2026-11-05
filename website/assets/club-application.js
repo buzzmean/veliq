@@ -48,4 +48,3 @@
   });
   success.querySelector('[data-application-chat]').addEventListener('click',function(){var launch=document.querySelector('#veliq-support .vs-launch');if(launch){if(launch.getAttribute('aria-expanded')!=='true')launch.click();}else{var msg=success.querySelector('[data-chat-error]');msg.textContent='Чат ещё загружается. Повторите через несколько секунд или откройте страницу помощи.';msg.hidden=false;}});
 })(typeof window==='undefined'?{}:window);
-
