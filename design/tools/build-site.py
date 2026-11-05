@@ -108,6 +108,7 @@ def head(title, desc, path, extra_ld=None, og="og-image.png", og_alt="VELIQ: у 
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/components.css">
   <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/header-account.css?v=20261105-1">
 {'  <link rel="stylesheet" href="assets/hero-freedom.css?v=20261105-1">' if path == "index.html" else ""}
   <script>document.documentElement.classList.add('js');try{{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}}catch(e){{}}</script>{ld}
 </head>
@@ -130,12 +131,17 @@ def header(active):
     </a>
     <nav class="nav" id="nav" aria-label="Основное меню">
 {links}
+      <a class="nav__download" href="download.html">Скачать для Windows</a>
     </nav>
     <div class="top__tools">
       <button class="btn btn--quiet btn--icon btn--sm theme-btn" type="button" data-theme-toggle aria-label="Сменить тему">
         <svg class="i i-sun-use" aria-hidden="true"><use href="#i-sun"/></svg><svg class="i i-moon-use" aria-hidden="true"><use href="#i-moon"/></svg>
       </button>
       <a class="btn btn--sm top__cta" href="download.html">Скачать</a>
+      <a class="btn btn--sm top__account" href="/account" aria-label="Личный кабинет">
+        <svg class="top__account-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
+        <span class="top__account-full" aria-hidden="true">Личный кабинет</span><span class="top__account-short" aria-hidden="true">Кабинет</span>
+      </a>
       <button class="btn btn--quiet btn--icon btn--sm menu-btn" type="button" data-menu aria-expanded="false" aria-controls="nav" aria-label="Меню">{icon('menu')}</button>
     </div>
   </div>

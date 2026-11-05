@@ -28,6 +28,7 @@
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/components.css">
   <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/header-account.css?v=20261105-1">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
   <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Как VELIQ выбирает путь?", "acceptedAnswer": {"@type": "Answer", "text": "Программа замеряет задержку и потери до сервера игры или сервиса и выбирает лучший путь: обычный — через провайдера, или через собственные серверы VELIQ, если так быстрее или стабильнее. Всё, что и так работает хорошо, не трогает. <a href=\"how.html\">Как работает VELIQ</a>."}}, {"@type": "Question", "name": "Нужно ли что-то перезапускать?", "acceptedAnswer": {"@type": "Answer", "text": "Нет. Маршруты работают сразу после нажатия «Оптимизировать» — ничего закрывать и перезапускать не нужно."}}, {"@type": "Question", "name": "Как VELIQ влияет на пинг в играх?", "acceptedAnswer": {"@type": "Answer", "text": "VELIQ сравнивает пути до игрового сервера и выбирает самый быстрый. Если путь через сеть VELIQ не быстрее обычного, маршрут не меняется. Замеры видно в программе."}}, {"@type": "Question", "name": "Вы видите, что я открываю?", "acceptedAnswer": {"@type": "Answer", "text": "Нет. Мы не расшифровываем и не подменяем HTTPS. Сервер видит адрес назначения и объём данных — этого достаточно, чтобы переслать трафик. <a href=\"index.html#privacy\">Что видит сервер</a>. Подробности — в <a href=\"privacy.html\">политике конфиденциальности</a>."}}, {"@type": "Question", "name": "Какие системы поддерживаются?", "acceptedAnswer": {"@type": "Answer", "text": "Сейчас VELIQ работает на компьютерах с Windows. Версия для телефона готовится."}}, {"@type": "Question", "name": "Сколько стоит и как оплатить?", "acceptedAnswer": {"@type": "Answer", "text": "Тарифы — на странице <a href=\"pricing.html\">«Цены»</a>. Оплатить можно картой или через СБП в личном кабинете, клубы могут платить по счёту."}}, {"@type": "Question", "name": "Подходит ли VELIQ для клубов?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Для клубов есть отдельный код активации и инструкция, они выдаются после заявки. <a href=\"clubs.html\">VELIQ для клубов</a>."}}, {"@type": "Question", "name": "Как выключить VELIQ?", "acceptedAnswer": {"@type": "Answer", "text": "Нажмите большую кнопку ещё раз. Интернет продолжит работать как без программы."}}, {"@type": "Question", "name": "Как добавить свой сайт или приложение?", "acceptedAnswer": {"@type": "Answer", "text": "Вкладка «Сервисы» → «Добавить». VELIQ подберёт для него маршрут так же, как для остальных."}}]}</script>
 </head>
@@ -46,12 +47,17 @@
       <a href="clubs.html">Клубам</a>
       <a href="pricing.html">Цены</a>
       <a href="support.html" aria-current="page">Помощь</a>
+      <a class="nav__download" href="download.html">Скачать для Windows</a>
     </nav>
     <div class="top__tools">
       <button class="btn btn--quiet btn--icon btn--sm theme-btn" type="button" data-theme-toggle aria-label="Сменить тему">
         <svg class="i i-sun-use" aria-hidden="true"><use href="#i-sun"/></svg><svg class="i i-moon-use" aria-hidden="true"><use href="#i-moon"/></svg>
       </button>
       <a class="btn btn--sm top__cta" href="download.html">Скачать</a>
+      <a class="btn btn--sm top__account" href="/account" aria-label="Личный кабинет">
+        <svg class="top__account-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
+        <span class="top__account-full" aria-hidden="true">Личный кабинет</span><span class="top__account-short" aria-hidden="true">Кабинет</span>
+      </a>
       <button class="btn btn--quiet btn--icon btn--sm menu-btn" type="button" data-menu aria-expanded="false" aria-controls="nav" aria-label="Меню"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
     </div>
   </div>
@@ -131,3 +137,4 @@
 <script src="assets/site.js"></script>
 </body>
 </html>
+
