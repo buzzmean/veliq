@@ -316,10 +316,11 @@ func TestSupportHTTPBoundaries(t *testing.T) {
 	token := visitor(t, s)
 	h := &Server{Store: s, Origin: "https://veliq.test", Enabled: true}
 	request := func(path, origin, body, cookie string) *httptest.ResponseRecorder {
-		r := httptest.NewRequest("POST", "https://veliq.test/api/v1/support/"+path, strings.NewReader(body))
+		r := httptest.NewRequest("POST", "https://veliq.test/api/v1/account/support/"+path, strings.NewReader(body))
 		r.Header.Set("Origin", origin)
 		r.Header.Set("Content-Type", "application/json")
 		r.RemoteAddr = "127.0.0.1:9999"
+		r.Header.Set("X-Support-Context", hash("guest-context\x00"+cookie))
 		if cookie != "" {
 			r.AddCookie(&http.Cookie{Name: cookieName, Value: cookie})
 		}
@@ -371,8 +372,52 @@ func TestSupportBrowser(t *testing.T) {
 		t.Fatal(e)
 	}
 	h := &Server{Store: s, Enabled: true}
+	var authMu sync.Mutex
+	sessions := map[string]string{}
+	h.Accounts = verifierFunc(func(_ context.Context, token string) (string, error) {
+		authMu.Lock()
+		defer authMu.Unlock()
+		if email := sessions[token]; email != "" {
+			return hash("fixture-account:" + email)[:32], nil
+		}
+		return "", ErrUnauthorized
+	})
 	mux := http.NewServeMux()
-	mux.Handle("/api/v1/support/", h)
+	mux.Handle("/api/v1/account/support/", h)
+	mux.HandleFunc("/api/v1/account/login/verify", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.Header.Get("Origin") != h.Origin {
+			w.WriteHeader(403)
+			return
+		}
+		var q struct {
+			Email string `json:"email"`
+		}
+		if json.NewDecoder(r.Body).Decode(&q) != nil || !strings.HasSuffix(q.Email, "@example.test") {
+			w.WriteHeader(400)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1, Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+		token := randomID()[:43]
+		authMu.Lock()
+		sessions[token] = q.Email
+		authMu.Unlock()
+		http.SetCookie(w, &http.Cookie{Name: accountCookie, Value: token, Path: "/api/v1/account", HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+	mux.HandleFunc("/api/v1/account/logout", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.Header.Get("Origin") != h.Origin {
+			w.WriteHeader(403)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1, Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+		if c, e := r.Cookie(accountCookie); e == nil {
+			authMu.Lock()
+			delete(sessions, c.Value)
+			authMu.Unlock()
+		}
+		http.SetCookie(w, &http.Cookie{Name: accountCookie, Path: "/api/v1/account", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode})
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
 	mux.Handle("/", http.FileServer(http.Dir(root)))
 	fixtureKey := randomID()
 	mux.HandleFunc("/_fixture/reply", func(w http.ResponseWriter, r *http.Request) {

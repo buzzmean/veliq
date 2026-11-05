@@ -40,6 +40,8 @@ type Message struct {
 	Created time.Time `json:"created_at"`
 }
 type State struct {
+	Context   string    `json:"context"`
+	Identity  string    `json:"identity"`
 	Available bool      `json:"available"`
 	Session   bool      `json:"session"`
 	Ticket    *Ticket   `json:"ticket"`
@@ -103,18 +105,22 @@ func (s *Store) Session(ctx context.Context, peer string) (string, error) {
 		return "", e
 	}
 	token := randomID()
-	_, e = tx.Exec(ctx, `INSERT INTO support_visitors VALUES($1,now()+interval '30 days')`, hash(token))
+	_, e = tx.Exec(ctx, `INSERT INTO support_visitors(id,expires_at,owner_kind) VALUES($1,now()+interval '30 days','guest')`, hash(token))
 	if e != nil {
 		return "", e
 	}
 	return token, tx.Commit(ctx)
 }
 func (s *Store) sessionStatus(ctx context.Context, token string) (bool, error) {
+	return s.ownerStatus(ctx, principal{token: token, kind: "guest"})
+}
+func (s *Store) ownerStatus(ctx context.Context, p principal) (bool, error) {
+	token := p.token
 	if !validID(token) {
 		return false, nil
 	}
 	var ok bool
-	e := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM support_visitors WHERE id=$1 AND expires_at>now())`, hash(token)).Scan(&ok)
+	e := s.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM support_visitors WHERE id=$1 AND owner_kind=$2 AND expires_at>now())`, hash(token), p.kind).Scan(&ok)
 	return ok, e
 }
 func (s *Store) ValidSession(ctx context.Context, token string) bool {
@@ -122,8 +128,12 @@ func (s *Store) ValidSession(ctx context.Context, token string) bool {
 	return ok && err == nil
 }
 func (s *Store) State(ctx context.Context, token, ticket string, before int64) (State, error) {
+	return s.state(ctx, principal{token: token, kind: "guest"}, ticket, before)
+}
+func (s *Store) state(ctx context.Context, p principal, ticket string, before int64) (State, error) {
+	token := p.token
 	st := State{Messages: []Message{}}
-	ok, err := s.sessionStatus(ctx, token)
+	ok, err := s.ownerStatus(ctx, p)
 	if err != nil {
 		return st, err
 	}
@@ -175,6 +185,10 @@ func enqueue(ctx context.Context, tx pgx.Tx, ticket, body string) error {
 
 // Mutate locks the visitor and ticket. A stable request key makes transport retries safe.
 func (s *Store) Mutate(ctx context.Context, token, peer, action string, m Mutation) (string, error) {
+	return s.mutate(ctx, principal{token: token, kind: "guest"}, peer, action, m)
+}
+func (s *Store) mutate(ctx context.Context, p principal, peer, action string, m Mutation) (string, error) {
+	token := p.token
 	if !validID(token) || !validID(m.Key) || (m.Ticket != "" && !validID(m.Ticket)) {
 		return "", ErrInvalid
 	}
@@ -191,7 +205,7 @@ func (s *Store) Mutate(ctx context.Context, token, peer, action string, m Mutati
 	defer tx.Rollback(ctx)
 	visitor := hash(token)
 	var id string
-	e = tx.QueryRow(ctx, `SELECT id FROM support_visitors WHERE id=$1 AND expires_at>now() FOR UPDATE`, visitor).Scan(&id)
+	e = tx.QueryRow(ctx, `SELECT id FROM support_visitors WHERE id=$1 AND owner_kind=$2 AND expires_at>now() FOR UPDATE`, visitor, p.kind).Scan(&id)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return "", ErrUnauthorized
 	}
