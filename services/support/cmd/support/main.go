@@ -39,6 +39,8 @@ func main() {
 	chat := flag.Int64("telegram-chat-id", 0, "private support group ID")
 	operators := flag.String("telegram-operators", "", "comma-separated numeric operator IDs")
 	migrate := flag.Bool("migrate", false, "apply support schema and exit")
+	accountURL := flag.String("account-url", "", "required fixed HTTPS /api/v1/account endpoint for current session validation")
+	accountCA := flag.String("account-ca-file", "", "optional additional account upstream CA PEM")
 	flag.Parse()
 	host, _, e := net.SplitHostPort(*listen)
 	if e != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
@@ -76,6 +78,10 @@ func main() {
 		return
 	}
 	var workerFailed atomic.Bool
+	accounts, e := support.NewAccountVerifier(*accountURL, *accountCA)
+	if e != nil {
+		log.Fatal("valid account-url and account CA required")
+	}
 	enabled := *tokenFile != ""
 	if enabled {
 		ids, e := support.ParseOperators(*operators)
@@ -99,7 +105,7 @@ func main() {
 			}
 		}()
 	}
-	srv := &http.Server{Addr: *listen, Handler: &support.Server{Store: store, Origin: *origin, Enabled: enabled, TrustProxy: true}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
+	srv := &http.Server{Addr: *listen, Handler: &support.Server{Store: store, Origin: *origin, Enabled: enabled, TrustProxy: true, Accounts: accounts}, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8192}
 	go func() {
 		<-ctx.Done()
 		c, cancel := context.WithTimeout(context.Background(), 10*time.Second)

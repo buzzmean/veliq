@@ -30,14 +30,14 @@ with sync_playwright() as p:
             route.abort('failed')
         else:
             route.continue_()
-    page.route('**/api/v1/support/message', lose_response)
+    page.route('**/api/v1/account/support/message', lose_response)
     page.locator('.vs-form button').click()
     expect(page.locator('.vs-error')).to_be_visible()
     expect(page.locator('.vs-message--visitor')).to_have_count(1)
     page.locator('.vs-form button').click()
     expect(page.locator('#vs-input')).to_have_value('')
     expect(page.locator('.vs-message--visitor')).to_have_count(1)
-    page.unroute('**/api/v1/support/message', lose_response)
+    page.unroute('**/api/v1/account/support/message', lose_response)
     expect(page.locator('.vs-status')).to_have_text('Обращение в очереди')
     expect(page.locator('.vs-message--visitor')).to_have_count(1)
     page.reload()
@@ -56,7 +56,7 @@ with sync_playwright() as p:
     assert page.locator('.vs-messages script, .vs-messages img').count() == 0
     # A separate browser cannot read this visitor's ticket.
     other = browser.new_context()
-    response = other.request.get(args.origin + '/api/v1/support/state')
+    response = other.request.get(args.origin + '/api/v1/account/support/state')
     assert response.json()['ticket'] is None
     other.close()
     # Two tabs restore the same authoritative ticket.
@@ -81,10 +81,65 @@ with sync_playwright() as p:
     assert box['x'] >= 0 and box['x'] + box['width'] <= 360 and box['y'] >= 0
     page.screenshot(path=os.environ.get('VELIQ_SUPPORT_SCREENSHOT', '/tmp/veliq-support-mobile.png'))
     page.on('dialog', lambda d: d.accept())
+    page.locator('.vs-info-toggle').click()
     page.locator('.vs-forget').click()
+    page.locator('.vs-forget-yes').click()
     expect(page.locator('.vs-message')).to_have_count(0)
     page.reload()
     expect(page.locator('.vs-message')).to_have_count(0)
+    # Real path-scoped account cookie: the old support path cannot receive it.
+    def login(target, who):
+        assert target.evaluate("""async who => (await fetch('/api/v1/account/login/verify', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email:who+'@example.test',code:'fixture'})})).ok""", who)
+    def logout(target):
+        assert target.evaluate("""async () => (await fetch('/api/v1/account/logout', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).ok""")
+    login(page,'alice')
+    expect(page.locator('#vs-input')).to_be_enabled()
+    page.locator('#vs-input').fill('ACCOUNT ALICE PRIVATE')
+    page.locator('.vs-form button').click()
+    expect(page.locator('.vs-message--visitor p')).to_have_text('ACCOUNT ALICE PRIVATE')
+    tab.reload()
+    expect(tab.locator('.vs-message--visitor p')).to_have_text('ACCOUNT ALICE PRIVATE')
+    page.locator('#vs-input').fill('UNSENT ALICE DRAFT')
+    captured=[]
+    def hold_old_account(route):
+        response=route.fetch()
+        if response.ok and 'ACCOUNT ALICE PRIVATE' in response.text():
+            captured.append((route,response))
+        else: route.fulfill(response=response)
+    page.route('**/api/v1/account/support/state',hold_old_account)
+    page.evaluate("document.dispatchEvent(new Event('visibilitychange'))")
+    page.wait_for_function("document.querySelector('.vs-status').textContent==='Проверяем сессию…'")
+    for _ in range(40):
+        if captured: break
+        page.wait_for_timeout(100)
+    assert captured, 'old response not captured'
+    logout(tab)
+    login(tab,'bob')
+    expect(tab.locator('.vs-message')).to_have_count(0)
+    for route,response in captured: route.fulfill(response=response)
+    page.unroute('**/api/v1/account/support/state',hold_old_account)
+    expect(page.locator('.vs-message')).to_have_count(0)
+    expect(page.locator('#vs-input')).to_have_value('')
+    expect(tab.locator('#vs-input')).to_be_enabled()
+    tab.locator('#vs-input').fill('ACCOUNT BOB PRIVATE')
+    tab.locator('.vs-form button').click()
+    expect(tab.locator('.vs-message--visitor p')).to_have_text('ACCOUNT BOB PRIVATE')
+    tab.reload()
+    expect(tab.locator('.vs-message--visitor p')).to_have_text('ACCOUNT BOB PRIVATE')
+    logout(tab)
+    expect(tab.locator('.vs-message')).to_have_count(0)
+    login(tab,'alice')
+    expect(tab.locator('.vs-message--visitor p')).to_have_text('ACCOUNT ALICE PRIVATE')
+    # Guest history is never automatically attached during sign-in.
+    logout(tab)
+    expect(tab.locator('#vs-input')).to_be_enabled()
+    tab.locator('#vs-input').fill('GUEST BEFORE LOGIN')
+    tab.locator('.vs-form button').click()
+    expect(tab.locator('.vs-message--visitor p')).to_have_text('GUEST BEFORE LOGIN')
+    login(tab,'carol')
+    expect(tab.locator('.vs-message')).to_have_count(0)
+    logout(tab)
+    expect(tab.locator('.vs-message')).to_have_count(0)
     assert not errors, errors
     browser.close()
-print('SUPPORT_BROWSER_PASS: reload, two tabs, Telegram reply, XSS, resolve, new ticket, mobile, forget')
+print('SUPPORT_BROWSER_PASS: reload, two tabs, Telegram reply, XSS, resolve, new ticket, mobile, forget, account switch, stale response, logout, guest isolation')

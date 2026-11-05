@@ -12,12 +12,13 @@ import (
 	"time"
 )
 
-const cookieName = "__Host-veliq_support"
+const cookieName = "__Host-veliq_support_v2"
 
 type Server struct {
-	Store   *Store
-	Origin  string
-	Enabled bool
+	Store    *Store
+	Origin   string
+	Enabled  bool
+	Accounts AccountVerifier
 	// TrustProxy is only for a loopback nginx which overwrites X-Real-IP.
 	TrustProxy bool
 }
@@ -33,6 +34,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(code)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": reason})
 	}
+	// The old route does not receive the cabinet's path-scoped session cookie.
+	// Fail closed even when an old widget or old nginx configuration calls it.
+	if !strings.HasPrefix(r.URL.Path, apiPrefix) {
+		fail(410, "support_client_outdated")
+		return
+	}
 	if r.Method != "GET" && r.Method != "POST" {
 		w.Header().Set("Allow", "GET, POST")
 		fail(405, "method_not_allowed")
@@ -46,18 +53,29 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(403, "origin_denied")
 		return
 	}
-	token := ""
-	if c, e := r.Cookie(cookieName); e == nil {
-		token = c.Value
+	p, identityErr := s.identify(ctx, r)
+	if identityErr != nil {
+		if errors.Is(identityErr, ErrUnauthorized) {
+			fail(401, "account_login_required")
+		} else {
+			fail(503, "account_unavailable")
+		}
+		return
 	}
-	validSession, sessionErr := s.Store.sessionStatus(ctx, token)
+	if p.kind == "account" {
+		if err := s.Store.ensureAccount(ctx, p); err != nil {
+			fail(503, "temporarily_unavailable")
+			return
+		}
+	}
+	validSession, sessionErr := s.Store.ownerStatus(ctx, p)
 	if sessionErr != nil {
 		fail(503, "temporarily_unavailable")
 		return
 	}
-	if r.URL.Path == "/api/v1/support/state" && r.Method == "GET" {
+	if r.URL.Path == apiPrefix+"state" && r.Method == "GET" {
 		if !validSession {
-			_ = json.NewEncoder(w).Encode(State{Available: s.Enabled, Messages: []Message{}})
+			_ = json.NewEncoder(w).Encode(State{Available: s.Enabled, Context: p.context, Identity: p.kind, Messages: []Message{}})
 			return
 		}
 		before := int64(0)
@@ -74,18 +92,27 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(400, "invalid_request")
 			return
 		}
-		st, e := s.Store.State(ctx, token, ticket, before)
+		st, e := s.Store.state(ctx, p, ticket, before)
 		if e != nil {
 			fail(503, "temporarily_unavailable")
 			return
 		}
 		st.Available = s.Enabled
+		st.Context, st.Identity = p.context, p.kind
 		_ = json.NewEncoder(w).Encode(st)
 		return
 	}
-	if r.URL.Path == "/api/v1/support/forget" && r.Method == "POST" {
-		if validID(token) {
-			if _, e := s.Store.DB.Exec(ctx, `UPDATE support_visitors SET expires_at=now() WHERE id=$1`, hash(token)); e != nil {
+	if r.Method == "POST" && r.Header.Get("X-Support-Context") != p.context {
+		fail(409, "identity_changed")
+		return
+	}
+	if r.URL.Path == apiPrefix+"forget" && r.Method == "POST" {
+		if p.kind == "account" {
+			fail(409, "account_logout_required")
+			return
+		}
+		if validID(p.token) {
+			if _, e := s.Store.DB.Exec(ctx, `UPDATE support_visitors SET expires_at=now() WHERE id=$1 AND owner_kind='guest'`, hash(p.token)); e != nil {
 				fail(503, "temporarily_unavailable")
 				return
 			}
@@ -122,10 +149,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if r.URL.Path == "/api/v1/support/session" {
+	if r.URL.Path == apiPrefix+"session" {
 		if !validSession {
 			var e error
-			token, e = s.Store.Session(ctx, peer)
+			p.token, e = s.Store.Session(ctx, peer)
 			if e != nil {
 				if errors.Is(e, ErrLimit) {
 					fail(429, "rate_limited")
@@ -134,16 +161,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				return
 			}
-			http.SetCookie(w, &http.Cookie{Name: cookieName, Value: token, Path: "/", MaxAge: 30 * 86400, Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
+			p.context = hash("guest-context\x00" + p.token)
+			http.SetCookie(w, &http.Cookie{Name: cookieName, Value: p.token, Path: "/", MaxAge: 30 * 86400, Secure: true, HttpOnly: true, SameSite: http.SameSiteStrictMode})
 		}
-		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "context": p.context})
 		return
 	}
 	action := ""
 	switch r.URL.Path {
-	case "/api/v1/support/message":
+	case apiPrefix + "message":
 		action = "message"
-	case "/api/v1/support/resolve":
+	case apiPrefix + "resolve":
 		action = "resolve"
 	default:
 		fail(404, "not_found")
@@ -153,7 +181,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(401, "session_expired")
 		return
 	}
-	id, e := s.Store.Mutate(ctx, token, peer, action, m)
+	id, e := s.Store.mutate(ctx, p, peer, action, m)
 	if e != nil {
 		switch {
 		case errors.Is(e, ErrConflict):

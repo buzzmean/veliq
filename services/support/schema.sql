@@ -2,6 +2,10 @@
 CREATE TABLE IF NOT EXISTS support_visitors (
  id text PRIMARY KEY, expires_at timestamptz NOT NULL
 );
+-- Old browser sessions cannot establish ownership of account conversations.
+-- Keep their tickets for operators; never assign them to whoever logs in next.
+ALTER TABLE support_visitors ADD COLUMN IF NOT EXISTS owner_kind text NOT NULL DEFAULT 'legacy';
+UPDATE support_visitors SET expires_at=now() WHERE owner_kind='legacy' AND expires_at>now();
 CREATE TABLE IF NOT EXISTS support_tickets (
  id text PRIMARY KEY, visitor text NOT NULL REFERENCES support_visitors(id),
  status text NOT NULL CHECK (status IN ('queued','assigned','resolved')),

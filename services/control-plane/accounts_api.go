@@ -214,7 +214,7 @@ func (a *API) accountView(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		return
 	}
-	respond(w, 200, map[string]any{"email": acc.Email, "kind": kind, "name": name, "subscriptions": subs, "payments": pays, "plans": a.Settings.Plans, "payments_enabled": a.Settings.Payments != nil, "auto_renew_available": false, "subscription_enforced": a.Settings.EnforceSubscription})
+	respond(w, 200, map[string]any{"account_id": acc.ID, "email": acc.Email, "kind": kind, "name": name, "subscriptions": subs, "payments": pays, "plans": a.Settings.Plans, "payments_enabled": a.Settings.Payments != nil, "auto_renew_available": false, "subscription_enforced": a.Settings.EnforceSubscription})
 }
 
 func (a *API) subscriptionCreate(w http.ResponseWriter, r *http.Request) {
