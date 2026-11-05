@@ -20,6 +20,6 @@ public sealed class ActivationHardwareTests {
 }
 
 public class ActivationReasonTests {
- [Theory][InlineData("ACTIVATION_REVOKED","Код отозван")][InlineData("DEVICE_REVOKED","компьютера отозван")][InlineData("ACTIVATION_EXPIRED","истёк")][InlineData("ACTIVATION_LIMIT","освободить место")][InlineData("ACTIVATION_UNAVAILABLE","Нет связи")][InlineData("ACTIVATION_INVALID","Неверный код")]
+ [Theory][InlineData("ACTIVATION_REVOKED","Код отозван")][InlineData("DEVICE_REVOKED","компьютера отозван")][InlineData("ACTIVATION_EXPIRED","истёк")][InlineData("ACTIVATION_LIMIT","лимит компьютеров")][InlineData("CLUB_ENROLLMENT_CLOSED","закреплены")][InlineData("ACTIVATION_UNAVAILABLE","Нет связи")][InlineData("ACTIVATION_INVALID","Неверный код")]
  public void DistinctSafeMessages(string code,string expected){var message=new ActivationView{Error=code}.Message;Assert.Contains(expected,message);Assert.DoesNotContain(code,message);Assert.DoesNotContain("private-secret",message);}
 }
