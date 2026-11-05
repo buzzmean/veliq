@@ -48,13 +48,13 @@ for (const bad of [
   {...makeRelease('v0.3.656'), assets:[{name:'VELIQ-Setup.exe',size:10,browser_download_url:makeRelease('v0.3.577').assets[0].browser_download_url}]}
 ]) {
   result = await run({release:bad});
-  assert.equal(result.elements.version[0].textContent, 'на GitHub');
-  assert.equal(result.elements.download[0].href, 'https://github.com/buzzmean/veliq/releases/latest');
+  assert.equal(result.elements.version[0].textContent, 'для Windows');
+  assert.equal(result.elements.download[0].href, 'https://github.com/buzzmean/veliq/releases/latest/download/VELIQ-Setup.exe');
 }
 for (const options of [{error:true}, {httpOK:false}, {error:true,cache:{at:now-900001,release:makeRelease('v0.3.577')}}]) {
   result = await run(options);
-  assert.equal(result.elements.download[0].href,'https://github.com/buzzmean/veliq/releases/latest');
-  assert.equal(result.elements.version[0].textContent,'на GitHub');
+  assert.equal(result.elements.download[0].href,'https://github.com/buzzmean/veliq/releases/latest/download/VELIQ-Setup.exe');
+  assert.equal(result.elements.version[0].textContent,'для Windows');
 }
 result = await run({storageBlocked:true});
 assert.equal(result.elements.version[0].textContent,'0.3.577');
