@@ -303,3 +303,42 @@ func TestPUBGColdFirstDatagramBoundToLocalAndPrimedBeforeOriginal(t *testing.T) 
 		t.Fatal("wrong evidence", s)
 	}
 }
+
+func TestGameLocalOnlyBindingNeverAdmitsRelayIncludingExhaustion(t *testing.T) {
+	e := gameudp.NewLadder(nil)
+	e.SetLocalOnly(true)
+	id := ProcessIdentity{PID: 17, CreationTime: 20, Path: `C:\Games\cs2.exe`}
+	e.Configure(id.Path, true)
+	e.SetReason("")
+	_, tuple := gamePacket()
+	at := time.Unix(1000, 0)
+	base := Decision{GameUDP: e, GameRelayID: "VPS-01", Network: strings.Repeat("a", 64), Flow: routing.Flow{PID: id.PID, Protocol: "udp", ProcessPath: id.Path, Source: tuple.Source, Destination: tuple.Destination, PinnedPolicy: &routing.Policy{}}}
+	for trial := 0; trial < 9; trial++ {
+		tuple.Source = netip.AddrPortFrom(tuple.Source.Addr(), uint16(50000+trial))
+		d, f, err := BindGameUDP(base, id, tuple, at)
+		if !d.Route.Direct() || d.BlockOnFailure || d.Policy.RelayID != "" || !d.Flow.PinnedPolicy.Route.Direct() {
+			t.Fatal("relay admission possible", d)
+		}
+		if trial >= 7 {
+			if err == nil || f != nil || d.GameUDP != nil {
+				t.Fatal("exhaustion missing", err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		for n := 0; n < e.Evidence(f).Variant.Cutoff; n++ {
+			p, k := e.Plan(f, at)
+			for j := 0; j < k; j++ {
+				e.FakeSent(f, len(p)+28, nil)
+			}
+		}
+		for sec := 0; sec <= 7; sec++ {
+			now := at.Add(time.Duration(sec) * time.Second)
+			e.Outgoing(f, 20, now)
+			e.Tick(now)
+		}
+		at = at.Add(8 * time.Second)
+	}
+}

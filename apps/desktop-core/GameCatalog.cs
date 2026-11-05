@@ -10,7 +10,7 @@ public sealed record GameNetworkReference(string Id, string Name, string[] TcpPo
 public sealed record GameCatalogData(int Version, GameDefinition[] Games, GameNetworkReference[]? NetworkInformation = null);
 public static class GameCatalog
 {
-    public const string BundledSha256 = "BF4437B9ED30C9C7916DBA4DB8D534ABD5CE3550358A9C51EB9739FC85D68013";
+    public const string BundledSha256 = "53B349B99631C9F139EBCACC5A03E37AFC18FD52542B51C9F4038CC433849861";
     // No unsigned imports/network updates. Catalog trust follows the installed
     // assembly. A public update envelope requires an owner-pinned signing key.
     public static GameCatalogData Bundled() {
@@ -64,7 +64,7 @@ public sealed partial class GameCatalogViewModel(IServiceClient client):Observab
         try {
             var profiles=await client.Call<Profile[]>("profiles",cancellationToken:ct);
             GameUdpStatus? udp=null;try{udp=await client.Call<GameUdpStatus>("gameudp.status",cancellationToken:ct);}catch(ServiceException){}
-            foreach(var g in all){g.Profile=profiles.FirstOrDefault(p=>p.Executables.Any(e=>g.Definition.Executables.Any(n=>ApplicationRow.Matches(n,e))));g.Mode=g.Profile?.Mode??g.Definition.DefaultMode;g.RelayId=g.Profile?.RelayId;var gameUdp=udp?.Profiles.FirstOrDefault(p=>p.ProfileId==g.Profile?.Id);if(gameUdp is not null){if(gameUdp.Engine.Enabled && g.Profile?.Mode is "DIRECT" or "AUTO")g.Mode="DIRECT_PLUS";}}
+            foreach(var g in all){g.Profile=profiles.FirstOrDefault(p=>p.Executables.Any(e=>g.Definition.Executables.Any(n=>ApplicationRow.Matches(n,e))));g.Mode=g.Profile?.Mode??g.Definition.DefaultMode;g.RelayId=g.Profile?.RelayId;var gameUdp=udp?.Profiles.FirstOrDefault(p=>p.ProfileId==g.Profile?.Id);if(gameUdp is not null){if(gameUdp.Engine.Enabled && g.Profile?.Mode is "DIRECT" or "AUTO")g.Mode=gameUdp.Engine.LocalOnly?"DIRECT_PLUS":"AUTO";}}
             Filter();await LoadRelaysAsync(ct);Notice="";
         }catch(Exception e){Failed?.Invoke(e,"gamecatalog.refresh");Notice="Служба VELIQ недоступна: "+FailureText(e);}finally{Busy=false;}
     }
@@ -76,8 +76,8 @@ public sealed partial class GameCatalogViewModel(IServiceClient client):Observab
             if(g.Mode=="DIRECT_PLUS"){
                 if(g.Definition.UdpPreset.Length==0||p.Executables.Length!=1||!p.Executables[0].Contains('\\')){Notice="Локальный обход для этой игры пока не проверен, маршрут не изменён.";return;}
                 if(p.Mode is not ("DIRECT" or "AUTO")){Notice="Сначала сохраните «Напрямую» или «Авто», потом включите «Локально».";return;}
-                await client.Call<GameUdpStatus>("gameudp.set",new{profile_id=p.Id,enabled=true},ct);
-                Notice="Локальный обход включён и сработает при следующем запуске игры.";Close(true);return;
+                await client.Call<GameUdpStatus>("gameudp.set",new{profile_id=p.Id,enabled=true,local_only=true},ct);
+                Notice="Включён локальный режим без VPS для новых подключений. Старые соединения сохраняют маршрут; успешный вход в матч ещё нужно проверить.";Close(true);return;
             }
             if(g.Mode=="MANUAL"){
                 var status=await client.Call<Snapshot>("status",cancellationToken:ct);
@@ -86,7 +86,7 @@ public sealed partial class GameCatalogViewModel(IServiceClient client):Observab
             }else p.RelayId=null;
             p.Mode=g.Mode;
             await client.Call<Profile[]>("profile.set",p,ct);
-            if(g.Mode=="DIRECT"&&g.Definition.UdpPreset.Length>0&&g.Profile is not null)await client.Call<GameUdpStatus>("gameudp.set",new{profile_id=p.Id,enabled=false},ct);
+            if((g.Mode=="DIRECT"||g.Mode=="AUTO")&&g.Definition.UdpPreset.Length>0&&g.Profile is not null)await client.Call<GameUdpStatus>("gameudp.set",new{profile_id=p.Id,enabled=false},ct);
             g.Profile=p;Notice=p.Mode=="MANUAL"?"Игра пойдёт через сервер VELIQ. Если её серверы доступны напрямую, пинг может вырасти.":"Маршрут сохранён и сработает при следующем запуске игры.";Close(true);
         }catch(Exception e){Failed?.Invoke(e,"gamecatalog.apply");Notice="Маршрут не сохранён: "+FailureText(e);}finally{Busy=false;}
     }

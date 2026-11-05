@@ -35,7 +35,9 @@ points. PE metadata должна принадлежать VELIQ Setup/Uninstall;
 
 Также допускаются две узкие категории **удаления** сторонней уборки:
 
-- NVIDIA: непосредственно `%WINDIR%\Temp\INS_<8 hex>.TMP`. SHA256 должен
+- NVIDIA: непосредственно `%WINDIR%\Temp\INS_<8 hex>.TMP` либо
+  `LocalApplicationData\Temp\INS_<8 hex>.TMP` текущего пользователя (Windows Known Folder;
+  не произвольные TEMP/TMP и не каталоги других пользователей). SHA256 должен
   совпасть с существующей `%ProgramFiles%\NVIDIA Corporation\Installer2\InstallerCore\NVI2.dll`.
   У обоих файлов проверяются NVIDIA Install Application / Install Core,
   OriginalFilename `NVI2.dll` и одинаковая непустая версия. Имя TMP или

@@ -3,6 +3,7 @@ package clientservice
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -219,5 +220,78 @@ func TestPUBGColdLocalFirstAfterDiscoveryCustomEnableAndReload(t *testing.T) {
 	other := c.newGameLadder(`D:\Games\Other\game.exe`)
 	if other.Snapshot().InitialPolicy != "DIRECT_FIRST" {
 		t.Fatal("other game default changed")
+	}
+}
+
+func TestGameLocalOnlyPersistsAndCannotFallThroughWhenGuardNotReady(t *testing.T) {
+	c, id := gameController(t)
+	c.customPath = filepath.Join(t.TempDir(), "profiles.json")
+	if _, err := c.Handle(context.Background(), "gameudp.set", json.RawMessage(`{"profile_id":"pubg","enabled":true,"local_only":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	g := c.games.items["pubg"]
+	if !g.LocalOnly || !g.Engine.Snapshot().LocalOnly {
+		t.Fatal("policy not applied")
+	}
+	g.Engine.SetReason("CAPTURE_NOT_READY")
+	preferGameRelay(c)
+	d, ok := c.classifyGameUDP(id, policyTuple("udp", 7766))
+	if !ok || !d.Route.Direct() || d.GameUDP != nil || d.Flow.PinnedPolicy == nil {
+		t.Fatal("local guard fell through", d)
+	}
+	c.network.Store(nil)
+	d, ok = c.classifyGameUDP(id, policyTuple("udp", 7766))
+	if !ok || !d.Route.Direct() || d.GameUDP != nil {
+		t.Fatal("missing network escaped policy", d)
+	}
+	// An older client omitting the new option must not silently grant relay.
+	if _, err := c.Handle(context.Background(), "gameudp.set", json.RawMessage(`{"profile_id":"pubg","enabled":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	fresh := New(context.Background())
+	defer fresh.Close()
+	fresh.customPath = c.customPath
+	fresh.loadGames()
+	if fresh.games.error != "" || !fresh.games.items["pubg"].LocalOnly || !fresh.games.items["pubg"].Engine.Snapshot().LocalOnly {
+		t.Fatal("local-only lost", fresh.games.error)
+	}
+}
+func TestGameLocalOnlySaveFailurePreservesPolicy(t *testing.T) {
+	c, _ := gameController(t)
+	// A file cannot serve as the destination directory.
+	path := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(path, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c.customPath = filepath.Join(path, "profiles.json")
+	if _, err := c.Handle(context.Background(), "gameudp.set", json.RawMessage(`{"profile_id":"pubg","enabled":true,"local_only":true}`)); err == nil {
+		t.Fatal("save failure ignored")
+	}
+	g := c.games.items["pubg"]
+	if g.LocalOnly || g.Engine.Snapshot().LocalOnly {
+		t.Fatal("failed save changed policy")
+	}
+}
+
+func TestGameLocalOnlyInvalidLearningCannotRestoreRelayDefault(t *testing.T) {
+	c, id := gameController(t)
+	c.customPath = filepath.Join(t.TempDir(), "profiles.json")
+	raw, err := json.Marshal(gameDisk{Version: 2, Games: []gameDiskEntry{{ProfileID: "pubg", Path: id.Path, Enabled: true, LocalOnly: true, Learning: []gameudp.Learning{{LocalOnly: true, Stage: gameudp.Relay, Network: strings.Repeat("a", 64), Application: id.Path, Expires: time.Now().Add(time.Hour)}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(c.customPath), "game-udp.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	c.games.items = map[string]*gameEntry{}
+	c.loadGames()
+	c.registerGame(gameudp.Presets()[0], id.Path)
+	if c.games.error != "GAME_UDP_CONFIG_INVALID" || !c.games.items["pubg"].LocalOnly {
+		t.Fatal("invalid learning erased restriction")
+	}
+	c.gameStatus()
+	d, ok := c.classifyGameUDP(id, policyTuple("udp", 7766))
+	if !ok || !d.Route.Direct() || d.GameUDP != nil {
+		t.Fatal("invalid learning enabled relay/decoys", d)
 	}
 }

@@ -92,6 +92,7 @@ try{
  # Only registry and PE metadata are synthetic; no vendor executable is run.
  $script:vendorRoots=@{
   temp=Join-Path $root 'Windows\Temp'
+  usertemp=Join-Path $root 'User\AppData\Local\Temp'
   nvidia=Join-Path $root 'Program Files\NVIDIA Corporation\Installer2\InstallerCore\NVI2.dll'
   edge=Join-Path $root 'Program Files (x86)\Microsoft\EdgeUpdate'
  }
@@ -121,6 +122,48 @@ try{
   if($Unknown){Check (!$s.known -and $null -eq $s.required) ($Message+' must be unknown')}
  }
  $nvQueue=@(('*1\??\'+$nvCopy),'')
+ # Current-user TEMP is a fixed LocalApplicationData child, not arbitrary TEMP.
+ [void][IO.Directory]::CreateDirectory($script:vendorRoots.usertemp)
+ $userCopy=Join-Path $script:vendorRoots.usertemp 'INS_89abcdef.TMP'
+ [IO.File]::WriteAllText($userCopy,'identical NVIDIA fixture')
+ $script:versions[$userCopy]=[pscustomobject]@{CompanyName='NVIDIA Corporation';ProductName='NVIDIA Install Application';FileDescription='NVIDIA Install Core';OriginalFilename='NVI2.dll';FileVersion='2.1002.474.0'}
+ $userQueue=@(('*1\??\'+$userCopy),'')
+ Set-CleanupQueue ($nvQueue+$userQueue)
+ $s=Get-VeliqRebootState $root
+ Check ($s.known -and !$s.required -and $s.deferred_cleanup_count -eq 2) 'system and user core copies blocked'
+ [IO.File]::WriteAllText($userCopy,'different bytes')
+ Check-CleanupBlocked $userQueue 'user temp hash mismatch bypass'
+ [IO.File]::WriteAllText($userCopy,'identical NVIDIA fixture')
+ foreach($identity in @('NvTelemetryAPI.dll','NvUI.dll','nvspcap64.dll')){
+  $script:versions[$userCopy].OriginalFilename=$identity
+  Check-CleanupBlocked $userQueue 'other NVIDIA component bypass'
+ }
+ $script:versions[$userCopy].OriginalFilename='NVI2.dll'
+ $foreignDir=Join-Path $root 'OtherUser\AppData\Local\Temp'
+ [void][IO.Directory]::CreateDirectory($foreignDir)
+ $foreignCopy=Join-Path $foreignDir 'INS_89abcdef.TMP'
+ [IO.File]::WriteAllText($foreignCopy,'identical NVIDIA fixture')
+ $script:versions[$foreignCopy]=$script:versions[$userCopy]
+ Check-CleanupBlocked @($foreignCopy,'') 'other user temp bypass'
+ Check-CleanupBlocked ($userQueue+@($foreignCopy,'')) 'user cleanup masks mixed queue'
+ Check-CleanupBlocked @($userCopy,$nvOriginal) 'user temp replacement bypass'
+ $link=Join-Path $root 'user-hardlink-fixture'
+ [void](New-Item -ItemType HardLink -Path $link -Target $userCopy)
+ try{Check-CleanupBlocked $userQueue 'user temp hardlink bypass' -Unknown}finally{Remove-Item -LiteralPath $link}
+ $directory=$script:vendorRoots.usertemp
+ $saved=$directory+'.saved'
+ Move-Item -LiteralPath $directory -Destination $saved
+ try{
+  [void](New-Item -ItemType Junction -Path $directory -Target $saved)
+  try{Check-CleanupBlocked $userQueue 'user temp junction bypass' -Unknown}
+  finally{[IO.Directory]::Delete($directory)}
+ }finally{Move-Item -LiteralPath $saved -Destination $directory}
+ Set-CleanupQueue $userQueue
+ Check (!(Get-VeliqRebootState $root).required) 'user initial recheck failed'
+ [IO.File]::WriteAllText($userCopy,'changed after first read')
+ Reject {New-VeliqInstallResult 'PASS' 'VERIFY' (Get-VeliqRebootState $root)} 'INSTALL_REBOOT_REQUIRED'
+ [IO.File]::WriteAllText($userCopy,'identical NVIDIA fixture')
+ Write-Output 'PASS current-user NVIDIA core cleanup; mismatch, other components/users, mixed queue, replacement, hardlink, junction and recheck blocked'
  $edgeQueue=@(('*1\??\'+$edgeOld),'')
  $both=$nvQueue+$edgeQueue
  Set-CleanupQueue $both

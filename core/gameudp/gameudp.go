@@ -143,6 +143,7 @@ type Flow struct {
 	last        time.Time
 }
 type Learning struct {
+	LocalOnly   bool      `json:"local_only,omitempty"`
 	Endpoint    string    `json:"endpoint,omitempty"`
 	Stage       string    `json:"stage,omitempty"`
 	Exhausted   bool      `json:"exhausted,omitempty"`
@@ -154,6 +155,7 @@ type Learning struct {
 	Expires     time.Time `json:"expires"`
 }
 type Snapshot struct {
+	LocalOnly     bool       `json:"local_only"`
 	InitialPolicy string     `json:"initial_policy"`
 	Enabled       bool       `json:"enabled"`
 	Application   string     `json:"application"`
@@ -167,6 +169,7 @@ type Snapshot struct {
 type Engine struct {
 	mu                         sync.Mutex
 	ladder                     bool
+	localOnly                  bool
 	startLocal                 bool
 	shared                     *Budget
 	application                string
@@ -196,6 +199,18 @@ func (e *Engine) SetStartLocal(enabled bool) {
 	defer e.mu.Unlock()
 	e.startLocal = enabled
 }
+
+// SetLocalOnly restricts future flows to DIRECT/local trials. Existing routes
+// stay pinned; their observations cannot teach a different policy generation.
+func (e *Engine) SetLocalOnly(enabled bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.localOnly != enabled {
+		e.generation++
+	}
+	e.localOnly = enabled
+}
+
 func (e *Engine) Configure(application string, enabled bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -217,6 +232,13 @@ func (e *Engine) Application() string   { e.mu.Lock(); defer e.mu.Unlock(); retu
 func (e *Engine) Enabled() bool         { e.mu.Lock(); defer e.mu.Unlock(); return e.enabled }
 func endpointKey(n, a, d string) string { return learnKey(n, a) + "\x00" + d }
 func learnKey(n, a string) string       { return n + "\x00" + Canonical(a) }
+func (e *Engine) trialKey(k Key) string {
+	if e.localOnly {
+		return endpointKey(k.Network, k.Application, k.Destination.String())
+	}
+	return learnKey(k.Network, k.Application)
+}
+
 func (e *Engine) Open(k Key, now time.Time) (*Flow, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -227,7 +249,12 @@ func (e *Engine) Open(k Key, now time.Time) (*Flow, error) {
 	if len(e.flows) >= MaxFlows {
 		return nil, errors.New("GAME_UDP_FLOW_CAPACITY")
 	}
-	cache := e.learning[learnKey(k.Network, k.Application)]
+	cache := e.learning[e.trialKey(k)]
+	// Results from another route policy cannot grant relay or carry exhaustion
+	// across a policy switch. Confirmed DIRECT endpoints remain safe to reuse.
+	if cache.LocalOnly != e.localOnly {
+		cache = Learning{}
+	}
 	// Legacy application-wide DIRECT results are not proof of this endpoint.
 	if e.ladder && e.startLocal && cache.Stage == Direct {
 		cache = Learning{}
@@ -254,8 +281,14 @@ func (e *Engine) Open(k Key, now time.Time) (*Flow, error) {
 			selection = "CONFIRMED_DIRECT_ENDPOINT"
 		}
 		if cache.Exhausted || (!e.ladder && cache.Tried >= len(Variants()) && !cache.Confirmed) {
+			if e.localOnly {
+				return nil, errors.New("GAME_UDP_LOCAL_ONLY_EXHAUSTED")
+			}
 			return nil, errors.New("GAME_UDP_VARIANTS_EXHAUSTED")
 		}
+	}
+	if e.localOnly && stage == Relay {
+		return nil, errors.New("GAME_UDP_LOCAL_ONLY_EXHAUSTED")
 	}
 	v := Variants()[index]
 	if stage != Local {
@@ -402,8 +435,11 @@ func (e *Engine) health(f *Flow, now time.Time) {
 		f.e.State = "LOCAL_PRIMING_INCOMPLETE"
 		return
 	}
-	key := learnKey(f.key.Network, f.key.Application)
+	key := e.trialKey(f.key)
 	old := e.learning[key]
+	if old.LocalOnly != e.localOnly {
+		old = Learning{}
+	}
 	if e.ladder && e.startLocal && old.Stage == Direct {
 		old = Learning{}
 	}
@@ -418,6 +454,9 @@ func (e *Engine) health(f *Flow, now time.Time) {
 			}
 		}
 		endpoint := ""
+		if e.localOnly {
+			endpoint = f.key.Destination.String()
+		}
 		if e.ladder && f.e.Stage == Direct {
 			endpoint = f.key.Destination.String()
 			key = endpointKey(f.key.Network, f.key.Application, endpoint)
@@ -464,7 +503,7 @@ func (e *Engine) health(f *Flow, now time.Time) {
 	}
 	if old.Confirmed {
 		for _, peer := range e.flows {
-			if peer != f && peer.key.Destination == f.key.Destination && peer.learned && !peer.failed && peer.degradedAt.IsZero() && learnKey(peer.key.Network, peer.key.Application) == key && now.Sub(peer.e.LastReply) < 2*time.Second && now.Sub(peer.e.LastOutgoing) < 2*time.Second {
+			if peer != f && peer.key.Destination == f.key.Destination && peer.learned && !peer.failed && peer.degradedAt.IsZero() && e.trialKey(peer.key) == key && now.Sub(peer.e.LastReply) < 2*time.Second && now.Sub(peer.e.LastOutgoing) < 2*time.Second {
 				f.e.Reason = "FLOW_FAILED_NETWORK_WINNER_STILL_RESPONDING"
 				return
 			}
@@ -481,7 +520,12 @@ func (e *Engine) health(f *Flow, now time.Time) {
 			stage, next = Local, 0
 		case Local:
 			if next >= len(Variants()) {
-				stage, next = Relay, 0
+				if e.localOnly {
+					exhausted, next = true, index
+					f.e.Reason = "GAME_UDP_LOCAL_ONLY_EXHAUSTED"
+				} else {
+					stage, next = Relay, 0
+				}
 			}
 		case Relay:
 			exhausted, next = true, 0
@@ -495,22 +539,27 @@ func (e *Engine) health(f *Flow, now time.Time) {
 	if exhausted {
 		expiry = now.Add(time.Hour)
 	}
-	e.putLearning(key, Learning{Stage: stage, Exhausted: exhausted, Network: f.key.Network, Application: f.key.Application, Index: next, Tried: tried, Expires: expiry}, now)
+	endpoint := ""
+	if e.localOnly {
+		endpoint = f.key.Destination.String()
+	}
+	e.putLearning(key, Learning{Endpoint: endpoint, Stage: stage, Exhausted: exhausted, Network: f.key.Network, Application: f.key.Application, Index: next, Tried: tried, Expires: expiry}, now)
 }
 func (e *Engine) putLearning(key string, v Learning, now time.Time) {
+	v.LocalOnly = e.localOnly
 	if _, ok := e.learning[key]; !ok && len(e.learning) >= MaxNetworks {
 		oldest := ""
 		var at time.Time
 		endpointVictim := false
 		for k, entry := range e.learning {
-			endpoint := entry.Endpoint != ""
+			endpoint := entry.Endpoint != "" && entry.Stage == Direct && entry.Confirmed
 			if oldest == "" || (endpoint && !endpointVictim) || (endpoint == endpointVictim && entry.Expires.Before(at)) {
 				oldest, at, endpointVictim = k, entry.Expires, endpoint
 			}
 		}
 		// Healthy QoS endpoints must not evict the bounded per-network failure
 		// ladder. Evict a healthy endpoint first; no unbounded cache growth.
-		if v.Endpoint != "" && !endpointVictim {
+		if v.Endpoint != "" && v.Stage == Direct && v.Confirmed && !endpointVictim {
 			return
 		}
 		delete(e.learning, oldest)
@@ -539,7 +588,7 @@ func (e *Engine) Snapshot() Snapshot {
 	if e.ladder && !e.startLocal {
 		initialPolicy = "DIRECT_FIRST"
 	}
-	out := Snapshot{InitialPolicy: initialPolicy, Enabled: e.enabled, Application: e.application, Generation: e.generation, Reason: e.reason, Flows: []Evidence{}, Learning: []Learning{}, Lost: e.lost}
+	out := Snapshot{LocalOnly: e.localOnly, InitialPolicy: initialPolicy, Enabled: e.enabled, Application: e.application, Generation: e.generation, Reason: e.reason, Flows: []Evidence{}, Learning: []Learning{}, Lost: e.lost}
 	for _, f := range e.flows {
 		out.Flows = append(out.Flows, f.e)
 	}
@@ -560,9 +609,12 @@ func (e *Engine) Restore(all []Learning, now time.Time) error {
 		return errors.New("GAME_UDP_LEARNING_CAPACITY")
 	}
 	for _, l := range all {
+		if l.LocalOnly && l.Stage == Relay {
+			return errors.New("GAME_UDP_LEARNING_INVALID")
+		}
 		if l.Endpoint != "" {
 			dst, err := netip.ParseAddrPort(l.Endpoint)
-			if err != nil || !Eligible(l.Application, l.Application, "udp", dst) || l.Stage != Direct || !l.Confirmed {
+			if err != nil || !Eligible(l.Application, l.Application, "udp", dst) || !(l.Stage == Direct && l.Confirmed || l.LocalOnly && l.Stage == Local) {
 				return errors.New("GAME_UDP_LEARNING_INVALID")
 			}
 		}

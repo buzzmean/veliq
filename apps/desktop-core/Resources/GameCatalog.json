@@ -37,7 +37,7 @@
       "launcher": "Steam",
       "antiCheat": "VAC / FACEIT (режим матчей)",
       "defaultMode": "DIRECT",
-      "udpPreset": "",
+      "udpPreset": "cs2",
       "launcherNeedsBypass": false,
       "networkReferences": [
         "steam-valve"
