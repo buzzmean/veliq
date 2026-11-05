@@ -107,6 +107,7 @@ internal static class Program
             w.Show(); Pump();
             Require(w.Title == "VELIQ" && (w.TrayIcon.Text == "VELIQ" || w.TrayIcon.Text.StartsWith("VELIQ: ")), "VELIQ window/tray branding");
             Require(w.TrayVisible == tray, "Startup tray visibility");
+            Require(!w.TrayIcon.ContextMenuStrip!.Items.Cast<System.Windows.Forms.ToolStripItem>().Any(item => item.Text?.Contains("Аварийно") == true || item.Text?.Contains("пароль отключения") == true), "Personal tray must not expose club emergency commands");
             Require(w.IsVisible == !(start && tray), "Startup must hide only in tray mode");
             Require(!start || w.WindowState == WindowState.Minimized, "StartMinimized must minimize");
             Require(w.ShowInTaskbar, "Normal minimized window must remain in taskbar");
