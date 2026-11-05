@@ -225,3 +225,13 @@
     });
   });
 })();
+
+/* Shared support widget: only its own assets, no account/runtime replacement. */
+(function () {
+  if (document.querySelector('script[data-veliq-support]')) return;
+  var css = document.createElement('link');
+  css.rel = 'stylesheet'; css.href = '/assets/support-chat.css?v=1'; document.head.appendChild(css);
+  var script = document.createElement('script');
+  script.src = '/assets/support-chat.js?v=1'; script.defer = true;
+  script.setAttribute('data-veliq-support', ''); document.body.appendChild(script);
+})();

@@ -1,0 +1,6 @@
+# Install only after configuring the bot, private group and numeric operator IDs.
+# Replace the two numeric placeholders. Never put the bot token in this file.
+[Service]
+LoadCredential=telegram-token:/etc/veliq-support/telegram-token
+ExecStart=
+ExecStart=/opt/veliq-support/support -database-url-file %d/database-url -origin https://veliqapp.ru -telegram-token-file %d/telegram-token -telegram-chat-id GROUP_ID -telegram-operators OPERATOR_IDS
