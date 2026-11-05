@@ -1,0 +1,75 @@
+name: Website support chat
+on:
+  push:
+    branches: ['feat/web-support-*']
+  pull_request:
+    paths:
+      - 'services/support/**'
+      - 'website/assets/support-chat.*'
+      - 'website/assets/site.js'
+      - 'tests/frontend/support_chat_smoke.py'
+      - 'deploy/support/**'
+      - '.github/workflows/support-chat.yml'
+permissions:
+  contents: read
+concurrency:
+  group: support-chat-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  support:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: support_test
+          POSTGRES_DB: support_test
+          POSTGRES_PASSWORD: ci-only-support-fixture
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U support_test -d support_test"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      VELIQ_SUPPORT_TEST_DATABASE_URL: postgres://support_test:ci-only-support-fixture@127.0.0.1:5432/support_test?sslmode=disable
+      VELIQ_SUPPORT_BROWSER: '1'
+      VELIQ_SUPPORT_BROWSER_EXECUTABLE: /usr/bin/google-chrome
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python3 -m pip install playwright==1.56.0
+      - run: command -v google-chrome
+      - run: node --check website/assets/support-chat.js
+      - name: SQL races, HTTP authorization, durable delivery and real browser
+        run: go test -race -v -count=1 -timeout=180s ./services/support/...
+      - run: go vet ./services/support/...
+      - name: Build isolated support bundle; no account, CP or full website replacement
+        env:
+          CGO_ENABLED: '0'
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          mkdir -p dist/support/assets
+          go build -trimpath -ldflags='-s -w' -o dist/support/support ./services/support/cmd/support
+          cp website/assets/support-chat.js website/assets/support-chat.css dist/support/assets/
+          cp -r deploy/support dist/support/deploy
+          cp docs/WEB_SUPPORT.md dist/support/README.md
+          git diff 50a881ee9d6c48b8812e4cac7ff7ca15f54c5b47 HEAD -- website/assets/site.js website/privacy.html > dist/support/site-integration.patch
+          python3 - <<'PY'
+          import hashlib,json,os,pathlib
+          root=pathlib.Path('dist/support')
+          files=[{'path':str(p.relative_to(root)),'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(root.rglob('*')) if p.is_file()]
+          manifest={'schema':1,'source_commit':os.environ['SOURCE_COMMIT'],'status':'NOT_DEPLOYED','telegram':'SIMULATED_ONLY','files':files}
+          (root/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VELIQ-support-linux-amd64-NOT-DEPLOYED
+          path: dist/support/
+          if-no-files-found: error
+          retention-days: 30

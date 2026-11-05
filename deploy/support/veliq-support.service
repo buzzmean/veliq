@@ -1,0 +1,27 @@
+[Unit]
+Description=VELIQ website support
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=veliq-support
+Group=veliq-support
+LoadCredential=database-url:/etc/veliq-support/database-url
+ExecStart=/opt/veliq-support/support -database-url-file %d/database-url -origin https://veliqapp.ru
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
