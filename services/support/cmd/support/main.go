@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -74,6 +75,7 @@ func main() {
 		log.Print("support schema ready")
 		return
 	}
+	var workerFailed atomic.Bool
 	enabled := *tokenFile != ""
 	if enabled {
 		ids, e := support.ParseOperators(*operators)
@@ -91,6 +93,7 @@ func main() {
 		tg := &support.Telegram{Store: store, Token: token, ChatID: *chat, Operators: ids}
 		go func() {
 			if e := tg.Run(ctx, func(code string) { log.Print(code) }); e != nil && ctx.Err() == nil {
+				workerFailed.Store(true)
 				log.Print("support worker stopped")
 				stop()
 			}
@@ -106,5 +109,8 @@ func main() {
 	log.Printf("support started; telegram configured=%t", enabled)
 	if e = srv.ListenAndServe(); e != nil && e != http.ErrServerClosed {
 		log.Fatal("support listener failed")
+	}
+	if workerFailed.Load() {
+		log.Fatal("support worker failed; supervisor restart required")
 	}
 }
