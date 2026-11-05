@@ -39,8 +39,8 @@
      <TextBlock x:Name="Lead" Text="Выберите способ подключения." Style="{StaticResource Lead}" Margin="0,12,0,22"/>
      <Grid x:Name="ChoicePanel" Margin="0,0,0,22">
       <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
-      <Button x:Name="PersonalTab" Content="Личный аккаунт" Click="SelectPersonal" MinHeight="42" Margin="0,0,6,0"/>
-      <Button x:Name="CodeTab" Grid.Column="1" Content="Код подключения" Click="SelectCode" MinHeight="42" Margin="6,0,0,0"/>
+      <Button x:Name="PersonalTab" Content="Личный компьютер" Click="SelectPersonal" MinHeight="42" Margin="0,0,6,0"/>
+      <Button x:Name="CodeTab" Grid.Column="1" Content="Клубный компьютер" Click="SelectCode" MinHeight="42" Margin="6,0,0,0"/>
      </Grid>
      <StackPanel x:Name="PersonalPanel">
       <TextBlock Text="Войдите в личный кабинет" FontSize="18" FontWeight="SemiBold"/>
