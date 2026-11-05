@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"path/filepath"
 	"time"
 
 	"github.com/buzzmean/neexitlag/core/emergency"
@@ -18,6 +19,8 @@ func TestEmergencyWorksBeforeControlPlaneStartupAndDoesNotOpenOtherMethods(t *te
 	auth:=emergency.New("fixture-owner",func()([]byte,error){return append([]byte(nil),encoded...),nil})
 	controller:=clientservice.New(context.Background())
 	defer controller.Close()
+	if err := controller.SetCustomPath(filepath.Join(t.TempDir(), "profiles.json")); err != nil { t.Fatal(err) }
+	if err := controller.ConfigureClub(clientservice.Manifest{ClubImage:true}); err != nil { t.Fatal(err) }
 	var gate startupGate
 	gate.emergencyStopping=controller.EmergencyStopping
 	ctx,cancel:=context.WithCancel(context.Background())

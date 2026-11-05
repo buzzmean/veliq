@@ -1,12 +1,43 @@
 package clientservice
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"os"
 	"github.com/buzzmean/neexitlag/core/emergency"
 )
 
 // ConfigureEmergencyManager is called before opening the authenticated pipe.
-func(c *Controller) ConfigureEmergencyManager(manager *emergency.Manager){c.emergencyHandler=manager.Wrap(nil)}
+func (c *Controller) ConfigureEmergencyManager(manager *emergency.Manager) {
+	handler := manager.Wrap(nil)
+	c.emergencyHandler = func(ctx context.Context, method string, raw json.RawMessage) (any, error) {
+		if !c.emergencyClubAllowed() {
+			return nil, errors.New("EMERGENCY_CLUB_ONLY")
+		}
+		return handler(ctx, method, raw)
+	}
+}
+
+// Only the protected club configuration grants this capability. Neither an
+// owner IPC payload nor a UI flag can turn a personal installation into a club.
+// A known player account also denies it if stale club settings remain.
+func (c *Controller) emergencyClubAllowed() bool {
+	if !c.clubMode.Load() {
+		return false
+	}
+	c.activation.mu.Lock()
+	m, configured := c.activation.manifest, c.activation.configured
+	c.activation.mu.Unlock()
+	if !configured {
+		return true // configured club can recover before enrollment/CP startup
+	}
+	record, err := readActivation(m)
+	if err != nil {
+		return os.IsNotExist(err)
+	}
+	return record.Account.Kind != "player"
+}
 func(c *Controller) EmergencyStopping()bool{return c.emergencyStopped.Load()}
 func emergencyMethod(method string)bool{return method=="emergency.status"||method=="emergency.stop"||method=="emergency.finish"}
 

@@ -13,8 +13,14 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         if (e.Args.Contains("--configure-emergency-password",StringComparer.OrdinalIgnoreCase))
         {
-            MainWindow = new EmergencyPasswordWindow(true);
-            MainWindow.Show();
+            try {
+                await new ServiceClient().Call<EmergencyStatus>("emergency.status");
+                MainWindow = new EmergencyPasswordWindow(true);
+                MainWindow.Show();
+            } catch {
+                MessageBox.Show("Настройка аварийного отключения доступна только для клубной установки. На личном ПК используйте обычное отключение VELIQ.", "VELIQ");
+                Shutdown();
+            }
             return;
         }
         var sid = (WindowsIdentity.GetCurrent().User?.Value ?? Environment.UserName) + "-" + System.Diagnostics.Process.GetCurrentProcess().SessionId;
@@ -34,18 +40,22 @@ public partial class App : System.Windows.Application
             return;
         }
         LocalPreferences.MigrateLegacyUserData();
-        if (ClubWindow.IsClubInstallation() || e.Args.Any(arg => arg.Equals("--club", StringComparison.OrdinalIgnoreCase)))
+        if (ClubWindow.IsClubInstallation())
         {
             MainWindow = new ClubWindow(); // Starts in tray, no end-user prompts.
             _ = ListenForActivation(lifetime.Token);
             return;
         }
         var freshReport = FreshPCSetupArguments(e.Args);
-        var window = freshReport is null ? new MainWindow() : new MainWindow(LocalPreferences.Load(), false, true);
-        MainWindow = window;
-        window.Show();
+        var welcome = new WelcomeWindow(() => {
+            var window = freshReport is null ? new MainWindow() : new MainWindow(LocalPreferences.Load(), false, true);
+            MainWindow = window;
+            window.Show();
+            if (freshReport is not null) _ = window.RunFreshPCSetupAsync(freshReport);
+        });
+        MainWindow = welcome;
+        welcome.Show();
         _ = ListenForActivation(lifetime.Token);
-        if (freshReport is not null) await window.RunFreshPCSetupAsync(freshReport);
     }
     async Task ListenForActivation(CancellationToken ct)
     {
@@ -67,8 +77,8 @@ public partial class App : System.Windows.Application
             catch (IOException) { await Task.Delay(200, ct).ConfigureAwait(false); }
         }
     }
-    void ShowCurrentWindow(){if(MainWindow is ClubWindow club)club.ShowFromTray();else if(MainWindow is MainWindow main)main.ShowFromTray();}
-    void ExitCurrentWindow(){if(MainWindow is ClubWindow club)club.Exit();else if(MainWindow is MainWindow main)main.Exit();}
+    void ShowCurrentWindow(){if(MainWindow is ClubWindow club)club.ShowFromTray();else if(MainWindow is MainWindow main)main.ShowFromTray();else if(MainWindow is WelcomeWindow welcome)welcome.ShowFromTray();}
+    void ExitCurrentWindow(){if(MainWindow is ClubWindow club)club.Exit();else if(MainWindow is MainWindow main)main.Exit();else if(MainWindow is WelcomeWindow welcome)welcome.Exit();}
     protected override void OnExit(ExitEventArgs e)
     {
         lifetime.Cancel();

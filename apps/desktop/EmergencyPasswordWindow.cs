@@ -100,6 +100,7 @@ internal sealed class EmergencyPasswordWindow : Window
     }
     internal static string Message(Exception error, bool setup) => error.Message switch
     {
+        "EMERGENCY_CLUB_ONLY" => "Аварийное отключение доступно только администратору клубной установки. На личном ПК используйте обычное отключение VELIQ.",
         "EMERGENCY_PASSWORD_INVALID" => "Неверный пароль VELIQ. Настройки не изменены.",
         "EMERGENCY_PASSWORD_RATE_LIMIT" => "Слишком много неверных попыток. Подождите 5 минут.",
         "EMERGENCY_PASSWORD_NOT_CONFIGURED" => "Пароль ещё не настроен. В меню VELIQ выберите «Настроить пароль отключения…».",
