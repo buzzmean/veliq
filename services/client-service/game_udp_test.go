@@ -272,3 +272,26 @@ func TestGameLocalOnlySaveFailurePreservesPolicy(t *testing.T) {
 		t.Fatal("failed save changed policy")
 	}
 }
+
+func TestGameLocalOnlyInvalidLearningCannotRestoreRelayDefault(t *testing.T) {
+	c, id := gameController(t)
+	c.customPath = filepath.Join(t.TempDir(), "profiles.json")
+	raw, err := json.Marshal(gameDisk{Version: 2, Games: []gameDiskEntry{{ProfileID: "pubg", Path: id.Path, Enabled: true, LocalOnly: true, Learning: []gameudp.Learning{{LocalOnly: true, Stage: gameudp.Relay, Network: strings.Repeat("a", 64), Application: id.Path, Expires: time.Now().Add(time.Hour)}}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(c.customPath), "game-udp.json"), raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	c.games.items = map[string]*gameEntry{}
+	c.loadGames()
+	c.registerGame(gameudp.Presets()[0], id.Path)
+	if c.games.error != "GAME_UDP_CONFIG_INVALID" || !c.games.items["pubg"].LocalOnly {
+		t.Fatal("invalid learning erased restriction")
+	}
+	c.gameStatus()
+	d, ok := c.classifyGameUDP(id, policyTuple("udp", 7766))
+	if !ok || !d.Route.Direct() || d.GameUDP != nil {
+		t.Fatal("invalid learning enabled relay/decoys", d)
+	}
+}

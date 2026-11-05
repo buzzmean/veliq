@@ -83,12 +83,13 @@ func (c *Controller) loadGames() {
 		}
 		e := c.newGameLadder(d.Path)
 		e.SetLocalOnly(d.LocalOnly)
+		e.Configure(d.Path, d.Enabled)
+		// Keep the explicit route restriction even when cached evidence is
+		// rejected. Rediscovery must not replace it with the legacy relay ladder.
+		c.games.items[d.ProfileID] = &gameEntry{ProfileID: d.ProfileID, Path: d.Path, Enabled: d.Enabled, LocalOnly: d.LocalOnly, Engine: e}
 		if err := e.Restore(d.Learning, time.Now()); err != nil {
 			c.games.error = "GAME_UDP_CONFIG_INVALID"
-			return
 		}
-		e.Configure(d.Path, d.Enabled)
-		c.games.items[d.ProfileID] = &gameEntry{ProfileID: d.ProfileID, Path: d.Path, Enabled: d.Enabled, LocalOnly: d.LocalOnly, Engine: e}
 	}
 }
 func (c *Controller) saveGamesLocked() error {
