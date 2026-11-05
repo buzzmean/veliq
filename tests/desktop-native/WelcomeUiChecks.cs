@@ -54,6 +54,14 @@ internal static class WelcomeUiChecks
             throw new Exception("Onboarding step labels are not aligned in fixed columns and equal rows");
         Screenshot(window,"welcome-personal");
         window.Width = window.MinWidth; window.Height = window.MinHeight; Pump();
+        var hero = (FrameworkElement)window.FindName("HeroPanel");
+        var brand = (FrameworkElement)window.FindName("WelcomeBrand");
+        var footer = (FrameworkElement)window.FindName("LeftFooter");
+        double heroTop = hero.TransformToAncestor(window).Transform(new System.Windows.Point()).Y;
+        double brandBottom = brand.TransformToAncestor(window).Transform(new System.Windows.Point(0, brand.ActualHeight)).Y;
+        double footerTop = footer.TransformToAncestor(window).Transform(new System.Windows.Point()).Y;
+        if (heroTop < brandBottom || heroTop + hero.ActualHeight > footerTop + 0.5)
+            throw new Exception("Minimum welcome window clips hero or onboarding steps");
         Screenshot(window,"welcome-minimum");
         window.Width = 960; window.Height = 660; Pump();
         ((Button)window.FindName("CodeTab")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();

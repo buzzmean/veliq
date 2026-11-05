@@ -8,15 +8,15 @@
   <Grid.ColumnDefinitions><ColumnDefinition Width="0.9*"/><ColumnDefinition Width="1.1*"/></Grid.ColumnDefinitions>
   <Border Background="{StaticResource BgRaised}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0" Padding="36,32">
    <DockPanel LastChildFill="True">
-    <TextBlock DockPanel.Dock="Top" Text="VELIQ" FontSize="25" FontWeight="ExtraBold" Margin="0,0,0,40"/>
-    <StackPanel DockPanel.Dock="Bottom">
+    <TextBlock x:Name="WelcomeBrand" DockPanel.Dock="Top" Text="VELIQ" FontSize="25" FontWeight="ExtraBold" Margin="0,0,0,28"/>
+    <StackPanel x:Name="LeftFooter" DockPanel.Dock="Bottom">
      <Border Height="1" Background="{StaticResource Line}" Margin="0,24,0,18"/>
      <TextBlock Text="Личный ПК — ваш аккаунт.&#10;Компьютер клуба — код администратора." Style="{StaticResource Small}" LineHeight="23"/>
     </StackPanel>
-    <StackPanel VerticalAlignment="Center">
+    <StackPanel x:Name="HeroPanel" VerticalAlignment="Center">
      <Border Width="48" Height="5" Background="{StaticResource Accent}" HorizontalAlignment="Left" Margin="0,0,0,24" CornerRadius="2"/>
-     <TextBlock Text="Начните&#10;с подключения." FontSize="38" FontWeight="ExtraBold" TextWrapping="Wrap" LineHeight="44"/>
-     <TextBlock Text="Игры, общение и работа —&#10;в одном приложении." Style="{StaticResource Lead}" FontSize="16" Margin="0,22,0,28" LineHeight="25"/>
+     <TextBlock Text="Начните&#10;с подключения." FontSize="34" FontWeight="ExtraBold" TextWrapping="Wrap" LineHeight="40"/>
+     <TextBlock Text="Игры, общение и работа —&#10;в одном приложении." Style="{StaticResource Lead}" FontSize="16" Margin="0,18,0,24" LineHeight="25"/>
      <Grid x:Name="Steps" Margin="0,0,0,0">
       <Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
       <Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="30"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
