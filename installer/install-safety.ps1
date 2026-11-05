@@ -18,6 +18,7 @@ function Read-VeliqFileVersion([string]$Path) { [Diagnostics.FileVersionInfo]::G
 function Get-VeliqVendorCleanupRoots {
  @{
   temp=Join-Path ([Environment]::GetFolderPath('Windows')) 'Temp'
+  usertemp=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Temp'
   nvidia=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'NVIDIA Corporation\Installer2\InstallerCore\NVI2.dll'
   edge=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft\EdgeUpdate'
  }
@@ -107,7 +108,7 @@ function Test-VeliqVendorCleanup([string]$Path) {
  $roots=Get-VeliqVendorCleanupRoots
  $parent=[IO.Path]::GetDirectoryName($Path)
  $name=[IO.Path]::GetFileName($Path)
- if($parent -ieq $roots.temp -and $name -match '^INS_[a-f0-9]{8}\.TMP$'){
+ if(($parent -ieq $roots.temp -or $parent -ieq $roots.usertemp) -and $name -match '^INS_[a-f0-9]{8}\.TMP$'){
   $copy=$null;$original=$null
   try{
    $copy=Open-VeliqCleanupReadHandle $Path $false
