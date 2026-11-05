@@ -58,6 +58,7 @@ internal static class WelcomeUiChecks
         fixture.State="ACTIVATED";
         window.RefreshAsync().GetAwaiter().GetResult();Pump();
         if(!window.Access.CanContinue)throw new Exception("Valid code activation not recognized");
+        if (((System.Windows.Controls.TextBlock)window.FindName("Feedback")).Text.Length != 0) throw new Exception("Confirmed connection retained stale activation error");
         Screenshot(window,"welcome-connected");
         ((Button)window.FindName("ContinueButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));Pump();
         if(!entered||window.IsVisible)throw new Exception("Confirmed connection did not enter desktop");

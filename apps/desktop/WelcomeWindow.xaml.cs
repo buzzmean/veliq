@@ -51,6 +51,7 @@ public partial class WelcomeWindow : Window
     {
         Heading.Text = access.Title; Lead.Text = access.Message;
         bool ready = access.CanContinue, waiting = access.State == "WAITING" && !choosing;
+        if (ready) Feedback.Text = "";
         ReadyPanel.Visibility = ready ? Visibility.Visible : Visibility.Collapsed;
         WaitingPanel.Visibility = waiting ? Visibility.Visible : Visibility.Collapsed;
         ChoicePanel.Visibility = ready || waiting ? Visibility.Collapsed : Visibility.Visible;
