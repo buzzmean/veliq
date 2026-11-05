@@ -72,7 +72,7 @@ def icon(name, cls="i"):
     return f'<svg class="{cls}" aria-hidden="true"><use href="#i-{name}"/></svg>'
 
 
-def head(title, desc, path, extra_ld=None, og="og-image.png", og_alt="VELIQ: нажал — работает."):
+def head(title, desc, path, extra_ld=None, og="og-image.png", og_alt="VELIQ: у свободы свой маршрут."):
     url = f'{SITE["url"]}/{path if path != "index.html" else ""}'
     ld = ""
     if extra_ld:
@@ -108,6 +108,8 @@ def head(title, desc, path, extra_ld=None, og="og-image.png", og_alt="VELIQ: н�
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/components.css">
   <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/header-account.css?v=20261105-1">
+{'  <link rel="stylesheet" href="assets/hero-freedom.css?v=20261105-1">' if path == "index.html" else ""}
   <script>document.documentElement.classList.add('js');try{{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}}catch(e){{}}</script>{ld}
 </head>
 <body>
@@ -129,12 +131,17 @@ def header(active):
     </a>
     <nav class="nav" id="nav" aria-label="Основное меню">
 {links}
+      <a class="nav__download" href="download.html">Скачать для Windows</a>
     </nav>
     <div class="top__tools">
       <button class="btn btn--quiet btn--icon btn--sm theme-btn" type="button" data-theme-toggle aria-label="Сменить тему">
         <svg class="i i-sun-use" aria-hidden="true"><use href="#i-sun"/></svg><svg class="i i-moon-use" aria-hidden="true"><use href="#i-moon"/></svg>
       </button>
       <a class="btn btn--sm top__cta" href="download.html">Скачать</a>
+      <a class="btn btn--sm top__account" href="/account" aria-label="Личный кабинет">
+        <svg class="top__account-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
+        <span class="top__account-full" aria-hidden="true">Личный кабинет</span><span class="top__account-short" aria-hidden="true">Кабинет</span>
+      </a>
       <button class="btn btn--quiet btn--icon btn--sm menu-btn" type="button" data-menu aria-expanded="false" aria-controls="nav" aria-label="Меню">{icon('menu')}</button>
     </div>
   </div>
@@ -179,7 +186,7 @@ def footer():
 """
 
 
-def page(path, title, desc, active, body, ld=None, og="og-image.png", og_alt="VELIQ: нажал — работает."):
+def page(path, title, desc, active, body, ld=None, og="og-image.png", og_alt="VELIQ: у свободы свой маршрут."):
     (OUT / path).write_text(head(title, desc, path, ld, og, og_alt) + header(active) + '<main id="main">\n' + body + "\n</main>\n" + footer(), encoding="utf-8")
     print("страница:", path)
 
@@ -271,13 +278,16 @@ index_body = f"""
 <section class="hero" style="overflow-x:clip">
   <div class="wrap hero__grid">
     <div class="hero__copy">
-      <h1 class="h-display hero-title">
-        <span class="slit-line"><span class="slit">Нажал —</span></span>
-        <span class="slit-line"><span class="slit">работает.</span><span class="slit-bar" aria-hidden="true"></span></span>
+      <h1 class="h-display hero-title hero-title--freedom">
+        <span class="hero-title__line">У свободы</span>
+        <span class="hero-title__line">свой маршрут.</span>
+        <svg class="hero-title__route" viewBox="0 0 640 32" aria-hidden="true" focusable="false">
+          <path d="M0 25H164C184 25 184 7 204 7H436C456 7 456 25 476 25H640" pathLength="1"/>
+        </svg>
       </h1>
-      <p class="lede">VELIQ сам выстраивает оптимальный маршрут для каждого соединения: игры получают самый быстрый путь до сервера, голосовые чаты и стримы — стабильную связь.</p>
+      <p class="lede">VELIQ подбирает маршруты для игр, общения и работы в интернете. Каждому соединению — свой путь.</p>
       <div class="hero__actions">
-        <a class="btn btn--lg" href="download.html">{icon('download')}Скачать</a>
+        <a class="btn btn--lg" href="download.html">{icon('download')}Скачать для Windows</a>
         <a class="btn btn--lg btn--ghost" href="clubs.html">Для компьютерных клубов</a>
       </div>
       <p class="hero__meta">Бета-версия</p>
@@ -422,15 +432,15 @@ index_body = f"""
 LD_APP = {
     "@context": "https://schema.org", "@type": "SoftwareApplication", "name": "VELIQ",
     "operatingSystem": "Windows 10, Windows 11", "applicationCategory": "UtilitiesApplication",
-    "description": "VELIQ строит оптимальный маршрут для каждого соединения: игры получают самый быстрый путь, голосовые чаты и стримы — стабильную связь.",
+    "description": "VELIQ подбирает маршруты для игр, общения и работы в интернете. Каждому соединению — свой путь.",
     "softwareVersion": RELEASE["version"], "url": SITE["url"],
 }
 LD_FAQ = {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
     {"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": html.unescape(a.replace("<p>", "").replace("</p>", ""))}} for q, a in FAQ_MAIN]}
 
-page("index.html", "VELIQ — нажал, и работает",
-     "VELIQ сам строит оптимальный маршрут: игры получают самый быстрый путь, голосовые чаты и стримы — стабильную связь. Для Windows 10 и 11.",
-     "", index_body, [LD_APP, LD_FAQ])
+page("index.html", "VELIQ — у свободы свой маршрут",
+     "VELIQ подбирает маршруты для игр, общения и работы в интернете. Каждому соединению — свой путь. Для Windows 10 и 11.",
+     "", index_body, [LD_APP, LD_FAQ], og="og-image.png?v=freedom-20261105")
 
 # ---------------------------------------------------------------- как работает
 HOW_ROWS = [
@@ -1029,3 +1039,4 @@ pages = ["", "how.html", "download.html", "clubs.html", "pricing.html", "support
     "icons": [{"src": "assets/img/app-icon-192.png", "sizes": "192x192", "type": "image/png"},
               {"src": "assets/img/app-icon-512.png", "sizes": "512x512", "type": "image/png"}]}, ensure_ascii=False, indent=2), encoding="utf-8")
 print("служебные файлы: sitemap.xml, robots.txt, site.webmanifest")
+
