@@ -60,6 +60,7 @@ internal static class CabinetUiChecks
         var window=new NativeCabinetWindow(new Uri("https://account.example.test/account"),service,()=>api);
         window.Show();Pump();Shot(window,"cabinet-sign-in");
         Require(((FrameworkElement)window.FindName("AccountPanel")).Visibility==Visibility.Collapsed,"Machine activation exposed owner cabinet");
+        Require(((TextBlock)window.FindName("DeviceAccess")).Text=="VELIQ подключён","Device status impersonates account sign-in");
         var email=(TextBox)window.FindName("Email");email.Text="owner@example.test";Click(window,"SendCode");
         Require(email.IsReadOnly,"OTP destination could drift from visible email");
         var code=(PasswordBox)window.FindName("Code");code.Password="000000";Click(window,"VerifyCode");
@@ -69,6 +70,8 @@ internal static class CabinetUiChecks
         Require(((ItemsControl)window.FindName("Devices")).Items.Count==1,"Owned devices missing");
         Require(((FrameworkElement)window.FindName("ConnectPanel")).Visibility==Visibility.Collapsed,"Already linked club PC offers rebinding");
         Shot(window,"cabinet-club");window.Width=window.MinWidth;window.Height=window.MinHeight;Pump();Shot(window,"cabinet-minimum");
+        var scroll=(System.Windows.Controls.ScrollViewer)window.FindName("CabinetContent");scroll.ScrollToEnd();Pump();
+        Require(scroll.ScrollableHeight>0&&scroll.VerticalOffset>0,"Small cabinet cannot reach devices and payments");Shot(window,"cabinet-minimum-bottom");
         Click(window,"SignOut");
         Require(api.Disposed&&((ItemsControl)window.FindName("Devices")).Items.Count==0&&((ItemsControl)window.FindName("Subscriptions")).Items.Count==0,"Logout retained account data");
         Require(((TextBlock)window.FindName("AccountRole")).Text.Length==0&&email.Text.Length==0,"Logout retained identity");

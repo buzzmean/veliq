@@ -22,7 +22,7 @@ public partial class NativeCabinetWindow : Window
         connection = new(service); activation = new(service); subscription = new(service);
         InitializeComponent(); WindowTheme.UseDarkCaption(this); Render();
         Loaded += async (_, _) => await Run(RefreshDevice);
-        Closed += (_, _) => { lifetime.Cancel(); cabinet.Dispose(); Code.Clear(); Email.Clear(); ClearPrivateView(); };
+        Closed += (_, _) => { lifetime.Cancel(); cabinet.Dispose(); Code.Clear(); Email.Clear(); ProfileName.Clear(); Feedback.Text = ""; ClearPrivateView(); };
     }
     static Visibility Visible(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
     void ClearPrivateView()
@@ -72,8 +72,8 @@ public partial class NativeCabinetWindow : Window
     {
         await connection.RefreshAsync(lifetime.Token); await activation.RefreshAsync(lifetime.Token); await subscription.RefreshAsync(false, lifetime.Token);
         var access = WelcomeAccess.Evaluate(activation.Status, connection.Status, subscription.Status);
-        DeviceAccess.Text = access.Title;
-        DeviceHint.Text = access.CanContinue ? "Подключён: " + connection.Status.KindLabel + ". Настройки клубного ПК доступны по правилам администратора клуба." : access.Message;
+        DeviceAccess.Text = access.CanContinue ? "VELIQ подключён" : access.Title;
+        DeviceHint.Text = access.CanContinue ? (connection.Status.Linked ? "Подключён: " + connection.Status.KindLabel + ". Для управления аккаунтом подтвердите свою почту ниже." : "Этот компьютер активирован по коду. Вход в кабинет выполняется отдельно.") : access.Message;
     }
     async void Send(object sender, RoutedEventArgs e) => await Run(async () => {
         if (DateTime.UtcNow < resendAfter) { Feedback.Text = "Повторно отправить код можно через минуту."; return; }
