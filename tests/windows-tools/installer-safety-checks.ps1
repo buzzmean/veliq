@@ -60,6 +60,8 @@ try{
  $cleanup=@(('\??\'+$clone),'',('\??\'+$cloneDir),'')
  $evidence=Get-VeliqPendingFileEvidence $cleanup $root
  Check (!$evidence.required -and $evidence.cleanup -eq 2) 'verified Inno cleanup requires reboot'
+ $directoryCleanup=Get-VeliqPendingFileEvidence @($clone,'',($cloneDir+'\'),'') $root
+ Check (!$directoryCleanup.required -and $directoryCleanup.cleanup -eq 2) 'directory separator on actual Inno directory must remain valid'
  $modernCleanup=@(('*2\??\'+$clone),'',('*1\??\'+$cloneDir),'')
  $modern=Get-VeliqPendingFileEvidence $modernCleanup $root
  Check (!$modern.required -and $modern.cleanup -eq 2) 'modern Windows cleanup prefixes lost'
@@ -298,6 +300,7 @@ try{
   Check ($s.known -and !$s.required -and $s.deferred_cleanup_count -eq 3) 'verified vendor cleanups cannot coexist'
   foreach($ops in @(
    @($gamingActive,''),@(($gamingActive+'.1'),''),@(($gamingActive+'.00'),''),
+   @(($gamingCopy+'\'),''),@(($gamingCopy+'\\'),''),
    @((Join-Path $root 'gamingservicesproxy_11.dll.0'),''),
    @((Join-Path $gamingDirectory '..\System32\gamingservicesproxy_11.dll.0'),''),
    @(('*3\??\'+$gamingCopy),''),@(($gamingCopy+':stream'),''),@(($gamingCopy+'.'),''),@(($gamingCopy+' '),''),
@@ -305,6 +308,14 @@ try{
   )){Check-CleanupBlocked $ops 'Gaming Services unknown/path/rename operation bypass'}
   Check-CleanupBlocked ($gamingQueue+@((Join-Path $root 'unknown.tmp'),'')) 'Gaming Services hides mixed unknown queue'
   Check-CleanupBlocked ($gamingQueue+@($gamingActive,'')) 'Gaming Services hides active DLL deletion'
+  Check-CleanupBlocked ($gamingQueue+@(($gamingCopy+'\'),'')) 'malformed delete was deduplicated against the valid one'
+  # PowerShell linguistic comparison can ignore a soft hyphen. Even a byte-for-byte
+  # copy with genuine version metadata must have the exact Windows filename.
+  $lookalike=$gamingCopy.Insert($gamingCopy.Length-1,[string][char]0x00ad)
+  [IO.File]::Copy($gamingCopy,$lookalike)
+  $script:versions[$lookalike]=$script:versions[$gamingCopy]
+  try{Check-CleanupBlocked @($lookalike,'') 'linguistically equivalent filename bypass'}
+  finally{Remove-Item -LiteralPath $lookalike}
   foreach($file in @($gamingCopy,$gamingActive)){
    [IO.File]::WriteAllText($file,'different bytes')
    Check-CleanupBlocked $gamingQueue 'Gaming Services hash mismatch bypass'

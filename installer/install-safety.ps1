@@ -115,7 +115,7 @@ function Test-VeliqVendorCleanup([string]$Path) {
  $roots=Get-VeliqVendorCleanupRoots
  $parent=[IO.Path]::GetDirectoryName($Path)
  $name=[IO.Path]::GetFileName($Path)
- if($roots['gaming'] -and $Path -ieq ($roots['gaming']+'.0')){
+ if($roots['gaming'] -and [string]::Equals($Path,($roots['gaming']+'.0'),[StringComparison]::OrdinalIgnoreCase)){
   # Only the observed retired-copy name, never the active DLL or arbitrary
   # gamingservicesproxy*. A delete is eligible only while BOTH separate files
   # match the pinned, previously verified Microsoft binary. No online lookup.
@@ -215,12 +215,18 @@ function Get-VeliqPendingFileEvidence($Value,[string]$ApplicationDirectory) {
   if($source.StartsWith('*1\??\') -or $source.StartsWith('*2\??\')){$source=$source.Substring(2)}
   if($source.StartsWith('\??\')){$source=$source.Substring(4)}
   if($source -notmatch '^[a-zA-Z]:\\' -or $source.Substring(2) -match '[:/*?]' -or $source.Split('\') -contains '..'){$required=$true;continue}
+  # A trailing separator denotes a directory. Never turn a malformed file
+  # deletion into an allowed one by stripping that separator.
+  if($source.EndsWith('\')){
+   $source=$source.TrimEnd('\')
+   if(!(Test-Path -LiteralPath $source -PathType Container -ErrorAction Stop)){$required=$true;continue}
+  }
   # MoveFileEx can record the not-yet-created clone with a short parent name
   # and the existing directory with its long name. Match their actual paths.
-  if($source.TrimEnd('\') -match '\\iu-[a-z0-9]+\.tmp(?:\\_unins\.tmp)?$' -and (Test-Path -LiteralPath $source)){
+  if($source -match '\\iu-[a-z0-9]+\.tmp(?:\\_unins\.tmp)?$' -and (Test-Path -LiteralPath $source)){
    $source=(Get-Item -LiteralPath $source -Force -ErrorAction Stop).FullName
   }
-  [void]$deletes.Add($source.TrimEnd('\'))
+  [void]$deletes.Add($source)
  }
  foreach($path in $deletes){
   $directory=$path
