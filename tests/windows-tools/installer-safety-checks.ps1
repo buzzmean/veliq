@@ -60,6 +60,8 @@ try{
  $cleanup=@(('\??\'+$clone),'',('\??\'+$cloneDir),'')
  $evidence=Get-VeliqPendingFileEvidence $cleanup $root
  Check (!$evidence.required -and $evidence.cleanup -eq 2) 'verified Inno cleanup requires reboot'
+ $directoryCleanup=Get-VeliqPendingFileEvidence @($clone,'',($cloneDir+'\'),'') $root
+ Check (!$directoryCleanup.required -and $directoryCleanup.cleanup -eq 2) 'directory separator on actual Inno directory must remain valid'
  $modernCleanup=@(('*2\??\'+$clone),'',('*1\??\'+$cloneDir),'')
  $modern=Get-VeliqPendingFileEvidence $modernCleanup $root
  Check (!$modern.required -and $modern.cleanup -eq 2) 'modern Windows cleanup prefixes lost'
@@ -95,6 +97,7 @@ try{
   usertemp=Join-Path $root 'User\AppData\Local\Temp'
   nvidia=Join-Path $root 'Program Files\NVIDIA Corporation\Installer2\InstallerCore\NVI2.dll'
   edge=Join-Path $root 'Program Files (x86)\Microsoft\EdgeUpdate'
+  gaming=Join-Path $root 'Windows\System32\gamingservicesproxy_11.dll'
  }
  function Get-VeliqVendorCleanupRoots { $script:vendorRoots }
  $nvCopy=Join-Path $script:vendorRoots.temp 'INS_1234abcd.TMP'
@@ -266,6 +269,110 @@ try{
  $script:denyRegistry=$true
  try{Check (!(Get-VeliqRebootState $root).known) 'vendor cleanup masked registry read failure'}finally{$script:denyRegistry=$false}
  Write-Output 'PASS verified vendor cleanup: path/handle/hash identity, registered newer Edge, empty directory, hardlinks/reparse ancestors, unknown/mixed operations, recheck, other reboot signals; no registry mutation'
+ # Gaming Services uses a fixed, verified digest in production. Check the real
+ # anchor first: identical unknown bytes must still block. Only then substitute
+ # the fixture digest in this test scope; file IO, handles and links stay real.
+ $gamingPinReader=${function:Get-VeliqGamingCleanupHash}
+ Check ((Get-VeliqGamingCleanupHash) -ceq 'AAA72D56250D5DC10C5E13FADEEE0D25BAD63A40F0285188C4C9C1A89CC6A3E2') 'Gaming Services trust anchor changed'
+ $gamingActive=$script:vendorRoots.gaming;$gamingCopy=$gamingActive+'.0'
+ $gamingBytes='known Gaming Services fixture';$gamingDirectory=[IO.Path]::GetDirectoryName($gamingActive)
+ [void][IO.Directory]::CreateDirectory($gamingDirectory)
+ foreach($file in @($gamingActive,$gamingCopy)){
+  [IO.File]::WriteAllText($file,$gamingBytes)
+  $script:versions[$file]=[pscustomobject]@{CompanyName='Microsoft Corporation';FileVersion='10.0.26100.8569 (WinBuild.160101.0800)'}
+ }
+ $gamingQueue=@(('\??\'+$gamingCopy),'')
+ Check-CleanupBlocked $gamingQueue 'identical unpinned Gaming Services files bypass'
+ $script:gamingFixtureHash=(Get-FileHash -LiteralPath $gamingActive -Algorithm SHA256).Hash
+ function Get-VeliqGamingCleanupHash { $script:gamingFixtureHash }
+ try{
+  foreach($queueName in @('PendingFileRenameOperations','PendingFileRenameOperations2')){
+   foreach($prefix in @('','\??\','*1\??\','*2\??\')){
+    Set-CleanupQueue @();$script:registry['SYSTEM\CurrentControlSet\Control\Session Manager|'+$queueName]=@(($prefix+$gamingCopy),'')
+    $s=Get-VeliqRebootState $root
+    if(!$s.known){[void](Get-VeliqPendingFileEvidence @(($prefix+$gamingCopy),'') $root)}
+    Check ($s.known -and !$s.required -and $s.deferred_cleanup_count -eq 1) 'verified Gaming Services retired copy blocked'
+    Check ((New-VeliqInstallResult 'PASS' 'VERIFY' $s).deferred_cleanup_count -eq 1) 'Gaming Services cleanup omitted from result'
+   }
+  }
+  Set-CleanupQueue ($gamingQueue+$both)
+  $s=Get-VeliqRebootState $root
+  Check ($s.known -and !$s.required -and $s.deferred_cleanup_count -eq 3) 'verified vendor cleanups cannot coexist'
+  foreach($ops in @(
+   @($gamingActive,''),@(($gamingActive+'.1'),''),@(($gamingActive+'.00'),''),
+   @(($gamingCopy+'\'),''),@(($gamingCopy+'\\'),''),
+   @((Join-Path $root 'gamingservicesproxy_11.dll.0'),''),
+   @((Join-Path $gamingDirectory '..\System32\gamingservicesproxy_11.dll.0'),''),
+   @(('*3\??\'+$gamingCopy),''),@(($gamingCopy+':stream'),''),@(($gamingCopy+'.'),''),@(($gamingCopy+' '),''),
+   @($gamingCopy,$gamingActive),@($gamingCopy,('!'+$gamingActive)),@($gamingCopy),@($gamingCopy,$null)
+  )){Check-CleanupBlocked $ops 'Gaming Services unknown/path/rename operation bypass'}
+  Check-CleanupBlocked ($gamingQueue+@((Join-Path $root 'unknown.tmp'),'')) 'Gaming Services hides mixed unknown queue'
+  Check-CleanupBlocked ($gamingQueue+@($gamingActive,'')) 'Gaming Services hides active DLL deletion'
+  Check-CleanupBlocked ($gamingQueue+@(($gamingCopy+'\'),'')) 'malformed delete was deduplicated against the valid one'
+  # PowerShell linguistic comparison can ignore a soft hyphen. Even a byte-for-byte
+  # copy with genuine version metadata must have the exact Windows filename.
+  $lookalike=$gamingCopy.Insert($gamingCopy.Length-1,[string][char]0x00ad)
+  [IO.File]::Copy($gamingCopy,$lookalike)
+  $script:versions[$lookalike]=$script:versions[$gamingCopy]
+  try{Check-CleanupBlocked @($lookalike,'') 'linguistically equivalent filename bypass'}
+  finally{Remove-Item -LiteralPath $lookalike}
+  foreach($file in @($gamingCopy,$gamingActive)){
+   [IO.File]::WriteAllText($file,'different bytes')
+   Check-CleanupBlocked $gamingQueue 'Gaming Services hash mismatch bypass'
+   [IO.File]::WriteAllText($file,$gamingBytes)
+   $script:versions[$file].CompanyName='Foreign'
+   Check-CleanupBlocked $gamingQueue 'Gaming Services publisher mismatch bypass'
+   $script:versions[$file].CompanyName='Microsoft Corporation'
+   $script:versions[$file].FileVersion='10.0.26100.9000 (WinBuild.160101.0800)'
+   Check-CleanupBlocked $gamingQueue 'Gaming Services unknown version bypass'
+   $script:versions[$file].FileVersion='10.0.26100.8569 (WinBuild.160101.0800)'
+   Move-Item -LiteralPath $file -Destination ($file+'.saved')
+   try{Check-CleanupBlocked $gamingQueue 'Gaming Services missing copy bypass' -Unknown}
+   finally{Move-Item -LiteralPath ($file+'.saved') -Destination $file}
+   $held=[IO.File]::Open($file,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::ReadWrite)
+   try{Check-CleanupBlocked $gamingQueue 'Gaming Services concurrent writer bypass' -Unknown}finally{$held.Dispose()}
+   $link=Join-Path $root 'gaming-hardlink-fixture'
+   [void](New-Item -ItemType HardLink -Path $link -Target $file -ErrorAction Stop)
+   try{Check-CleanupBlocked $gamingQueue 'Gaming Services hardlink bypass' -Unknown}finally{Remove-Item -LiteralPath $link}
+   Move-Item -LiteralPath $file -Destination ($file+'.saved')
+   try{
+    [void][IO.Directory]::CreateDirectory($file)
+    Check-CleanupBlocked $gamingQueue 'Gaming Services directory masquerading as DLL bypass' -Unknown
+   }finally{[IO.Directory]::Delete($file);Move-Item -LiteralPath ($file+'.saved') -Destination $file}
+  }
+  # Both copies changing together must not defeat the independently pinned hash.
+  foreach($file in @($gamingCopy,$gamingActive)){[IO.File]::WriteAllText($file,'same but untrusted new bytes')}
+  Check-CleanupBlocked $gamingQueue 'Gaming Services equal unknown hashes bypass'
+  foreach($file in @($gamingCopy,$gamingActive)){[IO.File]::WriteAllText($file,$gamingBytes)}
+  Move-Item -LiteralPath $gamingDirectory -Destination ($gamingDirectory+'.saved')
+  try{
+   [void](New-Item -ItemType Junction -Path $gamingDirectory -Target ($gamingDirectory+'.saved') -ErrorAction Stop)
+   try{Check-CleanupBlocked $gamingQueue 'Gaming Services reparse ancestor bypass' -Unknown}
+   finally{[IO.Directory]::Delete($gamingDirectory)}
+  }finally{Move-Item -LiteralPath ($gamingDirectory+'.saved') -Destination $gamingDirectory}
+  Set-CleanupQueue $gamingQueue
+  Check (!(Get-VeliqRebootState $root).required) 'Gaming Services initial snapshot failed'
+  [IO.File]::WriteAllText($gamingActive,'changed after preflight')
+  try{Reject {New-VeliqInstallResult 'PASS' 'VERIFY' (Get-VeliqRebootState $root)} 'INSTALL_REBOOT_REQUIRED'}
+  finally{[IO.File]::WriteAllText($gamingActive,$gamingBytes)}
+  foreach($signal in @(
+   @('SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending|',$true),
+   @('SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired|',$true),
+   @('SOFTWARE\Microsoft\Updates|UpdateExeVolatile',1),
+   @('SYSTEM\CurrentControlSet\Control\Session Manager|PendingFileRenameOperations2',@('C:\unknown.tmp',''))
+  )){
+   Set-CleanupQueue $gamingQueue;$script:registry[$signal[0]]=$signal[1]
+   Check ((Get-VeliqRebootState $root).required) 'Gaming Services masked independent reboot signal'
+  }
+  Set-CleanupQueue $gamingQueue
+  $script:registry['SYSTEM\CurrentControlSet\Control\ComputerName\ActiveComputerName|ComputerName']='before'
+  $script:registry['SYSTEM\CurrentControlSet\Control\ComputerName\ComputerName|ComputerName']='after'
+  Check ((Get-VeliqRebootState $root).required) 'Gaming Services masked computer rename'
+  $script:denyRegistry=$true
+  try{Check (!(Get-VeliqRebootState $root).known) 'Gaming Services masked registry failure'}finally{$script:denyRegistry=$false}
+  foreach($file in @($gamingCopy,$gamingActive)){Check ((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash -ceq $script:gamingFixtureHash) 'Gaming Services classifier changed file bytes'}
+  Write-Output 'PASS Gaming Services pinned cleanup: exact path/version/hash, both queues, real handles/links, mismatches/mixed queues/other reboot signals/recheck fail closed; no registry mutation'
+ }finally{Set-Item -LiteralPath Function:\Get-VeliqGamingCleanupHash -Value $gamingPinReader}
  $script:registry=@{}
  foreach($name in @('gui/VELIQ.exe','VELIQ.exe')){[IO.File]::WriteAllText((Join-Path $root $name),'GUI fixture')}
  foreach($name in @('service/veliq-service.exe','installed/veliq-service.exe')){[IO.File]::WriteAllText((Join-Path $root $name),'service fixture')}
