@@ -387,7 +387,10 @@ func (c *Controller) Classify(identity windowsplatform.ProcessIdentity, t window
 	}
 	profile, ok := c.matchApplication(identity)
 	if !ok {
-		return decision
+		profile, ok = discoveredApplication(identity)
+		if !ok {
+			return decision
+		}
 	}
 	// Owner-authorized availability contract: no opaque native browser capture
 	// while its PAC lane is suspended. Desktop apps and games retain their policy.
@@ -695,6 +698,8 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return windowsplatform.InspectNativeFirewall(ctx), nil
 	case "riot.status":
 		return c.riotStatus(), nil
+	case "automation.status":
+		return c.automaticStatus(), nil
 	case "browser.local.probes":
 		return c.localProbeSnapshot(), nil
 	case "browser.native.enable", "browser.native.status":

@@ -203,9 +203,25 @@ func (c *Controller) scopedDecision(p profiles.Profile, id wp.ProcessIdentity, t
 				return c.openNativeBrowser(ctx, p, id, t, decision, reason)
 			}
 		}
+		if automaticApplication(p) && c.automaticCaptureAllowed() && t.Protocol == "tcp" && t.Destination.Addr().Is4() && !directOnlyFlow(t) {
+			d.OriginDomain = domain
+			d.NewConnectionsOnly = true
+			d.OpenDeferred = func(ctx context.Context, decision wp.Decision, reason string) (net.Conn, wp.Decision, error) {
+				return c.openAutomaticApplication(ctx, p, id, t, decision, reason)
+			}
+		}
 		return d
 	}
 	out := resolve("")
+	if automaticApplication(p) && c.automaticCaptureAllowed() && t.Protocol == "tcp" && t.Destination.Addr().Is4() && !directOnlyFlow(t) && (t.Destination.Port() == 443 || t.Destination.Port() == 80) {
+		out.Deferred = true
+		out.ResolveDomain = resolve
+		// Do not let a saturated capture queue send an unclassified TLS origin
+		// DIRECT. The actual resolved policy is selected before upstream bytes.
+		if t.Destination.Port() == 443 {
+			out.BlockOnFailure = true
+		}
+	}
 	if nativeBrowserProfile(p) && t.Destination.Port() == 53 {
 		return c.browserDNSDecision(p, id, t, out, network)
 	}
@@ -228,6 +244,11 @@ func (c *Controller) scopedDecision(p profiles.Profile, id wp.ProcessIdentity, t
 	return out
 }
 func (c *Controller) evaluateFlow(p profiles.Profile, id wp.ProcessIdentity, t wp.Tuple, d wp.Decision, domain, network string) wp.Decision {
+	if automaticApplication(p) && domain != "" && !directOnlyFlow(t) {
+		if policy := c.browserOriginPolicy(domain); policy.Kind == "RELAY" {
+			return applyFlowResult(p, d, c.browserFlow(p, id, t, domain, network), network, c.Local)
+		}
+	}
 	if browserAuto(p) {
 		return applyFlowResult(p, d, c.browserFlow(p, id, t, domain, network), network, c.Local)
 	}

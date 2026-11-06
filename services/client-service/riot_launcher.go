@@ -89,8 +89,8 @@ func (c *Controller) openRiotPlan(ctx context.Context, cur profilesResult, q bro
 			conn, e := observedOpen(attempt, q, actual)
 			cancel()
 			nextIndex := index + 1
-			failed := func(string) {
-				if cur.network != "" {
+			failed := func(reason string) {
+				if cur.network != "" && (!automaticApplication(cur.profile) || automaticNetworkFailure(reason)) {
 					c.browser.directTimeouts.RecordTimeout(key, time.Now())
 					c.browser.directTimeouts.SetProbeHost(key, q.Host)
 				}
@@ -98,6 +98,9 @@ func (c *Controller) openRiotPlan(ctx context.Context, cur profilesResult, q bro
 			if e != nil {
 				if work.Err() != nil {
 					return nil, actual, work.Err()
+				}
+				if !retryableDirectOpen(e) {
+					return nil, actual, e
 				}
 				failed("OPEN_FAILED")
 				index++

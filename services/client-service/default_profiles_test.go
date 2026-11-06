@@ -42,8 +42,8 @@ func TestBuiltInProfilesRouteBlockedDesktopAppsRelayFirstFailClosed(t *testing.T
 		}
 	}
 	other := wp.ProcessIdentity{PID: 900, CreationTime: 90, Path: `C:\Tools\notes.exe`}
-	if d := c.Classify(other, destTuple("tcp", "160.79.104.10", 443)); !d.Route.Direct() || d.BlockOnFailure {
-		t.Fatalf("unrelated application was captured: %+v", d)
+	if d := c.Classify(other, destTuple("tcp", "160.79.104.10", 443)); !d.Route.Direct() || !d.Deferred || !d.BlockOnFailure {
+		t.Fatalf("unregistered application must await its own origin, not inherit another service relay: %+v", d)
 	}
 }
 
