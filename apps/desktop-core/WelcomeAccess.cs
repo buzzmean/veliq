@@ -20,7 +20,7 @@ public sealed record WelcomeAccess(string State, string Title, string Message, b
             return new("ERROR", "Нужно подтвердить аккаунт", account.Message, false);
         bool activated = activation.State == "ACTIVATED" && activation.HasIdentity && activation.CapturePermitted;
         if (activated && account.Linked && account.Kind is "player" or "club")
-            return new("READY", "Вы вошли в VELIQ", "Подключение сохранено. Можно переходить к настройке приложений.", true);
+            return new("READY", "Вы вошли в VELIQ", "Подключение сохранено. Включите VELIQ — добавлять приложения и сайты вручную не требуется.", true);
         // Older issued activation codes have no personal account binding. They
         // remain valid credentials, but never grant administrator/club mode here.
         if (activated && account.State == "NOT_LINKED" && account.Kind.Length == 0)

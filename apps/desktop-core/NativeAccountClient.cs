@@ -23,6 +23,8 @@ public sealed class NativeAccountException(string code) : Exception(code)
         "ACCOUNT_DEVICE_ALREADY_OWNED" => "Этот компьютер уже подключён к другому аккаунту.",
         "ACCOUNT_PROFILE_CONFLICT" => "Тип аккаунта не подходит для личного компьютера.",
         "ACCOUNT_PROFILE_INVALID" => "Проверьте имя: не более 80 символов.",
+        "ACCOUNT_DEVICE_INVALID" or "SEAT_NOT_FOUND" => "Компьютер уже отключён или недоступен этому аккаунту. Обновите список.",
+        "CLUB_ENROLLMENT_CLOSED" => "Набор компьютеров клуба закрыт. Обратитесь в поддержку для замены или добавления ПК.",
         "ACCOUNT_ORIGIN_REJECTED" or "ACCOUNT_NOT_CONFIGURED" => "Сервис входа пока недоступен.",
         _ => "Не удалось подключиться. Проверьте интернет и повторите попытку."
     };
@@ -36,7 +38,27 @@ public sealed class NativeSubscription
     public int UsedSeats { get; set; }
     public bool CanConnect { get; set; }
     public bool Lifetime { get; set; }
-    public string Label => (Lifetime ? "Бессрочная подписка" : "Личная подписка") + $" · подключено ПК: {UsedSeats}";
+    public DateTimeOffset? PaidUntil { get; set; }
+    public List<NativeAccountDevice> Devices { get; set; } = [];
+    public string Label => (Kind == "club" ? "Клубная подписка" : "Личная подписка") + $" · подключено ПК: {UsedSeats}";
+    public string AccessLabel => Lifetime ? "Бессрочно" : PaidUntil is {} date ? "Оплачено до " + date.ToLocalTime().ToString("dd.MM.yyyy") : "Нет оплаченного периода";
+    public string SeatsLabel => Kind == "club" ? $"Компьютеры: {UsedSeats} из {Seats}" : $"Подключено компьютеров: {UsedSeats}";
+    public string ConnectionLabel => CanConnect ? "Подключение новых компьютеров доступно" : "Подключение новых компьютеров недоступно — проверьте подписку или обратитесь в поддержку";
+}
+public sealed class NativeAccountDevice
+{
+    public string Name { get; set; } = "";
+    public string Machine { get; set; } = "";
+    public DateTimeOffset? LastSeen { get; set; }
+    public string LastSeenLabel => LastSeen is {} date ? "Был в сети: " + date.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Время подключения неизвестно";
+}
+public sealed class NativeAccountPayment
+{
+    public string Id { get; set; } = "";
+    public string Status { get; set; } = "";
+    public long AmountKopecks { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public string Summary => CreatedAt.ToLocalTime().ToString("dd.MM.yyyy") + " · " + (AmountKopecks / 100m).ToString("N2", System.Globalization.CultureInfo.GetCultureInfo("ru-RU")) + " ₽ · " + (Status switch { "paid" => "Оплачен", "pending" => "Ожидает оплаты", "failed" => "Не выполнен", "refunded" => "Возврат", _ => "Статус уточняется" });
 }
 public sealed class NativeAccountSnapshot
 {
@@ -44,6 +66,15 @@ public sealed class NativeAccountSnapshot
     public string Kind { get; set; } = "";
     public string Name { get; set; } = "";
     public List<NativeSubscription> Subscriptions { get; set; } = [];
+    public List<NativeAccountPayment> Payments { get; set; } = [];
+    public bool PaymentsEnabled { get; set; }
+    public string RoleLabel => Kind == "club" ? "Клуб" : Kind == "player" ? "Пользователь" : "Завершите регистрацию";
+}
+public interface INativeCabinetClient : INativeAccountClient
+{
+    Task<NativeAccountSnapshot> CreateProfileAsync(string kind, string name, CancellationToken ct);
+    Task ReleaseDeviceAsync(string subscription, string machine, CancellationToken ct);
+    Task ApproveDeviceAsync(Uri verification, string subscription, CancellationToken ct);
 }
 public sealed class NativeDeviceLink
 {
@@ -64,21 +95,23 @@ public interface INativeAccountClient : IDisposable
 
 // Each sign-in owns a private in-memory cookie jar. Account credentials never
 // enter preferences, IPC or logs. Persistent device identity stays in the service.
-public sealed class NativeAccountClient : INativeAccountClient
+public sealed class NativeAccountClient : INativeCabinetClient
 {
     const int MaxBody = 1024 * 1024;
     static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, PropertyNameCaseInsensitive = true };
     readonly HttpClient http;
     readonly Uri origin;
-    readonly string link;
+    string link;
     NativeAccountSnapshot? account;
-    public NativeAccountClient(Uri verification, HttpMessageHandler? handler = null)
+    public NativeAccountClient(Uri verification, HttpMessageHandler? handler = null) : this(verification, true, handler) { }
+    public static NativeAccountClient ForCabinet(Uri cabinet, HttpMessageHandler? handler = null) => new(cabinet, false, handler);
+    NativeAccountClient(Uri verification, bool deviceLink, HttpMessageHandler? handler)
     {
         if (!verification.IsAbsoluteUri || verification.Scheme != "https" || verification.UserInfo.Length != 0 || verification.Query.Length != 0 ||
-            verification.AbsolutePath is not ("/account.html" or "/account") || !Regex.IsMatch(verification.Fragment, "^#device=[a-f0-9]{32}$"))
+            verification.AbsolutePath is not ("/account.html" or "/account") || (deviceLink ? !Regex.IsMatch(verification.Fragment, "^#device=[a-f0-9]{32}$") : verification.Fragment.Length != 0))
             throw new NativeAccountException("ACCOUNT_LINK_INVALID");
         origin = new Uri(verification.GetLeftPart(UriPartial.Authority));
-        link = verification.Fragment[8..];
+        link = deviceLink ? verification.Fragment[8..] : "";
         http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true, CookieContainer = new CookieContainer() }) { Timeout = TimeSpan.FromSeconds(25) };
     }
     public static string NormalizeEmail(string value)
@@ -88,7 +121,7 @@ public sealed class NativeAccountClient : INativeAccountClient
             throw new NativeAccountException("EMAIL_INVALID");
         return email;
     }
-    static bool IsId(string value) => Regex.IsMatch(value, "^[a-f0-9]{32}$");
+    static bool IsId(string? value) => value is not null && Regex.IsMatch(value, "^[a-f0-9]{32}$");
     async Task<JsonDocument> Request(HttpMethod method, string path, object? body, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(method, new Uri(origin, "/api/v1/account" + path));
@@ -137,8 +170,10 @@ public sealed class NativeAccountClient : INativeAccountClient
     public async Task<NativeAccountSnapshot> RefreshAsync(CancellationToken ct)
     {
         using var data = await Request(HttpMethod.Get, "", null, ct);
-        var result = data.Deserialize<NativeAccountSnapshot>(Json) ?? throw new NativeAccountException("ACCOUNT_UNAVAILABLE");
-        if (result.Kind is not ("" or "player" or "club") || result.Subscriptions is null || result.Subscriptions.Count > 512 || result.Subscriptions.Any(s => !IsId(s.Id)))
+        NativeAccountSnapshot result;
+        try { result = data.Deserialize<NativeAccountSnapshot>(Json) ?? throw new NativeAccountException("ACCOUNT_UNAVAILABLE"); }
+        catch (JsonException) { throw new NativeAccountException("ACCOUNT_UNAVAILABLE"); }
+        if (result.Kind is not ("" or "player" or "club") || result.Email is null || result.Name is null || result.Subscriptions is null || result.Subscriptions.Count > 512 || result.Subscriptions.Any(s => s is null || !IsId(s.Id) || s.Kind is not ("player" or "club") || s.Devices is null || s.Devices.Count > 2048 || s.Devices.Any(d => d is null || d.Name is null || d.Machine is null || !Regex.IsMatch(d.Machine, "^[a-f0-9]{12,64}$"))) || result.Subscriptions.Sum(s => s.Devices.Count) > 4096 || result.Payments is null || result.Payments.Count > 512 || result.Payments.Any(p => p is null))
             throw new NativeAccountException("ACCOUNT_UNAVAILABLE");
         account = result;
         return result;
@@ -153,8 +188,37 @@ public sealed class NativeAccountClient : INativeAccountClient
     }
     public async Task<NativeDeviceLink> DeviceAsync(CancellationToken ct)
     {
+        if (!IsId(link)) throw new NativeAccountException("ACCOUNT_LINK_INVALID");
         using var data = await Request(HttpMethod.Get, "/device-links/" + link, null, ct);
         return data.Deserialize<NativeDeviceLink>(Json) ?? throw new NativeAccountException("ACCOUNT_LINK_INVALID");
+    }
+    public async Task<NativeAccountSnapshot> CreateProfileAsync(string kind, string name, CancellationToken ct)
+    {
+        await RefreshAsync(ct);
+        if (account!.Kind != "" || kind is not ("player" or "club")) throw new NativeAccountException("ACCOUNT_PROFILE_CONFLICT");
+        name = name.Trim();
+        if (name.Length > 80 || name.Any(char.IsControl) || kind == "club" && name.Length < 2) throw new NativeAccountException("ACCOUNT_PROFILE_INVALID");
+        using var data = await Request(HttpMethod.Post, "/profile", new { kind, name }, ct);
+        return await RefreshAsync(ct);
+    }
+    public async Task ReleaseDeviceAsync(string subscription, string machine, CancellationToken ct)
+    {
+        if (!IsId(subscription) || !Regex.IsMatch(machine, "^[a-f0-9]{12,64}$")) throw new NativeAccountException("ACCOUNT_DEVICE_INVALID");
+        var fresh = await RefreshAsync(ct);
+        if (!fresh.Subscriptions.Any(s => s.Id == subscription && s.Devices.Any(d => d.Machine == machine))) throw new NativeAccountException("ACCOUNT_DEVICE_INVALID");
+        using var data = await Request(HttpMethod.Post, "/subscriptions/" + subscription + "/devices/" + machine + "/release", null, ct);
+        if (!data.RootElement.TryGetProperty("status", out var status) || status.GetString() != "released") throw new NativeAccountException("ACCOUNT_UNAVAILABLE");
+    }
+    public async Task ApproveDeviceAsync(Uri verification, string subscription, CancellationToken ct)
+    {
+        if (!verification.IsAbsoluteUri || verification.GetLeftPart(UriPartial.Authority) != origin.GetLeftPart(UriPartial.Authority) || verification.UserInfo.Length != 0 || verification.Query.Length != 0 || verification.AbsolutePath is not ("/account" or "/account.html") || !Regex.IsMatch(verification.Fragment, "^#device=[a-f0-9]{32}$")) throw new NativeAccountException("ACCOUNT_LINK_INVALID");
+        var fresh = await RefreshAsync(ct);
+        if (!fresh.Subscriptions.Any(s => s.Id == subscription && s.Kind == fresh.Kind && s.CanConnect)) throw new NativeAccountException("ACCOUNT_SUBSCRIPTION_REQUIRED");
+        link = verification.Fragment[8..];
+        var device = await DeviceAsync(ct);
+        if (device.Mode is not ("device" or "image") || device.Mode == "image" && fresh.Kind != "club") throw new NativeAccountException("ACCOUNT_LINK_INVALID");
+        using var data = await Request(HttpMethod.Post, "/device-links/" + link + "/approve", new { subscription_id = subscription }, ct);
+        if (!data.RootElement.TryGetProperty("state", out var state) || state.GetString() != "APPROVED") throw new NativeAccountException("ACCOUNT_LINK_INVALID");
     }
     public async Task ApproveAsync(string subscription, CancellationToken ct)
     {

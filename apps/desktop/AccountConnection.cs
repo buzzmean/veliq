@@ -31,6 +31,6 @@ public partial class MainWindow {
  }
  async void OpenAccountCabinet(object sender,RoutedEventArgs e)=>await Execute(async()=>{
   var account=model.AccountConnectionClient();await account.RefreshAsync(lifetime.Token);
-  if(account.Status.CabinetUri is {} uri)OpenAccountUri(uri);else await StartAccountConnectionAsync();
+  if(account.Status.CabinetUri is {} uri){new NativeCabinetWindow(uri){Owner=this}.ShowDialog();await RefreshAccountConnectionAsync();}else await StartAccountConnectionAsync();
  });
 }
