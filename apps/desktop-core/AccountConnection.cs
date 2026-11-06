@@ -37,7 +37,7 @@ public sealed class AccountConnectionView {
  public Uri? CabinetUri=>SafeUri(CabinetUrl,false);
  public Uri? VerificationUri=>SafeUri(VerificationUrl,true);
  static Uri? SafeUri(string raw,bool verification){
-  if(!Uri.TryCreate(raw,UriKind.Absolute,out var uri)||uri.Scheme!="https"||uri.UserInfo.Length>0||uri.Query.Length>0||uri.AbsolutePath!="/account.html")return null;
+  if(!Uri.TryCreate(raw,UriKind.Absolute,out var uri)||uri.Scheme!="https"||uri.UserInfo.Length>0||uri.Query.Length>0||uri.AbsolutePath is not ("/account.html" or "/account"))return null;
   if(verification&&!System.Text.RegularExpressions.Regex.IsMatch(uri.Fragment,"^#device=[a-f0-9]{32}$"))return null;
   if(!verification&&uri.Fragment.Length>0)return null;return uri;
  }

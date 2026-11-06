@@ -78,14 +78,15 @@
     <!-- ============ Сервисы (приложения и сайты) ============ -->
     <DockPanel x:Name="Applications" Visibility="Collapsed">
      <StackPanel DockPanel.Dock="Top">
-      <WrapPanel>
+      <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="{ui:Tr AutomaticApplicationsTitle}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{ui:Tr AutomaticApplicationsHint}" TextWrapping="Wrap" Style="{StaticResource Hint}" Margin="0,8,0,0"/></StackPanel></Border>
+      <WrapPanel Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}">
        <Button Style="{StaticResource Primary}" Click="AddApplication" IsEnabled="{Binding CanControl}"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconPlus}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource OnControl}" StrokeThickness="1.75" Margin="0,0,8,0"/><TextBlock Text="{ui:Tr AddApplication}" Foreground="{StaticResource OnControl}"/></StackPanel></Button>
        <Button Content="{ui:Tr AutoOptimize}" Click="UseAuto" IsEnabled="{Binding CanControl}" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
        <Button Content="{ui:Tr GameUdpEnable}" Click="EnableSelectedGameUdp" IsEnabled="{Binding CanControl}" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
        <Button Content="{ui:Tr RemoveApplication}" Click="DeleteApplication" IsEnabled="{Binding CanControl}"/>
       </WrapPanel>
       <!-- Route for the selected row; fallback and a fixed server are technical choices. -->
-      <WrapPanel>
+      <WrapPanel Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}">
        <ComboBox x:Name="Mode" ItemsSource="{Binding Modes}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedIndex="0" SelectionChanged="ModeChanged" MinWidth="180"/>
        <ComboBox x:Name="ProfileFallback" ItemsSource="{Binding ProfileFallbacks}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedIndex="0" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
        <ComboBox x:Name="RelayChoice" ItemsSource="{Binding Relays}" DisplayMemberPath="Label" SelectedValuePath="Value" MinWidth="190" IsEnabled="False" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>

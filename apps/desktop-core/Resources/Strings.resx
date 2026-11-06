@@ -657,4 +657,6 @@
   <data name="EmergencyPasswordHeading" xml:space="preserve"><value>Пароль аварийного отключения</value></data>
   <data name="EmergencyPasswordHelp" xml:space="preserve"><value>Отдельный пароль VELIQ работает без интернета. Задайте его при настройке этой установки.</value></data>
   <data name="EmergencyPasswordSetup" xml:space="preserve"><value>Настроить пароль отключения…</value></data>
+  <data name="AutomaticApplicationsTitle" xml:space="preserve"><value>Приложения определяются автоматически</value></data>
+  <data name="AutomaticApplicationsHint" xml:space="preserve"><value>Включите VELIQ — добавлять приложения и сайты вручную не требуется. В режиме AUTO маршрут подбирается при сетевом сбое. Заданные ранее правила сохраняются; изменить их можно в расширенных настройках.</value></data>
 </root>
