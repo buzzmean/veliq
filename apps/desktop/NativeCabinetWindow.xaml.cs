@@ -73,7 +73,7 @@ public partial class NativeCabinetWindow : Window
         await connection.RefreshAsync(lifetime.Token); await activation.RefreshAsync(lifetime.Token); await subscription.RefreshAsync(false, lifetime.Token);
         var access = WelcomeAccess.Evaluate(activation.Status, connection.Status, subscription.Status);
         DeviceAccess.Text = access.CanContinue ? "VELIQ подключён" : access.Title;
-        DeviceHint.Text = access.CanContinue ? (connection.Status.Linked ? "Подключён: " + connection.Status.KindLabel + ". Для управления аккаунтом подтвердите свою почту ниже." : "Этот компьютер активирован по коду. Вход в кабинет выполняется отдельно.") : access.Message;
+        DeviceHint.Text = access.CanContinue ? (connection.Status.Linked ? "Подключён: " + connection.Status.KindLabel + ". Выход из кабинета не отключает VELIQ на этом ПК." : "Этот компьютер активирован по коду. Вход в кабинет выполняется отдельно.") : access.Message;
     }
     async void Send(object sender, RoutedEventArgs e) => await Run(async () => {
         if (DateTime.UtcNow < resendAfter) { Feedback.Text = "Повторно отправить код можно через минуту."; return; }
