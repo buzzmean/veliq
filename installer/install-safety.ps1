@@ -15,12 +15,19 @@ function Read-VeliqRebootRegistry([string]$Path,[string]$Name='') {
 }
 function Get-VeliqTemporaryRoots { @([IO.Path]::GetTempPath(),(Join-Path $env:SystemRoot 'Temp')) }
 function Read-VeliqFileVersion([string]$Path) { [Diagnostics.FileVersionInfo]::GetVersionInfo($Path) }
+function Get-VeliqGamingCleanupHash {
+ # Exact bytes of the verified Microsoft Gaming Services Proxy 10.0.26100.8569.
+ # The package, active System32 copy and retired copy matched this digest.
+ # Never derive this trust anchor from the machine's current files or metadata.
+ 'AAA72D56250D5DC10C5E13FADEEE0D25BAD63A40F0285188C4C9C1A89CC6A3E2'
+}
 function Get-VeliqVendorCleanupRoots {
  @{
   temp=Join-Path ([Environment]::GetFolderPath('Windows')) 'Temp'
   usertemp=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Temp'
   nvidia=Join-Path ([Environment]::GetFolderPath('ProgramFiles')) 'NVIDIA Corporation\Installer2\InstallerCore\NVI2.dll'
   edge=Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft\EdgeUpdate'
+  gaming=Join-Path ([Environment]::GetFolderPath('Windows')) 'System32\gamingservicesproxy_11.dll'
  }
 }
 function Initialize-VeliqCleanupReader {
@@ -108,6 +115,25 @@ function Test-VeliqVendorCleanup([string]$Path) {
  $roots=Get-VeliqVendorCleanupRoots
  $parent=[IO.Path]::GetDirectoryName($Path)
  $name=[IO.Path]::GetFileName($Path)
+ if($roots['gaming'] -and $Path -ieq ($roots['gaming']+'.0')){
+  # Only the observed retired-copy name, never the active DLL or arbitrary
+  # gamingservicesproxy*. A delete is eligible only while BOTH separate files
+  # match the pinned, previously verified Microsoft binary. No online lookup.
+  $copy=$null;$active=$null
+  try{
+   $copy=Open-VeliqCleanupReadHandle $Path $false
+   $active=Open-VeliqCleanupReadHandle $roots['gaming'] $false
+   foreach($file in @($Path,$roots['gaming'])){
+    $version=Read-VeliqFileVersion $file
+    if($version.CompanyName -cne 'Microsoft Corporation' -or
+       $version.FileVersion -cne '10.0.26100.8569 (WinBuild.160101.0800)'){return $false}
+   }
+   $pinned=Get-VeliqGamingCleanupHash
+   if($copy.Hash() -cne $pinned -or $active.Hash() -cne $pinned){return $false}
+   Assert-VeliqCleanupPath $Path;Assert-VeliqCleanupPath $roots['gaming']
+   return $true
+  }finally{if($active){$active.Dispose()};if($copy){$copy.Dispose()}}
+ }
  if(($parent -ieq $roots.temp -or $parent -ieq $roots.usertemp) -and $name -match '^INS_[a-f0-9]{8}\.TMP$'){
   $copy=$null;$original=$null
   try{
