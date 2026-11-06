@@ -33,7 +33,7 @@ internal static class WelcomeUiChecks
     }
     sealed class Account : INativeAccountClient
     {
-        internal bool Approved, Disposed;
+        internal bool Approved, Disposed, LoggedOut;
         NativeAccountSnapshot snapshot=new(){Email="fixture@example.test"};
         public Task SendCodeAsync(string email,CancellationToken ct)=>Task.CompletedTask;
         public Task<NativeAccountSnapshot> VerifyAsync(string email,string code,CancellationToken ct)
@@ -49,7 +49,7 @@ internal static class WelcomeUiChecks
         public Task<NativeAccountSnapshot> RefreshAsync(CancellationToken ct)=>Task.FromResult(snapshot);
         public Task<NativeDeviceLink> DeviceAsync(CancellationToken ct)=>Task.FromResult(new NativeDeviceLink{Name="Тестовый компьютер",Mode="device"});
         public Task ApproveAsync(string subscription,CancellationToken ct){Approved=true;return Task.CompletedTask;}
-        public Task LogoutAsync(CancellationToken ct)=>Task.CompletedTask;
+        public Task LogoutAsync(CancellationToken ct){LoggedOut=true;return Task.CompletedTask;}
         public void Dispose()=>Disposed=true;
     }
     static void Pump()
@@ -68,6 +68,27 @@ internal static class WelcomeUiChecks
         Directory.CreateDirectory("bin/native-ui-tests");
         using var file=File.Create("bin/native-ui-tests/"+name+".png");
         var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));encoder.Save(file);
+    }
+    internal static void PersonalSession(Guid fixtureId, bool remember)
+    {
+        var address = new Uri($"https://{fixtureId:N}.example.invalid/account");
+        var store = new PersonalCabinetSession(address);
+        var api = new Account();
+        // Seed only the fixture's own cookie jar. Real cookies arrive from the
+        // HTTPS handler during VerifyAsync; both flows call the production Save.
+        store.Cookies.Add(new Uri(address, "/api/v1/account"), new System.Net.Cookie("veliq_session",new string('x',43),"/api/v1/account"){Secure=true,HttpOnly=true});
+        var window = new WelcomeWindow(new Fixture(), () => {}, false, _ => api, session:store){ShowActivated=false,ShowInTaskbar=false,Opacity=0};
+        try
+        {
+            window.Show();Pump();Panel(window,"RememberPersonal");
+            ((System.Windows.Controls.CheckBox)window.FindName("RememberPersonal")).IsChecked=remember;
+            ((TextBox)window.FindName("EmailField")).Text="fixture@example.test";Click(window,"EmailSubmit");
+            ((PasswordBox)window.FindName("LoginCode")).Password="123456";Click(window,"VerifySubmit");
+            Click(window,"ProfileSubmit");Click(window,"ApproveButton");Panel(window,"ConnectingPanel");
+            if(!api.Approved || !api.Disposed || api.LoggedOut == remember)throw new Exception("Welcome consent did not control retention");
+        }
+        finally {window.Close();}
+        Console.WriteLine("PASS personal welcome remember=" + remember);
     }
     internal static void Run()
     {

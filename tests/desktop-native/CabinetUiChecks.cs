@@ -14,13 +14,14 @@ internal static class CabinetUiChecks
 {
     sealed class Service : IServiceClient
     {
+        internal string Kind = "club";
         internal List<string> Methods=[];
         public Task<T> Call<T>(string method,object? payload=null,CancellationToken cancellationToken=default)
         {
             Methods.Add(method);
             object value=method switch {
                 "activation.status" => new ActivationView{State="ACTIVATED",HasIdentity=true,CapturePermitted=true},
-                "account.status" => new AccountConnectionView{State="LINKED",Kind="club",Name="Клуб на этом ПК"},
+                "account.status" => new AccountConnectionView{State="LINKED",Kind=Kind,Name="Тестовый ПК"},
                 "subscription.status" => new SubscriptionView(),
                 _ => throw new InvalidOperationException("Cabinet must not escalate local permissions: "+method)
             };
@@ -29,13 +30,20 @@ internal static class CabinetUiChecks
     }
     sealed class Account : INativeCabinetClient
     {
+        internal Action? Verified;
+        internal Func<NativeAccountSnapshot>? Revalidate;
         internal bool Disposed;
         internal NativeAccountSnapshot Snapshot=new(){Email="owner@example.test",Kind="club",Name="Клуб владельца",
             Subscriptions=[new(){Id=new string('b',32),Kind="club",Seats=36,UsedSeats=1,Lifetime=true,CanConnect=true,
                 Devices=[new(){Name="ПК аккаунта",Machine="abcdef123456"}]}]};
         public Task SendCodeAsync(string email,CancellationToken ct)=>Task.CompletedTask;
-        public Task<NativeAccountSnapshot> VerifyAsync(string email,string code,CancellationToken ct)=>code=="123456"?Task.FromResult(Snapshot):Task.FromException<NativeAccountSnapshot>(new NativeAccountException("LOGIN_CODE_INVALID"));
-        public Task<NativeAccountSnapshot> RefreshAsync(CancellationToken ct)=>Task.FromResult(Snapshot);
+        public Task<NativeAccountSnapshot> VerifyAsync(string email,string code,CancellationToken ct)
+        {
+            if (code != "123456") throw new NativeAccountException("LOGIN_CODE_INVALID");
+            Verified?.Invoke();
+            return Task.FromResult(Snapshot);
+        }
+        public Task<NativeAccountSnapshot> RefreshAsync(CancellationToken ct)=>Task.FromResult(Revalidate is null ? Snapshot : Revalidate());
         public Task<NativeAccountSnapshot> CreatePersonalProfileAsync(string name,CancellationToken ct)=>throw new NotSupportedException();
         public Task<NativeAccountSnapshot> CreateProfileAsync(string kind,string name,CancellationToken ct)=>throw new NotSupportedException();
         public Task<NativeDeviceLink> DeviceAsync(CancellationToken ct)=>throw new NotSupportedException();
@@ -53,6 +61,65 @@ internal static class CabinetUiChecks
         w.UpdateLayout();var bmp=new RenderTargetBitmap((int)w.ActualWidth,(int)w.ActualHeight,96,96,PixelFormats.Pbgra32);bmp.Render(w);
         Directory.CreateDirectory("bin/native-ui-tests");using var file=File.Create("bin/native-ui-tests/"+name+".png");
         var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bmp));encoder.Save(file);
+    }
+    // Each phase can be launched in a fresh process. No production endpoint, token,
+    // mouse input, real user preferences or live service is used by this fixture.
+    internal static void PersonalSession(Guid fixture, string phase)
+    {
+        var uri = new Uri($"https://{fixture:N}.example.invalid/account");
+        var store = new PersonalCabinetSession(uri);
+        var endpoint = new Uri(uri, "/api/v1/account");
+        var service = new Service { Kind = phase == "club" ? "club" : "player" };
+        var api = new Account();
+        api.Verified = () => store.Cookies.Add(endpoint, new System.Net.Cookie("veliq_session", new string('x',43), "/api/v1/account") { Secure=true, HttpOnly=true });
+        api.Revalidate = () => {
+            Require(store.Cookies.GetCookies(endpoint)["veliq_session"]?.Value == new string('x',43), "Credential missing from resumed client");
+            if (phase == "expired") throw new NativeAccountException("ACCOUNT_LOGIN_REQUIRED");
+            if (phase is "offline" or "offline-logout") throw new NativeAccountException("ACCOUNT_UNAVAILABLE");
+            return api.Snapshot;
+        };
+        var window = new NativeCabinetWindow(uri, service, () => api, store) { ShowActivated=false, ShowInTaskbar=false, Opacity=0 };
+        bool Visible(string name) => ((FrameworkElement)window.FindName(name)).Visibility == Visibility.Visible;
+        try
+        {
+            window.Show(); Pump();
+            switch (phase)
+            {
+                case "login":
+                case "once":
+                    Require(Visible("SignInPanel") && Visible("RememberCabinet"), "Personal login choice missing");
+                    ((System.Windows.Controls.CheckBox)window.FindName("RememberCabinet")).IsChecked = phase == "login";
+                    ((TextBox)window.FindName("Email")).Text="fixture@example.invalid";
+                    Click(window,"SendCode"); ((PasswordBox)window.FindName("Code")).Password="123456"; Click(window,"VerifyCode");
+                    Require(Visible("AccountPanel"), "Fixture sign-in failed: " + ((TextBlock)window.FindName("Feedback")).Text);
+                    break;
+                case "reopen":
+                case "logout":
+                    Require(Visible("AccountPanel") && !Visible("SignInPanel"), "Restored cabinet requested another code");
+                    if (phase == "logout") { Click(window,"SignOut"); Require(Visible("SignInPanel"), "Logout failed"); }
+                    break;
+                case "offline":
+                case "offline-logout":
+                    Require(Visible("ResumePanel") && !Visible("AccountPanel"), "Offline restore revealed data or hid logout");
+                    if (phase == "offline-logout")
+                    {
+                        var panel = (System.Windows.Controls.Panel)window.FindName("ResumePanel");
+                        var actions = (System.Windows.Controls.Panel)panel.Children[1];
+                        ((Button)actions.Children[1]).RaiseEvent(new RoutedEventArgs(Button.ClickEvent)); Pump();
+                        Require(Visible("SignInPanel"), "Offline logout kept the remembered session");
+                    }
+                    break;
+                case "expired":
+                case "signed-out":
+                case "club":
+                    Require(Visible("SignInPanel") && !Visible("AccountPanel") && !Visible("ResumePanel"), "Invalid or club credential restored");
+                    if (phase == "club") Require(!Visible("RememberCabinet"), "Club persistence enabled");
+                    break;
+                default: throw new ArgumentException("Unknown fixture phase");
+            }
+        }
+        finally { window.Close(); }
+        Console.WriteLine("PASS personal-cabinet " + phase);
     }
     internal static void Run()
     {

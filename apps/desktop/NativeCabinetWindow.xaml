@@ -19,6 +19,7 @@
      <TextBlock Text="Подтвердите почту, чтобы управлять своими подписками и компьютерами." Style="{StaticResource Small}" TextWrapping="Wrap" Margin="0,8,0,18"/>
      <Label Content="Электронная почта" Target="{Binding ElementName=Email}" Foreground="{StaticResource TextMuted}" Padding="0"/>
      <TextBox x:Name="Email" MaxLength="254" MinHeight="44" Margin="0,8,0,12" AutomationProperties.Name="Электронная почта" KeyDown="EmailKey"/>
+     <CheckBox x:Name="RememberCabinet" Visibility="Collapsed" Foreground="{StaticResource Text}" Content="Запомнить вход на этом личном ПК" Margin="0,0,0,12"/>
      <Button x:Name="SendCode" Content="Получить код" Style="{StaticResource Primary}" Click="Send" Margin="0" MinHeight="44"/>
      <StackPanel x:Name="CodePanel" Visibility="Collapsed" Margin="0,20,0,0">
       <Label Content="Код из письма" Target="{Binding ElementName=Code}" Foreground="{StaticResource TextMuted}" Padding="0"/>
@@ -26,6 +27,10 @@
       <Button x:Name="VerifyCode" Content="Войти" Click="Verify" Style="{StaticResource Primary}" Margin="0" MinHeight="44"/>
       <Button x:Name="ChangeEmail" Content="Изменить почту" Click="ChangeAddress" Style="{StaticResource Quiet}" Margin="0,8,0,0"/>
      </StackPanel>
+    </StackPanel>
+    <StackPanel x:Name="ResumePanel" Visibility="Collapsed" MaxWidth="420" HorizontalAlignment="Center" Margin="0,20">
+     <TextBlock Text="Сохранённый вход в кабинет" FontSize="22" FontWeight="SemiBold"/>
+     <WrapPanel Margin="0,12,0,0"><Button Content="Проверить вход" Click="RetryRemembered"/><Button Content="Выйти из кабинета" Click="Logout"/></WrapPanel>
     </StackPanel>
     <StackPanel x:Name="ProfilePanel" Visibility="Collapsed" MaxWidth="420" HorizontalAlignment="Center" Margin="0,20">
      <TextBlock Text="Завершите регистрацию" FontSize="22" FontWeight="SemiBold" Margin="0,0,0,16"/>
