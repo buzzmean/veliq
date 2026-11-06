@@ -38,6 +38,7 @@ type browserRuntime struct {
 	origins         *browserproxy.OriginHealth
 	native          nativeBrowserRuntime
 	riot            nativeBrowserRuntime
+	applications    nativeBrowserRuntime
 	usage           *browserRelayUsage
 	edge            *edgeRuntime // Independent Edge transport; Chrome fields stay unchanged.
 	dns             *browserproxy.DNSRecovery
@@ -81,6 +82,9 @@ func (c *Controller) browserProfile(owner browserproxy.Owner) (profilesResult, e
 	}
 	if edgeExecutable(owner.Exe) {
 		return c.edgeOwnerProfile(owner)
+	}
+	if p, ok := c.automaticProfile(wp.ProcessIdentity{PID: owner.PID, CreationTime: owner.Birth, Path: owner.Exe}); ok && p.ID == owner.Profile && automaticApplication(p) {
+		return c.automaticOwnerProfile(owner)
 	}
 	id := wp.ProcessIdentity{PID: owner.PID, CreationTime: owner.Birth, Path: owner.Exe}
 	if !wp.IsCurrent(id) {

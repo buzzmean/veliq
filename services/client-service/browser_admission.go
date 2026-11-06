@@ -58,7 +58,7 @@ func (c *Controller) openBrowserPlan(ctx context.Context, current profilesResult
 	if c.ordinaryAddressRetry(current, q, p) {
 		return c.openOrdinaryAddresses(ctx, current, q, p, open)
 	}
-	if current.enabled && browserAuto(current.profile) && !current.routingDisabled && c.localLadderEligible(current, q, p) {
+	if current.enabled && (browserAuto(current.profile) || automaticApplication(current.profile)) && !current.routingDisabled && c.localLadderEligible(current, q, p) {
 		if _, explicit := flowpolicy.Evaluate(current.profile.Rules, flowpolicy.Input{Protocol: "tcp", Destination: p.Destination, Domain: q.Host, Network: current.network}); !explicit {
 			return c.openYoutubeLadder(ctx, current, q, p, open)
 		}
