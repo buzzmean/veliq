@@ -128,6 +128,18 @@ public sealed class NativeCabinetTests
         a.Pending.SetResult(a.Snapshot);await refresh;
         Assert.Equal("b@example.test",model.Account!.Email);Assert.Equal("club",model.Account.Kind);Assert.True(a.Disposed);
     }
+    [Fact] public async Task SavedSessionDisplaysOnlyLiveServerDataAndCanSignOutWithoutEmailCode()
+    {
+        var client = new Session();
+        using var model = new NativeCabinetModel(() => client);
+        await model.ResumeAsync(CancellationToken.None);
+        Assert.Same(client.Snapshot, model.Account);
+        Assert.False(model.CodeSent);
+        await model.LogoutAsync();
+        Assert.Null(model.Account);
+        Assert.True(client.Disposed);
+    }
+
     [Fact] public async Task FailedRevalidationClearsPreviouslyGrantedView()
     {
         var session=new Session();using var model=new NativeCabinetModel(()=>session);

@@ -11,6 +11,13 @@ public sealed class NativeCabinetModel(Func<INativeCabinetClient> factory) : IDi
     public NativeAccountSnapshot? Account { get; private set; }
     public string Email { get; private set; } = "";
     public bool CodeSent { get; private set; }
+    public Task ResumeAsync(CancellationToken ct)
+    {
+        Reset();
+        ObjectDisposedException.ThrowIf(disposed, this);
+        api = factory(); session = new();
+        return RefreshAsync(ct);
+    }
     public async Task SendCodeAsync(string email, CancellationToken ct = default)
     {
         string normalized = NativeAccountClient.NormalizeEmail(email);

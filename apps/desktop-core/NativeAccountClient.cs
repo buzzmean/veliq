@@ -11,6 +11,7 @@ public sealed class NativeAccountException(string code) : Exception(code)
 {
     public string Code { get; } = code;
     public string UserMessage => Code switch {
+        "ACCOUNT_SESSION_SAVE_FAILED" => "Вы вошли в кабинет, но сохранить вход на этом ПК не удалось.",
         "EMAIL_INVALID" => "Проверьте адрес электронной почты.",
         "LOGIN_CODE_INVALID" => "Код неверный или устарел. Попробуйте ещё раз.",
         "ACCOUNT_RATE_LIMIT" => "Слишком много попыток. Попробуйте через несколько минут.",
@@ -93,8 +94,8 @@ public interface INativeAccountClient : IDisposable
     Task LogoutAsync(CancellationToken ct);
 }
 
-// Each sign-in owns a private in-memory cookie jar. Account credentials never
-// enter preferences, IPC or logs. Persistent device identity stays in the service.
+// The desktop can supply an origin-scoped jar for a remembered personal login.
+// Device identity stays in the service and is never a cabinet credential.
 public sealed class NativeAccountClient : INativeCabinetClient
 {
     const int MaxBody = 1024 * 1024;
@@ -103,16 +104,16 @@ public sealed class NativeAccountClient : INativeCabinetClient
     readonly Uri origin;
     string link;
     NativeAccountSnapshot? account;
-    public NativeAccountClient(Uri verification, HttpMessageHandler? handler = null) : this(verification, true, handler) { }
-    public static NativeAccountClient ForCabinet(Uri cabinet, HttpMessageHandler? handler = null) => new(cabinet, false, handler);
-    NativeAccountClient(Uri verification, bool deviceLink, HttpMessageHandler? handler)
+    public NativeAccountClient(Uri verification, HttpMessageHandler? handler = null, CookieContainer? cookies = null) : this(verification, true, handler, cookies) { }
+    public static NativeAccountClient ForCabinet(Uri cabinet, HttpMessageHandler? handler = null, CookieContainer? cookies = null) => new(cabinet, false, handler, cookies);
+    NativeAccountClient(Uri verification, bool deviceLink, HttpMessageHandler? handler, CookieContainer? cookies)
     {
         if (!verification.IsAbsoluteUri || verification.Scheme != "https" || verification.UserInfo.Length != 0 || verification.Query.Length != 0 ||
             verification.AbsolutePath is not ("/account.html" or "/account") || (deviceLink ? !Regex.IsMatch(verification.Fragment, "^#device=[a-f0-9]{32}$") : verification.Fragment.Length != 0))
             throw new NativeAccountException("ACCOUNT_LINK_INVALID");
         origin = new Uri(verification.GetLeftPart(UriPartial.Authority));
         link = deviceLink ? verification.Fragment[8..] : "";
-        http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true, CookieContainer = new CookieContainer() }) { Timeout = TimeSpan.FromSeconds(25) };
+        http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false, UseCookies = true, CookieContainer = cookies ?? new CookieContainer() }) { Timeout = TimeSpan.FromSeconds(25) };
     }
     public static string NormalizeEmail(string value)
     {

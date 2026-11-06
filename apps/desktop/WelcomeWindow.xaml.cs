@@ -12,6 +12,7 @@ public partial class WelcomeWindow : Window
     readonly Action connected;
     readonly bool shutdownOnClose;
     readonly Func<Uri, INativeAccountClient> nativeFactory;
+    PersonalCabinetSession? personalSession;
     readonly CancellationTokenSource lifetime = new();
     readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(2) };
     INativeAccountClient? native;
@@ -23,10 +24,15 @@ public partial class WelcomeWindow : Window
     WelcomeAccess access = new("CHECKING", "Проверяем подключение", "Подождите немного…", false);
     public WelcomeWindow(Action connected) : this(new WindowsServiceClient(), connected, true) { }
     internal WelcomeWindow(IServiceClient service, Action connected, bool shutdownOnClose,
-        Func<Uri, INativeAccountClient>? nativeFactory = null, bool forceSignIn = false)
+        Func<Uri, INativeAccountClient>? nativeFactory = null, bool forceSignIn = false, PersonalCabinetSession? session = null)
     {
         this.connected = connected; this.shutdownOnClose = shutdownOnClose; this.forceSignIn = forceSignIn;
-        this.nativeFactory = nativeFactory ?? (uri => new NativeAccountClient(uri));
+        personalSession = session;
+        this.nativeFactory = nativeFactory ?? (uri => {
+            personalSession = new PersonalCabinetSession(uri);
+            personalSession.Forget();
+            return new NativeAccountClient(uri, cookies: personalSession.Cookies);
+        });
         account = new(service); activation = new(service); subscription = new(service);
         InitializeComponent(); WindowTheme.UseDarkCaption(this); Render();
         Loaded += async (_, _) => { await RefreshAsync(); if (!transitioned) timer.Start(); };
@@ -64,6 +70,7 @@ public partial class WelcomeWindow : Window
         bool available = !busy && !refreshing && access.State != "CHECKING";
         ChoicePanel.Visibility = Visible(!ready && (codeSelected || stage == SignInStage.Email));
         EmailPanel.Visibility = Visible(personal && stage == SignInStage.Email);
+        RememberPersonal.Visibility = Visible(personal && PersonalCabinetSession.PersonalDevice(account.Status, duringPersonalSetup: true));
         OtpPanel.Visibility = Visible(personal && stage == SignInStage.Code);
         ProfilePanel.Visibility = Visible(personal && stage == SignInStage.Profile);
         AccountPanel.Visibility = Visible(personal && stage == SignInStage.Account);
@@ -203,10 +210,21 @@ public partial class WelcomeWindow : Window
         await RunAsync(async () => {
             await native.ApproveAsync(selected.Id, lifetime.Token);
             nativeApproved = true; stage = SignInStage.Connecting;
-            using var logout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
-            logout.CancelAfter(TimeSpan.FromSeconds(3));
-            try { await native.LogoutAsync(logout.Token); } catch { }
-            native.Dispose(); native = null;
+            try
+            {
+                lifetime.Token.ThrowIfCancellationRequested();
+                if (RememberPersonal.IsChecked == true && personalSession is not null &&
+                    PersonalCabinetSession.PersonalDevice(account.Status, duringPersonalSetup: true))
+                    personalSession.Save();
+                else
+                {
+                    personalSession?.Forget();
+                    using var logout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+                    logout.CancelAfter(TimeSpan.FromSeconds(3));
+                    try { await native.LogoutAsync(logout.Token); } catch { }
+                }
+            }
+            finally { native.Dispose(); native = null; }
         });
     }
     async void ActivateCode(object sender, RoutedEventArgs e) => await ActivateAsync();

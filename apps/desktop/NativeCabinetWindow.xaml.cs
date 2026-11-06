@@ -8,6 +8,8 @@ public partial class NativeCabinetWindow : Window
 {
     readonly Uri origin;
     readonly NativeCabinetModel cabinet;
+    readonly PersonalCabinetSession? personal;
+    bool savedLogin;
     readonly AccountConnectionModel connection;
     readonly ActivationModel activation;
     readonly SubscriptionModel subscription;
@@ -15,13 +17,24 @@ public partial class NativeCabinetWindow : Window
     bool busy;
     DateTime resendAfter;
     public NativeCabinetWindow(Uri uri) : this(uri, new WindowsServiceClient()) { }
-    internal NativeCabinetWindow(Uri uri, IServiceClient service, Func<INativeCabinetClient>? factory = null)
+    internal NativeCabinetWindow(Uri uri, IServiceClient service, Func<INativeCabinetClient>? factory = null, PersonalCabinetSession? session = null)
     {
         origin = new Uri(uri.GetLeftPart(UriPartial.Authority));
-        cabinet = new(factory ?? (() => NativeAccountClient.ForCabinet(uri)));
+        personal = session ?? (factory is null ? new PersonalCabinetSession(uri) : null);
+        cabinet = new(factory ?? (() => NativeAccountClient.ForCabinet(uri, cookies: personal!.Cookies)));
         connection = new(service); activation = new(service); subscription = new(service);
         InitializeComponent(); WindowTheme.UseDarkCaption(this); Render();
-        Loaded += async (_, _) => await Run(RefreshDevice);
+        Loaded += async (_, _) => await Run(async () => {
+            await RefreshDevice();
+            if (lifetime.IsCancellationRequested || personal is null) return;
+            if (PersonalCabinetSession.PersonalDevice(connection.Status))
+            {
+                savedLogin = personal.Restore();
+                if (savedLogin) await cabinet.ResumeAsync(lifetime.Token);
+            }
+            else if (connection.Status.ImagePreparation || connection.Status.ImageReady || connection.Status.Kind == "club")
+                personal.Forget();
+        });
         Closed += (_, _) => { lifetime.Cancel(); cabinet.Dispose(); Code.Clear(); Email.Clear(); ProfileName.Clear(); Feedback.Text = ""; ClearPrivateView(); };
     }
     static Visibility Visible(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
@@ -34,7 +47,8 @@ public partial class NativeCabinetWindow : Window
     {
         ClearPrivateView();
         var account = cabinet.Account;
-        SignInPanel.Visibility = Visible(account is null);
+        SignInPanel.Visibility = Visible(account is null && !savedLogin);
+        ResumePanel.Visibility = Visible(account is null && savedLogin);
         ProfilePanel.Visibility = Visible(account?.Kind == "");
         AccountPanel.Visibility = Visible(account is not null && account.Kind != "");
         CodePanel.Visibility = Visible(cabinet.CodeSent);
@@ -64,6 +78,17 @@ public partial class NativeCabinetWindow : Window
         busy = true; Feedback.Text = ""; Render();
         try { await action(); }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
+        catch (NativeAccountException error) when (!lifetime.IsCancellationRequested && savedLogin && error.Code is ("ACCOUNT_LOGIN_REQUIRED" or "ACCOUNT_DISABLED"))
+        {
+            cabinet.Reset();
+            try
+            {
+                personal!.Forget(); savedLogin = false;
+                Feedback.Text = "Сохранённый вход закончился. Подтвердите почту ещё раз.";
+            }
+            catch (Exception failure) when (failure is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+            { Feedback.Text = "Не удалось удалить сохранённый вход. Нажмите «Выйти из кабинета», чтобы повторить."; }
+        }
         catch (NativeAccountException error) { if (!lifetime.IsCancellationRequested) Feedback.Text = error.UserMessage; }
         catch { if (!lifetime.IsCancellationRequested) Feedback.Text = "Не удалось выполнить действие. Проверьте подключение и повторите попытку."; }
         finally { busy = false; if (!lifetime.IsCancellationRequested) Render(); }
@@ -72,21 +97,34 @@ public partial class NativeCabinetWindow : Window
     {
         await connection.RefreshAsync(lifetime.Token); await activation.RefreshAsync(lifetime.Token); await subscription.RefreshAsync(false, lifetime.Token);
         var access = WelcomeAccess.Evaluate(activation.Status, connection.Status, subscription.Status);
+        RememberCabinet.Visibility = Visible(personal is not null && PersonalCabinetSession.PersonalDevice(connection.Status));
         DeviceAccess.Text = access.CanContinue ? "VELIQ подключён" : access.Title;
         DeviceHint.Text = access.CanContinue ? (connection.Status.Linked ? "Подключён: " + connection.Status.KindLabel + ". Выход из кабинета не отключает VELIQ на этом ПК." : "Этот компьютер активирован по коду. Вход в кабинет выполняется отдельно.") : access.Message;
     }
     async void Send(object sender, RoutedEventArgs e) => await Run(async () => {
         if (DateTime.UtcNow < resendAfter) { Feedback.Text = "Повторно отправить код можно через минуту."; return; }
+        if (!cabinet.CodeSent) personal?.Forget();
         Code.Clear(); await cabinet.SendCodeAsync(Email.Text, lifetime.Token); resendAfter = DateTime.UtcNow.AddMinutes(1);
         Feedback.Text = "Код отправлен на " + cabinet.Email;
     });
-    async void Verify(object sender, RoutedEventArgs e) => await Run(async () => { string code = Code.Password; Code.Clear(); await cabinet.VerifyAsync(code, lifetime.Token); });
+    async void Verify(object sender, RoutedEventArgs e) => await Run(async () => {
+        string code = Code.Password; Code.Clear();
+        await cabinet.VerifyAsync(code, lifetime.Token);
+        lifetime.Token.ThrowIfCancellationRequested();
+        if (personal is not null && RememberCabinet.IsChecked == true && PersonalCabinetSession.PersonalDevice(connection.Status))
+        {
+            personal.Save();
+            savedLogin = true;
+        }
+    });
+    async void RetryRemembered(object sender, RoutedEventArgs e) => await Run(() => cabinet.ResumeAsync(lifetime.Token));
     async void CreateProfile(object sender, RoutedEventArgs e) => await Run(async () => {
         string kind = (ProfileKind.SelectedItem as ComboBoxItem)?.Tag as string ?? "";
         await cabinet.CreateProfileAsync(kind, ProfileName.Text, lifetime.Token); ProfileName.Clear();
     });
     async void Refresh(object sender, RoutedEventArgs e) => await Run(async () => { await cabinet.RefreshAsync(lifetime.Token); await RefreshDevice(); });
     async void Logout(object sender, RoutedEventArgs e) => await Run(async () => {
+        personal?.Forget(); savedLogin = false; RememberCabinet.IsChecked = false;
         var logout = cabinet.LogoutAsync(lifetime.Token); Email.Clear(); Code.Clear(); ProfileName.Clear(); Render(); await logout;
     });
     void ChangeAddress(object sender, RoutedEventArgs e)
