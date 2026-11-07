@@ -83,7 +83,66 @@ func (c *Controller) automaticOwnerProfile(o browserproxy.Owner) (profilesResult
 	c.mu.Lock()
 	enabled := c.enabled && c.settings.Automatic
 	c.mu.Unlock()
-	return profilesResult{profile: p, id: id, network: network, enabled: enabled, routingDisabled: !enabled}, nil
+	return c.captureAutomaticScope(profilesResult{profile: p, id: id, network: network, enabled: enabled, routingDisabled: !enabled}), nil
+}
+
+// Capture before asynchronous OPEN/first-flight work. policyRevision reads live
+// settings and LOCAL revisions, so recomputing it from the old profile afterward
+// would silently accept a global policy change.
+type automaticScopeKey struct{}
+
+var errAutomaticScopeChanged = errors.New("AUTOMATIC_SCOPE_CHANGED")
+
+func (c *Controller) captureAutomaticScope(cur profilesResult) profilesResult {
+	if automaticApplication(cur.profile) && cur.automaticRevision == "" {
+		cur.automaticRevision = c.policyRevision(cur.profile)
+	}
+	return cur
+}
+
+func (c *Controller) automaticScopeCurrent(cur profilesResult) bool {
+	if !automaticApplication(cur.profile) {
+		return true // Ordinary browser and Riot retain their own ownership contract.
+	}
+	if cur.automaticRevision == "" || !cur.enabled || cur.routingDisabled || c.ctx.Err() != nil || !c.automaticCaptureAllowed() {
+		return false
+	}
+	c.mu.Lock()
+	enabled := c.enabled && c.settings.Automatic
+	c.mu.Unlock()
+	if !enabled {
+		return false
+	}
+	network := ""
+	if n := c.network.Load(); n != nil && n.Error == "" && time.Since(n.ObservedAt) <= 45*time.Second {
+		network = n.Fingerprint
+	}
+	if network != cur.network {
+		return false
+	}
+	fresh, ok := c.automaticProfile(cur.id)
+	return ok && fresh.ID == cur.profile.ID && automaticApplication(fresh) && c.policyRevision(fresh) == cur.automaticRevision
+}
+
+// This guard applies only until an upstream OPEN completes and before bounded
+// first-flight retries. Established streams stay pinned; no payload is migrated.
+func (c *Controller) automaticScopedOpen(cur profilesResult, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error) {
+	if !automaticApplication(cur.profile) {
+		return open
+	}
+	return func(ctx context.Context, q browserproxy.Request, p browserproxy.Plan) (net.Conn, error) {
+		if !c.automaticScopeCurrent(cur) {
+			return nil, errAutomaticScopeChanged
+		}
+		conn, err := open(context.WithValue(ctx, automaticScopeKey{}, cur), q, p)
+		if !c.automaticScopeCurrent(cur) {
+			if conn != nil {
+				_ = conn.Close()
+			}
+			return nil, errAutomaticScopeChanged
+		}
+		return conn, err
+	}
 }
 
 func (c *Controller) openAutomaticApplication(ctx context.Context, p profiles.Profile, id wp.ProcessIdentity, tuple wp.Tuple, d wp.Decision, reason string) (net.Conn, wp.Decision, error) {
@@ -108,7 +167,7 @@ func (c *Controller) openAutomaticApplication(ctx context.Context, p profiles.Pr
 	if err != nil {
 		return nil, d, err
 	}
-	revision := c.policyRevision(p)
+	revision := cur.automaticRevision
 	open := func(work context.Context, request browserproxy.Request, actual browserproxy.Plan) (net.Conn, error) {
 		fresh, err := c.automaticOwnerProfile(request.Owner)
 		if err != nil || !fresh.enabled || fresh.network != cur.network || c.policyRevision(fresh.profile) != revision {
@@ -130,6 +189,11 @@ func (c *Controller) openAutomaticApplication(ctx context.Context, p profiles.Pr
 // another manually configured browser. The destination remains the captured IP;
 // DNS peers are considered only after this exact ordinary address has failed.
 func (c *Controller) openAutomaticPlan(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	cur = c.captureAutomaticScope(cur)
+	if !c.automaticScopeCurrent(cur) {
+		return nil, p, errAutomaticScopeChanged
+	}
+	open = c.automaticScopedOpen(cur, open)
 	if !cur.enabled || cur.routingDisabled || !automaticApplication(cur.profile) || directOnlyFlow(wp.Tuple{Protocol: "tcp", Destination: p.Destination}) || !p.Destination.Addr().Is4() {
 		return nil, p, errors.New("AUTOMATIC_SCOPE_EXCLUDED")
 	}
@@ -164,7 +228,7 @@ func (c *Controller) openAutomaticPlan(ctx context.Context, cur profilesResult, 
 		if err == nil || ctx.Err() != nil || !retryableDirectOpen(err) {
 			return conn, p, err
 		}
-		if cur.network != "" {
+		if cur.network != "" && c.automaticScopeCurrent(cur) {
 			c.browser.directTimeouts.RecordTimeout(key, time.Now())
 		}
 	}
@@ -180,7 +244,7 @@ func (c *Controller) openAutomaticTLS(ctx context.Context, cur profilesResult, q
 		return c.openOrdinaryAddresses(ctx, cur, q, p, open)
 	}
 	failed := func(reason string) {
-		if cur.network != "" && automaticNetworkFailure(reason) {
+		if cur.network != "" && c.automaticScopeCurrent(cur) && automaticNetworkFailure(reason) {
 			c.browser.directTimeouts.RecordTimeout(key, time.Now())
 		}
 	}

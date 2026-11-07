@@ -130,6 +130,9 @@ func (m *youtubeMeter) finishObservation() {
 		} else if m.neutral {
 			verdict = "CLIENT_INITIATED_CLOSE"
 		}
+		if !m.recoveryScopeCurrent() {
+			verdict = "INCONCLUSIVE"
+		}
 		rx := m.rx
 		// Finalize under the meter lock: a late hard error must be counted
 		// either in this outcome or explicitly after it, never lost/doubled.

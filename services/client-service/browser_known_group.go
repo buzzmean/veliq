@@ -28,6 +28,11 @@ func recoverableKnownOriginOpen(err error) bool {
 	return false
 }
 func (c *Controller) openKnownBrowserGroup(ctx context.Context, current profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	current = c.captureAutomaticScope(current)
+	if !c.automaticScopeCurrent(current) {
+		return nil, p, errAutomaticScopeChanged
+	}
+	open = c.automaticScopedOpen(current, open)
 	// Warm flows skip quarantined IPs; expiry is a bounded lazy real recheck.
 	if q.Secure && p.Policy.Action == flowpolicy.RelayRequired {
 		key := c.browserDNSKey(q, current) + ":" + p.Policy.RelayID
@@ -61,6 +66,9 @@ func (c *Controller) openKnownBrowserGroup(ctx context.Context, current profiles
 	if err == nil || ctx.Err() != nil || !q.Secure || !recoverableKnownOriginOpen(err) {
 		return conn, p, err
 	}
+	if !c.automaticScopeCurrent(current) {
+		return nil, p, errAutomaticScopeChanged
+	}
 	// DNSRecovery already has its own two-worker limit, singleflight and
 	// negative cooldown. Do not borrow ordinary AUTO probe slots: background
 	// browser origins can fill all four and starve this required DNS repair.
@@ -69,7 +77,13 @@ func (c *Controller) openKnownBrowserGroup(ctx context.Context, current profiles
 		c.browser.origins.Failed(c.browserDNSKey(q, current)+":"+p.Policy.RelayID, p.Destination, time.Now())
 	}
 	p.OriginPrior = append(p.OriginPrior, browserproxy.OriginAttempt{Destination: p.Destination.String(), Reason: "OPEN_FAILED"})
+	if automaticApplication(current.profile) {
+		ctx = context.WithValue(ctx, automaticScopeKey{}, current)
+	}
 	recovered, ok := c.recoverBrowserDNS(ctx, q, current, p)
+	if !c.automaticScopeCurrent(current) {
+		return nil, recovered, errAutomaticScopeChanged
+	}
 	if !ok {
 		return nil, recovered, err
 	}
@@ -84,6 +98,10 @@ func (c *Controller) openKnownBrowserGroup(ctx context.Context, current profiles
 // authenticated VPS egress (HTTPS/443, never OS DNS/53 or client DIRECT).
 // This needs no relay deployment or private production DNS API.
 func (c *Controller) knownOriginResolve(ctx context.Context, current profilesResult, q browserproxy.Request, p browserproxy.Plan) (browserproxy.DNSAnswer, error) {
+	current = c.captureAutomaticScope(current)
+	if !c.automaticScopeCurrent(current) {
+		return browserproxy.DNSAnswer{}, errAutomaticScopeChanged
+	}
 	key := c.browserDNSKey(q, current) + ":" + p.Policy.RelayID
 	resolve := c.browser.origins.Resolve
 	if current.network == "" {
@@ -91,19 +109,33 @@ func (c *Controller) knownOriginResolve(ctx context.Context, current profilesRes
 			return c.browser.origins.Uncached(ctx, lookup)
 		}
 	}
-	return resolve(ctx, key, func(ctx context.Context) (browserproxy.DNSAnswer, error) {
+	answer, err := resolve(ctx, key, func(ctx context.Context) (browserproxy.DNSAnswer, error) {
+		if !c.automaticScopeCurrent(current) {
+			return browserproxy.DNSAnswer{}, browserproxy.ErrOriginScopeChanged
+		}
 		lookup := c.BrowserAlternativeDNS
 		if lookup == nil {
 			lookup = browserproxy.NewDoHResolver().LookupAll
 		}
-		return lookup(ctx, q.Host, func(ctx context.Context, dst netip.AddrPort) (net.Conn, error) {
+		open := c.automaticScopedOpen(current, c.browserOpenUnobserved)
+		answer, err := lookup(ctx, q.Host, func(ctx context.Context, dst netip.AddrPort) (net.Conn, error) {
 			candidate := p
 			candidate.Destination = dst
-			return c.browserOpenUnobserved(ctx, q, candidate)
+			return open(ctx, q, candidate)
 		})
+		if !c.automaticScopeCurrent(current) {
+			return browserproxy.DNSAnswer{}, browserproxy.ErrOriginScopeChanged
+		}
+		return answer, err
 	})
+	if !c.automaticScopeCurrent(current) {
+		return browserproxy.DNSAnswer{}, errAutomaticScopeChanged
+	}
+	return answer, err
 }
 func (c *Controller) watchKnownOrigin(conn net.Conn, current profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) net.Conn {
+	current = c.captureAutomaticScope(current)
+	open = c.automaticScopedOpen(current, open)
 	if _, ok := conn.(browserproxy.OriginReporter); ok {
 		return conn
 	}
@@ -113,7 +145,12 @@ func (c *Controller) watchKnownOrigin(conn net.Conn, current profilesResult, q b
 		health = browserproxy.NewOriginHealth()
 	}
 	candidates := append([]netip.AddrPort{p.Destination}, p.RelayCandidates...)
+	var scopeCurrent func() bool
+	if automaticApplication(current.profile) {
+		scopeCurrent = func() bool { return c.automaticScopeCurrent(current) }
+	}
 	return browserproxy.WatchRelayOrigin(conn, browserproxy.OriginConfig{Prior: p.OriginPrior, Skipped: p.OriginNegativeSkips, Context: c.ctx, Health: health, Scope: key, Initial: p.Destination, Candidates: candidates, RetryOpen: recoverableKnownOriginOpen,
+		ScopeCurrent: scopeCurrent,
 		Resolve: func(ctx context.Context) (browserproxy.DNSAnswer, error) {
 			return c.knownOriginResolve(ctx, current, q, p)
 		},
