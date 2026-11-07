@@ -24,6 +24,10 @@ class InstallerContract(unittest.TestCase):
   self.assertIn('AlwaysRestart=no',iss)
   self.assertIn("Arg='/NORESTART'",iss)
   self.assertIn('function InitializeSetup()',iss)
+  self.assertIn('SafeSessionArguments(WizardSilent)',iss)
+  self.assertIn('Result := NoRestart or not RequireNoRestart',iss)
+  self.assertIn('WizardForm.YesRadio.Enabled := False',iss)
+  self.assertIn('WizardForm.PreparingYesRadio.Enabled := False',iss)
   self.assertIn('Assert-VeliqNoPendingReboot',(ROOT/'installer/install-package.ps1').read_text())
   self.assertNotIn('reboot_required=$false',(ROOT/'installer/install-package.ps1').read_text())
 
