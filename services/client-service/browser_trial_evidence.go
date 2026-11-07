@@ -50,6 +50,9 @@ func (m *youtubeMeter) recordTrialEvidence(active bool) {
 	case m.dataObserved:
 		result = "DATA_OBSERVED_WAITING_SUSTAINED"
 	}
+	if !m.recoveryScopeCurrent() && !m.promoted && !m.failed {
+		result = "INCONCLUSIVE_SCOPE_CHANGED"
+	}
 	closed := time.Time{}
 	if !active {
 		closed = time.Now()

@@ -50,6 +50,17 @@ func (r *DNSRecovery) Lookup(key string, now time.Time) (DNSRecoveryResult, bool
 	return v.result, true
 }
 func (r *DNSRecovery) Recover(ctx context.Context, key, host string, port uint16, roots *x509.CertPool, lookup DNSLookup, open DNSOpen) DNSRecoveryResult {
+	return r.RecoverScoped(ctx, key, host, port, roots, lookup, open, nil)
+}
+
+// RecoverScoped additionally rejects obsolete automatic-flow evidence. A nil
+// guard preserves ordinary browser recovery and its existing cache contract.
+func (r *DNSRecovery) RecoverScoped(ctx context.Context, key, host string, port uint16, roots *x509.CertPool, lookup DNSLookup, open DNSOpen, scopeCurrent func() bool) (result DNSRecoveryResult) {
+	current := func() bool { return scopeCurrent == nil || scopeCurrent() }
+	cancelled := func() DNSRecoveryResult { return DNSRecoveryResult{Failure: "DNS_RECOVERY_SCOPE_CHANGED"} }
+	if !current() {
+		return cancelled()
+	}
 	r.mu.Lock()
 	now := time.Now()
 	for k, v := range r.entries {
@@ -64,12 +75,22 @@ func (r *DNSRecovery) Recover(ctx context.Context, key, host string, port uint16
 		if done != nil {
 			select {
 			case <-done:
-				if v, ok := r.Lookup(key, time.Now()); ok {
-					return v
+				if !current() {
+					return cancelled()
+				}
+				// Read this singleflight's result, never a newer same-key entry.
+				r.mu.Lock()
+				result, until := old.result, old.until
+				r.mu.Unlock()
+				if result.Failure == "DNS_RECOVERY_SCOPE_CHANGED" || time.Now().Before(until) {
+					return result
 				}
 			case <-ctx.Done():
 			}
 			return DNSRecoveryResult{Failure: "DNS_RECOVERY_PENDING"}
+		}
+		if !current() {
+			return cancelled()
 		}
 		return result
 	}
@@ -80,14 +101,21 @@ func (r *DNSRecovery) Recover(ctx context.Context, key, host string, port uint16
 	entry := &dnsRecoveryEntry{done: make(chan struct{})}
 	r.entries[key] = entry
 	r.mu.Unlock()
-	result := DNSRecoveryResult{Failure: "DNS_RECOVERY_UNAVAILABLE"}
+	result = DNSRecoveryResult{Failure: "DNS_RECOVERY_UNAVAILABLE"}
 	defer func() {
+		if !current() {
+			result = cancelled()
+		}
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		entry.result = result
-		entry.until = time.Now().Add(30 * time.Second)
-		if result.Usable() {
-			entry.until = result.Expires
+		if result.Failure == "DNS_RECOVERY_SCOPE_CHANGED" {
+			delete(r.entries, key)
+		} else {
+			entry.until = time.Now().Add(30 * time.Second)
+			if result.Usable() {
+				entry.until = result.Expires
+			}
 		}
 		close(entry.done)
 		entry.done = nil
@@ -114,9 +142,15 @@ func (r *DNSRecovery) Recover(ctx context.Context, key, host string, port uint16
 	}
 	bounded, stop := context.WithTimeout(ctx, budget)
 	defer stop()
+	if !current() {
+		return cancelled()
+	}
 	query, queryStop := context.WithTimeout(bounded, 900*time.Millisecond)
 	answer, err := lookup(query, host, open)
 	queryStop()
+	if !current() {
+		return cancelled()
+	}
 	if err != nil {
 		result.Failure = "DNS_ALTERNATIVE_FAILED"
 		return result
@@ -129,6 +163,9 @@ func (r *DNSRecovery) Recover(ctx context.Context, key, host string, port uint16
 		answer.TTL = 5 * time.Minute
 	}
 	for i, ip := range answer.Addresses {
+		if !current() {
+			return cancelled()
+		}
 		if i >= 2 {
 			break
 		}
@@ -147,6 +184,9 @@ func (r *DNSRecovery) Recover(ctx context.Context, key, host string, port uint16
 		probe, probeStop := context.WithTimeout(bounded, probeBudget)
 		checked := ProbeOriginDetailed(probe, host, port, true, roots, func(ctx context.Context) (net.Conn, error) { return open(ctx, destination) })
 		probeStop()
+		if !current() {
+			return cancelled()
+		}
 		result.Probe = checked
 		outcome := checked.Failure
 		if outcome == "" {

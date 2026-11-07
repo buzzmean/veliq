@@ -48,6 +48,8 @@ func (c *Controller) riotOwnerProfile(o browserproxy.Owner) (profilesResult, err
 // Reuse the finite first-flight guard: full ClientHello only, never replay after
 // ANY origin byte. No subnet verdict is inferred from a single silent endpoint.
 func (c *Controller) openRiotPlan(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	cur = c.captureAutomaticScope(cur)
+	open = c.automaticScopedOpen(cur, open)
 	ref := &youtubePlanRef{}
 	// Every actual OPEN updates the shared reporter, including a later LOCAL ->
 	// RELAY zero-origin retry inside the nested common ladder.
@@ -69,6 +71,9 @@ func (c *Controller) openRiotPlan(ctx context.Context, cur profilesResult, q bro
 	deadline := time.Now().Add(3 * time.Second)
 	var step func(context.Context, int) (net.Conn, browserproxy.Plan, error)
 	step = func(work context.Context, index int) (net.Conn, browserproxy.Plan, error) {
+		if !c.automaticScopeCurrent(cur) {
+			return nil, p, errAutomaticScopeChanged
+		}
 		for index < len(addresses) {
 			actual := p
 			actual.Destination = addresses[index]
@@ -90,7 +95,7 @@ func (c *Controller) openRiotPlan(ctx context.Context, cur profilesResult, q bro
 			cancel()
 			nextIndex := index + 1
 			failed := func(reason string) {
-				if cur.network != "" && (!automaticApplication(cur.profile) || automaticNetworkFailure(reason)) {
+				if cur.network != "" && c.automaticScopeCurrent(cur) && (!automaticApplication(cur.profile) || automaticNetworkFailure(reason)) {
 					c.browser.directTimeouts.RecordTimeout(key, time.Now())
 					c.browser.directTimeouts.SetProbeHost(key, q.Host)
 				}
@@ -109,6 +114,9 @@ func (c *Controller) openRiotPlan(ctx context.Context, cur profilesResult, q bro
 			ref.set(actual, conn)
 			conn = browserproxy.WatchFirstFlight(c.ctx, conn, budget, func(next context.Context) (net.Conn, error) { n, _, err := step(next, nextIndex); return n, err }, failed)
 			return conn, actual, nil
+		}
+		if !c.automaticScopeCurrent(cur) {
+			return nil, p, errAutomaticScopeChanged
 		}
 		// Same scoped catalog, background verified GET, LOCAL cache and negative TTL
 		// as browsers. Healthy auth/CDN hosts never enter this branch.

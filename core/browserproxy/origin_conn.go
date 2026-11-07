@@ -19,6 +19,7 @@ const OriginRecoveryBudget = 4 * time.Second
 var ErrOriginCandidatePolicy = errors.New("ORIGIN_CANDIDATE_POLICY_BLOCK")
 var ErrOriginRecovery = errors.New("ORIGIN_ADDRESSES_EXHAUSTED")
 var ErrOriginReplayUnsafe = errors.New("ORIGIN_FIRST_FLIGHT_NOT_REPLAYABLE")
+var ErrOriginScopeChanged = errors.New("ORIGIN_SCOPE_CHANGED")
 
 type OriginAttempt struct {
 	Destination string `json:"destination"`
@@ -52,6 +53,9 @@ type OriginConfig struct {
 	Open       func(context.Context, netip.AddrPort) (net.Conn, error)
 	// Destination OPEN failures only. Auth/session errors never poison an IP.
 	RetryOpen func(error) bool
+	// Optional immutable owner/policy scope guard. Recheck before learning or
+	// first-flight recovery; it never moves or closes an established stream.
+	ScopeCurrent func() bool
 }
 type originConn struct {
 	net.Conn
@@ -101,6 +105,18 @@ func (x *originConn) silence() time.Duration {
 		return x.cfg.Silence
 	}
 	return OriginSilenceTimeout
+}
+func (x *originConn) scopeCurrent() bool {
+	return x.cfg.ScopeCurrent == nil || x.cfg.ScopeCurrent()
+}
+func (x *originConn) checkScope() error {
+	if x.scopeCurrent() {
+		return nil
+	}
+	x.mu.Lock()
+	x.report.State = "ORIGIN_SCOPE_CHANGED"
+	x.mu.Unlock()
+	return ErrOriginScopeChanged
 }
 func (x *originConn) OriginAttempts() OriginReport {
 	x.mu.Lock()
@@ -258,6 +274,9 @@ func (x *originConn) observeEarlyFailure(err error) {
 	}
 }
 func (x *originConn) fail(reason string) {
+	if x.checkScope() != nil {
+		return
+	}
 	x.mu.Lock()
 	if x.failed {
 		x.mu.Unlock()
@@ -341,12 +360,24 @@ func (x *originConn) retry(expected net.Conn, reason string, fromRead bool) (ret
 	}
 	old := x.cur
 	x.mu.Unlock()
+	if err := x.checkScope(); err != nil {
+		return err
+	}
 	x.fail(reason)
 	old.Close() // free exact old Engine reservation; established traffic is not moved
+	if err := x.checkScope(); err != nil {
+		return err
+	}
 	ctx, stop := context.WithDeadline(x.cfg.Context, hard)
 	defer stop()
 	if x.cfg.NextFlow != nil {
 		next, err := x.cfg.NextFlow(ctx, reason)
+		if stale := x.checkScope(); stale != nil {
+			if next != nil {
+				next.Close()
+			}
+			return stale
+		}
 		if err != nil {
 			return err
 		}
@@ -405,6 +436,9 @@ func (x *originConn) retry(expected net.Conn, reason string, fromRead bool) (ret
 	candidates := append([]netip.AddrPort(nil), x.cfg.Candidates...)
 	queried := false
 	for {
+		if err := x.checkScope(); err != nil {
+			return err
+		}
 		x.mu.Lock()
 		attempts := x.report.AddressAttempts
 		x.mu.Unlock()
@@ -423,6 +457,9 @@ func (x *originConn) retry(expected net.Conn, reason string, fromRead bool) (ret
 			q, cancel := context.WithTimeout(ctx, 750*time.Millisecond)
 			answer, err := x.cfg.Resolve(q)
 			cancel()
+			if stale := x.checkScope(); stale != nil {
+				return stale
+			}
 			x.mu.Lock()
 			x.report.DNS = "RELAY_DOH_FAILED"
 			if err == nil {
@@ -445,6 +482,12 @@ func (x *originConn) retry(expected net.Conn, reason string, fromRead bool) (ret
 		open, cancel := context.WithTimeout(ctx, 900*time.Millisecond)
 		next, err := x.cfg.Open(open, ip)
 		cancel()
+		if stale := x.checkScope(); stale != nil {
+			if next != nil {
+				next.Close()
+			}
+			return stale
+		}
 		if err != nil {
 			x.mu.Lock()
 			x.report.Attempts[len(x.report.Attempts)-1].Reason = openFailure(err)
@@ -533,10 +576,11 @@ func (x *originConn) closeWithReason(reason string, beforeReply bool) error {
 	if stop != nil {
 		stop()
 	}
-	if quarantine {
+	current := x.scopeCurrent()
+	if quarantine && current {
 		x.cfg.Health.Failed(x.cfg.Scope, ip, time.Now())
 	}
-	if reason != "" && x.cfg.OnFailure != nil {
+	if reason != "" && current && x.cfg.OnFailure != nil {
 		x.cfg.OnFailure(reason)
 	}
 	return cur.Close()
