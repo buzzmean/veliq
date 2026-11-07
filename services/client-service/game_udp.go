@@ -24,6 +24,7 @@ const maxGameProfiles = 8
 // Each selected exact executable has an independent ladder. The byte/packet
 // budget is shared across the PC. No baseline optimizer policy is changed.
 type gameEntry struct {
+	Primer    *gameudp.Primer
 	ProfileID string
 	Name      string
 	Path      string
@@ -40,6 +41,7 @@ type gameRuntime struct {
 	error  string
 }
 type gameDiskEntry struct {
+	Primer    *gameudp.Primer    `json:"primer,omitempty"`
 	LocalOnly bool               `json:"local_only,omitempty"`
 	ProfileID string             `json:"profile_id"`
 	Path      string             `json:"exe"`
@@ -82,11 +84,22 @@ func (c *Controller) loadGames() {
 			return
 		}
 		e := c.newGameLadder(d.Path)
-		e.SetLocalOnly(d.LocalOnly)
+		e.SetLocalOnly(d.LocalOnly || d.Primer != nil)
 		e.Configure(d.Path, d.Enabled)
 		// Keep the explicit route restriction even when cached evidence is
 		// rejected. Rediscovery must not replace it with the legacy relay ladder.
-		c.games.items[d.ProfileID] = &gameEntry{ProfileID: d.ProfileID, Path: d.Path, Enabled: d.Enabled, LocalOnly: d.LocalOnly, Engine: e}
+		g := &gameEntry{ProfileID: d.ProfileID, Path: d.Path, Enabled: d.Enabled, LocalOnly: d.LocalOnly || d.Primer != nil, Engine: e}
+		c.games.items[d.ProfileID] = g
+		if d.Primer != nil {
+			if !d.LocalOnly || e.SetPrimer(d.Primer) != nil {
+				g.Enabled = false
+				e.Configure(d.Path, false)
+				c.games.error = "GAME_UDP_CONFIG_INVALID"
+				continue
+			}
+			v := *d.Primer
+			g.Primer = &v
+		}
 		if err := e.Restore(d.Learning, time.Now()); err != nil {
 			c.games.error = "GAME_UDP_CONFIG_INVALID"
 		}
@@ -98,7 +111,7 @@ func (c *Controller) saveGamesLocked() error {
 	}
 	v := gameDisk{Version: 2, Games: []gameDiskEntry{}}
 	for _, g := range c.games.items {
-		v.Games = append(v.Games, gameDiskEntry{ProfileID: g.ProfileID, Path: g.Path, Enabled: g.Enabled, LocalOnly: g.LocalOnly, Learning: g.Engine.Snapshot().Learning})
+		v.Games = append(v.Games, gameDiskEntry{Primer: g.Primer, ProfileID: g.ProfileID, Path: g.Path, Enabled: g.Enabled, LocalOnly: g.LocalOnly, Learning: g.Engine.Snapshot().Learning})
 	}
 	raw, err := json.Marshal(v)
 	if err != nil || len(raw) > 256*1024 {
@@ -421,9 +434,10 @@ func (c *Controller) handleGameUDP(_ context.Context, method string, raw json.Ra
 		return c.gameStatus(), nil
 	}
 	var q struct {
-		ProfileID string `json:"profile_id"`
-		Enabled   *bool  `json:"enabled"`
-		LocalOnly *bool  `json:"local_only"`
+		ProfileID string          `json:"profile_id"`
+		Enabled   *bool           `json:"enabled"`
+		LocalOnly *bool           `json:"local_only"`
+		Primer    json.RawMessage `json:"primer"`
 	}
 	if err := security.Parse(raw, &q); err != nil {
 		return nil, err
@@ -433,6 +447,13 @@ func (c *Controller) handleGameUDP(_ context.Context, method string, raw json.Ra
 	}
 	if q.Enabled == nil {
 		return nil, errors.New("GAME_UDP_ENABLED_REQUIRED")
+	}
+	var primer *gameudp.Primer
+	if len(q.Primer) > 0 && string(q.Primer) != "null" {
+		primer = &gameudp.Primer{}
+		if security.Parse(q.Primer, primer) != nil || primer.Validate() != nil {
+			return nil, errors.New("GAME_UDP_PRIMER_INVALID")
+		}
 	}
 	var p profiles.Profile
 	found := false
@@ -461,17 +482,32 @@ func (c *Controller) handleGameUDP(_ context.Context, method string, raw json.Ra
 		c.games.mu.Unlock()
 		return nil, errors.New("GAME_UDP_ANTICHEAT_COMPATIBILITY_UNVERIFIED")
 	}
-	previous, previousLocalOnly := g.Enabled, g.LocalOnly
+	previous, previousLocalOnly, previousPrimer := g.Enabled, g.LocalOnly, g.Primer
+	desiredLocalOnly := g.LocalOnly
 	if q.LocalOnly != nil {
-		g.LocalOnly = *q.LocalOnly
+		desiredLocalOnly = *q.LocalOnly
 	}
+	desiredPrimer := g.Primer
+	if len(q.Primer) > 0 {
+		desiredPrimer = primer
+	}
+	if desiredPrimer != nil && !desiredLocalOnly {
+		c.games.mu.Unlock()
+		return nil, errors.New("GAME_UDP_PRIMER_REQUIRES_LOCAL_ONLY")
+	}
+	g.LocalOnly, g.Primer = desiredLocalOnly, desiredPrimer
 	g.Enabled = *q.Enabled
 	if err := c.saveGamesLocked(); err != nil {
-		g.Enabled, g.LocalOnly = previous, previousLocalOnly
+		g.Enabled, g.LocalOnly, g.Primer = previous, previousLocalOnly, previousPrimer
 		c.games.mu.Unlock()
 		return nil, err
 	}
 	g.Engine.SetLocalOnly(g.LocalOnly)
+	// Validated above before persistence; SetPrimer copies the immutable value.
+	if err := g.Engine.SetPrimer(g.Primer); err != nil {
+		c.games.mu.Unlock()
+		return nil, err
+	}
 	g.Engine.Configure(g.Path, g.Enabled)
 	c.games.mu.Unlock()
 	c.updateGamesGate()

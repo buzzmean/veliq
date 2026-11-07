@@ -96,6 +96,7 @@ const (
 )
 
 type Evidence struct {
+	FakeTTL       uint8     `json:"fake_ttl,omitempty"`
 	Selection     string    `json:"selection_reason"`
 	Sequence      uint64    `json:"update_seq"`
 	Stage         string    `json:"stage"`
@@ -127,6 +128,7 @@ type cadenceBucket struct {
 	replies, outgoing uint64
 }
 type Flow struct {
+	primer      bool
 	cadence     [8]cadenceBucket
 	degradedAt  time.Time
 	engine      *Engine
@@ -155,6 +157,7 @@ type Learning struct {
 	Expires     time.Time `json:"expires"`
 }
 type Snapshot struct {
+	Primer        *Primer    `json:"primer,omitempty"`
 	LocalOnly     bool       `json:"local_only"`
 	InitialPolicy string     `json:"initial_policy"`
 	Enabled       bool       `json:"enabled"`
@@ -167,6 +170,7 @@ type Snapshot struct {
 	Lost          uint64     `json:"lost"`
 }
 type Engine struct {
+	primer                     *Primer
 	mu                         sync.Mutex
 	ladder                     bool
 	localOnly                  bool
@@ -249,6 +253,9 @@ func (e *Engine) Open(k Key, now time.Time) (*Flow, error) {
 	if len(e.flows) >= MaxFlows {
 		return nil, errors.New("GAME_UDP_FLOW_CAPACITY")
 	}
+	if e.primer != nil {
+		return e.openPrimer(k, now)
+	}
 	cache := e.learning[e.trialKey(k)]
 	// Results from another route policy cannot grant relay or carry exhaustion
 	// across a policy switch. Confirmed DIRECT endpoints remain safe to reuse.
@@ -319,7 +326,7 @@ func (e *Engine) Plan(f *Flow, now time.Time) ([]byte, int) {
 	f.last = now
 	f.e.Sequence++
 	f.ordinal++
-	if f.e.Stage != Local || !e.enabled || e.reason != "" || f.generation != e.generation || f.ordinal > f.e.Variant.Cutoff {
+	if f.e.Stage != Local || !e.enabled || e.reason != "" || f.generation != e.generation || f.ordinal > f.e.Variant.Cutoff || f.primer && !e.localOnly {
 		return nil, 0
 	}
 	k := f.e.Variant.Repeats
@@ -433,6 +440,16 @@ func (e *Engine) health(f *Flow, now time.Time) {
 	f.e.Sequence++
 	if f.e.Stage == Local && (f.e.Fakes < uint64(f.e.Variant.Repeats*f.e.Variant.Cutoff) || f.e.FakeErrors > 0 || f.e.RateLimited > 0) {
 		f.e.State = "LOCAL_PRIMING_INCOMPLETE"
+		return
+	}
+	if f.primer {
+		if sustained {
+			f.e.State = "SUSTAINED_REPLIES"
+			f.e.Reason = "TRANSPORT_CADENCE_CONFIRMED_NOT_MATCH_LOAD_PROOF"
+		} else if now.Sub(f.e.Started) >= Probation {
+			f.e.State = "INSUFFICIENT_REPLIES"
+			f.e.Reason = "EXPLICIT_PRIMER_NO_AUTOMATIC_ADVANCE_OR_RELAY"
+		}
 		return
 	}
 	key := e.trialKey(f.key)
@@ -588,7 +605,10 @@ func (e *Engine) Snapshot() Snapshot {
 	if e.ladder && !e.startLocal {
 		initialPolicy = "DIRECT_FIRST"
 	}
-	out := Snapshot{LocalOnly: e.localOnly, InitialPolicy: initialPolicy, Enabled: e.enabled, Application: e.application, Generation: e.generation, Reason: e.reason, Flows: []Evidence{}, Learning: []Learning{}, Lost: e.lost}
+	if e.primer != nil {
+		initialPolicy = "EXPLICIT_ENDPOINT_INITIAL_PRIMER"
+	}
+	out := Snapshot{Primer: copyPrimer(e.primer), LocalOnly: e.localOnly, InitialPolicy: initialPolicy, Enabled: e.enabled, Application: e.application, Generation: e.generation, Reason: e.reason, Flows: []Evidence{}, Learning: []Learning{}, Lost: e.lost}
 	for _, f := range e.flows {
 		out.Flows = append(out.Flows, f.e)
 	}

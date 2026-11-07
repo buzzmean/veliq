@@ -92,10 +92,11 @@ jobs:
           & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/beta-service-ps51')
           $env:NEEXITLAG_TEST_DRIVER_DIR=Join-Path $PWD '.e2e/windivert'
           $env:NEEXITLAG_REQUIRE_FILTER_COMPILER='1'
-          $proof=@(& go test ./platform/windows '-run' '^TestUDPFragmentNativeChecksumHelper$' '-count' '1' '-v')
+          $proof=@(& go test ./platform/windows '-run' '^(TestUDPFragmentNativeChecksumHelper|TestGameInitialPrimerNativeChecksumHelper)$' '-count' '1' '-v')
           if ($LASTEXITCODE -ne 0) { throw 'UDP_FRAGMENT_DLL_CHECK_FAILED' }
           $proof | Write-Output
           if (($proof -join "`n") -notmatch '(?m)^--- PASS: TestUDPFragmentNativeChecksumHelper ') { throw 'UDP_FRAGMENT_DLL_CHECK_SKIPPED' }
+          if (($proof -join "`n") -notmatch '(?m)^--- PASS: TestGameInitialPrimerNativeChecksumHelper ') { throw 'UDP_PRIMER_DLL_CHECK_SKIPPED' }
       - name: Verify service parity and assemble unapproved candidate (PowerShell 7)
         shell: pwsh
         env:
@@ -104,10 +105,11 @@ jobs:
           & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/beta-service-ps7')
           $env:NEEXITLAG_TEST_DRIVER_DIR=Join-Path $PWD '.e2e/windivert'
           $env:NEEXITLAG_REQUIRE_FILTER_COMPILER='1'
-          $proof=@(& go test ./platform/windows '-run' '^TestUDPFragmentNativeChecksumHelper$' '-count' '1' '-v')
+          $proof=@(& go test ./platform/windows '-run' '^(TestUDPFragmentNativeChecksumHelper|TestGameInitialPrimerNativeChecksumHelper)$' '-count' '1' '-v')
           if ($LASTEXITCODE -ne 0) { throw 'UDP_FRAGMENT_DLL_CHECK_FAILED' }
           $proof | Write-Output
           if (($proof -join "`n") -notmatch '(?m)^--- PASS: TestUDPFragmentNativeChecksumHelper ') { throw 'UDP_FRAGMENT_DLL_CHECK_SKIPPED' }
+          if (($proof -join "`n") -notmatch '(?m)^--- PASS: TestGameInitialPrimerNativeChecksumHelper ') { throw 'UDP_PRIMER_DLL_CHECK_SKIPPED' }
           $a=(Get-FileHash bin/beta-service-ps51/veliq-service.exe -Algorithm SHA256).Hash
           $b=(Get-FileHash bin/beta-service-ps7/veliq-service.exe -Algorithm SHA256).Hash
           if ($a -cne $b) { throw 'BETA_SERVICE_PARITY_FAILED' }
