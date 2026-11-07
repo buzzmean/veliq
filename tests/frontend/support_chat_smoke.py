@@ -45,6 +45,16 @@ with sync_playwright() as p:
     expect(page.locator('.vs-message--visitor')).to_have_count(1)
     page.locator('.vs-close').click()
     expect(page.locator('.vs-confirm')).to_be_visible()
+    expect(page.locator('[data-answer=later]')).to_have_text('Свернуть')
+    page.locator('[data-answer=later]').click()
+    expect(page.locator('.vs-panel')).to_be_hidden()
+    page.locator('.vs-launch').click()
+    expect(page.locator('.vs-status')).to_have_text('Обращение в очереди')
+    page.locator('.vs-close').click()
+    page.keyboard.press('Escape')
+    expect(page.locator('.vs-panel')).to_be_visible()
+    expect(page.locator('.vs-confirm')).to_be_hidden()
+    page.locator('.vs-close').click()
     page.locator('[data-answer=no]').click()
     expect(page.locator('.vs-confirm')).to_be_hidden()
     expect(page.locator('.vs-status')).to_have_text('Обращение в очереди')
@@ -52,6 +62,10 @@ with sync_playwright() as p:
     with urllib.request.urlopen(req, timeout=5) as response:
         assert response.status == 204
     expect(page.locator('.vs-message--operator')).to_have_count(1, timeout=12000)
+    expect(page.locator('.vs-answer-check')).to_be_visible()
+    page.locator('.vs-answer-no').click()
+    expect(page.locator('.vs-answer-check')).to_be_hidden()
+    expect(page.locator('#vs-input')).to_be_focused()
     expect(page.locator('.vs-message--operator p')).to_have_text('Ответ специалиста <script>alert(1)</script>')
     assert page.locator('.vs-messages script, .vs-messages img').count() == 0
     # A separate browser cannot read this visitor's ticket.
@@ -65,8 +79,38 @@ with sync_playwright() as p:
     tab.locator('.vs-launch').click()
     expect(tab.locator('.vs-message--operator')).to_have_count(1)
     page.locator('.vs-close').click()
+    # A reply that arrives while the close choice is visible must invalidate it.
+    with urllib.request.urlopen(req, timeout=5) as response:
+        assert response.status == 204
+    expect(page.locator('.vs-message--operator')).to_have_count(2, timeout=12000)
     page.locator('[data-answer=yes]').click()
+    expect(page.locator('.vs-error')).to_contain_text('Прочитайте новые сообщения')
+    expect(page.locator('.vs-confirm')).to_be_hidden()
+    expect(page.locator('.vs-status')).to_have_text('Обращение у специалиста')
+    page.locator('.vs-answer-yes').click()
+    page.screenshot(path=os.environ.get('VELIQ_SUPPORT_DESKTOP_CLOSE_SCREENSHOT','/tmp/veliq-support-close-desktop.png'))
+    page.set_viewport_size({'width':360,'height':740})
+    choice=page.locator('.vs-confirm').bounding_box()
+    assert choice['x']>=0 and choice['y']>=0 and choice['x']+choice['width']<=360 and choice['y']+choice['height']<=740, choice
+    page.screenshot(path=os.environ.get('VELIQ_SUPPORT_MOBILE_CLOSE_SCREENSHOT','/tmp/veliq-support-close-mobile.png'))
+    page.set_viewport_size({'width':1280,'height':900})
+    # An unconfirmed close keeps the same idempotency key for transport retry.
+    resolve_bodies=[]
+    def lose_close(route):
+        resolve_bodies.append(route.request.post_data_json)
+        if len(resolve_bodies)==1:
+            route.abort('failed')
+        else:
+            route.continue_()
+    page.route('**/api/v1/account/support/resolve',lose_close)
+    page.locator('[data-answer=yes]').click()
+    expect(page.locator('.vs-close-error')).to_contain_text('Завершение не подтверждено')
+    expect(page.locator('.vs-panel')).to_be_visible()
+    expect(page.locator('.vs-confirm')).to_be_visible()
+    page.locator('[data-answer=yes]').evaluate('(button) => { button.click(); button.click(); }')
     expect(page.locator('.vs-panel')).to_be_hidden()
+    assert len(resolve_bodies)==2 and resolve_bodies[0]==resolve_bodies[1], resolve_bodies
+    page.unroute('**/api/v1/account/support/resolve',lose_close)
     page.reload()
     page.locator('.vs-launch').click()
     expect(page.locator('.vs-resolved')).to_be_visible()

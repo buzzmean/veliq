@@ -311,6 +311,69 @@ func TestSupportTelegramOutageDurableOutbox(t *testing.T) {
 		t.Fatal("mapping/retry duplicate")
 	}
 }
+func TestResolutionNoticeSurvivesDeliveryFailure(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	token := visitor(t, s)
+	ticket := newTicket(t, s, token)
+	tg := bot(s)
+	var failClose atomic.Bool
+	failClose.Store(true)
+	var notices atomic.Int64
+	var messageID atomic.Int64
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload map[string]any
+		if e := json.NewDecoder(r.Body).Decode(&payload); e != nil {
+			t.Error(e)
+			w.WriteHeader(400)
+			return
+		}
+		body, _ := payload["text"].(string)
+		if strings.Contains(body, "Тикет закрыт.") {
+			if failClose.Load() {
+				w.WriteHeader(503)
+				return
+			}
+			if !strings.HasPrefix(body, "VELIQ · #"+ticket[:12]+"\n") ||
+				!strings.Contains(body, "Пользователь подтвердил решение.") || payload["reply_markup"] != nil {
+				t.Error("resolution notice must identify the ticket and have no active controls")
+			}
+			notices.Add(1)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": TGMessage{ID: messageID.Add(1), Chat: TGChat{ID: tg.ChatID}}})
+	}))
+	defer fake.Close()
+	tg.apiURL = fake.URL
+	if sent, e := tg.DeliverOne(ctx); e != nil || !sent {
+		t.Fatal("initial message", sent, e)
+	}
+	m := Mutation{Key: randomID(), Ticket: ticket, Revision: state(t, s, token).Ticket.Revision}
+	for range 2 { // Same HTTP operation retried after an ambiguous response.
+		if _, e := s.Mutate(ctx, token, "fixture", "resolve", m); e != nil {
+			t.Fatal(e)
+		}
+	}
+	var count int
+	if e := s.DB.QueryRow(ctx, `SELECT count(*) FROM support_outbox WHERE ticket=$1 AND sent_at IS NULL`, ticket).Scan(&count); e != nil || count != 1 {
+		t.Fatal("closure must enqueue exactly one notice", count, e)
+	}
+	if _, e := tg.DeliverOne(ctx); e == nil {
+		t.Fatal("delivery failure must be retained for retry")
+	}
+	// Recreate the worker with the same DB, without relying on process memory.
+	tg.Store = &Store{DB: s.DB}
+	failClose.Store(false)
+	if _, e := s.DB.Exec(ctx, `UPDATE support_outbox SET next_at=now() WHERE ticket=$1`, ticket); e != nil {
+		t.Fatal(e)
+	}
+	if sent, e := tg.DeliverOne(ctx); e != nil || !sent {
+		t.Fatal("closure retry", sent, e)
+	}
+	if sent, e := tg.DeliverOne(ctx); e != nil || sent || notices.Load() != 1 {
+		t.Fatal("unexpected duplicate notice", sent, notices.Load(), e)
+	}
+}
+
 func TestSupportHTTPBoundaries(t *testing.T) {
 	s := testStore(t)
 	token := visitor(t, s)
