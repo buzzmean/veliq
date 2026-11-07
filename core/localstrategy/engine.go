@@ -139,7 +139,7 @@ func compile(p Profile) (compiled, error) {
 	if p.ContinuousUDP {
 		// Explicit opt-in for payload-preserving IPv4 fragmentation only. This
 		// must never extend TCP transforms, decoys, or arbitrary action chains.
-		cutoffValid = p.Cutoff == 0 && p.Protocol == "udp" && p.Strategy == "udp-fragment-24" && len(p.Actions) == 0
+		cutoffValid = p.Cutoff == 0 && p.Protocol == "udp" && udpFragmentSize(p.Strategy) != 0 && len(p.Actions) == 0
 	}
 	if p.ID == "" || len(p.ID) > 64 || len(p.Name) > 128 || len(p.Application) > 2048 || p.Version != Version || !cutoffValid || len(p.Ports) == 0 || len(p.Ports) > 32 || !strings.HasSuffix(strings.ToLower(p.Application), ".exe") {
 		return compiled{}, errors.New("invalid local strategy profile")

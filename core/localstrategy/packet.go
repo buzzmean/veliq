@@ -80,15 +80,16 @@ func checksumTransport(p []byte) {
 }
 func transform(p []byte, strategy string) [][]byte { return transformAt(p, strategy, 0) }
 func transformAt(p []byte, strategy string, position uint16) [][]byte {
-	if strategy == "udp-fragment-24" {
-		if _, ok := packetPayload(p, "udp"); !ok || len(p) <= 44 || len(p) > 1500 {
+	if fragmentSize := udpFragmentSize(strategy); fragmentSize != 0 {
+		split := 20 + fragmentSize
+		if _, ok := packetPayload(p, "udp"); !ok || len(p) <= split || len(p) > 1500 {
 			return nil
 		}
 		// Complete UDP checksum before fragmentation; one shared nonzero IP ID.
 		full := append([]byte(nil), p...)
 		checksumTransport(full)
-		a, b := append([]byte(nil), full[:44]...), append([]byte(nil), full[:20]...)
-		b = append(b, full[44:]...)
+		a, b := append([]byte(nil), full[:split]...), append([]byte(nil), full[:20]...)
+		b = append(b, full[split:]...)
 		// DF is explicitly cleared by this opt-in fragmentation strategy.
 		if binary.BigEndian.Uint16(a[4:]) == 0 {
 			return nil
@@ -96,7 +97,7 @@ func transformAt(p []byte, strategy string, position uint16) [][]byte {
 		binary.BigEndian.PutUint16(a[2:], uint16(len(a)))
 		binary.BigEndian.PutUint16(b[2:], uint16(len(b)))
 		binary.BigEndian.PutUint16(a[6:], 0x2000)
-		binary.BigEndian.PutUint16(b[6:], 3)
+		binary.BigEndian.PutUint16(b[6:], uint16(fragmentSize/8))
 		checksumIP(a)
 		checksumIP(b)
 		return [][]byte{a, b}

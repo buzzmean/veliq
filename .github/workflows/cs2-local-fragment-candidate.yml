@@ -90,12 +90,24 @@ jobs:
           EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/beta-service-ps51')
+          $env:NEEXITLAG_TEST_DRIVER_DIR=Join-Path $PWD '.e2e/windivert'
+          $env:NEEXITLAG_REQUIRE_FILTER_COMPILER='1'
+          $proof=@(& go test ./platform/windows '-run' '^TestUDPFragmentNativeChecksumHelper$' '-count' '1' '-v')
+          if ($LASTEXITCODE -ne 0) { throw 'UDP_FRAGMENT_DLL_CHECK_FAILED' }
+          $proof | Write-Output
+          if (($proof -join "`n") -notmatch '(?m)^--- PASS: TestUDPFragmentNativeChecksumHelper ') { throw 'UDP_FRAGMENT_DLL_CHECK_SKIPPED' }
       - name: Verify service parity and assemble unapproved candidate (PowerShell 7)
         shell: pwsh
         env:
           EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           & ./tools/windows/package-r1-service.ps1 -ExpectedCommit $env:EXPECTED_COMMIT -OutputDirectory (Join-Path $PWD 'bin/beta-service-ps7')
+          $env:NEEXITLAG_TEST_DRIVER_DIR=Join-Path $PWD '.e2e/windivert'
+          $env:NEEXITLAG_REQUIRE_FILTER_COMPILER='1'
+          $proof=@(& go test ./platform/windows '-run' '^TestUDPFragmentNativeChecksumHelper$' '-count' '1' '-v')
+          if ($LASTEXITCODE -ne 0) { throw 'UDP_FRAGMENT_DLL_CHECK_FAILED' }
+          $proof | Write-Output
+          if (($proof -join "`n") -notmatch '(?m)^--- PASS: TestUDPFragmentNativeChecksumHelper ') { throw 'UDP_FRAGMENT_DLL_CHECK_SKIPPED' }
           $a=(Get-FileHash bin/beta-service-ps51/veliq-service.exe -Algorithm SHA256).Hash
           $b=(Get-FileHash bin/beta-service-ps7/veliq-service.exe -Algorithm SHA256).Hash
           if ($a -cne $b) { throw 'BETA_SERVICE_PARITY_FAILED' }
@@ -127,6 +139,15 @@ jobs:
           Write-Host "BETA_KIT_BUILT commit=$env:EXPECTED_COMMIT sequence=$($service.build_sequence) service_sha256=$($b.ToLowerInvariant()) gui_sha256=$guiHash approval=NOT_APPROVED"
           $sums=@($files+@('candidate.json') | ForEach-Object { (Get-FileHash -LiteralPath "bin/beta-kit/$_" -Algorithm SHA256).Hash.ToLowerInvariant()+'  '+$_ })
           [IO.File]::WriteAllLines((Join-Path $PWD 'bin/beta-kit/SHA256SUMS'),$sums,[Text.UTF8Encoding]::new($false))
+      - name: Upload service-only candidate for bounded local updates
+        uses: actions/upload-artifact@v4
+        with:
+          name: cs2-service-only-candidate
+          path: |
+            bin/beta-service-ps7/veliq-service.exe
+            bin/beta-service-ps7/manifest.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Compile actual Setup with a disposable public CA (no artifact publication)
         shell: powershell
         run: |

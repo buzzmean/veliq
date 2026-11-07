@@ -18,4 +18,21 @@ var mechanisms = map[string]LocalStrategy{
 	"tcp-split-1":     packetStrategy{"tcp", "tcp-split-1"},
 	"tcp-split-5":     packetStrategy{"tcp", "tcp-split-5"},
 	"udp-fragment-24": packetStrategy{"udp", "udp-fragment-24"},
+	"udp-fragment-8":  packetStrategy{"udp", "udp-fragment-8"},
+	"udp-fragment-16": packetStrategy{"udp", "udp-fragment-16"},
+}
+
+// IPv4 fragment offsets count eight-byte units. Only these explicit mechanisms
+// may opt into continuous UDP processing; action chains and TCP are excluded.
+func udpFragmentSize(strategy string) int {
+	switch strategy {
+	case "udp-fragment-8":
+		return 8
+	case "udp-fragment-16":
+		return 16
+	case "udp-fragment-24":
+		return 24
+	default:
+		return 0
+	}
 }
