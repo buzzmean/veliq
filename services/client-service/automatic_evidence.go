@@ -73,6 +73,16 @@ func snapshotConnectionEvidence(r nativeBrowserRecord) nativeBrowserRecord {
 	if r.LastIO != nil && r.LastIO.Outcome == "IO_ERROR" {
 		e.Failure = r.LastIO.Outcome
 	}
+	// Unlike a caller polling deadline, these are terminal states of our own
+	// bounded first-flight guard. Closing the socket must not hide that verdict.
+	if r.Origin != nil {
+		switch r.Origin.State {
+		case "RECOVERY_BUDGET_EXPIRED", "EARLY_TLS_REPLY_TIMEOUT_NO_REPLAY":
+			e.Connection, e.Failure = "FAILED", "FIRST_FLIGHT_TIMEOUT"
+		case "UNSAFE_FIRST_FLIGHT_NO_REPLAY":
+			e.Connection, e.Failure = "FAILED", "RETRY_NOT_SAFE"
+		}
+	}
 	if r.TLS != nil {
 		o := r.TLS.Origin
 		switch {
