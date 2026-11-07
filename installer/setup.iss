@@ -35,7 +35,8 @@ RestartIfNeededByRun=no
 AlwaysRestart=no
 UninstallRestartComputer=no
 ; A busy GUI is a preflight failure. Never defer replacement to a later boot.
-; /NORESTART is also mandatory, including for uninstall and silent callers.
+; Interactive Setup selects and locks "do not restart" itself. Automation and
+; uninstall retain /NORESTART because they do not use the wizard's choice.
 CloseApplications=no
 RestartApplications=no
 UninstallDisplayName=VELIQ
@@ -71,7 +72,7 @@ Filename: "{app}\VELIQ.exe"; Description: "Открыть VELIQ и подклю�
 Name: "{autoprograms}\VELIQ"; Filename: "{app}\VELIQ.exe"
 Name: "{autodesktop}\VELIQ"; Filename: "{app}\VELIQ.exe"; Tasks: desktopicon; Check: NotClubImage
 [Code]
-function SafeSessionArguments(): Boolean;
+function SafeSessionArguments(RequireNoRestart: Boolean): Boolean;
 var I, Separator: Integer; Arg: String; NoRestart: Boolean;
 begin
  NoRestart := False;
@@ -81,18 +82,40 @@ begin
    if Arg='/NORESTART' then NoRestart := True;
    Separator := Pos('=', Arg);
    if Separator>0 then Arg := Copy(Arg, 1, Separator-1);
-   if (Arg='/CLOSEAPPLICATIONS') or (Arg='/FORCECLOSEAPPLICATIONS') or
+   if (Arg='/LOADINF') or (Arg='/CLOSEAPPLICATIONS') or (Arg='/FORCECLOSEAPPLICATIONS') or
       (Arg='/RESTARTAPPLICATIONS') then Exit;
  end;
- Result := NoRestart;
+ Result := NoRestart or not RequireNoRestart;
  if not Result then
    Log('VELIQ_NORESTART_REQUIRED; installation has not started');
 end;
 function InitializeSetup(): Boolean;
 begin
- Result := SafeSessionArguments();
+ Result := SafeSessionArguments(WizardSilent);
  if not Result and not WizardSilent then
-   MsgBox('Установка остановлена: требуется запуск с /NORESTART без параметров закрытия и перезапуска приложений. ПК и приложения не изменены.', mbError, MB_OK);
+   MsgBox('Установка остановлена: параметры закрытия или перезапуска приложений запрещены. Запустите установщик обычным двойным щелчком. ПК и приложения не изменены.', mbError, MB_OK);
+end;
+
+procedure LockNoRestartChoice;
+begin
+ { Inno 6.4.3 imNormal reads these choices when finishing/preparing. Merely
+   returning False from NeedRestart does not override its internal restart flag. }
+ WizardForm.NoRadio.Checked := True;
+ WizardForm.YesRadio.Enabled := False;
+ WizardForm.PreparingNoRadio.Checked := True;
+ WizardForm.PreparingYesRadio.Enabled := False;
+end;
+
+procedure InitializeWizard;
+begin
+ LockNoRestartChoice;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+ LockNoRestartChoice;
+ { Never offer the user an enabled restart choice, even if Inno detected a
+   late restart requirement. The pending operation itself remains untouched. }
 end;
 
 function ClubCodeFile(Param: String): String;
@@ -152,7 +175,7 @@ end;
 function InitializeUninstall(): Boolean;
 var Code: Integer;
 begin
- Result := SafeSessionArguments();
+ Result := SafeSessionArguments(True);
  if not Result then begin
    if not UninstallSilent then
      MsgBox('Удаление остановлено: требуется запуск с /NORESTART. ПК не будет перезагружен.', mbError, MB_OK);
