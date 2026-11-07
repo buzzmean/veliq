@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net"
 	"path"
@@ -219,11 +220,7 @@ func (c *Controller) automaticStatus() map[string]any {
 	n.mu.Lock()
 	rows := make([]nativeBrowserRecord, 0, len(n.records))
 	for _, r := range n.records {
-		if r.planReporter != nil {
-			p := r.planReporter.CurrentPlan()
-			r.Policy, r.Upstream, r.Probe = p.Policy, p.Destination.String(), p.Probe
-		}
-		rows = append(rows, r)
+		rows = append(rows, snapshotConnectionEvidence(r))
 	}
 	lost := n.lost
 	n.mu.Unlock()
@@ -235,7 +232,19 @@ func (c *Controller) automaticStatus() map[string]any {
 	c.mu.Lock()
 	enabled := c.enabled && c.settings.Automatic
 	c.mu.Unlock()
-	return map[string]any{"enabled": enabled, "records": rows, "records_total": total, "records_omitted": total - len(rows), "records_lost": lost,
-		"discovery": "automatic, ephemeral, verified process; explicit profiles retain priority", "scope": "public IPv4 TCP; HTTPS443 first-flight/local ladder; other TCP connect failures only",
+	status := map[string]any{"version": 2, "observed_at": time.Now().UTC(), "enabled": enabled, "records": rows, "records_total": total, "records_omitted": total - len(rows), "records_lost": lost,
+		"application_verification": "NOT_VERIFIED; TLS records and bytes do not prove service, account or region access",
+		"discovery":                "automatic, ephemeral, verified process; explicit profiles retain priority", "scope": "public IPv4 TCP; HTTPS443 first-flight/local ladder; other TCP connect failures only",
 		"limits": []string{"unknown UDP is not switched on silence", "native IPv6 transport is not implemented", "encrypted application/region/auth errors are not inspected", "existing flows remain pinned"}}
+	// TLS/attempt metadata and long executable paths share the IPC frame budget.
+	// Preserve newest records and report every omission, including size trimming.
+	for {
+		status["records"], status["records_omitted"] = rows, total-len(rows)
+		status["records_truncated"] = len(rows) < total || lost > 0
+		raw, _ := json.Marshal(status)
+		if len(raw) <= 60*1024 || len(rows) == 0 {
+			return status
+		}
+		rows = rows[:len(rows)-1]
+	}
 }
