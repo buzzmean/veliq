@@ -67,8 +67,8 @@ func TestNativeGameUDPFirstFlightAndUnselectedProcess(t *testing.T) {
 		e := gameudp.New()
 		e.Configure(id.Path, true)
 		e.SetReason("")
-		p, tuple := gamePacket()
-		b.associations.Put(Association{Identity: id, Tuple: tuple, Endpoint: tc.endpoint})
+		p, _ := gamePacket()
+		b.trackFlow(nativeGameFlowAddress(id.PID, tc.endpoint))
 		fake, original := 0, 0
 		b.packetWriter = func(q []byte, _ [80]byte) error {
 			if bytes.Equal(p, q) {
