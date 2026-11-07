@@ -128,21 +128,23 @@ type cadenceBucket struct {
 	replies, outgoing uint64
 }
 type Flow struct {
-	primer      bool
-	cadence     [8]cadenceBucket
-	degradedAt  time.Time
-	engine      *Engine
-	key         Key
-	e           Evidence
-	payload     []byte
-	ordinal     int
-	generation  uint64
-	bucketFirst int64
-	bucketLast  int64
-	buckets     int
-	learned     bool
-	failed      bool
-	last        time.Time
+	primerDataCutoff int
+	dataOrdinal      int
+	primer           bool
+	cadence          [8]cadenceBucket
+	degradedAt       time.Time
+	engine           *Engine
+	key              Key
+	e                Evidence
+	payload          []byte
+	ordinal          int
+	generation       uint64
+	bucketFirst      int64
+	bucketLast       int64
+	buckets          int
+	learned          bool
+	failed           bool
+	last             time.Time
 }
 type Learning struct {
 	LocalOnly   bool      `json:"local_only,omitempty"`
@@ -318,6 +320,16 @@ func (e *Engine) Open(k Key, now time.Time) (*Flow, error) {
 // Plan advances the input cutoff even if a decoy fails. Existing flows never
 // restart their first flight after settings/learning/network changes.
 func (e *Engine) Plan(f *Flow, now time.Time) ([]byte, int) {
+	return e.plan(f, now, false)
+}
+
+// PlanDatagram observes only the public GNS framing bit. No application payload
+// is retained, decrypted, rewritten, or replayed. Legacy ladders use Plan semantics.
+func (e *Engine) PlanDatagram(f *Flow, payload []byte, now time.Time) ([]byte, int) {
+	data := len(payload) >= 7 && payload[0]&0x80 != 0 && !(payload[0] == 255 && payload[1] == 255 && payload[2] == 255 && payload[3] == 255)
+	return e.plan(f, now, data)
+}
+func (e *Engine) plan(f *Flow, now time.Time, data bool) ([]byte, int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if f == nil || f.engine != e {
@@ -326,7 +338,11 @@ func (e *Engine) Plan(f *Flow, now time.Time) ([]byte, int) {
 	f.last = now
 	f.e.Sequence++
 	f.ordinal++
-	if f.e.Stage != Local || !e.enabled || e.reason != "" || f.generation != e.generation || f.ordinal > f.e.Variant.Cutoff || f.primer && !e.localOnly {
+	if data {
+		f.dataOrdinal++
+	}
+	withinCutoff := f.ordinal <= f.e.Variant.Cutoff || f.primer && data && f.dataOrdinal <= f.primerDataCutoff
+	if f.e.Stage != Local || !e.enabled || e.reason != "" || f.generation != e.generation || !withinCutoff || f.primer && !e.localOnly {
 		return nil, 0
 	}
 	k := f.e.Variant.Repeats

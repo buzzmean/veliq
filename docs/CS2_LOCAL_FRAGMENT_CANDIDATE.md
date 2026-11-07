@@ -86,3 +86,22 @@ Windows, проверка фильтров настоящей закреплён
 в памяти и обнаружение повреждений; endpoint/cutoff/global budget/поколение;
 сохранение/ошибка записи/повреждённый конфиг; оригиналы и checksum helper DLL.
 Живой вход и 10 минут игры всё ещё обязательны, автономные проверки их не заменяют.
+# Explicit STUN primer candidate
+
+The optional game UDP primer now also accepts `kind: "stun"` and
+`data_cutoff: 4`. With `cutoff: 2`, `repeats: 6`, and `ttl: 8`, it sends six
+20-byte STUN Binding request headers before each of the first two datagrams and
+the first four GNS data datagrams. Overlapping conditions do not duplicate a
+burst. Each decoy has an independent random transaction ID. Source discovery
+messages beginning with `0xffffffff` do not consume the data cutoff.
+
+This is an explicit, exact-endpoint, `local_only` experiment. It does not use a
+STUN server, relay, VPS, external helper, decrypted payload, or learned automatic
+fallback. Original datagrams retain their bytes and TTL. The existing shared
+packet/byte rate limits apply to all flows, and configuration changes never
+restart an established flow's primer. The default omitted kind preserves the
+existing QUIC Initial behavior; `data_cutoff` is rejected for other kinds.
+
+Native acceptance still requires a map join and ten minutes of gameplay with
+fresh inbound packets and zero game relay traffic. A server-full rejection or
+idle kick does not establish a transport timeout or satisfy that acceptance.

@@ -17,7 +17,8 @@ func GameUDPPacket(original, payload []byte) ([]byte, error) {
 }
 func gameUDPPacketTTL(original, payload []byte, ttl uint8) ([]byte, error) {
 	_, _, err := ParseUDP(original)
-	if err != nil || len(payload) < 1200 || len(payload) > gameudp.MaxPayload || ttl > 16 || ttl != 0 && original[8] <= ttl {
+	stun := ttl != 0 && gameudp.IsSTUNBinding(payload)
+	if err != nil || !stun && len(payload) < 1200 || len(payload) > gameudp.MaxPayload || ttl > 16 || ttl != 0 && original[8] <= ttl {
 		return nil, errors.New("GAME_UDP_PACKET_INVALID")
 	}
 	h := int(original[0]&15) * 4
@@ -57,13 +58,22 @@ func gameUDPPacketTTL(original, payload []byte, ttl uint8) ([]byte, error) {
 }
 
 // The 5-packet generic DIRECT+ limit is untouched. This separate sender has
-// K<=16/N<=4 plus engine-wide packet/byte admission. No queue or relay call.
+// K<=16/N<=4 (STUN: first N<=2 plus data<=4) and shared packet/byte admission.
+// No queue or relay call; overlapping STUN cutoffs produce only one burst.
 func SendGameUDP(e *gameudp.Engine, flow *gameudp.Flow, id ProcessIdentity, tuple Tuple, p []byte, send func([]byte) error, ledger *EvidenceLedger, now time.Time) error {
-	payload, k := e.Plan(flow, now)
+	_, datagram, _ := ParseUDP(p)
+	payload, k := e.PlanDatagram(flow, datagram, now)
 	ttl := e.Evidence(flow).FakeTTL
 	sent := 0
 	for i := 0; i < k; i++ {
-		q, err := gameUDPPacketTTL(p, payload, ttl)
+		var err error
+		if gameudp.IsSTUNBinding(payload) {
+			payload, err = gameudp.STUNPayload()
+		}
+		var q []byte
+		if err == nil {
+			q, err = gameUDPPacketTTL(p, payload, ttl)
+		}
 		if err == nil {
 			err = send(q)
 		}
