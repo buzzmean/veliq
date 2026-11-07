@@ -89,21 +89,30 @@ func (b *WinDivertBackend) observeGameReplies() {
 		if n == 0 || n > uint32(len(buf)) {
 			continue
 		}
-		tuple, payload, err := ParseUDP(buf[:n])
-		if err != nil {
-			continue
-		}
-		tuple.Source, tuple.Destination = tuple.Destination, tuple.Source
-		b.mu.Lock()
-		f := b.flows[tuple]
-		if f == nil || f.game == nil || f.decision.GameUDP == nil || !f.decision.Route.Direct() || f.retired {
-			b.mu.Unlock()
-			continue
-		}
-		e, flow, id := f.decision.GameUDP, f.game, f.identity
-		b.mu.Unlock()
-		e.Reply(flow, len(payload), time.Now())
-		b.evidence.RecordBytes(id, tuple, "direct_reply", "", uint64(n))
-		b.evidence.RecordGameUDP(id, tuple, e.Evidence(flow))
+		b.recordNativeUDPReply(buf[:n], time.Now())
+	}
+}
+
+// The existing inbound observer also sees ordinary native DIRECT/DIRECT+ UDP.
+// Attribute only the exact reverse tuple of a current native capture flow.
+// Adaptive/proxied replies are counted by forward(), never a second time here.
+func (b *WinDivertBackend) recordNativeUDPReply(packet []byte, now time.Time) {
+	tuple, payload, err := ParseUDP(packet)
+	if err != nil {
+		return
+	}
+	tuple.Source, tuple.Destination = tuple.Destination, tuple.Source
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	f := b.flows[tuple]
+	if f == nil || f.retired || f.decision.Block || !f.decision.Route.Direct() || f.decision.ProbeDirect || f.datagram != nil || f.identity.PID == 0 || f.identity.CreationTime == 0 || f.identity.Path == "" {
+		return
+	}
+	f.lastSeen = now
+	b.evidence.RecordBytes(f.identity, tuple, "direct_reply", "", uint64(len(packet)))
+	if f.game != nil && f.decision.GameUDP != nil {
+		e := f.decision.GameUDP
+		e.Reply(f.game, len(payload), now)
+		b.evidence.RecordGameUDP(f.identity, tuple, e.Evidence(f.game))
 	}
 }

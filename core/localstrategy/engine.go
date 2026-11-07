@@ -18,6 +18,7 @@ const Version = 1
 const MaxProfiles = 32
 
 type Profile struct {
+	ContinuousUDP  bool     `json:"continuous_udp,omitempty"`
 	Actions        []Action `json:"actions,omitempty"`
 	Preset         string   `json:"preset,omitempty"`
 	PresetVersion  int      `json:"preset_version,omitempty"`
@@ -134,7 +135,13 @@ func New() *LocalStrategyEngine {
 	return e
 }
 func compile(p Profile) (compiled, error) {
-	if p.ID == "" || len(p.ID) > 64 || len(p.Name) > 128 || len(p.Application) > 2048 || p.Version != Version || p.Cutoff < 1 || p.Cutoff > 8 || len(p.Ports) == 0 || len(p.Ports) > 32 || !strings.HasSuffix(strings.ToLower(p.Application), ".exe") {
+	cutoffValid := p.Cutoff >= 1 && p.Cutoff <= 8
+	if p.ContinuousUDP {
+		// Explicit opt-in for payload-preserving IPv4 fragmentation only. This
+		// must never extend TCP transforms, decoys, or arbitrary action chains.
+		cutoffValid = p.Cutoff == 0 && p.Protocol == "udp" && p.Strategy == "udp-fragment-24" && len(p.Actions) == 0
+	}
+	if p.ID == "" || len(p.ID) > 64 || len(p.Name) > 128 || len(p.Application) > 2048 || p.Version != Version || !cutoffValid || len(p.Ports) == 0 || len(p.Ports) > 32 || !strings.HasSuffix(strings.ToLower(p.Application), ".exe") {
 		return compiled{}, errors.New("invalid local strategy profile")
 	}
 	if len(p.Preset) > 32 || p.PresetVersion < 0 || p.PresetVersion > 100 || (p.QuicFallback && (p.Protocol != "tcp" || p.Preset == "")) {
@@ -444,7 +451,7 @@ func (e *LocalStrategyEngine) Process(p []byte, st *State, m Metadata) (r Result
 		st.domain = m.Domain
 	}
 	r.Domain = st.domain
-	if st.inspected >= c.Cutoff {
+	if !c.ContinuousUDP && st.inspected >= c.Cutoff {
 		st.done = true
 	}
 	st.splitPosition = c.SplitPosition
