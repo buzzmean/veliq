@@ -86,7 +86,7 @@
     var last=0,lastVisitor=0;(state.messages||[]).forEach(function(m){if(m.role==='operator')last=Math.max(last,m.id);if(m.role==='visitor')lastVisitor=Math.max(lastVisitor,m.id);});
     lastOperator=last;
     q('.vs-answer-check').hidden=!t||t.status==='resolved'||creating||last<=lastVisitor||last<=dismissedAnswer;
-    if(resolved){q('.vs-confirm').hidden=true;pendingResolve=null;}
+    if(resolved){if(pendingResolve)error('');q('.vs-confirm').hidden=true;pendingResolve=null;}
     if(opened){seen=Math.max(seen,last);remember();}else if(last>seen){q('.vs-badge').hidden=false;}
   }
   async function refresh() {

@@ -124,6 +124,18 @@ with sync_playwright() as p:
     box = page.locator('.vs-panel').bounding_box()
     assert box['x'] >= 0 and box['x'] + box['width'] <= 360 and box['y'] >= 0
     page.screenshot(path=os.environ.get('VELIQ_SUPPORT_SCREENSHOT', '/tmp/veliq-support-mobile.png'))
+    # If closure committed but its HTTP response was lost, authoritative state
+    # must confirm closure without leaving a contradictory transport error.
+    def lose_committed_close(route):
+        route.fetch()
+        route.abort('failed')
+    page.route('**/api/v1/account/support/resolve',lose_committed_close)
+    page.locator('.vs-close').click()
+    page.locator('[data-answer=yes]').click()
+    expect(page.locator('.vs-resolved')).to_be_visible()
+    expect(page.locator('.vs-confirm')).to_be_hidden()
+    expect(page.locator('.vs-error')).to_be_hidden()
+    page.unroute('**/api/v1/account/support/resolve',lose_committed_close)
     page.on('dialog', lambda d: d.accept())
     page.locator('.vs-info-toggle').click()
     page.locator('.vs-forget').click()
