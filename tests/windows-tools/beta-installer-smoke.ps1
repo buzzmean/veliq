@@ -200,6 +200,33 @@ try{
  # Re-install the identical package exercises the real existing-service update.
  Invoke-OwnedInstaller $setup 'update'
  Assert-InstalledCandidate
+ # The shipping updater launches detached as SYSTEM with UPDATE=1. Exercise
+ # that exact installer context without changing Latest or contacting the CP.
+ $systemTask='VELIQ-Setup-System-Fixture-'+[guid]::NewGuid().ToString('N')
+ $systemLog=Join-Path $env:RUNNER_TEMP ('beta-inno-system-update-'+[guid]::NewGuid().ToString('N')+'.log')
+ $beforeSystem=@{}
+ foreach($name in @('service.json','ipc.token')){$beforeSystem[$name]=(Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash}
+ $started=[DateTime]::UtcNow
+ try{
+  $action=New-ScheduledTaskAction -Execute $setup -Argument ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCLOSEAPPLICATIONS /UPDATE=1 /RESTARTEXITCODE=3010 /LOG="'+$systemLog+'"')
+  $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+  $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(3))
+  Register-ScheduledTask -TaskName $systemTask -Action $action -Principal $principal -Settings $settings|Out-Null
+  Start-ScheduledTask -TaskName $systemTask
+  $deadline=[DateTime]::UtcNow.AddSeconds(180);$completed=$false
+  do{
+   $task=Get-ScheduledTask -TaskName $systemTask
+   $info=Get-ScheduledTaskInfo -TaskName $systemTask
+   $completed=$info.LastRunTime.ToUniversalTime() -ge $started.AddSeconds(-1) -and [string]$task.State -ne 'Running' -and $info.LastTaskResult -notin @(267009,267011)
+   if(!$completed){Start-Sleep -Milliseconds 300}
+  }while(!$completed -and [DateTime]::UtcNow -lt $deadline)
+  if(!$completed -or $info.LastTaskResult -ne 0){throw 'SYSTEM_UPDATE_INSTALLER_FAILED'}
+  Assert-InstalledCandidate
+  foreach($name in $beforeSystem.Keys){if((Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash -cne $beforeSystem[$name]){throw 'SYSTEM_UPDATE_CHANGED_OWNER_OR_TOKEN'}}
+  Write-Output 'BETA_SYSTEM_UPDATE_PASS real SYSTEM Setup UPDATE=1; original owner/config/token and running service preserved'
+ }finally{
+  Unregister-ScheduledTask -TaskName $systemTask -Confirm:$false -ErrorAction SilentlyContinue
+ }
  $uninstaller=Join-Path $app 'unins000.exe'
  if(!(Test-Path -LiteralPath $uninstaller)){throw 'REAL_UNINSTALLER_REQUIRED'}
  Invoke-OwnedInstaller $uninstaller 'uninstall'
