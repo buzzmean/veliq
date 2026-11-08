@@ -35,9 +35,35 @@ def wait_fixture_health(engine):
     host.relay_health='http://127.0.0.1:9090/healthz'
     return host.wait_health()
 
+def activation_failure(raw, exit_code):
+    """Only reviewed error codes and traceback locations leave the private log."""
+    import importlib.util
+    spec=importlib.util.spec_from_file_location('isolated_diagnostics',Path(__file__).resolve().parents[2]/'deploy/vps/activation-diagnostics.py')
+    diagnostics=importlib.util.module_from_spec(spec);spec.loader.exec_module(diagnostics)
+    text=raw.decode('utf-8','replace')
+    frames=[]
+    for name,line in re.findall(r'File "[^"\n]*/([A-Za-z0-9_-]+\.py)", line ([0-9]+)',text):
+        if name in diagnostics.FILES or name=='isolated-activation.py':
+            frames.append({'file':name,'line':int(line)})
+    return {'stage':'ISOLATED_ACTIVATION','exit_code':exit_code,'log_summary':diagnostics.safe_stream(raw),'traceback':frames[-12:]}
+
+def run_activation():
+    require()
+    log=Path('/var/tmp/neexitlag-upgrade-private/activation.log')
+    with log.open('wb') as output:
+        result=subprocess.run(['python3','tests/deployment/isolated-activation.py'],stdout=output,stderr=subprocess.STDOUT,check=False)
+    if result.returncode:
+        with log.open('rb') as source:
+            source.seek(max(0,log.stat().st_size-65536))
+            report=activation_failure(source.read(65536),result.returncode)
+        import sys
+        print('ISOLATED_ACTIVATION_FAILED '+json.dumps(report),file=sys.stderr,flush=True)
+    return result.returncode
+
 
 if __name__=='__main__':
     import sys
     if sys.argv[1:]==['--commit']:print(commit())
+    elif sys.argv[1:]==['--activation']:raise SystemExit(run_activation())
     elif not sys.argv[1:]:require()
     else:raise SystemExit(90)

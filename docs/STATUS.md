@@ -1,5 +1,13 @@
 # Implementation and verification status
 
+> Final Build639/source d20e957 and CI evidence: [BETA_CANDIDATE_2026-11-02.md](BETA_CANDIDATE_2026-11-02.md).
+> Current beta work, 2026-11-02: draft #56 supersedes the Build618 origin
+> blockers with an owner CONNECT transport. See [BROWSER_AUTHORITY_TRANSPORT.md](BROWSER_AUTHORITY_TRANSPORT.md)
+> for the implemented contract and [BETA_ACCEPTANCE.md](BETA_ACCEPTANCE.md) for
+> exact-SHA CI plus physical PC gates. The historical matrix below is not the
+> current candidate's acceptance result. No production state was inferred.
+
+
 Updated 2026-10-18 on `codex/direct-plus-flowseal`. This file separates what is
 proven where; do not read a Linux or CI result as a real-ISP result.
 

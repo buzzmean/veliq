@@ -89,6 +89,7 @@ func (c *Controller) cleanupOwnedBrowserPoliciesLocked(only *bool) error {
 // Host cancellation represents an intentional stop/shutdown. Initialization
 // errors and process crashes do not authorize removal of the fail-closed guard.
 func (c *Controller) CloseForHost(parent context.Context) error {
+	if c.emergencyClosed.Load() {c.Close();return nil}
 	var cleanup error
 	if parent.Err() != nil {
 		c.activationMu.Lock()
@@ -98,8 +99,9 @@ func (c *Controller) CloseForHost(parent context.Context) error {
 		c.mu.Unlock()
 		// Cached PAC gets DIRECT at the deliberate stop boundary, before removal.
 		guardErr := c.publishBrowserGuard(false)
+		authorityErr := c.releaseBrowserAuthority()
 		c.browser.mu.Lock()
-		cleanup = errors.Join(guardErr, c.cleanupOwnedBrowserPoliciesLocked(nil))
+		cleanup = errors.Join(guardErr, authorityErr, c.cleanupOwnedBrowserPoliciesLocked(nil))
 		c.browser.mu.Unlock()
 		c.activationMu.Unlock()
 	}

@@ -1,11 +1,12 @@
 {
-  "version":1,
-  "reviewed":"2026-10-24",
-  "source":"Owner routing requirements and observed ISP behaviour, 2026-10-22..24; classifications are operator policy, not universal availability measurements",
+  "version":2,
+  "reviewed":"2026-11-06",
+  "source":"Owner service-routing requirements, 2026-10-22..2026-11-06; Gemini is a scoped region-sensitive policy, not a measured universal outage. Classifications are operator policy, not availability measurements",
   "rules":[
     {"group":"openai","kind":"RELAY","protected":true,"suffixes":["chatgpt.com","openai.com","oaistatic.com","oaiusercontent.com","chat.com"]},
     {"group":"telegram","kind":"RELAY","suffixes":["telegram.org","t.me"]},
     {"group":"anthropic","kind":"RELAY","suffixes":["claude.ai","anthropic.com","claudeusercontent.com","claude.com"]},
+    {"group":"gemini","kind":"RELAY","suffixes":["gemini.google.com","aistudio.google.com","generativelanguage.googleapis.com","alkalimakersuite-pa.clients6.google.com","alkalimakersuite-pa.googleapis.com"]},
     {"group":"meta","kind":"RELAY","suffixes":["instagram.com","cdninstagram.com","facebook.com","fbcdn.net","fb.com","messenger.com"]},
     {"group":"youtube-media","kind":"DPI","suffixes":["youtube.com","googlevideo.com","ytimg.com","ggpht.com","youtube-nocookie.com","youtubei.googleapis.com","youtube.googleapis.com","youtubeembeddedplayer.googleapis.com","youtubekids.com","youtu.be","yt3.googleusercontent.com","wide-youtube.l.google.com","youtube-ui.l.google.com","ytimg.l.google.com","jnn-pa.googleapis.com"]},
     {"group":"discord","kind":"DPI","suffixes":["discord.com","discord.gg","discordapp.com","discordapp.net","discord.media","discordcdn.com","discordstatus.com","discord.gift","discordactivities.com","discord-activities.com","discord-attachments-uploads-prd.storage.googleapis.com"]},

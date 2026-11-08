@@ -100,14 +100,16 @@ func (c *Controller) ConfigureClub(m Manifest) error {
 // manifest/service and are deliberately outside this boundary.
 func clubReadMethod(method string) bool {
 	switch method {
-	case "riot.status", "browser.local.probes", "traffic.status", "update.status", "local.catalog", "relay.primary.status", "relay.pool.diagnostics", "status", "profiles", "activation.status", "browser.native.status", "browser.status", "edge.status", "gameudp.status", "club.status", "capture.changes.marker", "capture.changes", "capture.diagnostics":
+	case "automation.status":
+		return true
+	case "account.status", "riot.status", "browser.local.probes", "traffic.status", "update.status", "local.catalog", "relay.primary.status", "relay.pool.diagnostics", "status", "profiles", "activation.status", "subscription.status", "subscription.refresh", "browser.native.status", "browser.status", "edge.status", "gameudp.status", "club.status", "capture.changes.marker", "capture.changes", "capture.diagnostics":
 		return true
 	default:
 		return false
 	}
 }
 func (c *Controller) HandleOwnerIPC(ctx context.Context, method string, raw json.RawMessage) (any, error) {
-	if c.clubMode.Load() && !clubReadMethod(method) {
+	if c.clubMode.Load() && !clubReadMethod(method) && !emergencyMethod(method) {
 		return nil, errors.New("CLUB_ADMIN_MANAGED")
 	}
 	return c.Handle(ctx, method, raw)

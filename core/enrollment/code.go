@@ -62,12 +62,15 @@ type Request struct {
 	Device freshpc.Request `json:"device"`
 }
 type Response struct {
+	Account     *AccountBinding   `json:"account,omitempty"`
 	ProbeToken  string            `json:"probe_token"`
 	DeviceID    string            `json:"device_id"`
 	Certificate string            `json:"certificate"`
 	Trust       map[string]string `json:"trust"`
 }
 type Policy struct {
+	AccountOrigin  string `json:"account_origin,omitempty"`
+	AccountReady   bool   `json:"account_ready"`
 	Ready          bool   `json:"enrollment_ready"`
 	HardwareSalt   string `json:"hardware_salt"`
 	CANotAfter     string `json:"ca_not_after"`

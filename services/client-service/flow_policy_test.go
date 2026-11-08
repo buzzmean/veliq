@@ -55,8 +55,8 @@ func TestDiscordHybridAndRequiredIsolation(t *testing.T) {
 	}
 	other := id
 	other.Path = `C:\Other\Other.exe`
-	if d := c.Classify(other, policyTuple("tcp", 443)); !d.Route.Direct() || d.Block || d.BlockOnFailure {
-		t.Fatal("unrelated application affected", d)
+	if d := c.Classify(other, policyTuple("tcp", 443)); !d.Route.Direct() || d.Block || d.Group == p.ID || !d.Deferred {
+		t.Fatal("unrelated application inherited Discord instead of its own origin policy", d)
 	}
 }
 func TestDomainDecisionPinnedAcrossProfileChanges(t *testing.T) {
@@ -118,7 +118,7 @@ func TestChatGPTHelpersAncestryAndRootExit(t *testing.T) {
 	other.ParentCreationTime = 0
 	g.all = []wp.ProcessIdentity{other}
 	c.groupAt = time.Time{}
-	if d = c.Classify(other, policyTuple("tcp", 443)); !d.Route.Direct() || d.BlockOnFailure {
+	if d = c.Classify(other, policyTuple("tcp", 443)); !d.Route.Direct() || d.Group == "openai" || !d.Deferred {
 		t.Fatal("reused PID borrowed protected group")
 	}
 }

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"github.com/buzzmean/neexitlag/core/ipc"
+	"github.com/buzzmean/neexitlag/core/emergency"
 	windowsplatform "github.com/buzzmean/neexitlag/platform/windows"
 	clientservice "github.com/buzzmean/neexitlag/services/client-service"
 	"log/slog"
@@ -15,6 +17,10 @@ import (
 
 func run(ctx context.Context, path string) error { return runReady(ctx, path, nil) }
 func runReady(ctx context.Context, path string, ready func()) error {
+	ctx,cancelHost:=context.WithCancel(ctx)
+	defer cancelHost()
+	initCtx,cancelInit:=context.WithCancel(ctx)
+	defer cancelInit()
 	manifest, e := clientservice.LoadManifest(path)
 	if e != nil {
 		return e
@@ -45,22 +51,37 @@ func runReady(ctx context.Context, path string, ready func()) error {
 		}
 	}
 	managedActivation := controller.ConfigureActivation(manifest)
+	if err := controller.RestoreOwnerAuthorityListener(); err != nil {
+		slog.Warn("owned CONNECT listener restore incomplete", "class", "AUTHORITY_LISTENER_RESTORE_FAILED")
+	}
 	// The pipe opens before the slow stages so SCM does not wait on the network and
 	// the GUI can tell "starting" from "not installed". Methods are rejected until
 	// initialization finishes (see startupGate).
 	var gate startupGate
+	initDone := make(chan struct{})
+	emergencyManager:=emergency.NewManager(emergency.New(manifest.OwnerSID,windowsplatform.ReadEmergencyVerifier),func()error{
+		controller.BeginEmergencyStop()
+		cancelInit()
+		<-initDone
+		return controller.FinishEmergencyStop()
+	})
+	controller.ConfigureEmergencyManager(emergencyManager)
+	gate.emergencyStopping=controller.EmergencyStopping
 	server, e := ipc.New(strings.TrimSpace(string(token)), gate.wrap(controller.HandleOwnerIPC))
 	if e != nil {
 		return e
+	}
+	server.AfterReply=func(method string,reply ipc.Response,writeError error){
+		if method=="emergency.finish" && reply.OK && writeError==nil {cancelHost()}
 	}
 	listener, e := clientservice.ListenIPC(manifest.OwnerSID)
 	if e != nil {
 		return e
 	}
 	defer listener.Close()
-	initDone := make(chan struct{})
 	go func() {
 		defer close(initDone)
+		if initCtx.Err()!=nil {return}
 		// Restore listener and owned PAC before remote CP/network initialization.
 		// A code-managed boot restores policy only after binding/authentication;
 		// its activation worker owns that transition, never this parallel stage.
@@ -70,10 +91,11 @@ func runReady(ctx context.Context, path string, ready func()) error {
 			}
 		}
 		if manifest.ControlPlaneURL != "" && !managedActivation {
-			if e := controller.ConnectRemote(ctx, manifest); e != nil {
+			if e := controller.ConnectRemote(initCtx, manifest); e != nil {
 				slog.Warn("control plane initialization unavailable; capture remains DIRECT", "error", e)
 			}
 		}
+		if initCtx.Err()!=nil {return}
 		controller.Start()
 		if !managedActivation && controller.Snapshot().Settings.Automatic {
 			if _, e := controller.Handle(ctx, "optimize", []byte(`{"enabled":true}`)); e != nil {
@@ -83,13 +105,14 @@ func runReady(ctx context.Context, path string, ready func()) error {
 		gate.ready.Store(true)
 		slog.Info("service initialization complete")
 	}()
-	defer func() { <-initDone }() // cancelled ctx unblocks the stages; Close must not race them
+	defer func() { cancelInit(); <-initDone }() // cancelled ctx unblocks the stages; Close must not race them
 	if ready != nil {
 		ready()
 	}
 	return clientservice.ServeIPC(ctx, listener, server)
 }
 func main() {
+	ownerProxy := flag.Bool("owner-system-proxy", false, "owner-user WinINET worker; private stdin, no service credentials")
 	recovery := flag.Bool("chrome-recovery", false, "owner-scoped Chrome recovery transport; no service privileges or credentials")
 	recoveryPort := flag.Uint("recovery-port", 0, "persisted IPv4 loopback recovery port")
 	path := flag.String("config", "", "absolute service manifest path")
@@ -97,6 +120,12 @@ func main() {
 	cleanup := flag.Bool("cleanup-browser-policy", false, "remove only journal-owned browser policies; no capture/enrollment/network")
 	console := flag.Bool("console", false, "run as an interactive service host for diagnostics")
 	flag.Parse()
+	if *ownerProxy {
+		if runOwnerSystemProxy(os.Stdin, os.Stdout) != nil {
+			os.Exit(1)
+		}
+		return
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	signals := make(chan os.Signal, 1)
@@ -136,7 +165,7 @@ func main() {
 			c.BrowserOwnerSID = manifest.OwnerSID
 			err = c.SetCustomPath(manifest.StateDirectory + string(os.PathSeparator) + "profiles.json")
 			if err == nil {
-				err = c.CleanupOwnedBrowserPolicies()
+				err = errors.Join(c.RestoreOwnerBrowserProxy(), c.CleanupOwnedBrowserPolicies())
 			}
 			c.Close()
 		}

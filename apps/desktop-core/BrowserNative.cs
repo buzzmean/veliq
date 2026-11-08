@@ -7,6 +7,7 @@ public sealed class NativeBrowserStatus
     public string State {get;set;}="";
     public string Reason {get;set;}="";
     public string NativeOnlyState {get;set;}="";
+    public BrowserAuthorityStatus AuthorityTransport { get; set; } = new();
     public int Version { get; set; }
     public bool CaptureReady { get; set; }
     public bool Optimizing { get; set; }
@@ -15,6 +16,19 @@ public sealed class NativeBrowserStatus
     public NativeBrowserRecord[] Records { get; set; } = [];
     public bool Truncated { get; set; }
     public ulong Lost { get; set; }
+}
+public sealed class BrowserAuthorityStatus
+{
+    public string State { get; set; } = "";
+    public bool SystemProxyApplied { get; set; }
+    public int SafeFallbackRequests { get; set; }
+    public BrowserAuthorityProof[] Profiles { get; set; } = [];
+}
+public sealed class BrowserAuthorityProof
+{
+    public string ProfileId { get; set; } = "";
+    public int Requests { get; set; }
+    public int Exchanges { get; set; }
 }
 public sealed class NativeBrowserTiming
 {
@@ -55,10 +69,12 @@ public sealed partial class DesktopViewModel
     public string BrowserReadinessText {get;private set;}="Подготавливаем браузер…";
     public void ApplyNativeBrowserReadiness(NativeBrowserStatus status){
         var configured = Applications.Where(a => NativeBrowser(a.Profile) && a.Profile.Mode == "AUTO").Select(a => a.Profile.Id).ToArray();
-        var observed = configured.Any(id => status.Profiles.Any(p => p.ProfileId == id
-            && p.NativeOnly is { BidirectionalExchanges: > 0, SentBytes: > 0, ReceivedBytes: > 0 }));
-        var next=!Optimizing?"Браузеры используют обычную сеть.":status.CaptureReady&&status.Optimizing&&status.State=="READY_NEW_CONNECTIONS"&&observed
-          ?"Браузеры: обмен через VELIQ подтверждён."
+        var authority=status.AuthorityTransport;
+        var observed = authority.SystemProxyApplied && configured.Any(id => authority.Profiles.Any(p => p.ProfileId == id && p.Requests > 0 && p.Exchanges > 0));
+        var next=!Optimizing?"Браузеры используют обычную сеть.":status.CaptureReady&&status.Optimizing&&status.State=="AUTHORITY_REQUEST_OBSERVED"&&observed
+          ?"Браузер: обмен по адресатам подтверждён."
+          :status.CaptureReady&&status.Optimizing&&status.State=="AUTHORITY_PENDING"
+          ?"Подготавливаем браузер: временно используется защищённый маршрут."
           :"Подготавливаем браузер…";
         if(BrowserReadinessText!=next){BrowserReadinessText=next;Changed(nameof(BrowserReadinessText));HealthChanged();}
     }
@@ -75,7 +91,7 @@ public sealed partial class DesktopViewModel
     }
     public async Task EnableNativeBrowserAsync(Profile p, CancellationToken ct = default)
     {
-        // Endpoint validates owner/capture before native publication, without PAC.
+        // Endpoint validates owner/capture; authority PAC uptake is observed separately.
         // A refusal never starts or closes browser processes.
         await client.Call<JsonElement>("browser.native.enable", new { profile_id = p.Id }, ct);
         startupChromeProfiles.Remove(p.Id);

@@ -1,0 +1,232 @@
+{
+  "source_commit": "",
+  "service_sha256": "",
+  "gui_sha256": "",
+  "pilot_size": 6,
+  "owner_reviewed": false,
+  "global": {
+    "account_onboarding": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "go_linux": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "go_windows": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "filters": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "desktop": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "origin_isolation": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "relay_fail_closed": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "listener_capture_fail_closed": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "installer_vm": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "artifact_integrity": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "server_readiness": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "activation_capacity": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "certificates": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "code_hygiene": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "pubg_match": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "valorant_match": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    },
+    "faceit_match": {
+      "status": "NOT_RUN",
+      "evidence": "",
+      "sha256": ""
+    }
+  },
+  "pcs": [
+    {
+      "id": "PC01",
+      "source_commit": "",
+      "service_sha256": "",
+      "gui_sha256": "",
+      "checks": {
+        "account_sign_in": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "install": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "standard_user": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "browser_sites": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "ordinary_direct": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "youtube_2160p": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "discord_voice_local": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "freeze_reboot": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "identity_stable": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "rollback": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "network_recovery": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "owner_proxy_lifecycle": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        }
+      }
+    },
+    {
+      "id": "PC02",
+      "source_commit": "",
+      "service_sha256": "",
+      "gui_sha256": "",
+      "checks": {
+        "account_sign_in": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "install": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "standard_user": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "browser_sites": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "ordinary_direct": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "youtube_2160p": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "discord_voice_local": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "freeze_reboot": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "identity_stable": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "rollback": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "network_recovery": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        },
+        "owner_proxy_lifecycle": {
+          "status": "NOT_RUN",
+          "evidence": "",
+          "sha256": ""
+        }
+      }
+    }
+  ]
+}

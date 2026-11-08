@@ -5,7 +5,8 @@ using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Text.Json;
 namespace Neexitlag.Desktop;
-// Club UI deliberately has no settings, activation, disable or routing mutations.
+// Club UI has no ordinary routing mutations. Emergency stop is independently
+// password-authorized by the service; password setup requires the elevated owner.
 // Actual authorization is enforced by the service, independently of this window.
 // Layout follows the «Режим клуба» screen of app-ui/index.html.
 public sealed class ClubWindow : Window
@@ -15,6 +16,7 @@ public sealed class ClubWindow : Window
     readonly TextBlock title=new(){Text="Подготовка",FontSize=52,FontWeight=FontWeights.ExtraBold,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,12)};
     readonly TextBlock status=new(){Text="Подготавливаем VELIQ…",FontSize=16,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,22)};
     readonly TextBlock games=new(){TextWrapping=TextWrapping.Wrap,HorizontalAlignment=HorizontalAlignment.Right,TextAlignment=TextAlignment.Right};
+    readonly TextBlock clubName=new(){Text="Клубный режим",TextWrapping=TextWrapping.Wrap,HorizontalAlignment=HorizontalAlignment.Right,TextAlignment=TextAlignment.Right};
     readonly Rectangle signal=new(){Visibility=Visibility.Collapsed};
     readonly Border badge=new(){Width=200,Height=200,CornerRadius=new CornerRadius(72),BorderThickness=new Thickness(2),ClipToBounds=true};
     readonly IServiceClient service=new ServiceClient();bool polling,exiting;string trayState="";System.Drawing.Icon? trayIcon;
@@ -28,7 +30,9 @@ public sealed class ClubWindow : Window
         Content=Layout();
         SetTray("connecting");
         tray.Text="VELIQ · клуб";tray.Visible=true;
-        var menu=new System.Windows.Forms.ContextMenuStrip();menu.Items.Add("Состояние VELIQ",null,(_,_)=>Dispatcher.Invoke(ShowFromTray));TrayMenuRenderer.Apply(menu);tray.ContextMenuStrip=menu;
+        var menu=new System.Windows.Forms.ContextMenuStrip();menu.Items.Add("Состояние VELIQ",null,(_,_)=>Dispatcher.Invoke(ShowFromTray));menu.Items.Add("Аварийно отключить VELIQ…",null,(_,_)=>Dispatcher.Invoke(EmergencyExit));
+        menu.Items.Add("Настроить пароль отключения…",null,(_,_)=>Dispatcher.Invoke(()=>{try{EmergencyPasswordStore.OpenSetup();}catch(System.ComponentModel.Win32Exception){}}));
+        TrayMenuRenderer.Apply(menu);tray.ContextMenuStrip=menu;
         tray.MouseClick+=(_,args)=>{if(args.Button==System.Windows.Forms.MouseButtons.Left)Dispatcher.Invoke(ShowFromTray);};
         Closing+=(_,e)=>{if(!exiting){e.Cancel=true;Hide();}};
         timer.Tick+=async(_,_)=>await Poll();timer.Start();_=Poll();
@@ -38,6 +42,7 @@ public sealed class ClubWindow : Window
     {
         title.Foreground=Res("Text");status.Foreground=Res("TextMuted");games.Foreground=Res("TextMuted");
         var list=new StackPanel();
+        clubName.Foreground=Res("TextMuted");list.Children.Add(Row("Клуб",clubName));
         list.Children.Add(Row("Игры",games));
         list.Children.Add(Row("Если что-то не открывается",new TextBlock{Text="позовите администратора",Foreground=Res("TextMuted")}));
         var state=new StackPanel{VerticalAlignment=VerticalAlignment.Center};
@@ -92,9 +97,18 @@ public sealed class ClubWindow : Window
             else ShowState("Подготовка","Готовим подключение…","connecting");
             try{games.Text=ClubPresentation.GameLine(await service.Call<GameUdpStatus>("gameudp.status"));}
             catch{games.Text="PUBG: диагностика пока недоступна";}
+            try{var account=await service.Call<AccountConnectionView>("account.status");clubName.Text=account.Kind=="club"&&account.Name.Length>0?account.Name:"Клубный режим";}catch{}
         }
         catch {ShowState("Подготовка","Ожидаем готовность службы VELIQ…","connecting");}
         finally {polling=false;}
+    }
+    void EmergencyExit()
+    {
+        timer.Stop();
+        var dialog=new EmergencyPasswordWindow(false,service);
+        if(IsVisible)dialog.Owner=this;
+        dialog.ShowDialog();
+        if(dialog.Succeeded){BrowserNativePolicy.RequestRefresh();Exit();}else timer.Start();
     }
     public void ShowFromTray(){Show();WindowState=WindowState.Normal;Activate();}
     // Same-owner installer activation pipe only; never disables service or browsers.

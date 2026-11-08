@@ -24,7 +24,7 @@ public sealed class RouteOption(string key,string mode,string? relayId,string la
 }
 public sealed partial class GameCatalogViewModel
 {
-    public ObservableCollection<RouteOption> Routes {get;}=[new("DIRECT","DIRECT",null,"Напрямую","как без VELIQ"),new("DIRECT_PLUS","DIRECT_PLUS",null,"Локально","обход на этом ПК"),new("AUTO","AUTO",null,"Авто","VELIQ выберет сам")];
+    public ObservableCollection<RouteOption> Routes {get;}=[new("DIRECT","DIRECT",null,"Напрямую","как без VELIQ"),new("DIRECT_PLUS","DIRECT_PLUS",null,"Локально","новые игровые UDP-подключения без VPS"),new("AUTO","AUTO",null,"Авто","VELIQ выберет сам")];
     GameCard? selected;
     public GameCard? Selected {get=>selected;private set{if(Set(ref selected,value))Changed(nameof(HasSelection));}}
     public bool HasSelection=>Selected is not null;

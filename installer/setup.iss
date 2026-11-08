@@ -1,4 +1,4 @@
-; Build dependency only. Runtime uses Windows PowerShell 5.1, no SDK/Git/Go.
+﻿; Build dependency only. Runtime uses Windows PowerShell 5.1, no SDK/Git/Go.
 #ifndef StageRoot
  #define StageRoot "..\bin\installer"
 #endif
@@ -32,9 +32,11 @@ WizardImageFile=assets\wizard-100.bmp,assets\wizard-125.bmp,assets\wizard-150.bm
 WizardSmallImageFile=assets\wizard-small-100.bmp,assets\wizard-small-125.bmp,assets\wizard-small-150.bmp,assets\wizard-small-175.bmp,assets\wizard-small-200.bmp,assets\wizard-small-225.bmp,assets\wizard-small-250.bmp
 WizardImageStretch=no
 RestartIfNeededByRun=no
-; Never close or restart other applications (browsers above all). Our own GUI is asked
-; to exit through its pipe in PrepareToInstall; a still-locked VELIQ.exe is replaced at
-; the next restart (restartreplace).
+AlwaysRestart=no
+UninstallRestartComputer=no
+; A busy GUI is a preflight failure. Never defer replacement to a later boot.
+; Interactive Setup selects and locks "do not restart" itself. Automation and
+; uninstall retain /NORESTART because they do not use the wizard's choice.
 CloseApplications=no
 RestartApplications=no
 UninstallDisplayName=VELIQ
@@ -44,8 +46,8 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 WelcomeLabel1=Установка VELIQ
 WelcomeLabel2=VELIQ строит оптимальный маршрут для каждого соединения: заблокированное открывается, игры получают самый быстрый путь.%n%nWindows один раз попросит права администратора — для службы, которая строит маршруты.
 FinishedHeadingLabel=Готово
-FinishedLabelNoIcons=VELIQ установлен. Откройте программу, введите код активации и нажмите «Оптимизировать».
-FinishedLabel=VELIQ установлен. Откройте программу, введите код активации и нажмите «Оптимизировать».
+FinishedLabelNoIcons=VELIQ установлен. Откройте программу, войдите в аккаунт и нажмите «Оптимизировать».
+FinishedLabel=VELIQ установлен. Откройте программу, войдите в аккаунт и нажмите «Оптимизировать».
 [InstallDelete]
 ; Pre-rebrand installs used "VELIQ Setup"; its payload is superseded by {app}.
 Type: filesandordirs; Name: "{autopf}\VELIQ Setup"
@@ -60,15 +62,62 @@ Type: filesandordirs; Name: "{app}\driver"
 [Tasks]
 Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; GroupDescription: "Ярлыки:"; Check: NotClubImage
 [Files]
+Source: "{#StageRoot}\payload\installer\install-safety.ps1"; DestName: "veliq-install-preflight.ps1"; Flags: dontcopy
 Source: "{#StageRoot}\payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#StageRoot}\payload\gui\VELIQ.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace
+Source: "{#StageRoot}\payload\gui\VELIQ.exe"; DestDir: "{app}"; Flags: ignoreversion
 [Run]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""& '{app}\installer\install-package.ps1' -ClubCodeFile '{code:ClubCodeFile}' {code:ClubImageArgument} {code:UpdateArgument}"""; Flags: runhidden waituntilterminated; StatusMsg: "Устанавливаем VELIQ…"; BeforeInstall: ClearInstallMarker; AfterInstall: CheckInstall
-Filename: "{app}\VELIQ.exe"; Description: "Открыть VELIQ и ввести код активации"; Flags: runasoriginaluser nowait postinstall skipifsilent; Check: NotClubImage
+Filename: "{app}\VELIQ.exe"; Description: "Открыть VELIQ и подключить аккаунт"; Flags: runasoriginaluser nowait postinstall skipifsilent; Check: ShowAccountSetup
 [Icons]
 Name: "{autoprograms}\VELIQ"; Filename: "{app}\VELIQ.exe"
 Name: "{autodesktop}\VELIQ"; Filename: "{app}\VELIQ.exe"; Tasks: desktopicon; Check: NotClubImage
 [Code]
+function SafeSessionArguments(RequireNoRestart: Boolean): Boolean;
+var I, Separator: Integer; Arg: String; NoRestart: Boolean;
+begin
+ NoRestart := False;
+ Result := False;
+ for I := 1 to ParamCount do begin
+   Arg := Uppercase(ParamStr(I));
+   if Arg='/NORESTART' then NoRestart := True;
+   Separator := Pos('=', Arg);
+   if Separator>0 then Arg := Copy(Arg, 1, Separator-1);
+   if (Arg='/LOADINF') or (Arg='/CLOSEAPPLICATIONS') or (Arg='/FORCECLOSEAPPLICATIONS') or
+      (Arg='/RESTARTAPPLICATIONS') then Exit;
+ end;
+ Result := NoRestart or not RequireNoRestart;
+ if not Result then
+   Log('VELIQ_NORESTART_REQUIRED; installation has not started');
+end;
+function InitializeSetup(): Boolean;
+begin
+ Result := SafeSessionArguments(WizardSilent);
+ if not Result and not WizardSilent then
+   MsgBox('Установка остановлена: параметры закрытия или перезапуска приложений запрещены. Запустите установщик обычным двойным щелчком. ПК и приложения не изменены.', mbError, MB_OK);
+end;
+
+procedure LockNoRestartChoice;
+begin
+ { Inno 6.4.3 imNormal reads these choices when finishing/preparing. Merely
+   returning False from NeedRestart does not override its internal restart flag. }
+ WizardForm.NoRadio.Checked := True;
+ WizardForm.YesRadio.Enabled := False;
+ WizardForm.PreparingNoRadio.Checked := True;
+ WizardForm.PreparingYesRadio.Enabled := False;
+end;
+
+procedure InitializeWizard;
+begin
+ LockNoRestartChoice;
+end;
+
+procedure CurPageChanged(CurPageID: Integer);
+begin
+ LockNoRestartChoice;
+ { Never offer the user an enabled restart choice, even if Inno detected a
+   late restart requirement. The pending operation itself remains untouched. }
+end;
+
 function ClubCodeFile(Param: String): String;
 begin
  Result := ExpandConstant('{param:CLUBCODEFILE|}');
@@ -85,17 +134,39 @@ begin
  if ExpandConstant('{param:UPDATE|0}')='1' then Result := '-Update';
 end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var Code: Integer;
+var Code: Integer; Script: String;
 begin
  Result := '';
- if ExpandConstant('{param:UPDATE|0}')='1' then Exit;
- Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-  '-NoProfile -NonInteractive -Command "$s=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value+''-''+[Diagnostics.Process]::GetCurrentProcess().SessionId;$p=[IO.Pipes.NamedPipeClientStream]::new(''.'',''NeExitLag-activate-''+$s,[IO.Pipes.PipeDirection]::Out);try{$p.Connect(500);$p.WriteByte(2);Start-Sleep -Seconds 2}catch{}finally{$p.Dispose()}"',
-  '', SW_HIDE, ewWaitUntilTerminated, Code);
+ NeedsRestart := False; { A refusal must never offer/trigger a system restart. }
+ if Pos('''', ExpandConstant('{app}'))>0 then begin
+   Result := 'INSTALL_PREFLIGHT_PATH_INVALID';
+   Exit;
+ end;
+ ExtractTemporaryFile('veliq-install-preflight.ps1');
+ Script := ExpandConstant('{tmp}\veliq-install-preflight.ps1');
+ if Pos('''', Script)>0 then begin
+   Result := 'INSTALL_PREFLIGHT_PATH_INVALID';
+   Exit;
+ end;
+ if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+  '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference=' + #39 + 'Stop' + #39 + '; & ' + #39 + Script + #39 + ' -Preflight -AppDirectory ' + #39 + ExpandConstant('{app}') + #39 + '; exit $LASTEXITCODE"',
+  '', SW_HIDE, ewWaitUntilTerminated, Code) then begin
+   Result := 'INSTALL_PREFLIGHT_UNAVAILABLE';
+   Exit;
+ end;
+ if Code=3010 then
+   Result := 'INSTALL_REBOOT_REQUIRED: установка отложена; перезагрузка не выполняется.'
+ else if Code<>0 then
+   Result := 'INSTALL_PREFLIGHT_FAILED: проверьте состояние Windows и закройте только VELIQ. Браузеры закрывать не нужно.';
 end;
 function NotClubImage(): Boolean;
 begin
  Result := ExpandConstant('{param:CLUBIMAGE|0}')<>'1';
+end;
+function ShowAccountSetup(): Boolean;
+begin
+ Result := FileExists(ExpandConstant('{app}\install-success.json')) and
+   (NotClubImage() or (ClubCodeFile('')=''));
 end;
 procedure ClearInstallMarker;
 begin
@@ -104,13 +175,40 @@ end;
 function InitializeUninstall(): Boolean;
 var Code: Integer;
 begin
+ Result := SafeSessionArguments(True);
+ if not Result then begin
+   if not UninstallSilent then
+     MsgBox('Удаление остановлено: требуется запуск с /NORESTART. ПК не будет перезагружен.', mbError, MB_OK);
+   Exit;
+ end;
+ Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+  '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference=' + #39 + 'Stop' + #39 + '; & ' + #39 + ExpandConstant('{app}\installer\install-safety.ps1') + #39 + ' -Preflight -AppDirectory ' + #39 + ExpandConstant('{app}') + #39 + '; exit $LASTEXITCODE"', '', SW_HIDE, ewWaitUntilTerminated, Code);
+ Result := Result and (Code=0);
+ if not Result then begin
+   Log('VELIQ_UNINSTALL_PREFLIGHT_FAILED; no service/file changes performed');
+   Exit;
+ end;
  Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
   '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "& ' + #39 + ExpandConstant('{app}\installer\install-package.ps1') + #39 + ' -Remove"', '', SW_HIDE, ewWaitUntilTerminated, Code);
  Result := Result and (Code=0);
- if not Result then MsgBox('VELIQ: удаление остановлено. Данные сохранены; проверьте install-result.json.', mbError, MB_OK);
+ if not Result then begin
+   Log('VELIQ_UNINSTALL_FAILED; existing state preserved; check install-result.json');
+   if not UninstallSilent then
+     MsgBox('VELIQ: удаление остановлено. Данные сохранены; проверьте install-result.json.', mbError, MB_OK);
+ end;
 end;
 procedure CheckInstall;
 begin
  if not FileExists(ExpandConstant('{app}\install-success.json')) then
    RaiseException('Установка VELIQ не завершена. Состояние сохранено; код причины в install-result.json.');
+end;
+
+function GetCustomSetupExitCode(): Integer;
+begin
+ Result := 0;
+ { Exceptions from AfterInstall can be suppressed by /SUPPRESSMSGBOXES while
+   Inno otherwise returns success. The durable marker is written only by a
+   successful package script and cleared before every invocation. }
+ if not FileExists(ExpandConstant('{app}\install-success.json')) then
+   Result := 1;
 end;

@@ -566,6 +566,44 @@ func (c *Controller) edgeReadyLocked(p profiles.Profile) bool {
 	e := c.browser.edge
 	return e != nil && e.server != nil && e.server.Snapshot().Listening && e.saved.Recovery != "" && (e.server.Confirmed(p.ID) || c.silentConfiguredLocked(p.ID, true)) && e.policyActive(c.BrowserOwnerSID)
 }
+
+// Publishing a legacy PAC profile after edge.confirm completes the same activation,
+// rather than revoking its PAC before optimize can observe it. Retain only an
+// unchanged executable/guard scope with a confirmed live listener and policy.
+// Other edits keep the existing cleanup path; no proof transfers to a new scope.
+func (c *Controller) preserveConfirmedEdgeProfileUpdate(raw json.RawMessage, previous []profiles.Profile) bool {
+	if c.browser.readiness.enforced.Load() {
+		return false // The availability contract keeps its existing health/cleanup path.
+	}
+	var q struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(raw, &q) != nil {
+		return false
+	}
+	var old profiles.Profile
+	for _, p := range previous {
+		if p.ID == q.ID {
+			old = p
+			break
+		}
+	}
+	if !edgeProfile(old) || old.Trial != nil || nativeBrowserProfile(old) || (old.Mode != profiles.Direct && old.Mode != profiles.Auto) {
+		return false
+	}
+	c.activationMu.Lock()
+	defer c.activationMu.Unlock()
+	c.browser.mu.Lock()
+	defer c.browser.mu.Unlock()
+	for _, p := range c.Profiles.List() {
+		if p.ID == q.ID && edgeSitesProfile(p) && p.Mode == profiles.Auto && p.Trial == nil && !nativeBrowserProfile(p) && sameProfileExecutables(old.Executables, p.Executables) && edgeClosedPAC(old) == edgeClosedPAC(p) {
+			e := c.browser.edge
+			return e != nil && e.server != nil && e.server.Confirmed(p.ID) && c.edgeReadyLocked(p)
+		}
+	}
+	return false
+}
+
 func (c *Controller) requireEdgeActivation() error {
 	if c.BrowserOwnerSID == "" {
 		return nil

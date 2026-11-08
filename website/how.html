@@ -4,22 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Как работает VELIQ — VELIQ</title>
-  <meta name="description" content="VELIQ замеряет пути и для каждого соединения выбирает лучший: игры получают самый быстрый маршрут, голосовые чаты — стабильный, остальное работает как обычно.">
-  <link rel="canonical" href="https://veliq.app/how.html">
+  <meta name="description" content="VELIQ замеряет пути и для каждого соединения выбирает лучший: игры получают самый быстрый маршрут, голосовые чаты — стабильный, для сайтов подбирается рабочий путь.">
+  <link rel="canonical" href="https://veliqapp.ru/how.html">
   <meta name="theme-color" content="#0A0A0B">
   <meta name="color-scheme" content="light dark">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="VELIQ">
   <meta property="og:locale" content="ru_RU">
   <meta property="og:title" content="Как работает VELIQ — VELIQ">
-  <meta property="og:description" content="VELIQ замеряет пути и для каждого соединения выбирает лучший: игры получают самый быстрый маршрут, голосовые чаты — стабильный, остальное работает как обычно.">
-  <meta property="og:url" content="https://veliq.app/how.html">
-  <meta property="og:image" content="https://veliq.app/assets/img/og-image.png">
+  <meta property="og:description" content="VELIQ замеряет пути и для каждого соединения выбирает лучший: игры получают самый быстрый маршрут, голосовые чаты — стабильный, для сайтов подбирается рабочий путь.">
+  <meta property="og:url" content="https://veliqapp.ru/how.html">
+  <meta property="og:image" content="https://veliqapp.ru/assets/img/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="VELIQ: нажал — работает.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="https://veliq.app/assets/img/og-image.png">
+  <meta name="twitter:image" content="https://veliqapp.ru/assets/img/og-image.png">
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="assets/img/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="assets/img/app-icon-180.png">
@@ -27,7 +27,7 @@
   <link rel="preload" href="assets/fonts/Onest-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/components.css">
-  <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/site.css?v=279f14b43ad3">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head>
 <body>
@@ -45,6 +45,7 @@
       <a href="clubs.html">Клубам</a>
       <a href="pricing.html">Цены</a>
       <a href="support.html">Помощь</a>
+      <a href="account.html">Личный кабинет</a>
     </nav>
     <div class="top__tools">
       <button class="btn btn--quiet btn--icon btn--sm theme-btn" type="button" data-theme-toggle aria-label="Сменить тему">
@@ -85,10 +86,10 @@
 <div class="flow__src">Вы</div>
 <span class="flow__a is-sig" style="grid-row:1"></span><span class="flow__node" style="grid-row:1">быстрый путь</span><span class="flow__b is-sig" style="grid-row:1"></span><span class="flow__dst" style="grid-row:1">Онлайн-игра</span>
 <span class="flow__a is-sig" style="grid-row:2"></span><span class="flow__node" style="grid-row:2">стабильный путь</span><span class="flow__b is-sig" style="grid-row:2"></span><span class="flow__dst" style="grid-row:2">Голосовой чат</span>
-<span class="flow__plain" style="grid-row:3"><em>как обычно</em></span><span class="flow__dst is-plain" style="grid-row:3">Обычный сайт</span>
-<span class="flow__plain" style="grid-row:4"><em>как обычно</em></span><span class="flow__dst is-plain" style="grid-row:4">Банк</span>
+<span class="flow__plain" style="grid-row:3"><em>напрямую</em></span><span class="flow__dst is-plain" style="grid-row:3">Обычный сайт</span>
+<span class="flow__plain" style="grid-row:4"><em>напрямую</em></span><span class="flow__dst is-plain" style="grid-row:4">Банк</span>
 </div>
-<p class="flow__cap">Каждое соединение получает свой путь: игры — самый быстрый маршрут, голосовые чаты — самый стабильный, остальное — как обычно.</p>
+<p class="flow__cap">Каждое соединение получает свой путь: игры — самый быстрый маршрут, голосовые чаты — самый стабильный, сайты — рабочий путь.</p>
       </figure>
     </div>
   </div>
@@ -103,7 +104,7 @@
         <tbody>
 <tr><th scope="row">Онлайн-игры</th><td data-l="Без VELIQ">Путь выбирает провайдер, даже если он длиннее</td><td data-l="С VELIQ" class="vs__us">Самый быстрый путь до игрового сервера</td></tr>
 <tr><th scope="row">Голосовые чаты и стримы</th><td data-l="Без VELIQ">Обрывы и подвисания на загруженных участках сети</td><td data-l="С VELIQ" class="vs__us">Стабильный путь, в том числе через собственные серверы</td></tr>
-<tr><th scope="row">Сайты, которые и так работают</th><td data-l="Без VELIQ">Как обычно</td><td data-l="С VELIQ" class="vs__us">Как обычно — VELIQ их не трогает</td></tr>
+<tr><th scope="row">Сайты, которые и так работают</th><td data-l="Без VELIQ">Как обычно</td><td data-l="С VELIQ" class="vs__us">Напрямую, без лишнего обхода</td></tr>
 <tr><th scope="row">Если путь стал хуже</th><td data-l="Без VELIQ">Ничего не меняется</td><td data-l="С VELIQ" class="vs__us">Маршрут перестраивается сам</td></tr>
 <tr><th scope="row">Что нужно сделать</th><td data-l="Без VELIQ">—</td><td data-l="С VELIQ" class="vs__us">Нажать одну кнопку</td></tr>
         </tbody>
@@ -177,7 +178,7 @@
       </div>
       <div>
         <h2>Помощь</h2>
-        <ul><li><a href="support.html">Вопросы и ответы</a></li><li><a href="support.html#errors">Ошибки и решения</a></li><li><a href="contacts.html">Контакты и реквизиты</a></li><li><a href="mailto:support@veliq.app">support@veliq.app</a></li></ul>
+        <ul><li><a href="support.html">Вопросы и ответы</a></li><li><a href="support.html#errors">Ошибки и решения</a></li><li><a href="contacts.html">Контакты и реквизиты</a></li><li><a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a></li></ul>
       </div>
     </div>
     <div class="foot__bottom">
@@ -188,5 +189,6 @@
 </footer>
 <script src="assets/charts.js"></script>
 <script src="assets/site.js"></script>
+<script src="assets/release.js?v=014d2d929431"></script>
 </body>
 </html>

@@ -22,16 +22,21 @@ public sealed class GameUdpProfile
     public string Summary {
         get {
             if (!Engine.Enabled) return "Игровой UDP-обход выключен. Обычный маршрут приложения сохранён.";
+            if(Engine.LocalOnly && Engine.Flows.Any(f=>f.Stage=="RELAY" && f.LastOutgoing!=default && DateTimeOffset.UtcNow-f.LastOutgoing<TimeSpan.FromSeconds(5)))return "Локальный режим выбран для новых подключений. Старый поток ещё идёт через VPS; переподключитесь к игровому серверу для проверки без VPS.";
             if (Reason!="") return "UDP-обход приостановлен: "+GameUdpMessages.Reason(Reason);
             var f=Engine.Flows.OrderByDescending(f=>f.FlowId).FirstOrDefault();
+            if(f is null && Engine.LocalOnly)return "Готов для новых UDP-потоков: DIRECT → локальный обход. VPS запрещён; вход в матч ещё не проверен.";
             if(f is null)return Engine.InitialPolicy=="LOCAL_FIRST_UNCONFIRMED_ENDPOINT"
                 ? "Обход включён для новых потоков · локальная приманка K12/N2. Ожидаем игровой UDP-трафик."
                 : "Готов для новых UDP-потоков: DIRECT → локальный обход → релей.";
+            if(f.State is "INSUFFICIENT_REPLIES" or "CADENCE_PROBATION")return f.Stage+" · "+f.Destination+" · устойчивых ответов нет. Следующая попытка — при новом подключении.";
+            if(f.LastOutgoing!=default && DateTimeOffset.UtcNow-f.LastOutgoing>TimeSpan.FromSeconds(5))return "Свежий игровой трафик не наблюдается. Последний маршрут: "+f.Stage;
             if(f.State=="LOCAL_PRIMING_INCOMPLETE")return "Приманка отправлена не полностью · "+GameUdpMessages.Reason(f.Reason);
             if(f.Reason=="EXISTING_UDP_PINNED_DIRECT_NO_FIRST_FLIGHT_PROOF")return GameUdpMessages.Reason(f.Reason);
             if(f.State=="TRANSPORT_FAILED")return "Игровой поток: "+GameUdpMessages.Reason(f.Reason);
+            if(f.LastOutgoing!=default && (f.LastReply==default || DateTimeOffset.UtcNow-f.LastReply>TimeSpan.FromSeconds(5)))return f.Stage+" · "+f.Destination+" · свежих ответов сервера не наблюдается; вход в матч не подтверждён.";
             return f.Stage switch {
-                "LOCAL_UDP" when f.FakePackets>0=>"Обход активен · "+f.Destination+" · приманок: "+f.FakePackets+" · ответов: "+f.InboundPackets,
+                "LOCAL_UDP" when f.FakePackets>0=>"Локальная попытка · "+f.Destination+" · приманок: "+f.FakePackets+" · ответов: "+f.InboundPackets,
                 "LOCAL_UDP"=>"Приманка не отправлена · "+GameUdpMessages.Reason(f.Reason),
                 "RELAY"=>"Игровой поток через релей · "+f.Destination+" · ответов: "+f.InboundPackets,
                 _=>"DIRECT · "+f.Destination+" · ответов: "+f.InboundPackets
@@ -39,14 +44,16 @@ public sealed class GameUdpProfile
         }
     }
 }
-public sealed class GameUdpEngine { public string InitialPolicy {get;set;}=""; public bool Enabled {get;set;} public GameUdpFlow[] Flows {get;set;}=[]; }
+public sealed class GameUdpEngine { public bool LocalOnly {get;set;} public string InitialPolicy {get;set;}=""; public bool Enabled {get;set;} public GameUdpFlow[] Flows {get;set;}=[]; }
 public sealed class GameUdpFlow {
+    public DateTimeOffset LastOutgoing {get;set;} public DateTimeOffset LastReply {get;set;}
     public string SelectionReason {get;set;}="";public ulong FlowId {get;set;} public string Stage {get;set;}="";public string Destination {get;set;}="";
     public ulong FakePackets {get;set;} public ulong FakeBytes {get;set;} public ulong OutgoingPackets {get;set;} public ulong InboundPackets {get;set;} public string State {get;set;}=""; public string Reason {get;set;}="";
 }
 public static class GameUdpMessages {
     public static string Reason(string code)=>code switch {
-        "DISABLED_BY_USER"=>"выключен пользователем",
+        "DISABLED_BY_USER"=>"режим выключен",
+        "GAME_UDP_LOCAL_ONLY_EXHAUSTED"=>"локальные варианты исчерпаны; VPS запрещён, новые потоки остаются DIRECT до следующего окна подбора",
         "OPTIMIZATION_DISABLED"=>"оптимизация выключена",
         "GAME_RELAY_OPEN_FAILED"=>"не удалось открыть релей; DIRECT-подмены нет",
         "GAME_RELAY_TRANSPORT_FAILED"=>"соединение с релеем потеряно; DIRECT-подмены нет",
@@ -78,7 +85,7 @@ public sealed partial class DesktopViewModel {
     public void ApplyGameUdp(GameUdpStatus status){var wire=System.Text.Json.JsonSerializer.Serialize(status);if(wire==lastGameUdp)return;lastGameUdp=wire;GameUdpProfiles.Clear();foreach(var p in status.Profiles.OrderBy(p=>p.Name,StringComparer.CurrentCultureIgnoreCase))GameUdpProfiles.Add(p);}
     public async Task RefreshGamesAsync(CancellationToken ct=default)=>ApplyGameUdp(await client.Call<GameUdpStatus>("gameudp.status",cancellationToken:ct));
     public async Task SetGameUdpAsync(string profileId,bool enabled,CancellationToken ct=default){
-        try {ApplyGameUdp(await client.Call<GameUdpStatus>("gameudp.set",new{profile_id=profileId,enabled},ct));Notice=enabled?"Игровой UDP-обход включён для новых потоков. PUBG начинает с локальной приманки, остальные игры — с DIRECT. Проверка загрузки матча ещё нужна.":"Игровой UDP-обход выключен.";}
+        try {ApplyGameUdp(await client.Call<GameUdpStatus>("gameudp.set",new{profile_id=profileId,enabled,local_only=true},ct));Notice=enabled?"Локальный UDP-режим без VPS включён для новых потоков. Старые соединения сохраняют маршрут; вход в матч ещё нужно проверить.":"Игровой UDP-обход выключен.";}
         catch(ServiceException e){ReportAuxiliaryFailure(e,"gameudp.set");Notice="Не удалось изменить игровой UDP-обход: "+GameUdpMessages.Reason(e.Message);}
     }
 }

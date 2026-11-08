@@ -87,6 +87,10 @@ type Snapshot struct {
 	ActiveApps       []string                      `json:"active_apps"`
 }
 type Controller struct {
+	emergencyHandler func(context.Context,string,json.RawMessage)(any,error)
+	emergencyStopped atomic.Bool
+	emergencyClosed atomic.Bool
+	closeOnce sync.Once
 	updater         atomic.Pointer[updater]
 	traffic         *traffic.Client
 	remoteTraffic   remoteTrafficState
@@ -96,6 +100,7 @@ type Controller struct {
 	clubMode        atomic.Bool
 	games           gameRuntime
 	activation      activationRuntime
+	subscription    subscriptionRuntime
 	remoteDone      chan struct{}
 	remoteMu        sync.Mutex
 	remoteCancel    context.CancelFunc
@@ -251,6 +256,9 @@ func (c *Controller) Start() {
 	go func() { defer c.wg.Done(); c.Measurements.Run(c.ctx, c.Selector.Observe) }()
 }
 func (c *Controller) Close() {
+	c.closeOnce.Do(c.closeResources)
+}
+func (c *Controller) closeResources() {
 	if c.browser.readiness.enforced.Load() {
 		_ = c.CleanupOwnedBrowserPolicies() // Before listeners, relay workers or capture stop.
 	}
@@ -268,6 +276,12 @@ func (c *Controller) Close() {
 	c.browser.mu.Unlock()
 	if bs != nil {
 		bs.Close()
+	}
+	c.browser.authority.mu.Lock()
+	authorityServer := c.browser.authority.server
+	c.browser.authority.mu.Unlock()
+	if authorityServer != nil {
+		authorityServer.Close()
 	}
 	if c.Backend != nil {
 		c.Backend.Stop()
@@ -373,7 +387,10 @@ func (c *Controller) Classify(identity windowsplatform.ProcessIdentity, t window
 	}
 	profile, ok := c.matchApplication(identity)
 	if !ok {
-		return decision
+		profile, ok = discoveredApplication(identity)
+		if !ok {
+			return decision
+		}
 	}
 	// Owner-authorized availability contract: no opaque native browser capture
 	// while its PAC lane is suspended. Desktop apps and games retain their policy.
@@ -578,11 +595,21 @@ func (c *Controller) Snapshot() Snapshot {
 	return snapshot
 }
 func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMessage) (result any, err error) {
+	if c.emergencyStopped.Load() && !emergencyMethod(method) {
+		if method=="status" {return c.Snapshot(),nil}
+		return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")
+	}
 	if method == "club.status" {
 		return c.clubStatus(), nil
 	}
 	if (method == "profile.set" || method == "profile.delete" || method == "auto.commit") && c.browserProfileMutation(raw) {
-		defer func() { _ = c.CleanupOwnedBrowserPolicies() }()
+		previous := c.Profiles.List()
+		defer func() {
+			if method == "profile.set" && err == nil && c.preserveConfirmedEdgeProfileUpdate(raw, previous) {
+				return
+			}
+			_ = c.CleanupOwnedBrowserPolicies()
+		}()
 	}
 
 	if !c.activationNetworkAllowed() {
@@ -606,6 +633,7 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 	if isEdgeMutation(method) {
 		c.activationMu.Lock()
 		defer c.activationMu.Unlock()
+		if c.emergencyStopped.Load() {return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")}
 		// Include guard-publication failures before/after handleEdge in the same
 		// bounded status diagnostic; otherwise a failure before listener was invisible.
 		defer func() {
@@ -630,6 +658,7 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 	case "optimize", "profile.set", "profile.delete", "settings.set", "local.set", "local.preset.apply", "auto.commit", "browser.silent.guard", "browser.silent.apply", "browser.prepare", "browser.start", "browser.confirm", "browser.native.enable":
 		c.activationMu.Lock()
 		defer c.activationMu.Unlock()
+		if c.emergencyStopped.Load() {return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")}
 		if e := c.publishBrowserGuard(true); e != nil {
 			return nil, e
 		}
@@ -641,6 +670,9 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		}()
 	}
 	switch method {
+	case "emergency.status", "emergency.stop", "emergency.finish":
+		if c.emergencyHandler==nil {return nil,errors.New("EMERGENCY_PASSWORD_NOT_CONFIGURED")}
+		return c.emergencyHandler(ctx,method,raw)
 	case "update.status":
 		if u := c.updater.Load(); u != nil {
 			return u.snapshot(), nil
@@ -652,14 +684,22 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return c.catalog.snapshot(), nil
 	case "gameudp.status", "gameudp.set", "pubg.status", "pubg.set":
 		return c.handleGameUDP(ctx, method, raw)
+	case "account.status":
+		return c.accountConnectionStatus(), nil
+	case "account.link.start":
+		return c.handleAccountStart(ctx)
 	case "activation.status", "activation.set":
 		return c.handleActivation(method, raw)
+	case "subscription.status", "subscription.refresh":
+		return c.handleSubscription(method)
 	case "browser.native.attribution":
 		return c.nativeBrowserAttribution(), nil
 	case "browser.native.firewall":
 		return windowsplatform.InspectNativeFirewall(ctx), nil
 	case "riot.status":
 		return c.riotStatus(), nil
+	case "automation.status":
+		return c.automaticStatus(), nil
 	case "browser.local.probes":
 		return c.localProbeSnapshot(), nil
 	case "browser.native.enable", "browser.native.status":

@@ -235,22 +235,14 @@ func runNativeBrowserHotAttachFixture(t *testing.T, driver bool) {
 				})
 			}
 			visit("native-active", "127.0.0.3")
-			snap := c.nativeSnapshot()
-			if snap.NativeOnly.Accepted == 0 || snap.NativeOnly.Opened == 0 || snap.NativeOnly.Exchanges == 0 || snap.PACUpstream.Accepted != 0 {
-				t.Fatal("missing native-only or PAC contaminated", snap.NativeOnly, snap.PACUpstream)
-			}
-			controlled := 0
-			for _, record := range snap.Records {
-				if driver && record.Domain != "native-browser.test" {
-					continue
-				} // unrelated browser bootstrap is outside this controlled trial
-				controlled++
-				if record.Policy.Action != flowpolicy.RelayRequired || record.Policy.RelayID != "VPS-01" {
-					t.Fatal("route leak", record.Policy)
-				}
-			}
-			if controlled == 0 || snap.Truncated || snap.Lost != 0 {
-				t.Fatal("incomplete native route proof", controlled, snap.Truncated, snap.Lost)
+			// Тот же 5s бюджет, что у CDP-команды: ждём публикации plan, а не спим.
+			proofCtx, proofCancel := context.WithTimeout(c.ctx, 5*time.Second)
+			snap, proofErr := awaitNativeRouteProof(proofCtx, driver, func() (nativeBrowserSnapshot, <-chan struct{}) {
+				return observeNativeRouteProof(c)
+			})
+			proofCancel()
+			if proofErr != nil {
+				t.Fatal("native route proof", proofErr)
 			}
 			if c.browser.server != nil || c.browser.edge != nil && c.browser.edge.server != nil {
 				t.Fatal("fresh native opened PAC listener")
@@ -288,7 +280,7 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 	if len(addresses) > 0 {
 		address = addresses[0]
 	}
-	cmd := exec.Command(executable, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--remote-debugging-port=0", "--remote-allow-origins=http://localhost", "--host-resolver-rules=MAP native-browser.test "+address, "--user-data-dir="+dir, "about:blank")
+	cmd := exec.Command(executable, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking", "--remote-debugging-port=0", "--remote-allow-origins=http://localhost", "--host-resolver-rules=MAP *.native-browser.test "+address+", MAP native-browser.test "+address, "--user-data-dir="+dir, "about:blank")
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -369,7 +361,11 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 	visit := func(stage, source string) {
 		t.Helper()
 		path := "/" + stage
-		url := fmt.Sprintf("http://native-browser.test:%d%s", port, path)
+		// A browser may keep an idle preconnect from before activation. Existing
+		// TCP is deliberately pinned, including the reflection seam. A distinct
+		// HTTP/1 authority makes this a new-flow test without closing a browser or
+		// moving its existing connection; the same suffix routing rule still applies.
+		url := fmt.Sprintf("http://%s.native-browser.test:%d%s", stage, port, path)
 		// The TEST-NET route exists only while the driver reflects it. Baseline/OFF
 		// test the same live browser against the actual local origin, with no proxy.
 		if address == "192.0.2.254" && stage != "native-active" {
@@ -385,6 +381,7 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 		}
 		end := time.Now().Add(8 * time.Second)
 		observed := false
+		lastBody := ""
 		for time.Now().Before(end) {
 			raw = call("Runtime.evaluate", map[string]any{"expression": "document.body && document.body.textContent", "returnByValue": true})
 			var result struct {
@@ -392,13 +389,19 @@ func startNativeFixtureBrowser(t *testing.T, executable string, port int, addres
 					Value string `json:"value"`
 				} `json:"result"`
 			}
-			if json.Unmarshal(raw, &result) == nil && result.Result.Value == "VELIQ continuity "+path+" source="+source {
+			if json.Unmarshal(raw, &result) == nil {
+				lastBody = result.Result.Value
+			}
+			if lastBody == "VELIQ continuity "+path+" source="+source {
 				observed = true
 				break
 			}
 			time.Sleep(50 * time.Millisecond)
 		}
 		if !observed {
+			if strings.HasPrefix(lastBody, "VELIQ continuity "+path+" source=") {
+				t.Logf("HTTP_BODY_WRONG_SOURCE stage=%s expected=%s actual=%s", stage, source, strings.TrimPrefix(lastBody, "VELIQ continuity "+path+" source="))
+			}
 			t.Fatal("HTTP_BODY_NOT_OBSERVED", stage)
 		}
 		after, e := wp.NewDiscovery().Lookup(identity.PID)

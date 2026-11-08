@@ -64,7 +64,7 @@ func (c Client) call(ctx context.Context, path string, input, output any) error 
 		}
 		_ = json.Unmarshal(raw, &v)
 		switch v.Error {
-		case "ACTIVATION_INVALID", "ACTIVATION_REVOKED", "ACTIVATION_EXPIRED", "ACTIVATION_LIMIT", "MACHINE_DISABLED", "ACTIVATION_RATE_LIMIT", "ACTIVATION_IDENTITY_CONFLICT":
+		case "ACTIVATION_INVALID", "ACTIVATION_REVOKED", "ACTIVATION_EXPIRED", "ACTIVATION_LIMIT", "CLUB_ENROLLMENT_CLOSED", "MACHINE_DISABLED", "ACTIVATION_RATE_LIMIT", "ACTIVATION_IDENTITY_CONFLICT", "ACCOUNT_NOT_CONFIGURED", "MAIL_NOT_CONFIGURED", "ACCOUNT_LINK_INVALID", "ACCOUNT_LINK_EXPIRED", "ACCOUNT_LINK_UNAVAILABLE", "ACCOUNT_LINK_INVALID_RESPONSE", "ACCOUNT_SUBSCRIPTION_REQUIRED", "ACCOUNT_DEVICE_ALREADY_OWNED", "ACCOUNT_IMAGE_REVOKED", "ACCOUNT_IMAGE_LIMIT", "SUBSCRIPTION_EXPIRED":
 			return errors.New(v.Error)
 		}
 		return errors.New("ACTIVATION_UNAVAILABLE")
@@ -96,23 +96,30 @@ func (c Client) Enroll(ctx context.Context, code string, q freshpc.Request, root
 	if e := c.call(ctx, "/api/v1/enroll", Request{Code: code, Device: q}, &out); e != nil {
 		return Response{}, e
 	}
+	if e := ValidateEnrollmentResponse(out, q, roots); e != nil {
+		return Response{}, e
+	}
+	return out, nil
+}
+
+func ValidateEnrollmentResponse(out Response, q freshpc.Request, roots *x509.CertPool) error {
 	pub, e := freshpc.ValidateRequest(q)
 	if e != nil {
-		return Response{}, errors.New("ACTIVATION_INVALID_REQUEST")
+		return errors.New("ACTIVATION_INVALID_REQUEST")
 	}
 	leaf, e := freshpc.ParseCertificate(out.Certificate)
 	if e != nil || out.DeviceID != q.DeviceID || leaf.IsCA || roots == nil {
-		return Response{}, errors.New("ACTIVATION_INVALID_RESPONSE")
+		return errors.New("ACTIVATION_INVALID_RESPONSE")
 	}
 	k, ok := leaf.PublicKey.(ed25519.PublicKey)
 	if !ok || !k.Equal(pub) {
-		return Response{}, errors.New("ACTIVATION_INVALID_RESPONSE")
+		return errors.New("ACTIVATION_INVALID_RESPONSE")
 	}
 	if _, e = leaf.Verify(x509.VerifyOptions{Roots: roots, CurrentTime: time.Now(), KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); e != nil {
-		return Response{}, errors.New("ACTIVATION_INVALID_RESPONSE")
+		return errors.New("ACTIVATION_INVALID_RESPONSE")
 	}
 	if len(out.Trust) == 0 || len(out.Trust) > 16 {
-		return Response{}, errors.New("ACTIVATION_INVALID_RESPONSE")
+		return errors.New("ACTIVATION_INVALID_RESPONSE")
 	}
-	return out, nil
+	return nil
 }

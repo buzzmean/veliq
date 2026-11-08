@@ -8,6 +8,8 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+
+	"github.com/buzzmean/neexitlag/core/originpolicy"
 )
 
 // PAC is inline: it has no fetch failure that could silently revert to DIRECT.
@@ -97,9 +99,10 @@ FindProxyForURL=(function(primary){return function(url,host){host=host.toLowerCa
 	return args, nil
 }
 
-// Owner-authorized availability mode. This is explicitly different from the
-// legacy fail-closed PAC contract: if the proxy infrastructure is unreachable,
-// every host may fall back DIRECT. HTTP CONNECT rejections are not retried here.
+// Availability fallback applies only to ordinary origins. Protected registry
+// floors, profile guard domains and strict profiles remain fail-closed even when
+// both proxy infrastructure and native capture are absent. Existing V1 owner
+// journals are upgraded without duplicating wrappers; browser uptake is separate.
 func AvailabilityPAC(pac string) (string, error) {
 	const prefix = "data:application/x-ns-proxy-autoconfig;base64,"
 	if !strings.HasPrefix(pac, prefix) {
@@ -109,10 +112,34 @@ func AvailabilityPAC(pac string) (string, error) {
 	if err != nil || len(script) > 256*1024 {
 		return "", fmt.Errorf("bounded PAC required")
 	}
-	if !strings.Contains(string(script), "VELIQ_AVAILABILITY_V1") {
-		script = append(script, []byte(`
-// VELIQ_AVAILABILITY_V1
-FindProxyForURL=(function(route){return function(url,host){var p=route(url,host);return /(^|;\s*)DIRECT\s*$/.test(p)?p:p+'; DIRECT';};})(FindProxyForURL);`)...)
+	if !strings.Contains(string(script), "var protectedSuffixes=") || !strings.Contains(string(script), "var strictProxy=") {
+		return "", fmt.Errorf("known guarded PAC metadata required")
+	}
+	if !strings.Contains(string(script), "VELIQ_AVAILABILITY_V2") {
+		floors := []string{}
+		for _, rule := range originpolicy.Bundled().Rules {
+			if rule.Kind == "RELAY" {
+				floors = append(floors, rule.Suffixes...)
+			}
+		}
+		raw, _ := json.Marshal(floors)
+		script = append(script, []byte(fmt.Sprintf(`
+// VELIQ_AVAILABILITY_V2
+var availabilityFloorSuffixes=%s;
+FindProxyForURL=(function(route){return function(url,host){
+ host=host.toLowerCase().replace(/\.$/,'');
+ var p=route(url,host),guard=strictProxy,domains=protectedSuffixes.concat(availabilityFloorSuffixes);
+ for(var i=0;i<domains.length;i++){var d=domains[i].toLowerCase().replace(/\.$/,'');if(host===d||host.slice(-(d.length+1))==='.'+d){guard=true;break;}}
+ if(guard){
+  var parts=p.split(';'),safe=[];
+  for(var j=0;j<parts.length;j++){var item=parts[j].replace(/^\s+|\s+$/g,'');if(item&&!/^DIRECT$/i.test(item))safe.push(item);}
+  return safe.length?safe.join('; '):'PROXY fail-closed.neexitlag.invalid:9';
+ }
+ return /(^|;\s*)DIRECT\s*$/.test(p)?p:p+'; DIRECT';
+};})(FindProxyForURL);`, raw))...)
+	}
+	if len(script) > 256*1024 {
+		return "", fmt.Errorf("bounded PAC required")
 	}
 	return prefix + base64.StdEncoding.EncodeToString(script), nil
 }

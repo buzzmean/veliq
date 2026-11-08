@@ -1,0 +1,62 @@
+<Window x:Class="Neexitlag.Desktop.WelcomeWindow"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ Title="VELIQ — подключение" Width="560" Height="640" MinWidth="520" MinHeight="580"
+ WindowStartupLocation="CenterScreen" Background="{StaticResource Bg}" Foreground="{StaticResource Text}"
+ FontFamily="{StaticResource VeliqFont}" FontSize="14" Icon="Assets/VELIQ.ico">
+ <Grid Margin="36,28">
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <TextBlock Text="VELIQ" FontSize="22" FontWeight="ExtraBold" HorizontalAlignment="Center" Margin="0,0,0,22"/>
+  <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+   <StackPanel x:Name="FormPanel" VerticalAlignment="Center">
+    <TextBlock x:Name="Heading" FontSize="28" FontWeight="Bold" TextWrapping="Wrap"/>
+    <TextBlock x:Name="Lead" Style="{StaticResource Small}" Margin="0,10,0,24"/>
+    <Grid x:Name="ChoicePanel" Margin="0,0,0,24">
+     <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+     <Button x:Name="PersonalTab" Content="Личный компьютер" Click="SelectPersonal" FontSize="13" MinHeight="42" Margin="0,0,5,0"/>
+     <Button x:Name="CodeTab" Grid.Column="1" Content="Клубный компьютер" Click="SelectCode" FontSize="13" MinHeight="42" Margin="5,0,0,0"/>
+    </Grid>
+    <StackPanel x:Name="EmailPanel">
+     <Label Content="Электронная почта" Target="{Binding ElementName=EmailField}" Padding="0" Margin="0,0,0,8" Foreground="{StaticResource TextMuted}"/>
+     <TextBox x:Name="EmailField" MaxLength="254" MinHeight="46" Padding="12,10" Margin="0,0,0,16" AutomationProperties.Name="Электронная почта" KeyDown="EmailKeyDown"/>
+     <CheckBox x:Name="RememberPersonal" Visibility="Collapsed" Foreground="{StaticResource Text}" Content="Запомнить вход на этом личном ПК" Margin="0,0,0,12"/>
+     <Button x:Name="EmailSubmit" Content="Получить код" Click="SendEmailCode" Style="{StaticResource Primary}" MinHeight="46" Margin="0"/>
+     <Button x:Name="RegisterButton" Content="Создать аккаунт" Click="ToggleRegistration" Style="{StaticResource Quiet}" Margin="0,12,0,0"/>
+    </StackPanel>
+    <StackPanel x:Name="OtpPanel" Visibility="Collapsed">
+     <Label Content="Код из письма" Target="{Binding ElementName=LoginCode}" Padding="0" Margin="0,0,0,8" Foreground="{StaticResource TextMuted}"/>
+     <PasswordBox x:Name="LoginCode" MaxLength="6" MinHeight="48" FontSize="22" Padding="12,10" Margin="0,0,0,16" AutomationProperties.Name="Код из письма" KeyDown="OtpKeyDown"/>
+     <Button x:Name="VerifySubmit" Content="Продолжить" Click="VerifyEmailCode" Style="{StaticResource Primary}" MinHeight="46" Margin="0"/>
+     <Button x:Name="ResendButton" Content="Отправить код ещё раз" Click="ResendEmailCode" Style="{StaticResource Quiet}" Margin="0,12,0,0"/>
+    </StackPanel>
+    <StackPanel x:Name="ProfilePanel" Visibility="Collapsed">
+     <Label Content="Имя (необязательно)" Target="{Binding ElementName=ProfileName}" Padding="0" Margin="0,0,0,8" Foreground="{StaticResource TextMuted}"/>
+     <TextBox x:Name="ProfileName" MaxLength="80" MinHeight="46" Padding="12,10" Margin="0,0,0,16" AutomationProperties.Name="Имя"/>
+     <Button x:Name="ProfileSubmit" Content="Создать личный аккаунт" Click="CreateProfile" Style="{StaticResource Primary}" MinHeight="46" Margin="0"/>
+    </StackPanel>
+    <StackPanel x:Name="AccountPanel" Visibility="Collapsed">
+     <TextBlock x:Name="DeviceName" Style="{StaticResource Small}" Margin="0,0,0,16"/>
+     <ComboBox x:Name="SubscriptionChoices" DisplayMemberPath="Label" MinHeight="44" Margin="0,0,0,16" AutomationProperties.Name="Подписка"/>
+     <TextBlock x:Name="SubscriptionNotice" Style="{StaticResource Small}" Margin="0,0,0,16"/>
+     <Button x:Name="ApproveButton" Content="Подключить этот компьютер" Click="ApproveAccount" Style="{StaticResource Primary}" MinHeight="46" Margin="0"/>
+     <Button x:Name="ReloadAccountButton" Content="Обновить подписки" Click="ReloadAccount" Style="{StaticResource Quiet}" Margin="0,12,0,0"/>
+    </StackPanel>
+    <StackPanel x:Name="ConnectingPanel" Visibility="Collapsed">
+     <ProgressBar Height="3" IsIndeterminate="True" Foreground="{StaticResource Accent}" Margin="0,0,0,20"/>
+    </StackPanel>
+    <StackPanel x:Name="CodePanel" Visibility="Collapsed">
+     <Label Content="Код подключения" Target="{Binding ElementName=ConnectionCode}" Padding="0" Margin="0,0,0,8" Foreground="{StaticResource TextMuted}"/>
+     <PasswordBox x:Name="ConnectionCode" MaxLength="256" MinHeight="46" FontSize="18" Padding="12,10" Margin="0,0,0,16" AutomationProperties.Name="Код подключения" KeyDown="CodeKeyDown"/>
+     <Button x:Name="ActivateButton" Content="Подключить компьютер" Click="ActivateCode" Style="{StaticResource Primary}" MinHeight="46" Margin="0"/>
+    </StackPanel>
+    <StackPanel x:Name="ReadyPanel" Visibility="Collapsed">
+     <Button x:Name="ContinueButton" Content="Перейти в VELIQ" Click="Continue" Style="{StaticResource Primary}" MinHeight="46" Margin="0"/>
+     <Button x:Name="PersonalInsteadButton" Content="Войти в личный аккаунт" Click="PersonalInstead" Style="{StaticResource Quiet}" Margin="0,12,0,0"/>
+    </StackPanel>
+    <TextBlock x:Name="Feedback" Style="{StaticResource Small}" Foreground="{StaticResource AccentText}" Margin="0,16,0,0" AutomationProperties.LiveSetting="Polite"/>
+    <Button x:Name="AuthBack" Content="Начать заново" Click="RestartSignIn" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,8,0,0"/>
+    <Button x:Name="RetryButton" Content="Проверить подключение" Click="Retry" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,8,0,0"/>
+   </StackPanel>
+  </ScrollViewer>
+  <TextBlock x:Name="FooterNote" Grid.Row="2" Text="Без пароля. Подключение сохранится на этом ПК." Style="{StaticResource Caption}" TextWrapping="Wrap" TextAlignment="Center" Margin="0,22,0,0"/>
+ </Grid>
+</Window>

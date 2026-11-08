@@ -7,6 +7,7 @@
 Все данные о версии и адресах — в словарях SITE и RELEASE ниже.
 """
 import html
+import hashlib
 import json
 from pathlib import Path
 
@@ -14,8 +15,8 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "website"
 
 SITE = {
-    "url": "https://veliq.app",          # ДОПУЩЕНИЕ: домен не выбран, заменить здесь
-    "email": "support@veliq.app",        # ДОПУЩЕНИЕ: адрес поддержки не выбран
+    "url": "https://veliqapp.ru",
+    "email": "support@veliqapp.ru",
     "name": "VELIQ",
 }
 # Продавец и цены. Пока поле пустое, на страницах оплаты и правовых документах показывается пометка «Черновик».
@@ -31,7 +32,7 @@ PRICES = {                               # рубли; None — цена ещё 
     "club_pc_month": None,               # «Клуб», за компьютер в месяц
 }
 OFFER_DATE = "1 ноября 2026"             # дата редакции оферты и политики
-ACCOUNT_URL = None                       # адрес личного кабинета, например "account.html"; None — кабинет ещё не запущен
+ACCOUNT_URL = "account.html"             # API кабинета включается отдельно на том же origin
 PAYMENT_AGENT = "ЮKassa (ООО НКО «ЮМани»)"  # платёжный сервис для карт и СБП
 LOG_RETENTION = None                     # срок хранения журналов соединений на серверах, например "30 дней"
 
@@ -50,14 +51,18 @@ def seller_line():
 SELLER_READY = bool(SELLER["name"] and SELLER["inn"])
 PRICES_READY = all(v is not None for v in PRICES.values())
 RELEASE = {
-    "version": "1.0 beta",               # ДОПУЩЕНИЕ: номер версии подставить при выпуске
+    "version": "на GitHub",              # assets/release.js подставляет опубликованную версию
     "date": "20 октября 2026",
     "size": "≈ 40 МБ",
     "file": "VELIQ-Setup.exe",
-    "url": "downloads/VELIQ-Setup.exe",  # ДОПУЩЕНИЕ: ссылка на файл установщика
+    "url": "https://github.com/buzzmean/veliq/releases/latest",
     "sha256": "появится вместе с файлом установщика",
     "os": "Windows 10 и 11, 64-бит",
 }
+
+def asset_version(path):
+    return hashlib.sha256((OUT / path).read_bytes()).hexdigest()[:12]
+
 
 NAV = [
     ("how.html", "Как работает", "how"),
@@ -65,6 +70,7 @@ NAV = [
     ("clubs.html", "Клубам", "clubs"),
     ("pricing.html", "Цены", "pricing"),
     ("support.html", "Помощь", "support"),
+    ("account.html", "Личный кабинет", "account"),
 ]
 
 
@@ -107,7 +113,7 @@ def head(title, desc, path, extra_ld=None, og="og-image.png", og_alt="VELIQ: н�
   <link rel="preload" href="assets/fonts/Onest-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/components.css">
-  <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/site.css?v={asset_version('assets/site.css')}">
   <script>document.documentElement.classList.add('js');try{{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}}catch(e){{}}</script>{ld}
 </head>
 <body>
@@ -174,6 +180,7 @@ def footer():
 </footer>
 <script src="assets/charts.js"></script>
 <script src="assets/site.js"></script>
+<script src="assets/release.js?v={asset_version('assets/release.js')}"></script>
 </body>
 </html>
 """
@@ -205,7 +212,7 @@ def flow(kind):
         out.append('</div>')
         out.append('<p class="flow__cap">Все соединения идут одним путём, который выбрал провайдер, — даже если до игрового сервера есть путь короче.</p>')
     else:
-        mids = [("relay", "быстрый путь"), ("relay", "стабильный путь"), ("plain", "как обычно"), ("plain", "как обычно")]
+        mids = [("relay", "быстрый путь"), ("relay", "стабильный путь"), ("plain", "напрямую"), ("plain", "напрямую")]
         out.append('<div class="flow flow--veliq" data-trace>')
         out.append('<div class="flow__src">Вы</div>')
         for i, ((name, _), (mode, label)) in enumerate(zip(rows, mids)):
@@ -215,7 +222,7 @@ def flow(kind):
             else:
                 out.append(f'<span class="flow__plain" style="{g}"><em>{label}</em></span><span class="flow__dst is-plain" style="{g}">{name}</span>')
         out.append('</div>')
-        out.append('<p class="flow__cap">Каждое соединение получает свой путь: игры — самый быстрый маршрут, голосовые чаты — самый стабильный, остальное — как обычно.</p>')
+        out.append('<p class="flow__cap">Каждое соединение получает свой путь: игры — самый быстрый маршрут, голосовые чаты — самый стабильный, сайты — рабочий путь.</p>')
     return "\n".join(out)
 
 
@@ -252,13 +259,13 @@ def privacy_block(head_tag="h2"):
 
 
 FAQ_MAIN = [
-    ("Как VELIQ выбирает путь?", "<p>Программа замеряет задержку и потери до сервера игры или сервиса и выбирает лучший путь: обычный — через провайдера, или через собственные серверы VELIQ, если так быстрее или стабильнее. Всё, что и так работает хорошо, не трогает. <a href=\"how.html\">Как работает VELIQ</a>.</p>"),
+    ("Как VELIQ выбирает путь?", "<p>Программа замеряет задержку и потери до сервера игры или сервиса и выбирает лучший путь: прямой — через провайдера, или через серверы VELIQ, если так доступнее, быстрее или стабильнее. Всё, что и так работает хорошо, не трогает. <a href=\"how.html\">Как работает VELIQ</a>.</p>"),
     ("Нужно ли что-то перезапускать?", "<p>Нет. Маршруты работают сразу после нажатия «Оптимизировать» — ничего закрывать и перезапускать не нужно.</p>"),
     ("Как VELIQ влияет на пинг в играх?", "<p>VELIQ сравнивает пути до игрового сервера и выбирает самый быстрый. Если путь через сеть VELIQ не быстрее обычного, маршрут не меняется. Замеры видно в программе.</p>"),
     ("Вы видите, что я открываю?", "<p>Нет. Мы не расшифровываем и не подменяем HTTPS. Сервер видит адрес назначения и объём данных — этого достаточно, чтобы переслать трафик. <a href=\"index.html#privacy\">Что видит сервер</a>. Подробности — в <a href=\"privacy.html\">политике конфиденциальности</a>.</p>"),
     ("Какие системы поддерживаются?", "<p>Сейчас VELIQ работает на компьютерах с Windows. Версия для телефона готовится.</p>"),
     ("Сколько стоит и как оплатить?", "<p>Тарифы — на странице <a href=\"pricing.html\">«Цены»</a>. Оплатить можно картой или через СБП в личном кабинете, клубы могут платить по счёту.</p>"),
-    ("Подходит ли VELIQ для клубов?", "<p>Да. Для клубов есть отдельный код активации и инструкция, они выдаются после заявки. <a href=\"clubs.html\">VELIQ для клубов</a>.</p>"),
+    ("Подходит ли VELIQ для клубов?", "<p>Да. Выберите клубный аккаунт: подписка, компьютеры и разрешения для образов управляются в личном кабинете. <a href=\"clubs.html\">VELIQ для клубов</a>.</p>"),
 ]
 
 # ---------------------------------------------------------------- главная
@@ -295,7 +302,7 @@ index_body = f"""
         <div class="route__row route__row--relay"><span class="route__name">Игры</span><span class="route__line"></span><span class="route__via" data-on="лучший маршрут">—</span></div>
         <div class="route__row route__row--relay"><span class="route__name">Голосовой чат</span><span class="route__line"></span><span class="route__via" data-on="стабильно">—</span></div>
         <div class="route__row route__row--relay"><span class="route__name">Стримы</span><span class="route__line"></span><span class="route__via" data-on="без подвисаний">—</span></div>
-        <div class="route__row route__row--relay"><span class="route__name">Сайты</span><span class="route__line"></span><span class="route__via" data-on="как обычно">—</span></div>
+        <div class="route__row route__row--relay"><span class="route__name">Сайты</span><span class="route__line"></span><span class="route__via" data-on="рабочий маршрут">—</span></div>
       </div>
       <p class="demo__hint" id="demo-hint">Нажмите кнопку — так выглядит запуск в программе.</p>
       <span class="sr-only" aria-live="polite" data-demo-live></span>
@@ -310,9 +317,9 @@ index_body = f"""
       <p>Никаких адресов серверов и настроек. Всё это программа делает сама.</p>
     </div>
     <ol class="steps" style="list-style:none;margin:0;padding:0">
-      <li class="step"><span class="step__n">1</span><h3 class="h3">Получите код активации</h3><p>Для клуба он выдаётся после заявки, для игрока — отдельно.</p></li>
-      <li class="step"><span class="step__n">2</span><h3 class="h3">Установите VELIQ</h3><p>Установщик сделает всё сам.</p></li>
-      <li class="step"><span class="step__n">3</span><h3 class="h3">Введите код — и всё работает</h3><p>После этого VELIQ готов к работе.</p></li>
+      <li class="step"><span class="step__n">1</span><h3 class="h3">Установите VELIQ</h3><p>Скачайте актуальный установщик с GitHub.</p></li>
+      <li class="step"><span class="step__n">2</span><h3 class="h3">Войдите в аккаунт</h3><p>Подтвердите почту и выберите тип аккаунта: для себя или для клуба.</p></li>
+      <li class="step"><span class="step__n">3</span><h3 class="h3">Подключите компьютер</h3><p>Выберите подписку и подтвердите подключение в личном кабинете.</p></li>
     </ol>
   </div>
 </section>
@@ -402,7 +409,7 @@ index_body = f"""
       <img class="get__icon" src="assets/img/app-icon.svg" alt="" width="88" height="88">
       <div>
         <h2 class="h3" style="font-size:var(--fs-3xl)">VELIQ</h2>
-        <ul class="get__meta"><li>Версия {RELEASE['version']}</li></ul>
+        <ul class="get__meta"><li>Версия <span data-release-version>{RELEASE['version']}</span></li></ul>
       </div>
       <a class="btn btn--lg" href="download.html">{icon('download')}Скачать</a>
     </div>
@@ -423,7 +430,7 @@ LD_APP = {
     "@context": "https://schema.org", "@type": "SoftwareApplication", "name": "VELIQ",
     "operatingSystem": "Windows 10, Windows 11", "applicationCategory": "UtilitiesApplication",
     "description": "VELIQ строит оптимальный маршрут для каждого соединения: игры получают самый быстрый путь, голосовые чаты и стримы — стабильную связь.",
-    "softwareVersion": RELEASE["version"], "url": SITE["url"],
+    "url": SITE["url"],
 }
 LD_FAQ = {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
     {"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": html.unescape(a.replace("<p>", "").replace("</p>", ""))}} for q, a in FAQ_MAIN]}
@@ -436,7 +443,7 @@ page("index.html", "VELIQ — нажал, и работает",
 HOW_ROWS = [
     ("Онлайн-игры", "Путь выбирает провайдер, даже если он длиннее", "Самый быстрый путь до игрового сервера"),
     ("Голосовые чаты и стримы", "Обрывы и подвисания на загруженных участках сети", "Стабильный путь, в том числе через собственные серверы"),
-    ("Сайты, которые и так работают", "Как обычно", "Как обычно — VELIQ их не трогает"),
+    ("Сайты, которые и так работают", "Как обычно", "Напрямую, без лишнего обхода"),
     ("Если путь стал хуже", "Ничего не меняется", "Маршрут перестраивается сам"),
     ("Что нужно сделать", "—", "Нажать одну кнопку"),
 ]
@@ -496,7 +503,7 @@ how_body = f"""
 </section>
 """
 page("how.html", "Как работает VELIQ",
-     "VELIQ замеряет пути и для каждого соединения выбирает лучший: игры получают самый быстрый маршрут, голосовые чаты — стабильный, остальное работает как обычно.",
+     "VELIQ замеряет пути и для каждого соединения выбирает лучший: игры получают самый быстрый маршрут, голосовые чаты — стабильный, для сайтов подбирается рабочий путь.",
      "how", how_body)
 
 # ---------------------------------------------------------------- скачать
@@ -505,7 +512,7 @@ download_body = f"""
   <div class="wrap">
     <div class="crumbs"><a href="index.html">Главная</a> / Скачать</div>
     <h1 class="h1">Скачать VELIQ</h1>
-    <p class="lede">Установщик сделает всё сам. После установки введите код активации.</p>
+    <p class="lede">Скачайте установщик с GitHub. В новой версии подключение компьютера выполняется через ваш аккаунт.</p>
     <div class="platforms" role="group" aria-label="Устройство">
       <button type="button" class="platforms__btn" data-platform-btn="win" aria-pressed="true">Компьютер</button>
       <button type="button" class="platforms__btn" data-platform-btn="phone" aria-pressed="false">Телефон<span class="platforms__soon">скоро</span></button>
@@ -533,26 +540,27 @@ download_body = f"""
       <div class="get" style="margin-bottom:var(--sp-7)">
         <img class="get__icon" src="assets/img/app-icon.svg" alt="" width="88" height="88">
         <div>
-          <h2 class="h3" style="font-size:var(--fs-3xl)">VELIQ {RELEASE['version']}</h2>
-          <ul class="get__meta"><li>Бета-версия</li></ul>
+          <h2 class="h3" style="font-size:var(--fs-3xl)">VELIQ <span data-release-version>{RELEASE['version']}</span></h2>
+          <ul class="get__meta"><li data-release-status>Последний опубликованный релиз на GitHub</li></ul>
         </div>
-        <a class="btn btn--lg" href="{RELEASE['url']}" download>{icon('download')}Скачать установщик</a>
+        <a class="btn btn--lg" href="{RELEASE['url']}" data-release-download>{icon('download')}Скачать с GitHub</a>
       </div>
 
       <h2 class="h2" id="install" style="font-size:var(--fs-4xl);margin-bottom:var(--sp-5)">Как установить</h2>
       <ol class="olist">
-        <li><div><h3>Получите код активации</h3><p>Код привязывает VELIQ к вам. Для клуба он выдаётся после заявки, для игрока — отдельно.</p></div></li>
-        <li><div><h3>Установите VELIQ</h3><p>Скачайте и запустите установщик. Он сам сделает всё нужное, дополнительных шагов не требуется.</p></div></li>
-        <li><div><h3>Введите код активации</h3><p>После этого VELIQ готов к работе.</p></div></li>
+        <li><div><h3>Установите VELIQ</h3><p>Скачайте установщик с GitHub и следуйте его подсказкам.</p></div></li>
+        <li><div><h3>Войдите в аккаунт</h3><p>Откройте VELIQ и нажмите «Войти или зарегистрироваться». Подтвердите почту кодом из письма.</p></div></li>
+        <li><div><h3>Подключите компьютер</h3><p>Выберите подписку и подтвердите компьютер в личном кабинете. Затем вернитесь в VELIQ.</p></div></li>
       </ol>
-      <p class="install-more">Для клубов есть отдельная инструкция, она выдаётся вместе с кодом активации.</p>
+      <p class="install-more">Для клуба выберите тип аккаунта «Компьютерный клуб». Компьютеры и места управляются в личном кабинете.</p>
       <p class="install-more">Подробные инструкции и ответы на частые вопросы скоро появятся в вики VELIQ.</p>
     </div>
     <aside class="aside">
       <div class="card">
         <h2 class="h3" style="margin-bottom:16px">О файле</h2>
         <dl class="kv">
-          <dt>Версия</dt><dd>{RELEASE['version']}</dd>
+          <dt>Версия</dt><dd data-release-version>{RELEASE['version']}</dd>
+          <dt>Размер</dt><dd data-release-size>На GitHub</dd>
           <dt>Система</dt><dd>{RELEASE['os']}</dd>
         </dl>
       </div>
@@ -561,7 +569,7 @@ download_body = f"""
 </section>
 """
 page("download.html", "Скачать VELIQ",
-     f"Скачайте VELIQ {RELEASE['version']}. Установщик сделает всё сам, после установки введите код активации.",
+     "Скачайте актуальную версию VELIQ с GitHub. Подключение компьютеров — через личный кабинет.",
      "", download_body, LD_APP)
 
 # ---------------------------------------------------------------- клубы
@@ -633,7 +641,7 @@ clubs_body = f"""
       <div class="roles__col">
         <div class="roles__who">{icon('settings')}<h3 class="h3">Администратор</h3></div>
         <ul class="roles__list">
-          <li>Устанавливает VELIQ и вводит код активации клуба</li>
+          <li>Устанавливает VELIQ и подтверждает компьютер в клубном аккаунте</li>
           <li>Если что-то не так — пишет нам, поможем</li>
         </ul>
       </div>
@@ -654,14 +662,14 @@ clubs_body = f"""
     <div>
       <h2 class="h2" style="margin-bottom:var(--sp-6)">Как подключить клуб</h2>
       <ol class="olist">
-        <li><div><h3>Получите код активации</h3><p>Для клуба он выдаётся после заявки. Вместе с кодом вы получите инструкцию для клуба.</p></div></li>
-        <li><div><h3>Установите VELIQ</h3><p>Установщик сам сделает всё нужное, дополнительных шагов не требуется.</p></div></li>
-        <li><div><h3>Введите код активации</h3><p>После этого VELIQ готов к работе.</p></div></li>
+        <li><div><h3>Создайте аккаунт клуба</h3><p>Подтвердите почту, выберите «Компьютерный клуб» и укажите название.</p></div></li>
+        <li><div><h3>Установите VELIQ</h3><p>Скачайте установщик с GitHub. В программе нажмите «Войти или зарегистрироваться».</p></div></li>
+        <li><div><h3>Подключите компьютер</h3><p>Выберите подписку и подтвердите компьютер в личном кабинете. Затем вернитесь в VELIQ.</p></div></li>
       </ol>
       <p class="install-more">Подробные инструкции и ответы на частые вопросы скоро появятся в вики VELIQ.</p>
     </div>
     <aside class="aside">
-      <div class="note">{icon('info')}<div><strong>Нужна помощь?</strong> Напишите на <a href="mailto:{SITE['email']}">{SITE['email']}</a> — расскажем, как подключить клуб, и пришлём код активации.</div></div>
+      <div class="note">{icon('info')}<div><strong>Нужна помощь?</strong> Напишите на <a href="mailto:{SITE['email']}">{SITE['email']}</a> — поможем подключить клуб через личный кабинет.</div></div>
     </aside>
   </div>
 </section>
@@ -677,7 +685,7 @@ clubs_body = f"""
   <div class="wrap club-band">
     <div>
       <h2 class="h2">Поставим на один ПК — решите по факту</h2>
-      <p class="lede" style="margin-top:20px">Напишите, сколько у вас компьютеров и какая система управления. Пришлём код активации и поможем с первой установкой.</p>
+      <p class="lede" style="margin-top:20px">Напишите, сколько у вас компьютеров и какая система управления. Поможем настроить аккаунт клуба и подключить первые компьютеры.</p>
       <div class="hero__actions" style="margin-top:32px"><a class="btn btn--lg" href="mailto:{SITE['email']}?subject=VELIQ%20для%20клуба">Оставить заявку</a><a class="btn btn--lg btn--ghost" href="pricing.html">Тарифы</a></div>
     </div>
     <div class="club-band__pcs" aria-hidden="true">{''.join('<i></i>' for _ in range(27))}</div>
@@ -721,7 +729,7 @@ pricing_body = f"""
         <h2 class="h3">Клуб</h2>
         <div class="plan__price">{rub(PRICES['club_pc_month'])} <small>за ПК в месяц</small></div>
         <p class="muted" style="margin:0">Для компьютерных клубов.</p>
-        <ul><li>{icon('check')}Всё из тарифа «Игрок»</li><li>{icon('check')}Один код активации на все ПК клуба</li><li>{icon('check')}Гость не может изменить настройки</li><li>{icon('check')}Оплата картой или по счёту</li><li>{icon('check')}Помощь с установкой</li></ul>
+        <ul><li>{icon('check')}Всё из тарифа «Игрок»</li><li>{icon('check')}Подключение компьютеров из личного кабинета</li><li>{icon('check')}Гость не может изменить настройки</li><li>{icon('check')}Оплата картой или по счёту</li><li>{icon('check')}Помощь с установкой</li></ul>
         <a class="btn" href="mailto:{SITE['email']}?subject=Тариф%20Клуб">Оставить заявку</a>
       </div>
       <div class="plan">
@@ -743,7 +751,7 @@ pricing_body = f"""
         <li>Войдите в личный кабинет по адресу электронной почты — пароль не нужен, придёт код.</li>
         <li>Выберите тариф и число компьютеров.</li>
         <li>Оплатите банковской картой (Мир, Visa, Mastercard) или через СБП. Чек придёт на почту.</li>
-        <li>Скопируйте код активации из кабинета и введите его в программе.</li>
+        <li>В программе нажмите «Войти или зарегистрироваться», затем подтвердите компьютер в кабинете.</li>
       </ol>
       <p>Клубам выставляем счёт: оплата с расчётного счёта организации или ИП, закрывающие документы — по запросу.</p>
       <h2 id="renew">Автопродление</h2>
@@ -764,7 +772,7 @@ ERRORS = [
     ("VELIQ не может запуститься", "Программа не может начать работу.", "Закройте VELIQ и откройте заново. Если не помогло — переустановите VELIQ или напишите нам."),
     ("Нет связи с сервером", "Серверы VELIQ не отвечают с вашего подключения.", "Проверьте, что интернет работает без VELIQ. Затем нажмите «Повторить» — программа попробует другой сервер. Если не помогло, напишите нам: возможно, провайдер блокирует соединение."),
     ("Часть сайтов не открывается", "Для сайтов маршрут пока не построен, а приложения работают.", "Нажмите «Повторить». Если компьютером управляет организация (рабочий компьютер), её правила могут запрещать изменения — тогда маршруты работают только для приложений."),
-    ("Код активации не принят", "Сервер не принял код активации для этого устройства.", "Введите код ещё раз. Если не помогло — напишите нам."),
+    ("Не удалось подключить компьютер", "Не удалось подтвердить подключение компьютера к аккаунту.", "Начните вход из VELIQ заново и проверьте выбранную подписку. Если не помогло — напишите нам."),
     ("Не хватает прав", "Действие требует прав администратора.", "Подтвердите запрос Windows."),
 ]
 # Постоянные адреса ошибок: support.html#err-<ключ>. Ключи совпадают с кодами ошибок в app-ui/app.js — программа может открывать нужный ответ.
@@ -870,7 +878,7 @@ terms_body = f"""
 <li><strong>Сервис</strong> — программа VELIQ для Windows и серверы Исполнителя. Программа выбирает маршрут для сетевых соединений компьютера — через серверы Исполнителя или обычным путём — чтобы снизить задержку и повысить стабильность соединений в онлайн-играх и других онлайн-сервисах.</li>
 <li><strong>Подписка</strong> — оплаченный доступ к Сервису на определённый срок для определённого числа компьютеров (мест).</li>
 <li><strong>Личный кабинет</strong> — раздел сайта {SITE['url']}, где Пользователь управляет подпиской, местами и оплатой.</li>
-<li><strong>Код активации</strong> — код, который связывает компьютер с подпиской.</li>
+<li><strong>Подключение компьютера</strong> — подтверждение в Личном кабинете, которое связывает компьютер с выбранной подпиской.</li>
 </ul>
 <h2>2. Предмет договора</h2>
 <p>Исполнитель предоставляет Пользователю доступ к Сервису на срок Подписки и для числа компьютеров, указанных в выбранном тарифе, а Пользователь оплачивает его. Программа предоставляется по простой неисключительной лицензии на срок Подписки.</p>
@@ -892,7 +900,7 @@ terms_body = f"""
 </ul>
 <h2>6. Как предоставляется доступ</h2>
 <ul>
-<li>Доступ открывается сразу после поступления оплаты: в Личном кабинете появляется Код активации.</li>
+<li>После поступления оплаты подписка становится доступной для подключения компьютеров через Личный кабинет.</li>
 <li>Пользователь сам освобождает места в Личном кабинете, если меняет компьютер.</li>
 <li>Когда Подписка закончилась, программа перестаёт использовать серверы Исполнителя и оптимизировать соединения. Интернет на компьютере продолжает работать как без программы.</li>
 <li>Исполнитель может проводить плановые работы на серверах, по возможности заранее предупреждая о них.</li>
@@ -906,7 +914,7 @@ terms_body = f"""
 <h2>8. Правила использования</h2>
 <ul>
 <li>Пользователь обязуется соблюдать законодательство РФ и не использовать Сервис для рассылки спама, атак на сети и сервисы, распространения вредоносных программ, мошенничества и иных противоправных действий.</li>
-<li>Нельзя передавать Код активации третьим лицам сверх оплаченного числа мест, перепродавать доступ, изучать или изменять программу в обход её защиты.</li>
+<li>Нельзя предоставлять доступ третьим лицам сверх оплаченного числа мест, перепродавать доступ, изучать или изменять программу в обход её защиты.</li>
 <li>При нарушении Исполнитель вправе приостановить доступ, предварительно уведомив Пользователя по электронной почте, если нарушение не требует немедленной остановки.</li>
 </ul>
 <h2>9. Ответственность</h2>
@@ -948,6 +956,84 @@ contacts_body = f"""
 """
 page("contacts.html", "Контакты и реквизиты", "Контакты поддержки VELIQ и реквизиты продавца.", "", contacts_body)
 
+# ---------------------------------------------------------------- личный кабинет
+# Разметку оживляет assets/account.js; API — /api/v1/account на том же домене (docs/ACCOUNTS.md).
+account_body = f"""
+<section class="page-head acc-page-head"><div class="wrap"><div class="crumbs"><a href="index.html">Главная</a> / Личный кабинет</div><h1 class="h1">Личный кабинет</h1><p class="lede">Подписка и ваши компьютеры — в одном месте.</p></div></section>
+<section class="sec acc-section"><div class="wrap" data-account>
+  <div data-step="email">
+    <form class="acc-form card" data-email-form novalidate>
+      <div class="acc-form__intro"><p class="acc-eyebrow">Вход в VELIQ</p><h2 class="h2">Начнём с почты</h2><p class="muted">Пришлём код для входа. Запоминать пароль не нужно.</p></div>
+      <label class="field"><span>Электронная почта</span><input class="input" type="email" name="email" autocomplete="email" required placeholder="you@example.ru"></label>
+      <button class="btn" type="submit">Получить код для входа</button>
+      <p class="acc-error" data-email-error role="alert" hidden></p>
+      <p class="muted acc-small">Входя, вы принимаете <a href="terms.html">оферту</a> и <a href="privacy.html">политику конфиденциальности</a>.</p>
+    </form>
+  </div>
+  <div data-step="code" hidden>
+    <form class="acc-form card" data-code-form novalidate>
+      <div class="acc-form__intro"><p class="acc-eyebrow">Подтверждение почты</p><h2 class="h2">Проверьте почту</h2><p class="muted">Отправили код на <b class="acc-email" data-sent-to></b>.</p></div>
+      <label class="field"><span>Код из письма</span><input class="input acc-otp" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000" aria-describedby="code-help" required></label>
+      <p class="muted acc-small" id="code-help">Введите все шесть цифр. Код действует 10 минут. Если письма нет, проверьте «Спам».</p>
+      <button class="btn" type="submit">Войти</button>
+      <button class="btn btn--quiet btn--sm" type="button" data-change-email>Другая почта</button>
+      <p class="acc-error" data-code-error role="alert" hidden></p>
+    </form>
+  </div>
+  <div data-step="profile" hidden>
+    <form class="acc-form card" data-profile-form>
+      <div class="acc-form__intro"><p class="acc-eyebrow">Последний шаг</p><h2 class="h2">Настроим ваш кабинет</h2><p class="muted">Выберите, для кого подключаете VELIQ.</p></div>
+      <label class="field"><span>Тип аккаунта</span><span class="acc-select"><select class="input" name="kind" required aria-controls="account-name-field"><option value="" disabled selected>Выберите тип аккаунта</option><option value="player">Пользователь — для себя</option><option value="club">Компьютерный клуб</option></select></span></label>
+      <label class="field" id="account-name-field" data-profile-name-field hidden><span data-profile-name-label>Ваше имя</span><input class="input" name="name" maxlength="80" autocomplete="name" aria-describedby="account-name-help" disabled></label>
+      <p class="muted acc-small" id="account-name-help" data-profile-name-help hidden></p>
+      <button class="btn" type="submit" data-profile-continue disabled>Продолжить</button>
+      <p class="acc-error" data-profile-error role="alert" hidden></p>
+    </form>
+  </div>
+  <div class="acc-dashboard" data-step="cabinet" hidden>
+    <div class="acc-head card"><div class="acc-identity"><span class="acc-avatar" aria-hidden="true">V</span><div><p class="acc-account-email" data-account-email></p><p class="muted acc-small" data-account-kind></p></div></div><button class="btn btn--ghost btn--sm" type="button" data-logout>Выйти</button></div>
+    <section class="card acc-panel" data-link-panel hidden>
+      <h2 class="h2" data-link-title>Подключить компьютер</h2><p data-link-name></p>
+      <form class="acc-link-form" data-link-form><label class="field"><span>Подписка</span><span class="acc-select"><select class="input" name="subscription" data-link-subscription></select></span></label>
+      <button class="btn" type="submit" data-link-approve>Подтвердить подключение</button></form>
+      <p class="muted" data-link-message></p><p class="acc-error" data-link-error role="alert" hidden></p>
+    </section>
+    <div class="acc-dashboard__grid">
+      <div class="acc-dashboard__main">
+        <section class="card acc-panel" aria-labelledby="account-subscriptions-title">
+          <div class="acc-panel__head"><h2 class="h2" id="account-subscriptions-title">Мои подписки</h2></div>
+          <div class="acc-empty" data-subs-empty><span class="acc-empty__icon" aria-hidden="true"><svg class="i"><use href="#i-games"/></svg></span><h3 class="h3">Пока нет подписок</h3><p class="muted" data-subs-hint>Здесь появятся ваша подписка и подключённые компьютеры.</p><a class="btn btn--sm" href="#account-plans" data-choose-plan hidden>Выбрать тариф</a></div>
+          <div class="acc-subs" data-subs></div>
+        </section>
+        <section class="card acc-panel" id="account-plans" aria-labelledby="account-plans-title">
+          <div class="acc-panel__head"><h2 class="h2" id="account-plans-title">Тарифы</h2><p class="muted acc-small">Для вашего типа аккаунта</p></div>
+          <div class="acc-plans-empty" data-plans-empty hidden><p class="acc-empty__title">Тарифы пока не опубликованы</p><p class="muted">Напишите нам — поможем подобрать подключение и расскажем об условиях.</p><a class="acc-text-link" href="mailto:{SITE['email']}">Связаться с поддержкой <span aria-hidden="true">↗</span></a></div>
+          <div class="acc-plans" data-plans></div>
+        </section>
+        <section class="card acc-panel" data-images-section hidden aria-labelledby="account-images-title">
+          <div class="acc-panel__head"><h2 class="h2" id="account-images-title">Образы клуба</h2><p class="muted acc-small">Для автоматического подключения компьютеров после восстановления образа.</p></div>
+          <p class="muted" data-images-empty hidden>Разрешений пока нет. Настройте клубный образ через VELIQ на компьютере.</p><div class="acc-images" data-images></div>
+        </section>
+      </div>
+      <aside class="acc-dashboard__aside" aria-label="Платежи и помощь">
+        <section class="card acc-panel" aria-labelledby="account-payments-title">
+          <h2 class="h2" id="account-payments-title">Платежи</h2>
+          <div class="acc-payments-empty" data-payments-empty><p class="acc-empty__title">Платежей пока нет</p><p class="muted acc-small">После оплаты здесь появится история платежей.</p></div>
+          <ul class="acc-pays" data-payments></ul>
+          <a class="acc-text-link acc-small" href="pricing.html#refund">Условия оплаты и возврата</a>
+        </section>
+        <section class="card acc-panel acc-support" aria-labelledby="account-help-title">
+          <h2 class="h2" id="account-help-title">Нужна помощь?</h2><p class="muted acc-small">Поможем с подпиской и подключением компьютеров.</p><a class="acc-text-link" href="mailto:{SITE['email']}">{SITE['email']} <span aria-hidden="true">↗</span></a>
+        </section>
+      </aside>
+    </div>
+  </div>
+</div></section>
+<script src="assets/account.js?v={asset_version('assets/account.js')}"></script>
+
+"""
+page("account.html", "Личный кабинет", "Вход в личный кабинет VELIQ: аккаунт, подписка и подключение компьютеров.", "account", account_body)
+
 nf_body = f"""
 <section class="center-stack"><div class="wrap">
   <h1 class="h-display"><span class="slit-line" style="margin:0 auto"><span class="slit">404</span></span></h1>
@@ -967,7 +1053,7 @@ ROADMAP = [
     ("done", "Готово", "Работает в бета-версии", [
         "Стабильная связь для онлайн-сервисов через собственную сеть серверов VELIQ",
         "Стримы и видео в высоком качестве без подвисаний",
-        "Обычные сайты идут как обычно, без лишних задержек",
+        "Доступные сайты идут напрямую; для остальных подбирается рабочий маршрут",
         "Ничего не нужно перезапускать: маршруты подхватываются сразу",
         "Собственные серверы с быстрым каналом",
     ]),
@@ -978,7 +1064,7 @@ ROADMAP = [
         "Установщик одним файлом",
     ]),
     ("next", "Дальше", "Следующие шаги", [
-        "Версия для клубов: один код активации на все компьютеры клуба",
+        "Клубный аккаунт: управление компьютерами и разрешениями для образов",
         "Пилот в компьютерном клубе",
         "Личный кабинет и оплата онлайн",
         "Версия для телефона",
@@ -1022,7 +1108,7 @@ pages = ["", "how.html", "download.html", "clubs.html", "pricing.html", "support
 (OUT / "sitemap.xml").write_text(
     '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
     + "".join(f"  <url><loc>{SITE['url']}/{p}</loc></url>\n" for p in pages) + "</urlset>\n", encoding="utf-8")
-(OUT / "robots.txt").write_text(f"User-agent: *\nAllow: /\nSitemap: {SITE['url']}/sitemap.xml\n", encoding="utf-8")
+(OUT / "robots.txt").write_text(f"User-agent: *\nAllow: /\nDisallow: /account.html\nDisallow: /api/\nSitemap: {SITE['url']}/sitemap.xml\n", encoding="utf-8")
 (OUT / "site.webmanifest").write_text(json.dumps({
     "name": "VELIQ", "short_name": "VELIQ", "lang": "ru", "start_url": "index.html", "display": "browser",
     "background_color": "#0A0A0B", "theme_color": "#0A0A0B",

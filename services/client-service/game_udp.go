@@ -28,6 +28,7 @@ type gameEntry struct {
 	Name      string
 	Path      string
 	Enabled   bool
+	LocalOnly bool
 	AntiCheat string
 	Engine    *gameudp.Engine
 	persisted uint64
@@ -39,6 +40,7 @@ type gameRuntime struct {
 	error  string
 }
 type gameDiskEntry struct {
+	LocalOnly bool               `json:"local_only,omitempty"`
 	ProfileID string             `json:"profile_id"`
 	Path      string             `json:"exe"`
 	Enabled   bool               `json:"enabled"`
@@ -80,12 +82,14 @@ func (c *Controller) loadGames() {
 			return
 		}
 		e := c.newGameLadder(d.Path)
+		e.SetLocalOnly(d.LocalOnly)
+		e.Configure(d.Path, d.Enabled)
+		// Keep the explicit route restriction even when cached evidence is
+		// rejected. Rediscovery must not replace it with the legacy relay ladder.
+		c.games.items[d.ProfileID] = &gameEntry{ProfileID: d.ProfileID, Path: d.Path, Enabled: d.Enabled, LocalOnly: d.LocalOnly, Engine: e}
 		if err := e.Restore(d.Learning, time.Now()); err != nil {
 			c.games.error = "GAME_UDP_CONFIG_INVALID"
-			return
 		}
-		e.Configure(d.Path, d.Enabled)
-		c.games.items[d.ProfileID] = &gameEntry{ProfileID: d.ProfileID, Path: d.Path, Enabled: d.Enabled, Engine: e}
 	}
 }
 func (c *Controller) saveGamesLocked() error {
@@ -94,7 +98,7 @@ func (c *Controller) saveGamesLocked() error {
 	}
 	v := gameDisk{Version: 2, Games: []gameDiskEntry{}}
 	for _, g := range c.games.items {
-		v.Games = append(v.Games, gameDiskEntry{g.ProfileID, g.Path, g.Enabled, g.Engine.Snapshot().Learning})
+		v.Games = append(v.Games, gameDiskEntry{ProfileID: g.ProfileID, Path: g.Path, Enabled: g.Enabled, LocalOnly: g.LocalOnly, Learning: g.Engine.Snapshot().Learning})
 	}
 	raw, err := json.Marshal(v)
 	if err != nil || len(raw) > 256*1024 {
@@ -307,11 +311,18 @@ func (c *Controller) classifyGameUDP(id wp.ProcessIdentity, t wp.Tuple) (wp.Deci
 	c.games.mu.Lock()
 	defer c.games.mu.Unlock()
 	g := c.games.items[p.ID]
-	if g == nil || !g.Enabled || gameudp.Canonical(g.Path) != gameudp.Canonical(id.Path) || !g.Engine.Ready() {
+	if g == nil || !g.Enabled || gameudp.Canonical(g.Path) != gameudp.Canonical(id.Path) {
 		return wp.Decision{}, false
 	}
 	n := c.network.Load()
-	if n == nil || len(n.Fingerprint) != 64 || time.Since(n.ObservedAt) > 45*time.Second {
+	if !g.Engine.Ready() || n == nil || len(n.Fingerprint) != 64 || time.Since(n.ObservedAt) > 45*time.Second {
+		if g.LocalOnly {
+			// A suspended local trial must not fall through to AUTO's learned
+			// relay choice. Guards still prohibit decoys; only originals pass.
+			return wp.Decision{NewConnectionsOnly: true, Revision: "game-udp-local-only", Group: p.ID,
+				Flow:   routing.Flow{PID: id.PID, ProcessPath: id.Path, ApplicationID: p.ID, Protocol: t.Protocol, Source: t.Source, Destination: t.Destination, PinnedPolicy: &routing.Policy{}},
+				Policy: flowpolicy.Result{Action: flowpolicy.Direct, Fallback: flowpolicy.FailOpen, Source: "game_udp_local_only", Reason: "LOCAL_ONLY_TRIAL_UNAVAILABLE_DIRECT"}}, true
+		}
 		return wp.Decision{}, false
 	}
 	d := wp.Decision{NewConnectionsOnly: true, Revision: "game-udp-ladder-v2", Group: p.ID, Network: n.Fingerprint, GameUDP: g.Engine, GameRelayID: "VPS-01", Flow: routing.Flow{PID: id.PID, ProcessPath: id.Path, ApplicationID: p.ID, Protocol: t.Protocol, Source: t.Source, Destination: t.Destination, PinnedPolicy: &routing.Policy{}}, Policy: flowpolicy.Result{Action: flowpolicy.Direct, Fallback: flowpolicy.FailOpen, Source: "game_udp_ladder", Reason: "game route chosen and pinned before first datagram"}}
@@ -357,9 +368,12 @@ func (c *Controller) gameStatus() GameUDPStatus {
 		reason := s.Reason
 		if n := c.network.Load(); n != nil && s.Reason == "" {
 			for _, l := range s.Learning {
-				if l.Network == n.Fingerprint && l.Exhausted && time.Now().Before(l.Expires) {
+				if l.Network == n.Fingerprint && l.LocalOnly == s.LocalOnly && (!s.LocalOnly || len(s.Flows) == 0 || l.Endpoint == s.Flows[0].Destination) && l.Exhausted && time.Now().Before(l.Expires) {
 					state = "COOLDOWN"
 					reason = "GAME_UDP_LADDER_EXHAUSTED"
+					if s.LocalOnly {
+						reason = "GAME_UDP_LOCAL_ONLY_EXHAUSTED"
+					}
 					activity = "COOLDOWN"
 				}
 			}
@@ -409,6 +423,7 @@ func (c *Controller) handleGameUDP(_ context.Context, method string, raw json.Ra
 	var q struct {
 		ProfileID string `json:"profile_id"`
 		Enabled   *bool  `json:"enabled"`
+		LocalOnly *bool  `json:"local_only"`
 	}
 	if err := security.Parse(raw, &q); err != nil {
 		return nil, err
@@ -446,13 +461,17 @@ func (c *Controller) handleGameUDP(_ context.Context, method string, raw json.Ra
 		c.games.mu.Unlock()
 		return nil, errors.New("GAME_UDP_ANTICHEAT_COMPATIBILITY_UNVERIFIED")
 	}
-	previous := g.Enabled
+	previous, previousLocalOnly := g.Enabled, g.LocalOnly
+	if q.LocalOnly != nil {
+		g.LocalOnly = *q.LocalOnly
+	}
 	g.Enabled = *q.Enabled
 	if err := c.saveGamesLocked(); err != nil {
-		g.Enabled = previous
+		g.Enabled, g.LocalOnly = previous, previousLocalOnly
 		c.games.mu.Unlock()
 		return nil, err
 	}
+	g.Engine.SetLocalOnly(g.LocalOnly)
 	g.Engine.Configure(g.Path, g.Enabled)
 	c.games.mu.Unlock()
 	c.updateGamesGate()

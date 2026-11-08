@@ -11,13 +11,25 @@ class InstallerContract(unittest.TestCase):
   for expected in ('INSTALL_PACKAGE_HASH_MISMATCH','INSTALL_CA_PIN_MISMATCH','INSTALL_DRIVER_VERSION_UNAPPROVED','INSTALL_PACKAGE_REPARSE_POINT'):self.assertIn(expected,contract)
  def test_activation_only_preserves_owner_and_legacy_paths(self):
   script=(ROOT/'installer/install-package.ps1').read_text()
-  for expected in ('ActivationOnly=$true','INSTALL_OWNER_MISMATCH','INSTALL_SAME_OWNER_ELEVATION_REQUIRED','update-service.ps1','stage-club-activation.ps1','INSTALL_SERVICE_HASH_MISMATCH'):self.assertIn(expected,script)
+  for expected in ('ActivationOnly=$true','INSTALL_OWNER_MISMATCH','INSTALL_SAME_OWNER_ELEVATION_REQUIRED','update-service.ps1','stage-club-activation.ps1','Assert-VeliqInstalledBinaries'):self.assertIn(expected,script)
   self.assertNotIn('Remove-Item $installed',script)
  def test_no_secret_payload_and_no_reboot(self):
   build=(ROOT/'installer/build.ps1').read_text()
   self.assertIn('PUBLIC_TRUST_DIRECTORY_MUST_CONTAIN_ONLY_CA',build)
   self.assertNotIn('device.pem',build);self.assertNotIn('identity.json',build)
   self.assertIn('RestartIfNeededByRun=no',(ROOT/'installer/setup.iss').read_text(encoding='utf-8-sig'))
+ def test_no_deferred_replacement_or_unguarded_setup(self):
+  iss=(ROOT/'installer/setup.iss').read_text(encoding='utf-8-sig')
+  self.assertNotIn('restartreplace',iss.lower())
+  self.assertIn('AlwaysRestart=no',iss)
+  self.assertIn("Arg='/NORESTART'",iss)
+  self.assertIn('function InitializeSetup()',iss)
+  self.assertIn('SafeSessionArguments(WizardSilent)',iss)
+  self.assertIn('Result := NoRestart or not RequireNoRestart',iss)
+  self.assertIn('WizardForm.YesRadio.Enabled := False',iss)
+  self.assertIn('WizardForm.PreparingYesRadio.Enabled := False',iss)
+  self.assertIn('Assert-VeliqNoPendingReboot',(ROOT/'installer/install-package.ps1').read_text())
+  self.assertNotIn('reboot_required=$false',(ROOT/'installer/install-package.ps1').read_text())
 
 class ClubImageContract(unittest.TestCase):
  def test_public_payload_only_and_club_scripts_present(self):

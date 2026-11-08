@@ -78,14 +78,15 @@
     <!-- ============ Сервисы (приложения и сайты) ============ -->
     <DockPanel x:Name="Applications" Visibility="Collapsed">
      <StackPanel DockPanel.Dock="Top">
-      <WrapPanel>
+      <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="{ui:Tr AutomaticApplicationsTitle}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{ui:Tr AutomaticApplicationsHint}" TextWrapping="Wrap" Style="{StaticResource Hint}" Margin="0,8,0,0"/></StackPanel></Border>
+      <WrapPanel Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}">
        <Button Style="{StaticResource Primary}" Click="AddApplication" IsEnabled="{Binding CanControl}"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconPlus}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource OnControl}" StrokeThickness="1.75" Margin="0,0,8,0"/><TextBlock Text="{ui:Tr AddApplication}" Foreground="{StaticResource OnControl}"/></StackPanel></Button>
        <Button Content="{ui:Tr AutoOptimize}" Click="UseAuto" IsEnabled="{Binding CanControl}" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
        <Button Content="{ui:Tr GameUdpEnable}" Click="EnableSelectedGameUdp" IsEnabled="{Binding CanControl}" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
        <Button Content="{ui:Tr RemoveApplication}" Click="DeleteApplication" IsEnabled="{Binding CanControl}"/>
       </WrapPanel>
       <!-- Route for the selected row; fallback and a fixed server are technical choices. -->
-      <WrapPanel>
+      <WrapPanel Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}">
        <ComboBox x:Name="Mode" ItemsSource="{Binding Modes}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedIndex="0" SelectionChanged="ModeChanged" MinWidth="180"/>
        <ComboBox x:Name="ProfileFallback" ItemsSource="{Binding ProfileFallbacks}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedIndex="0" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
        <ComboBox x:Name="RelayChoice" ItemsSource="{Binding Relays}" DisplayMemberPath="Label" SelectedValuePath="Value" MinWidth="190" IsEnabled="False" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
@@ -240,10 +241,14 @@
 
     <!-- ============ Настройки ============ -->
     <ScrollViewer x:Name="Settings" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><StackPanel Width="620" HorizontalAlignment="Left">
-     <TextBlock Text="{ui:Tr SetActivation}" Style="{StaticResource GroupTitle}"/>
+     <TextBlock Text="{ui:Tr AccountHeading}" Style="{StaticResource GroupTitle}"/>
      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><DockPanel Margin="16,12">
-      <Button DockPanel.Dock="Right" Content="{ui:Tr ChangeActivationCode}" Click="ChangeActivation" Margin="12,0,0,0" VerticalAlignment="Center"/>
-      <StackPanel VerticalAlignment="Center"><TextBlock x:Name="ActivationSummary" Text="{ui:Tr ActivationStatusChecking}" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="ActivationCertificates" Style="{StaticResource Small}" Margin="0,2,0,0"/></StackPanel>
+      <Button DockPanel.Dock="Right" Content="{ui:Tr AccountCabinet}" Click="OpenAccountCabinet" Margin="12,0,0,0" VerticalAlignment="Center"/>
+      <StackPanel VerticalAlignment="Center"><TextBlock x:Name="AccountSummary" Text="{ui:Tr AccountLabel}" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="AccountHint" Style="{StaticResource Small}" Margin="0,2,0,0" TextWrapping="Wrap"/><TextBlock x:Name="ActivationSummary" Visibility="Collapsed"/><TextBlock x:Name="ActivationCertificates" Style="{StaticResource Small}" Margin="0,2,0,0"/></StackPanel>
+     </DockPanel></Border>
+     <Border x:Name="SubscriptionRow" Style="{StaticResource PanelBox}" Margin="0,-6,0,18" Visibility="Collapsed"><DockPanel Margin="16,12">
+      <Button DockPanel.Dock="Right" Content="{ui:Tr RenewSubscription}" Click="RenewSubscription" Margin="12,0,0,0" VerticalAlignment="Center"/>
+      <StackPanel VerticalAlignment="Center"><TextBlock x:Name="SubscriptionSummary" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="SubscriptionHint" Style="{StaticResource Small}" Margin="0,2,0,0" TextWrapping="Wrap"/></StackPanel>
      </DockPanel></Border>
      <TextBlock Text="{ui:Tr SetStart}" Style="{StaticResource GroupTitle}"/>
      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><StackPanel>
@@ -288,15 +293,30 @@
    </Grid>
   </DockPanel>
 
+  <!-- ============ Подписка закончилась (поверх окна) ============ -->
+  <Border x:Name="SubscriptionPanel" Grid.ColumnSpan="2" Background="#F50A0A0B" Visibility="Collapsed" Panel.ZIndex="9">
+   <StackPanel Width="420" VerticalAlignment="Center" HorizontalAlignment="Center">
+    <Image Source="{StaticResource VeliqSymbol}" Width="56" Height="56" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+    <TextBlock Text="{ui:Tr SubscriptionEnded}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+    <TextBlock Text="{ui:Tr SubscriptionEndedLead}" Style="{StaticResource Lead}" TextAlignment="Center" Margin="0,10,0,22"/>
+    <Button Content="{ui:Tr RenewSubscription}" Click="RenewSubscription" Style="{StaticResource Primary}" FontSize="16" MinHeight="48" Margin="0,0,0,10"/>
+    <Button Content="{ui:Tr SubscriptionRecheck}" Click="RecheckSubscription" HorizontalAlignment="Center"/>
+   </StackPanel>
+  </Border>
+
   <!-- ============ Активация (поверх окна) ============ -->
   <Border x:Name="ActivationPanel" Grid.ColumnSpan="2" Background="#F50A0A0B" Visibility="Collapsed" Panel.ZIndex="10">
    <StackPanel Width="420" VerticalAlignment="Center" HorizontalAlignment="Center">
     <Image Source="{StaticResource VeliqSymbol}" Width="56" Height="56" HorizontalAlignment="Center" Margin="0,0,0,20"/>
-    <TextBlock Text="{ui:Tr EnterActivationCode}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
-    <TextBlock Text="{ui:Tr ActivationLead}" Style="{StaticResource Lead}" TextAlignment="Center" Margin="0,10,0,22"/>
+    <TextBlock x:Name="AccountTitle" Text="{ui:Tr AccountTitle}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+    <TextBlock x:Name="AccountLead" Text="{ui:Tr AccountLead}" Style="{StaticResource Lead}" TextAlignment="Center" Margin="0,10,0,22"/>
+    <Button x:Name="AccountConnect" Content="{ui:Tr AccountSignIn}" Click="ConnectAccount" Style="{StaticResource Primary}" FontSize="16" MinHeight="48"/>
+    <TextBlock x:Name="AccountOnboardingHint" TextWrapping="Wrap" TextAlignment="Center" Style="{StaticResource Small}" Margin="0,12,0,16"/>
+    <Expander x:Name="LegacyActivation" Header="{ui:Tr AccountLegacyCode}" IsExpanded="False"><StackPanel>
     <PasswordBox x:Name="ActivationCode" MaxLength="64" FontSize="18" AutomationProperties.Name="{ui:Tr EnterActivationCode}"/>
     <Button x:Name="ActivationSubmit" Content="{ui:Tr ActivateCode}" Click="SubmitActivation" Style="{StaticResource Primary}" FontSize="16" MinHeight="48" Margin="0,14,0,12"/>
     <TextBlock x:Name="ActivationError" TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+    </StackPanel></Expander>
    </StackPanel>
   </Border>
  </Grid>

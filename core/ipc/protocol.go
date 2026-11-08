@@ -43,6 +43,7 @@ func Read(r io.Reader, v any) error {
 		return errors.New("invalid IPC message length")
 	}
 	b := make([]byte, size)
+	defer clear(b)
 	if _, e := io.ReadFull(r, b); e != nil {
 		return e
 	}
@@ -70,6 +71,8 @@ func Write(w io.Writer, v any) error {
 
 type Handler func(context.Context, string, json.RawMessage) (any, error)
 type Server struct {
+	// AfterReply observes a completed write, never an unacknowledged request.
+	AfterReply func(method string, response Response, writeError error)
 	Token  string
 	Handle Handler
 	mu     sync.Mutex
@@ -120,5 +123,9 @@ func (s *Server) Serve(ctx context.Context, rw io.ReadWriter) error {
 	if e := Read(rw, &q); e != nil {
 		return Write(rw, Response{Version: Version, Code: "invalid_response", Error: "invalid request frame"})
 	}
-	return Write(rw, s.Execute(ctx, q, time.Now()))
+	defer clear(q.Payload)
+	reply := s.Execute(ctx, q, time.Now())
+	err := Write(rw, reply)
+	if s.AfterReply != nil {s.AfterReply(q.Method,reply,err)}
+	return err
 }

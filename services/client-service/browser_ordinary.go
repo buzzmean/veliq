@@ -21,7 +21,7 @@ func (c *Controller) ordinaryAddressRetry(cur profilesResult, q browserproxy.Req
 		reason = "DOH_RELAY_RESERVED"
 	case !cur.enabled || cur.routingDisabled:
 		reason = "OPTIMIZATION_DISABLED"
-	case !browserAuto(cur.profile):
+	case !browserAuto(cur.profile) && !automaticApplication(cur.profile):
 		reason = "NOT_BROWSER_AUTO"
 	case q.OriginAmbiguous:
 		reason = "AMBIGUOUS_DOMAIN_NO_DNS_RETARGET"

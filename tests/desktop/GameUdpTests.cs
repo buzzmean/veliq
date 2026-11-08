@@ -34,3 +34,47 @@ public class PubgReadinessTests {
  }
  [Fact]public void IncompletePrimingHasHonestReadableFailure(){var p=new GameUdpProfile{Engine=new(){Enabled=true,Flows=[new(){Stage="LOCAL_UDP",State="LOCAL_PRIMING_INCOMPLETE",Reason="GLOBAL_DECOY_RATE_LIMITED",FakePackets=12}]}};Assert.Contains("не полностью",p.Summary);Assert.Contains("лимит",p.Summary);Assert.DoesNotContain("Обход активен",p.Summary);}
 }
+
+public sealed class LocalOnlyGameTests {
+ sealed class LocalService : IServiceClient {
+  public object? Payload;
+  public Task<T> Call<T>(string method,object? payload=null,CancellationToken cancellationToken=default){Assert.Equal("gameudp.set",method);Payload=payload;return Task.FromResult((T)(object)new GameUdpStatus());}
+ }
+ [Fact]public async Task ToggleExplicitlyRequestsNoRelay(){var s=new LocalService();var vm=new DesktopViewModel(s);await vm.SetGameUdpAsync("cs2",true);var p=JsonSerializer.SerializeToElement(s.Payload);Assert.True(p.GetProperty("local_only").GetBoolean());Assert.Contains("без VPS",vm.Notice);}
+ [Fact]public void PolicyAndStalledFlowDoNotClaimHealthyPlay(){
+  var p=new GameUdpProfile{Engine=new(){Enabled=true,LocalOnly=true}};
+  Assert.Contains("VPS запрещён",p.Summary);
+  p.Engine.Flows=[new(){Stage="DIRECT",State="INSUFFICIENT_REPLIES",InboundPackets=6}];
+  Assert.Contains("устойчивых ответов нет",p.Summary);
+  p.Reason="GAME_UDP_LOCAL_ONLY_EXHAUSTED";Assert.Contains("исчерпаны",p.Summary);Assert.Contains("VPS запрещён",p.Summary);
+ }
+ [Fact]public void PinnedRelayIsVisibleAfterPolicySwitch(){
+  var p=new GameUdpProfile{Engine=new(){Enabled=true,LocalOnly=true,Flows=[new(){Stage="RELAY",LastOutgoing=DateTimeOffset.UtcNow}]}};
+  Assert.Contains("ещё идёт через VPS",p.Summary);
+ }
+ [Fact]public void StaleTrafficDoesNotClaimActiveLocal(){
+  var p=new GameUdpProfile{Engine=new(){Enabled=true,LocalOnly=true,Flows=[new(){Stage="LOCAL_UDP",FakePackets=24,LastOutgoing=DateTimeOffset.UtcNow.AddMinutes(-1)}]}};
+  Assert.Contains("Свежий игровой трафик не наблюдается",p.Summary);
+ }
+}
+
+public sealed class LocalOnlyCatalogTests {
+ sealed class Service : IServiceClient {
+  public List<(string Method,object? Payload)> Calls=[];
+  public bool Reject;
+  public Task<T> Call<T>(string method,object? payload=null,CancellationToken cancellationToken=default){
+   Calls.Add((method,payload));
+   if(method=="gameudp.set" && Reject)return Task.FromException<T>(new ServiceException(ServiceFailure.Rejected,"UNKNOWN_FIELD"));
+   object result=method switch {
+    "profiles"=>new Profile[]{new(){Id="cs2",Name="CS2",Mode="DIRECT",Executables=[@"C:\Games\cs2.exe"]}},
+    "gameudp.status"=>new GameUdpStatus(),"gameudp.set"=>new GameUdpStatus(),"status"=>new Snapshot(),_=>throw new InvalidOperationException(method)
+   };return Task.FromResult((T)result);
+  }
+ }
+ [Theory][InlineData(false)][InlineData(true)]public async Task LocalSelectionNeverRetriesWithoutNoRelayPolicy(bool reject){
+  var s=new Service{Reject=reject};var vm=new GameCatalogViewModel(s);await vm.RefreshAsync();var card=vm.Games.Single(g=>g.Id=="cs2");card.Mode="DIRECT_PLUS";await vm.ApplyAsync(card);
+  var call=Assert.Single(s.Calls,c=>c.Method=="gameudp.set");Assert.True(JsonSerializer.SerializeToElement(call.Payload).GetProperty("local_only").GetBoolean());
+  Assert.DoesNotContain(s.Calls,c=>c.Method=="profile.set");
+  Assert.Contains(reject?"не сохранён":"без VPS",vm.Notice);
+ }
+}

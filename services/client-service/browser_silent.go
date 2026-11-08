@@ -267,6 +267,8 @@ func (c *Controller) reapplySilentLocked(edge bool) (err error) {
 // Recheck after owner logon (HKU may not be mounted at SCM boot). No HKLM,
 // browser process manipulation, or foreign-policy overwrite. Serialized with IPC.
 func (c *Controller) RetrySilentBrowserPolicies() {
+	if c.emergencyStopped.Load() {return}
+	c.RetryBrowserAuthority()
 	c.retireDisabledBrowserListeners(time.Now(), 3*time.Minute)
 	if !c.browser.readiness.enforced.Load() && !c.activationNetworkAllowed() {
 		_ = c.CleanupPreactivationBrowserPolicies()
@@ -276,11 +278,20 @@ func (c *Controller) RetrySilentBrowserPolicies() {
 		return
 	}
 	if c.browser.readiness.enforced.Load() && c.browserPolicyBaseReason() != "" {
-		_ = c.CleanupOwnedBrowserPolicies()
+		// Native authority PAC remains fail-closed while capture/relay recover.
+		// Withdrawing it would restore unsafe opaque browser TLS instead.
+		c.browser.mu.Lock()
+		for _, edge := range []bool{false, true} {
+			if !c.nativeAuthorityLane(edge) {
+				_ = c.cleanupOwnedBrowserPoliciesLocked(&edge)
+			}
+		}
+		c.browser.mu.Unlock()
 		return
 	}
 	c.activationMu.Lock()
 	defer c.activationMu.Unlock()
+	if c.emergencyStopped.Load() {return}
 	c.browser.mu.Lock()
 	defer c.browser.mu.Unlock()
 	for _, edge := range []bool{false, true} {
@@ -289,24 +300,6 @@ func (c *Controller) RetrySilentBrowserPolicies() {
 			configured = c.browser.edge != nil && len(c.browser.edge.saved.Silent.Profiles) > 0
 		}
 		if !configured {
-			continue
-		}
-		// Native is the default. Do not re-install policy from an old journal;
-		// cached PAC still has live compatibility listeners during withdrawal.
-		nativeOnly := true
-		ids := c.browser.silent.Profiles
-		if edge {
-			ids = c.edgeLocked().saved.Silent.Profiles
-		}
-		for _, id := range ids {
-			for _, p := range c.Profiles.List() {
-				if p.ID == id && !nativeBrowserProfile(p) {
-					nativeOnly = false
-				}
-			}
-		}
-		if nativeOnly {
-			_ = c.cleanupOwnedBrowserPoliciesLocked(&edge)
 			continue
 		}
 		if err := c.browserPolicyPublishReadyLocked(edge); err != nil {
