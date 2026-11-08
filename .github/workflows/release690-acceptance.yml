@@ -20,3 +20,17 @@ jobs:
         env:
           GH_ARTIFACT_TOKEN: ${{ github.token }}
         run: '& ./tests/release690/acceptance.ps1'
+      - name: Safe failure evidence
+        if: failure()
+        shell: powershell
+        run: |
+          $app=Join-Path $env:ProgramFiles 'VELIQ'
+          foreach($n in @('install-result.json','install-success.json')){
+            $p=Join-Path $app $n
+            if(Test-Path $p){Get-Content -Raw $p|ConvertFrom-Json|Select-Object result,step,error,checked_at,service_sha256,gui_sha256,installation_state|ConvertTo-Json -Compress}
+          }
+          Get-Service VELIQ -ErrorAction SilentlyContinue|Select-Object Name,Status|ConvertTo-Json -Compress
+          Get-Process VELIQ -ErrorAction SilentlyContinue|Select-Object Id,SessionId|ConvertTo-Json -Compress
+          Get-ChildItem (Join-Path $env:ProgramData 'VELIQ-Setup/Logs') -Filter '*.jsonl' -ErrorAction SilentlyContinue|ForEach-Object {
+            Get-Content $_.FullName|ForEach-Object {try {$e=$_|ConvertFrom-Json;$e|Select-Object event,stage,code,error_type,error_line,error_hresult,error_category|ConvertTo-Json -Compress}catch{}}
+          }

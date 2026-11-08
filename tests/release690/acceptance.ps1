@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param()
-$ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue';Set-StrictMode -Version Latest
 if($env:GITHUB_ACTIONS -cne 'true' -or $env:VELIQ_RELEASE_ACCEPTANCE -cne 'DISPOSABLE_ACTIONS_690'){throw 'DISPOSABLE_ACTIONS_REQUIRED'}
 $root=Join-Path $env:RUNNER_TEMP 'release690'
 [void][IO.Directory]::CreateDirectory($root)
@@ -40,6 +40,7 @@ $action=New-ScheduledTaskAction -Execute (Join-Path $env:SystemRoot 'System32/Wi
 $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
 $task='VELIQ-Release690-System-Updater'
 Register-ScheduledTask -TaskName $task -Action $action -Principal $principal -Force|Out-Null
+$updateStarted=[DateTimeOffset]::UtcNow
 Start-ScheduledTask -TaskName $task
 $deadline=[DateTime]::UtcNow.AddMinutes(5);$passed=$false
 do{
@@ -48,7 +49,11 @@ do{
  if($state -ne 'Running' -and $info.LastRunTime.Year -gt 2000 -and $info.LastTaskResult -ne 0){if(Test-Path $workerLog){Get-Content $workerLog};throw ('SYSTEM_UPDATER_EXIT_'+$info.LastTaskResult)}
  $current=if(Test-Path (Join-Path $app 'package.json')){Get-Content -Raw (Join-Path $app 'package.json')|ConvertFrom-Json}else{$null}
  $running=Get-Service VELIQ -ErrorAction SilentlyContinue
- if($state -ne 'Running' -and $info.LastTaskResult -eq 0 -and $current -and $current.commit -ceq 'caa04648af00d0027f3441067f9febbd31f9b19d' -and $running -and $running.Status -eq 'Running' -and (Test-Path (Join-Path $app 'install-success.json'))){$passed=$true;break}
+ $successPath=Join-Path $app 'install-success.json'
+ if($state -ne 'Running' -and $info.LastTaskResult -eq 0 -and $current -and $current.commit -ceq 'caa04648af00d0027f3441067f9febbd31f9b19d' -and $running -and $running.Status -eq 'Running' -and (Test-Path $successPath)){
+  $success=Get-Content -Raw $successPath|ConvertFrom-Json
+  if($success.result -ceq 'PASS' -and ([DateTimeOffset]$success.checked_at) -gt $updateStarted -and $success.service_sha256 -ceq '0a5228ba208c4d714634722c93292c3b56fff563ad9ef681147cd0f60e319da4' -and (Get-FileHash (Join-Path $serviceRoot 'veliq-service.exe')).Hash -ceq '0A5228BA208C4D714634722C93292C3B56FFF563AD9EF681147CD0F60E319DA4'){$passed=$true;break}
+ }
 }while([DateTime]::UtcNow -lt $deadline)
 if(Test-Path $workerLog){Get-Content $workerLog}
 if(!$passed){throw 'REAL_682_TO_690_UPDATER_TIMEOUT'}
