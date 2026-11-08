@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Политика конфиденциальности — VELIQ</title>
   <meta name="description" content="Какие данные получает VELIQ, зачем и сколько хранит. HTTPS не расшифровывается, данные не продаются.">
-  <link rel="canonical" href="https://veliq.app/privacy.html">
+  <link rel="canonical" href="https://veliqapp.ru/privacy">
   <meta name="theme-color" content="#0A0A0B">
   <meta name="color-scheme" content="light dark">
   <meta property="og:type" content="website">
@@ -13,13 +13,13 @@
   <meta property="og:locale" content="ru_RU">
   <meta property="og:title" content="Политика конфиденциальности — VELIQ">
   <meta property="og:description" content="Какие данные получает VELIQ, зачем и сколько хранит. HTTPS не расшифровывается, данные не продаются.">
-  <meta property="og:url" content="https://veliq.app/privacy.html">
-  <meta property="og:image" content="https://veliq.app/assets/img/og-image.png">
+  <meta property="og:url" content="https://veliqapp.ru/privacy">
+  <meta property="og:image" content="https://veliqapp.ru/assets/img/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="VELIQ: нажал — работает.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="https://veliq.app/assets/img/og-image.png">
+  <meta name="twitter:image" content="https://veliqapp.ru/assets/img/og-image.png">
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="assets/img/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="assets/img/app-icon-180.png">
@@ -27,7 +27,8 @@
   <link rel="preload" href="assets/fonts/Onest-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/components.css">
-  <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/site.css?v=279f14b43ad3">
+  <link rel="stylesheet" href="assets/header-account.css?v=20261105-1">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head>
 <body>
@@ -35,78 +36,45 @@
 <a class="skip" href="#main">Перейти к содержанию</a>
 <header class="top">
   <div class="wrap top__in">
-    <a class="logo" href="index.html" aria-label="VELIQ — на главную">
+    <a class="logo" href="/" aria-label="VELIQ — на главную">
       <img class="on-light" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" width="144" height="66">
       <img class="on-dark" src="assets/img/veliq-wordmark-dark.svg" alt="" width="144" height="66">
     </a>
     <nav class="nav" id="nav" aria-label="Основное меню">
-      <a href="how.html">Как работает</a>
-      <a href="index.html#games">Игры</a>
-      <a href="clubs.html">Клубам</a>
-      <a href="pricing.html">Цены</a>
-      <a href="support.html">Помощь</a>
+      <a href="/how">Как работает</a>
+      <a href="/#games">Игры</a>
+      <a href="/clubs">Клубам</a>
+      <a href="/pricing">Цены</a>
+      <a href="/support">Помощь</a>
+      <a class="nav__download" href="/download">Скачать для Windows</a>
     </nav>
     <div class="top__tools">
       <button class="btn btn--quiet btn--icon btn--sm theme-btn" type="button" data-theme-toggle aria-label="Сменить тему">
         <svg class="i i-sun-use" aria-hidden="true"><use href="#i-sun"/></svg><svg class="i i-moon-use" aria-hidden="true"><use href="#i-moon"/></svg>
       </button>
-      <a class="btn btn--sm top__cta" href="download.html">Скачать</a>
+      <a class="btn btn--sm top__cta" href="/download">Скачать</a>
+      <a class="btn btn--sm top__account" href="/account" aria-label="Личный кабинет">
+        <svg class="top__account-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
+        <span class="top__account-full" aria-hidden="true">Личный кабинет</span><span class="top__account-short" aria-hidden="true">Кабинет</span>
+      </a>
       <button class="btn btn--quiet btn--icon btn--sm menu-btn" type="button" data-menu aria-expanded="false" aria-controls="nav" aria-label="Меню"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
     </div>
   </div>
 </header>
-<main id="main">
-
-<section class="page-head"><div class="wrap"><div class="crumbs"><a href="index.html">Главная</a> / Конфиденциальность</div><h1 class="h1">Политика конфиденциальности</h1><p class="lede">Какие данные получает VELIQ, зачем и сколько их хранит. Редакция от 1 ноября 2026.</p></div></section>
-<section class="sec sec--tight"><div class="wrap prose">
-<div class="note note--draft" style="margin-bottom:var(--sp-6)"><svg class="i" aria-hidden="true"><use href="#i-alert"/></svg><div><strong>Черновик.</strong> Реквизиты продавца и сроки хранения данных будут указаны перед началом продаж.</div></div>
-<h2>Коротко</h2>
-<p>VELIQ направляет часть соединений через свои серверы, когда так быстрее или стабильнее. <strong>Мы не расшифровываем и не подменяем HTTPS</strong>: содержимое страниц, пароли и переписка серверу не видны. Мы собираем только то, без чего сервис не работает, и не продаём данные.</p>
-<h2>1. Кто обрабатывает данные</h2>
-<p>Оператор персональных данных — продавец сервиса VELIQ:</p>
-<ul>
-<li>Продавец: [ФИО будет указано]</li>
-<li>Статус: плательщик налога на профессиональный доход (самозанятый)</li>
-<li>ИНН: [будет указан]</li>
-<li>Электронная почта: <a href="mailto:support@veliq.app">support@veliq.app</a></li>
-
-</ul>
-<p>Политика составлена в соответствии с Федеральным законом от 27.07.2006 № 152-ФЗ «О персональных данных».</p>
-<h2>2. Какие данные и зачем</h2>
-<ul>
-<li><strong>Адрес электронной почты</strong> — чтобы вы могли войти в личный кабинет, получать чеки и письма о подписке.</li>
-<li><strong>Данные о подписке и платежах</strong>: тариф, число компьютеров, срок, сумма и статус платежа — чтобы предоставлять оплаченный доступ и выполнять требования налогового учёта.</li>
-<li><strong>Данные устройства</strong>: ключ устройства, обезличенный идентификатор компьютера (необратимый хеш), версия программы, время последнего подключения — чтобы пускать на серверы только активированные копии VELIQ и считать занятые места.</li>
-<li><strong>Технические данные соединений</strong>, которые проходят через серверы VELIQ: адрес и порт назначения, имя сайта из начала соединения, объём данных и время — чтобы переслать трафик и защитить серверы от злоупотреблений.</li>
-<li><strong>Обращения в поддержку</strong> и отчёты диагностики, если вы сами их прислали.</li>
-</ul>
-<p>Данные банковской карты получает и обрабатывает платёжный сервис ЮKassa (ООО НКО «ЮМани»). VELIQ их не получает и не хранит.</p>
-<h2>3. Основания</h2>
-<p>Данные обрабатываются для заключения и исполнения договора, в котором вы — сторона (п. 5 ч. 1 ст. 6 152-ФЗ), и для исполнения требований закона (налоговый учёт, чеки).</p>
-<h2>4. Сроки хранения</h2>
-<ul>
-<li>Аккаунт и данные подписки — пока аккаунт существует и ещё 3 года после его удаления (налоговый учёт).</li>
-<li>Журналы соединений на серверах — [срок будет указан].</li>
-<li>Обращения в поддержку — 1 год.</li>
-</ul>
-<h2>5. Кому передаём</h2>
-<p>Только тем, без кого сервис не работает: платёжному сервису — для приёма оплаты, почтовому сервису — для отправки писем, хостинг-провайдерам — на их оборудовании работают серверы VELIQ. Часть серверов может находиться за пределами России. Мы не продаём данные и не передаём их рекламным сетям. Данные раскрываются государственным органам только в случаях, прямо предусмотренных законом.</p>
-<h2>6. Ваши права</h2>
-<p>Вы можете узнать, какие ваши данные мы храним, исправить их или потребовать удалить аккаунт — напишите на <a href="mailto:support@veliq.app">support@veliq.app</a> с адреса, к которому привязан аккаунт. Ответим в течение 10 рабочих дней. Удаление аккаунта прекращает подписку.</p>
-<h2>7. Что остаётся на компьютере</h2>
-<p>Настройки, список сервисов и журнал диагностики хранятся только на вашем компьютере. Отчёт диагностики мы получаем, только если вы сами его пришлёте.</p>
-<h2>8. Сайт и cookie</h2>
-<p>Сайт не использует счётчики и рекламные cookie. Выбор темы сохраняется только в вашем браузере. Личный кабинет использует одну служебную cookie, чтобы вы оставались в нём после входа.</p>
-<h2>9. Изменения</h2>
-<p>Новая редакция публикуется на этой странице с датой. Если изменения существенные, сообщим письмом.</p>
-</div></section>
-
-</main>
+<main id="main"><section class="page-head"><div class="wrap"><div class="crumbs"><a href="/">Главная</a> / Политика конфиденциальности</div><h1 class="h1">Политика конфиденциальности</h1><p class="lede">VELIQ · veliqapp.ru · Редакция от 7 ноября 2026 года (Москва).</p></div></section><section class="sec sec--tight"><div class="wrap prose">
+<p>Эта политика описывает обработку данных при использовании сайта <a href="https://veliqapp.ru">veliqapp.ru</a>, личного кабинета и приложения VELIQ для Windows. По вопросам обработки данных обращайтесь: <a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a> или <a href="/support#chat" data-support-open>онлайн-чат поддержки</a>.</p>
+<h2>Какие данные используются</h2><ul><li><strong>Аккаунт:</strong> электронная почта для одноразового кода входа, тип аккаунта, введённое имя или название клуба, данные сессии. Код проверяется сервером; не передавайте его поддержке.</li><li><strong>Подписка:</strong> выбранный тариф, количество мест, срок доступа, привязанные устройства и сведения о предоставленном доступе. Для учёта оплат предусмотрены сумма, период, идентификатор и статус платежа.</li><li><strong>Устройства:</strong> идентификатор и открытый ключ устройства, название компьютера, версия программы, сведения о подключении и последней активности. Эти данные связаны с аккаунтом и не считаются анонимными только потому, что идентификатор представлен хешем.</li><li><strong>Сетевые и технические данные:</strong> IP-адрес, время и результат запроса, адрес и порт назначения, технические параметры маршрута и объём трафика. Серверы маршрутизации могут обрабатывать сведения о назначении соединения, необходимые для его передачи и защиты от злоупотреблений.</li><li><strong>Поддержка:</strong> текст обращения, ответы, статус и время диалога; в заявке клуба — самостоятельно введённые контактные сведения, число компьютеров и информация о клубе. Присланная вами диагностика может включать технические журналы и сведения о сети и процессах.</li></ul>
+<h2>Цели и основания</h2><p>Данные используются для регистрации и входа, привязки устройств, предоставления и учёта доступа, работы маршрутизации, защиты сервиса и ответов на обращения. Обработка, необходимая для заключения и исполнения договора по инициативе пользователя, осуществляется на соответствующем основании. Если для отдельной цели требуется согласие, оно должно запрашиваться отдельно; ознакомление с этой политикой не заменяет такое согласие.</p>
+<h2>Сайт, cookie и локальные данные</h2><p>В проверенной версии сайта не подключены рекламные системы и счётчики посещаемости. Выбор темы хранится в localStorage, временные параметры интерфейса и кэш сведений о релизе — в sessionStorage. Кабинет и чат используют отдельные служебные cookie. Они нужны для доступа к вашей сессии; сессия поддержки действует до 30 дней. Скрытие переписки на общем ПК прекращает её доступность в данном браузере, но не удаляет серверные копии.</p>
+<h2>Передача данных и подключённые сервисы</h2><p>Почта с кодом входа отправляется через почтовый сервис Timeweb. Обращения и ответы чата передаются в закрытую Telegram-группу специалистов; Telegram обрабатывает свои копии по собственным правилам. При проверке последнего релиза браузер обращается к GitHub; при скачивании установщика переход также ведёт на GitHub. Эти сервисы могут получать IP-адрес и технические параметры обращения. Для размещения сайта и серверов используются хостинг-провайдеры. Обработка и передача могут затрагивать серверы за пределами РФ; это требует соблюдения применимых правил локализации и трансграничной передачи.</p>
+<p>Для будущего приёма платежей выбран Platega. Онлайн-оплата и автоматические списания на сайте пока не включены. Реквизиты карты не следует отправлять в чат или по почте. При подключении оплаты обработка платёжных реквизитов и участников платежа должна быть раскрыта до оплаты.</p>
+<h2>Хранение и защита</h2><p>Доступ к аккаунту и переписке ограничивается серверной проверкой сессии; используются HTTPS и служебные cookie с защитными атрибутами. VELIQ не расшифровывает и не подменяет HTTPS-трафик маршрутизируемых приложений. Это не означает отсутствия обработки метаданных соединений или данных, которые вы сами отправляете на сайт.</p><p>В коде поддержки предусмотрена очистка обращений после 90 дней без активности. Копии Telegram имеют отдельный жизненный цикл. Данные аккаунта, устройств и учёта доступа используются в течение соответствующих отношений; обращения об удалении рассматриваются с учётом применимых требований закона. Эта редакция не устанавливает неподтверждённый единый срок для всех технических журналов и резервных копий.</p>
+<h2>Права и обращения</h2><p>Вы можете запросить сведения об обработке, исправление, блокирование или удаление данных, а также отозвать согласие, если обработка основана на нём. Напишите <a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a> или <a href="/support#chat" data-support-open>онлайн-чат поддержки</a>; для защиты ваших данных может потребоваться подтверждение принадлежности аккаунта. Запросы рассматриваются в сроки, предусмотренные применимым законодательством. Отзыв согласия не прекращает обработку, допускаемую на другом законном основании.</p><p>Связанные страницы: <a href="/terms">пользовательское соглашение</a>, <a href="/pricing">тарифы</a>, <a href="/contacts">поддержка</a>.</p></div></section></main>
 <footer class="foot">
   <div class="wrap">
     <div class="foot__grid">
       <div>
-        <a class="logo" href="index.html" aria-label="VELIQ — на главную">
+        <a class="logo" href="/" aria-label="VELIQ — на главную">
           <img class="on-light" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" width="144" height="66">
           <img class="on-dark" src="assets/img/veliq-wordmark-dark.svg" alt="" width="144" height="66">
         </a>
@@ -114,24 +82,26 @@
       </div>
       <div>
         <h2>Продукт</h2>
-        <ul><li><a href="download.html">Скачать</a></li><li><a href="how.html">Как работает</a></li><li><a href="index.html#privacy">Что видит сервер</a></li><li><a href="index.html#games">Для игр</a></li><li><a href="pricing.html">Цены</a></li><li><a href="roadmap.html">План развития</a></li></ul>
+        <ul><li><a href="/download">Скачать</a></li><li><a href="/how">Как работает</a></li><li><a href="/#privacy">Что видит сервер</a></li><li><a href="/#games">Для игр</a></li><li><a href="/pricing">Цены</a></li><li><a href="/roadmap">План развития</a></li></ul>
       </div>
       <div>
         <h2>Клубам</h2>
-        <ul><li><a href="clubs.html">VELIQ для клубов</a></li><li><a href="clubs.html#calc">Расчёт выгоды</a></li><li><a href="clubs.html#setup">Установка в клубе</a></li></ul>
+        <ul><li><a href="/clubs">VELIQ для клубов</a></li><li><a href="/clubs#calc">Расчёт выгоды</a></li><li><a href="/clubs#setup">Установка в клубе</a></li></ul>
       </div>
       <div>
         <h2>Помощь</h2>
-        <ul><li><a href="support.html">Вопросы и ответы</a></li><li><a href="support.html#errors">Ошибки и решения</a></li><li><a href="contacts.html">Контакты и реквизиты</a></li><li><a href="mailto:support@veliq.app">support@veliq.app</a></li></ul>
+        <ul><li><a href="/support">Вопросы и ответы</a></li><li><a href="/support#errors">Ошибки и решения</a></li><li><a href="/contacts">Поддержка VELIQ</a></li><li><a href="/support#chat" data-support-open>Онлайн-поддержка</a></li></ul>
       </div>
     </div>
     <div class="foot__bottom">
       <span>© 2026 VELIQ</span>
-      <span><a href="privacy.html">Конфиденциальность</a>&nbsp;&nbsp;&nbsp;<a href="terms.html">Оферта</a>&nbsp;&nbsp;&nbsp;<a href="contacts.html">Контакты</a></span>
+      <span><a href="/privacy">Конфиденциальность</a>&nbsp;&nbsp;&nbsp;<a href="/terms">Пользовательское соглашение</a>&nbsp;&nbsp;&nbsp;<a href="/contacts">Контакты</a>&nbsp;&nbsp; <a href="/pricing">Тарифы</a>&nbsp;&nbsp; <a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a></span>
     </div>
   </div>
 </footer>
 <script src="assets/charts.js"></script>
-<script src="assets/site.js"></script>
+<script src="assets/site.js?v=20261105-prices2"></script>
+<script src="assets/release.js?v=20261105-prices1"></script>
+<script src="/assets/pricing-policy.js?v=20261107"></script>
 </body>
 </html>

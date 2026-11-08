@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Помощь и частые вопросы — VELIQ</title>
   <meta name="description" content="Ответы на вопросы о VELIQ и решения для каждой ошибки программы.">
-  <link rel="canonical" href="https://veliq.app/support.html">
+  <link rel="canonical" href="https://veliqapp.ru/support">
   <meta name="theme-color" content="#0A0A0B">
   <meta name="color-scheme" content="light dark">
   <meta property="og:type" content="website">
@@ -13,13 +13,13 @@
   <meta property="og:locale" content="ru_RU">
   <meta property="og:title" content="Помощь и частые вопросы — VELIQ">
   <meta property="og:description" content="Ответы на вопросы о VELIQ и решения для каждой ошибки программы.">
-  <meta property="og:url" content="https://veliq.app/support.html">
-  <meta property="og:image" content="https://veliq.app/assets/img/og-image.png">
+  <meta property="og:url" content="https://veliqapp.ru/support">
+  <meta property="og:image" content="https://veliqapp.ru/assets/img/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="VELIQ: нажал — работает.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="https://veliq.app/assets/img/og-image.png">
+  <meta name="twitter:image" content="https://veliqapp.ru/assets/img/og-image.png">
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
   <link rel="icon" href="assets/img/favicon.ico" sizes="any">
   <link rel="apple-touch-icon" href="assets/img/app-icon-180.png">
@@ -27,82 +27,90 @@
   <link rel="preload" href="assets/fonts/Onest-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/components.css">
-  <link rel="stylesheet" href="assets/site.css">
+  <link rel="stylesheet" href="assets/site.css?v=279f14b43ad3">
+  <link rel="stylesheet" href="assets/header-account.css?v=20261105-1">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
-  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Как VELIQ выбирает путь?", "acceptedAnswer": {"@type": "Answer", "text": "Программа замеряет задержку и потери до сервера игры или сервиса и выбирает лучший путь: обычный — через провайдера, или через собственные серверы VELIQ, если так быстрее или стабильнее. Всё, что и так работает хорошо, не трогает. <a href=\"how.html\">Как работает VELIQ</a>."}}, {"@type": "Question", "name": "Нужно ли что-то перезапускать?", "acceptedAnswer": {"@type": "Answer", "text": "Нет. Маршруты работают сразу после нажатия «Оптимизировать» — ничего закрывать и перезапускать не нужно."}}, {"@type": "Question", "name": "Как VELIQ влияет на пинг в играх?", "acceptedAnswer": {"@type": "Answer", "text": "VELIQ сравнивает пути до игрового сервера и выбирает самый быстрый. Если путь через сеть VELIQ не быстрее обычного, маршрут не меняется. Замеры видно в программе."}}, {"@type": "Question", "name": "Вы видите, что я открываю?", "acceptedAnswer": {"@type": "Answer", "text": "Нет. Мы не расшифровываем и не подменяем HTTPS. Сервер видит адрес назначения и объём данных — этого достаточно, чтобы переслать трафик. <a href=\"index.html#privacy\">Что видит сервер</a>. Подробности — в <a href=\"privacy.html\">политике конфиденциальности</a>."}}, {"@type": "Question", "name": "Какие системы поддерживаются?", "acceptedAnswer": {"@type": "Answer", "text": "Сейчас VELIQ работает на компьютерах с Windows. Версия для телефона готовится."}}, {"@type": "Question", "name": "Сколько стоит и как оплатить?", "acceptedAnswer": {"@type": "Answer", "text": "Тарифы — на странице <a href=\"pricing.html\">«Цены»</a>. Оплатить можно картой или через СБП в личном кабинете, клубы могут платить по счёту."}}, {"@type": "Question", "name": "Подходит ли VELIQ для клубов?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Для клубов есть отдельный код активации и инструкция, они выдаются после заявки. <a href=\"clubs.html\">VELIQ для клубов</a>."}}, {"@type": "Question", "name": "Как выключить VELIQ?", "acceptedAnswer": {"@type": "Answer", "text": "Нажмите большую кнопку ещё раз. Интернет продолжит работать как без программы."}}, {"@type": "Question", "name": "Как добавить свой сайт или приложение?", "acceptedAnswer": {"@type": "Answer", "text": "Вкладка «Сервисы» → «Добавить». VELIQ подберёт для него маршрут так же, как для остальных."}}]}</script>
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Как VELIQ выбирает путь?", "acceptedAnswer": {"@type": "Answer", "text": "Программа замеряет задержку и потери до сервера игры или сервиса и выбирает лучший путь: прямой — через провайдера, или через серверы VELIQ, если так доступнее, быстрее или стабильнее. Всё, что и так работает хорошо, не трогает. <a href=\"/how\">Как работает VELIQ</a>."}}, {"@type": "Question", "name": "Нужно ли что-то перезапускать?", "acceptedAnswer": {"@type": "Answer", "text": "Нет. Маршруты работают сразу после нажатия «Оптимизировать» — ничего закрывать и перезапускать не нужно."}}, {"@type": "Question", "name": "Как VELIQ влияет на пинг в играх?", "acceptedAnswer": {"@type": "Answer", "text": "VELIQ сравнивает пути до игрового сервера и выбирает самый быстрый. Если путь через сеть VELIQ не быстрее обычного, маршрут не меняется. Замеры видно в программе."}}, {"@type": "Question", "name": "Вы видите, что я открываю?", "acceptedAnswer": {"@type": "Answer", "text": "Нет. Мы не расшифровываем и не подменяем HTTPS. Сервер видит адрес назначения и объём данных — этого достаточно, чтобы переслать трафик. <a href=\"/#privacy\">Что видит сервер</a>. Подробности — в <a href=\"/privacy\">политике конфиденциальности</a>."}}, {"@type": "Question", "name": "Какие системы поддерживаются?", "acceptedAnswer": {"@type": "Answer", "text": "Сейчас VELIQ работает на компьютерах с Windows. Версия для телефона готовится."}}, {"@type": "Question", "name": "Сколько стоит и как оплатить?", "acceptedAnswer": {"@type": "Answer", "text": "Личный тариф — 399 ₽ в месяц за аккаунт, клубный — 199 ₽ за ПК в месяц. <a href=\"/pricing\">Подробнее о тарифах</a>. На этапе тестирования условия подключения и оплаты уточняйте в <a href=\"/support#chat\" data-support-open>онлайн-поддержке</a>."}}, {"@type": "Question", "name": "Подходит ли VELIQ для клубов?", "acceptedAnswer": {"@type": "Answer", "text": "Да. Выберите клубный аккаунт: подписка, компьютеры и разрешения для образов управляются в личном кабинете. <a href=\"/clubs\">VELIQ для клубов</a>."}}, {"@type": "Question", "name": "Как выключить VELIQ?", "acceptedAnswer": {"@type": "Answer", "text": "Нажмите большую кнопку ещё раз. Интернет продолжит работать как без программы."}}, {"@type": "Question", "name": "Как добавить свой сайт или приложение?", "acceptedAnswer": {"@type": "Answer", "text": "Вкладка «Сервисы» → «Добавить». VELIQ подберёт для него маршрут так же, как для остальных."}}]}</script>
+<link rel="stylesheet" href="/assets/support-page.css?v=20261105-prices1">
 </head>
 <body>
 <script src="assets/icons.js"></script>
 <a class="skip" href="#main">Перейти к содержанию</a>
 <header class="top">
   <div class="wrap top__in">
-    <a class="logo" href="index.html" aria-label="VELIQ — на главную">
+    <a class="logo" href="/" aria-label="VELIQ — на главную">
       <img class="on-light" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" width="144" height="66">
       <img class="on-dark" src="assets/img/veliq-wordmark-dark.svg" alt="" width="144" height="66">
     </a>
     <nav class="nav" id="nav" aria-label="Основное меню">
-      <a href="how.html">Как работает</a>
-      <a href="index.html#games">Игры</a>
-      <a href="clubs.html">Клубам</a>
-      <a href="pricing.html">Цены</a>
-      <a href="support.html" aria-current="page">Помощь</a>
+      <a href="/how">Как работает</a>
+      <a href="/#games">Игры</a>
+      <a href="/clubs">Клубам</a>
+      <a href="/pricing">Цены</a>
+      <a href="/support" aria-current="page">Помощь</a>
+      <a class="nav__download" href="/download">Скачать для Windows</a>
     </nav>
     <div class="top__tools">
       <button class="btn btn--quiet btn--icon btn--sm theme-btn" type="button" data-theme-toggle aria-label="Сменить тему">
         <svg class="i i-sun-use" aria-hidden="true"><use href="#i-sun"/></svg><svg class="i i-moon-use" aria-hidden="true"><use href="#i-moon"/></svg>
       </button>
-      <a class="btn btn--sm top__cta" href="download.html">Скачать</a>
+      <a class="btn btn--sm top__cta" href="/download">Скачать</a>
+      <a class="btn btn--sm top__account" href="/account" aria-label="Личный кабинет">
+        <svg class="top__account-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
+        <span class="top__account-full" aria-hidden="true">Личный кабинет</span><span class="top__account-short" aria-hidden="true">Кабинет</span>
+      </a>
       <button class="btn btn--quiet btn--icon btn--sm menu-btn" type="button" data-menu aria-expanded="false" aria-controls="nav" aria-label="Меню"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
     </div>
   </div>
 </header>
 <main id="main">
-
-<section class="page-head">
+<section class="help-hero">
   <div class="wrap">
-    <div class="crumbs"><a href="index.html">Главная</a> / Помощь</div>
-    <h1 class="h1">Помощь</h1>
-    <p class="lede">Ответы на частые вопросы и что делать при каждой ошибке, которую показывает программа.</p>
+    <div class="crumbs"><a href="/">Главная</a> / Поддержка</div>
+    <h1 class="h1">Поможем разобраться</h1>
+    <p class="lede">Не получается войти, подключить игру или настроить клуб? Напишите нам прямо здесь — ответ придёт в чат на сайте.</p>
+    <div class="help-actions"><a class="btn btn--lg" href="/support#chat" data-support-open>Открыть чат поддержки</a><a class="btn btn--lg btn--ghost" href="/clubs#apply">Подключить клуб</a></div>
+    <p class="muted" style="margin-top:16px;font-size:14px">Можно обновить страницу — обращение сохранится в этом браузере. На общем ПК завершайте сессию чата после обращения.</p>
+    <noscript><p>Для онлайн-чата включите JavaScript. Резервный адрес: support@veliqapp.ru.</p></noscript>
   </div>
 </section>
-<section class="sec sec--tight">
-  <div class="wrap cols">
-    <div>
-      <div class="faq">
-        <h2 class="faq__group">Общие вопросы</h2>
-<details><summary>Как VELIQ выбирает путь?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Программа замеряет задержку и потери до сервера игры или сервиса и выбирает лучший путь: обычный — через провайдера, или через собственные серверы VELIQ, если так быстрее или стабильнее. Всё, что и так работает хорошо, не трогает. <a href="how.html">Как работает VELIQ</a>.</p></div></details>
-<details><summary>Нужно ли что-то перезапускать?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Нет. Маршруты работают сразу после нажатия «Оптимизировать» — ничего закрывать и перезапускать не нужно.</p></div></details>
-<details><summary>Как VELIQ влияет на пинг в играх?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>VELIQ сравнивает пути до игрового сервера и выбирает самый быстрый. Если путь через сеть VELIQ не быстрее обычного, маршрут не меняется. Замеры видно в программе.</p></div></details>
-<details><summary>Вы видите, что я открываю?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Нет. Мы не расшифровываем и не подменяем HTTPS. Сервер видит адрес назначения и объём данных — этого достаточно, чтобы переслать трафик. <a href="index.html#privacy">Что видит сервер</a>. Подробности — в <a href="privacy.html">политике конфиденциальности</a>.</p></div></details>
-<details><summary>Какие системы поддерживаются?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Сейчас VELIQ работает на компьютерах с Windows. Версия для телефона готовится.</p></div></details>
-<details><summary>Сколько стоит и как оплатить?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Тарифы — на странице <a href="pricing.html">«Цены»</a>. Оплатить можно картой или через СБП в личном кабинете, клубы могут платить по счёту.</p></div></details>
-<details><summary>Подходит ли VELIQ для клубов?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Да. Для клубов есть отдельный код активации и инструкция, они выдаются после заявки. <a href="clubs.html">VELIQ для клубов</a>.</p></div></details>
-<details><summary>Как выключить VELIQ?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Нажмите большую кнопку ещё раз. Интернет продолжит работать как без программы.</p></div></details>
-<details><summary>Как добавить свой сайт или приложение?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Вкладка «Сервисы» → «Добавить». VELIQ подберёт для него маршрут так же, как для остальных.</p></div></details>
-        <h2 class="faq__group" id="errors">Ошибки в программе</h2>
-<details id="err-service"><summary>VELIQ не может запуститься<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p><strong>Что случилось.</strong> Программа не может начать работу.</p><p><strong>Что сделать.</strong> Закройте VELIQ и откройте заново. Если не помогло — переустановите VELIQ или напишите нам.</p></div></details>
-<details id="err-relay"><summary>Нет связи с сервером<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p><strong>Что случилось.</strong> Серверы VELIQ не отвечают с вашего подключения.</p><p><strong>Что сделать.</strong> Проверьте, что интернет работает без VELIQ. Затем нажмите «Повторить» — программа попробует другой сервер. Если не помогло, напишите нам: возможно, провайдер блокирует соединение.</p></div></details>
-<details id="err-browser"><summary>Часть сайтов не открывается<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p><strong>Что случилось.</strong> Для сайтов маршрут пока не построен, а приложения работают.</p><p><strong>Что сделать.</strong> Нажмите «Повторить». Если компьютером управляет организация (рабочий компьютер), её правила могут запрещать изменения — тогда маршруты работают только для приложений.</p></div></details>
-<details id="err-identity"><summary>Код активации не принят<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p><strong>Что случилось.</strong> Сервер не принял код активации для этого устройства.</p><p><strong>Что сделать.</strong> Введите код ещё раз. Если не помогло — напишите нам.</p></div></details>
-<details id="err-rights"><summary>Не хватает прав<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p><strong>Что случилось.</strong> Действие требует прав администратора.</p><p><strong>Что сделать.</strong> Подтвердите запрос Windows.</p></div></details>
-      </div>
-    </div>
-    <aside class="aside">
-      <div class="card">
-        <h2 class="h3" style="margin-bottom:10px">Не помогло?</h2>
-        <p class="muted" style="margin:0 0 16px;font-size:var(--fs-sm)">Напишите нам, что случилось, — поможем.</p>
-        <a class="btn btn--sm" href="mailto:support@veliq.app?subject=Помощь%20VELIQ">support@veliq.app</a>
-      </div>
-    </aside>
+<div class="wrap help-layout">
+  <div>
+    <nav class="help-topics" aria-label="Темы помощи">
+      <a class="help-topic" href="#login"><strong>Вход и аккаунт</strong><span>Письмо с кодом, личный кабинет и подписка</span></a>
+      <a class="help-topic" href="#errors"><strong>Подключение</strong><span>VELIQ не запускается или сервис недоступен</span></a>
+      <a class="help-topic" href="#games"><strong>Игры и связь</strong><span>Подключение к серверу, задержка и голосовой чат</span></a>
+      <a class="help-topic" href="#club"><strong>Компьютерный клуб</strong><span>Привязка ПК, настройка и заявка на подключение</span></a>
+    </nav>
+    <section class="help-faq" id="login"><h2 class="h3">Вход и аккаунт</h2>
+      <details><summary>Не приходит письмо с кодом</summary><p>Проверьте адрес почты и папку «Спам». Если запросили несколько кодов, используйте последний. Если письмо не пришло, <a href="/support#chat" data-support-open>напишите в поддержку</a>. Сам код сообщать не нужно.</p></details>
+      <details id="err-identity"><summary>Как подключить компьютер к аккаунту?</summary><p>Откройте VELIQ на нужном ПК и выберите «Войти или зарегистрироваться». После входа подтвердите подключение в личном кабинете. Если появляется ошибка, пришлите в чат её текст и версию программы.</p></details>
+      <details><summary>Сколько стоит VELIQ?</summary><p>Личный тариф — 399 ₽ в месяц за аккаунт. Для клуба — 199 ₽ за ПК в месяц. <a href="/pricing">Посмотреть тарифы</a>. Вопросы о подключении и оплате можно задать в чате.</p></details>
+    </section>
+    <section class="help-faq" id="errors"><h2 class="h3">Подключение</h2>
+      <details id="err-service"><summary>VELIQ не запускается</summary><p>Запишите текст ошибки и версию Windows. Не переустанавливайте программу до выяснения причины. На клубном ПК обратитесь к администратору; в чате поможем выбрать дальнейшие действия без перезагрузки компьютера.</p></details>
+      <details id="err-relay"><summary>Нет связи с сервером</summary><p>Сообщите время ошибки, провайдера и что именно не открывается. Если программа показывает состояние соединения, приложите его скриншот без личных данных. Это поможет отличить сбой сервиса от проблемы маршрута.</p></details>
+      <details id="err-browser"><summary>Игра работает, а сайт не открывается</summary><p>Напишите название сайта, браузера и текст ошибки. У игр и сайтов могут быть разные маршруты. На компьютере организации настройки также могут зависеть от её правил.</p></details>
+      <details id="err-rights"><summary>Программа сообщает о недостаточных правах</summary><p>На личном ПК сообщите, какое действие вызвало ошибку. На клубном или рабочем компьютере обратитесь к администратору. Не меняйте системные права самостоятельно.</p></details>
+    </section>
+    <section class="help-faq" id="games"><h2 class="h3">Игры и связь</h2>
+      <details><summary>Не удаётся войти на игровой сервер</summary><p>Нужны название игры, адрес сервера (если известен), время попытки и текст ошибки. Сообщите, на каком этапе прерывается вход. Успешная проверка пинга сама по себе не означает, что игровой сеанс работает.</p></details>
+      <details><summary>Пинг стал выше или появились обрывы</summary><p>Результат зависит от провайдера, сервера игры и маршрута. Пришлите наблюдения до и после включения VELIQ для одного сервера и примерное время. Не будем обещать снижение задержки без этих данных.</p></details>
+    </section>
+    <section class="help-faq" id="club"><h2 class="h3">Компьютерный клуб</h2>
+      <details><summary>Как подключить клуб?</summary><p><a href="/clubs#apply">Заполните заявку</a>: укажите количество ПК, систему управления и контакт. Заявка придёт команде VELIQ; продолжить обсуждение можно в чате на сайте.</p></details>
+      <details><summary>На ПК всё сбрасывается после перезагрузки</summary><p>Укажите это в заявке. Порядок установки нужно согласовать с администратором клуба и системой бездисковой загрузки. Во время диагностики не перезагружайте ПК: файлы текущей сессии могут исчезнуть.</p></details>
+    </section>
   </div>
-</section>
+  <aside class="help-checklist"><h2 class="h3">Что написать в чат</h2><ol><li>Что хотели сделать и что произошло.</li><li>Название игры или сервиса и текст ошибки.</li><li>Версию VELIQ и примерное время сбоя.</li></ol><p class="muted">Не отправляйте пароли, коды входа, ключи и платёжные данные.</p><a class="btn" href="/support#chat" data-support-open>Написать специалисту</a></aside>
+</div>
 
 </main>
 <footer class="foot">
   <div class="wrap">
     <div class="foot__grid">
       <div>
-        <a class="logo" href="index.html" aria-label="VELIQ — на главную">
+        <a class="logo" href="/" aria-label="VELIQ — на главную">
           <img class="on-light" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" width="144" height="66">
           <img class="on-dark" src="assets/img/veliq-wordmark-dark.svg" alt="" width="144" height="66">
         </a>
@@ -110,24 +118,26 @@
       </div>
       <div>
         <h2>Продукт</h2>
-        <ul><li><a href="download.html">Скачать</a></li><li><a href="how.html">Как работает</a></li><li><a href="index.html#privacy">Что видит сервер</a></li><li><a href="index.html#games">Для игр</a></li><li><a href="pricing.html">Цены</a></li><li><a href="roadmap.html">План развития</a></li></ul>
+        <ul><li><a href="/download">Скачать</a></li><li><a href="/how">Как работает</a></li><li><a href="/#privacy">Что видит сервер</a></li><li><a href="/#games">Для игр</a></li><li><a href="/pricing">Цены</a></li><li><a href="/roadmap">План развития</a></li></ul>
       </div>
       <div>
         <h2>Клубам</h2>
-        <ul><li><a href="clubs.html">VELIQ для клубов</a></li><li><a href="clubs.html#calc">Расчёт выгоды</a></li><li><a href="clubs.html#setup">Установка в клубе</a></li></ul>
+        <ul><li><a href="/clubs">VELIQ для клубов</a></li><li><a href="/clubs#calc">Расчёт выгоды</a></li><li><a href="/clubs#setup">Установка в клубе</a></li></ul>
       </div>
       <div>
         <h2>Помощь</h2>
-        <ul><li><a href="support.html">Вопросы и ответы</a></li><li><a href="support.html#errors">Ошибки и решения</a></li><li><a href="contacts.html">Контакты и реквизиты</a></li><li><a href="mailto:support@veliq.app">support@veliq.app</a></li></ul>
+        <ul><li><a href="/support">Вопросы и ответы</a></li><li><a href="/support#errors">Ошибки и решения</a></li><li><a href="/contacts">Поддержка VELIQ</a></li><li><a href="/support#chat" data-support-open>Онлайн-поддержка</a></li></ul>
       </div>
     </div>
     <div class="foot__bottom">
       <span>© 2026 VELIQ</span>
-      <span><a href="privacy.html">Конфиденциальность</a>&nbsp;&nbsp;&nbsp;<a href="terms.html">Оферта</a>&nbsp;&nbsp;&nbsp;<a href="contacts.html">Контакты</a></span>
+      <span><a href="/privacy">Конфиденциальность</a>&nbsp;&nbsp;&nbsp;<a href="/terms">Пользовательское соглашение</a>&nbsp;&nbsp;&nbsp;<a href="/contacts">Контакты</a>&nbsp;&nbsp; <a href="/pricing">Тарифы</a>&nbsp;&nbsp; <a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a></span>
     </div>
   </div>
 </footer>
 <script src="assets/charts.js"></script>
-<script src="assets/site.js"></script>
+<script src="assets/site.js?v=20261105-prices2"></script>
+<script src="assets/release.js?v=20261105-prices1"></script>
+<script src="/assets/pricing-policy.js?v=20261107"></script>
 </body>
 </html>
