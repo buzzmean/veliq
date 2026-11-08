@@ -149,7 +149,10 @@ try{
  $badService=Join-Path $failurePayload 'service/veliq-service.exe'
  Remove-Item -LiteralPath $badService
  $failureSource=Join-Path $failureStage 'failed-service.go'
- [IO.File]::WriteAllText($failureSource,'package main; import "os"; func main() { os.Exit(42) }',[Text.UTF8Encoding]::new($false))
+ $startedMarker=Join-Path $failureStage 'failed-service-started.txt'
+ $markerLiteral=$startedMarker|ConvertTo-Json -Compress
+ $fakeSource='package main; import ("os"; "strconv"); func main() { _ = os.WriteFile('+$markerLiteral+', []byte(strconv.Itoa(os.Getppid())), 0600); os.Exit(42) }'
+ [IO.File]::WriteAllText($failureSource,$fakeSource,[Text.UTF8Encoding]::new($false))
  & go build -trimpath -o $badService $failureSource
  if($LASTEXITCODE){throw 'SERVICE_FAILURE_BINARY_BUILD_FAILED'}
  $badManifest=Get-Content -Raw -LiteralPath (Join-Path $failurePayload 'package.json')|ConvertFrom-Json
@@ -162,6 +165,10 @@ try{
  foreach($name in @('service.json','ipc.token')){$preserved[$name]=(Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash}
  $oldPackageHash=(Get-FileHash -LiteralPath (Join-Path $app 'package.json')).Hash
  Invoke-OwnedInstaller (Join-Path $failureStage 'output/VELIQ-Setup.exe') 'service-start-failure' -ExpectedExit 1
+ if(!(Test-Path -LiteralPath $startedMarker)){throw 'SERVICE_FAILURE_FIXTURE_NEVER_EXECUTED'}
+ $serviceParent=[int][IO.File]::ReadAllText($startedMarker)
+ $scmPids=@(Get-CimInstance Win32_Process -Filter "Name='services.exe'"|ForEach-Object {[int]$_.ProcessId})
+ if($serviceParent -notin $scmPids){throw 'SERVICE_FAILURE_WAS_NOT_STARTED_BY_SCM'}
  if((Get-OwnedServiceState) -ne 'Running' -or (Get-FileHash -LiteralPath (Join-Path $app 'package.json')).Hash -cne $oldPackageHash){throw 'SERVICE_FAILURE_PREVIOUS_PACKAGE_NOT_RESTORED'}
  foreach($name in $preserved.Keys){if((Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash -cne $preserved[$name]){throw 'SERVICE_FAILURE_CONFIGURATION_CHANGED'}}
  if((Get-FileHash -LiteralPath (Join-Path $installed 'veliq-service.exe')).Hash -cne (Get-FileHash -LiteralPath (Join-Path $payload 'service/veliq-service.exe')).Hash){throw 'SERVICE_FAILURE_PREVIOUS_BINARY_NOT_RESTORED'}

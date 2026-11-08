@@ -105,6 +105,12 @@ try{
  Write-Host 'Only service executable ACL changed: owner RX, SYSTEM/admins F. Identity, credentials, driver and state ACLs preserved.'
 }catch{
  $failure=$_.Exception.Message
+ if(Get-Command Write-VeliqInstallDiagnostic -ErrorAction SilentlyContinue){
+  try{
+   $failedState=Get-CimInstance Win32_Service -Filter "Name='VELIQ'" -OperationTimeoutSec 5
+   Write-VeliqInstallDiagnostic 'SERVICE_UPDATE_ERROR' @{scm_state=[string]$failedState.State;scm_exit_code=[int]$failedState.ExitCode;binary_replaced=$replaced}
+  }catch{Write-Host 'INSTALL_SERVICE_ERROR_DIAGNOSTICS_UNAVAILABLE; rollback continues'}
+ }
  try{if($null -eq $ownedWatchdog){Remove-VeliqPolicyWatchdog $InstallDirectory}else{Stop-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog' -ErrorAction SilentlyContinue}}catch{Write-Host 'WATCHDOG_ROLLBACK_CLEANUP_FAILED; task/backup preserved for review'}
  $firewallRollbackError=$false
  if($nativeFirewallCreated){try{Remove-NativeTcpFirewallAdmission $target}catch{$firewallRollbackError=$true}}
