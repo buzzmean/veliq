@@ -1,14 +1,15 @@
 # Compile the actual Setup policy in an inert Inno fixture on a disposable CI VM.
 # No [Files]/[Run]/uninstaller, no installed VELIQ or OS/service mutations.
 [CmdletBinding()]
-param([Parameter(Mandatory=$true)][string]$Compiler)
+param([Parameter(Mandatory=$true)][string]$Compiler,[switch]$AllowLocalInertFixture)
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
-if($env:GITHUB_ACTIONS -cne 'true'){throw 'DISPOSABLE_ACTIONS_POLICY_CHECK_REQUIRED'}
+if($env:GITHUB_ACTIONS -cne 'true' -and !$AllowLocalInertFixture){throw 'EXPLICIT_INERT_POLICY_CHECK_REQUIRED'}
 $source=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '../../installer/setup.iss')
 $policy=[regex]::Match($source,'(?s)function SafeSessionArguments\(RequireNoRestart: Boolean\): Boolean;.*?(?=function InitializeSetup\(\))').Value
 $choice=[regex]::Match($source,'(?s)procedure LockNoRestartChoice;.*?(?=procedure InitializeWizard;)').Value
 if(!$policy -or !$choice){throw 'SETUP_SESSION_POLICY_NOT_FOUND'}
-$directory=Join-Path $env:RUNNER_TEMP ('veliq-session-policy-'+[guid]::NewGuid().ToString('N'))
+$fixtureRoot=if($env:RUNNER_TEMP){$env:RUNNER_TEMP}else{[IO.Path]::GetTempPath()}
+$directory=Join-Path $fixtureRoot ('veliq-session-policy-'+[guid]::NewGuid().ToString('N'))
 $null=New-Item $directory -ItemType Directory
 $fixture=@'
 [Setup]

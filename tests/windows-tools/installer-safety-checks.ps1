@@ -391,6 +391,10 @@ try{
  Check ((Get-FileHash -LiteralPath $target).Hash -ceq $before) 'preflight changed locked bytes'
  Assert-VeliqInstallPreflight $root
  $script:registry=@{'SOFTWARE\Microsoft\Updates|UpdateExeVolatile'=1}
+ Assert-VeliqInstallPreflight $root
+ $scoped=Get-VeliqInstallRebootState $root
+ Check ($scoped.windows_reboot_pending -and !$scoped.required) 'unrelated Windows update must remain visible without blocking this package'
+ $script:registry=@{'SYSTEM\CurrentControlSet\Control\Session Manager|PendingFileRenameOperations'=@($target,'')}
  Reject {Assert-VeliqInstallPreflight $root} 'INSTALL_REBOOT_REQUIRED'
  Write-Output 'PASS installer safety: GUI/service hashes, held-file refusal, six reboot signals, verified Inno cleanup, unknown fail-closed, truthful result; no installation'
 }finally{

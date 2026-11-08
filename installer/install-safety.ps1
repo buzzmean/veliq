@@ -1,6 +1,8 @@
 # Read-only preflight and verification. Dot-sourcing defines functions only.
 [CmdletBinding()]
-param([switch]$Preflight,[string]$AppDirectory='')
+param([switch]$Preflight,[string]$AppDirectory='',[string]$DiagnosticFile='')
+$script:DiagnosticFile=$DiagnosticFile
+. (Join-Path $PSScriptRoot 'install-scope.ps1')
 
 function Read-VeliqRebootRegistry([string]$Path,[string]$Name='') {
  $base=[Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine,[Microsoft.Win32.RegistryView]::Registry64)
@@ -274,10 +276,10 @@ function Assert-VeliqReplaceableFile([string]$Path) {
   # incompatible sharing handle must fail before Inno deletes/copies payload.
   $stream=[IO.File]::Open($item.FullName,[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
   $stream.Dispose()
- }catch{throw 'INSTALL_FILE_IN_USE_OR_NOT_WRITABLE'}
+ }catch{Write-VeliqInstallDiagnostic 'FILE_BLOCKED' @{path=$Path;code='INSTALL_FILE_IN_USE_OR_NOT_WRITABLE'};throw 'INSTALL_FILE_IN_USE_OR_NOT_WRITABLE'}
 }
 function Assert-VeliqInstallPreflight([string]$Directory) {
- Assert-VeliqNoPendingReboot (Get-VeliqRebootState $Directory)
+ Assert-VeliqNoPendingReboot (Get-VeliqInstallRebootState $Directory)
  if(!$Directory -or ![IO.Path]::IsPathRooted($Directory)){throw 'INSTALL_PREFLIGHT_PATH_INVALID'}
  if(!(Test-Path -LiteralPath $Directory)){return}
  $root=Get-Item -LiteralPath $Directory -Force -ErrorAction Stop
@@ -312,6 +314,11 @@ function New-VeliqInstallResult([string]$Result,[string]$Step,$Reboot,[string]$C
  if($Result -eq 'PASS'){Assert-VeliqNoPendingReboot $Reboot}
  $record=[ordered]@{result=$Result;step=$Step;reboot_required=$Reboot.required;reboot_check_known=$Reboot.known;reboot_reasons=@($Reboot.reasons);checked_at=[DateTime]::UtcNow.ToString('o');browser_processes='UNTOUCHED';credentials='PRESERVED'}
  $record.deferred_cleanup_count=$Reboot.deferred_cleanup_count
+ $record.installation_state=if($Result -eq 'PASS'){'COMPLETED'}elseif($Reboot.required){'BLOCKED_REBOOT'}else{'FAILED'}
+ if($Reboot.PSObject.Properties['windows_reboot_pending']){
+  $record.windows_reboot_pending=$Reboot.windows_reboot_pending
+  $record.windows_reboot_reasons=@($Reboot.windows_reboot_reasons)
+ }
  if($Code){$record.code=$Code}
  if($null -ne $Hashes){foreach($name in @('gui_sha256','service_sha256')){$record[$name]=$Hashes[$name]}}
  return $record

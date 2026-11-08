@@ -12,7 +12,15 @@ function Assert-VeliqInnoCompiler([string]$Compiler) {
  # The official 6.4.3 build carries no version resource in ISCC.exe (0.0.0.0);
  # its signed uninstaller in the same directory reports ProductVersion 6.4.3.
  $version=(Get-Item -LiteralPath $Compiler).VersionInfo.FileVersion
- if($version -notmatch '^6\.4\.3(\.|$)'){
+ # Portable extraction of the signed official 6.4.3 distribution has no
+ # uninstaller and carries zero PE versions. Pin the compiler AND its DLL.
+ $portable=$false
+ $compilerDll=Join-Path (Split-Path -Parent $Compiler) 'ISCmplr.dll'
+ if(Test-Path -LiteralPath $compilerDll){
+  $portable=(Get-FileHash -LiteralPath $Compiler).Hash -ceq '8A430B74FD1ECEF5651F514A62B5341B0C65E1A53FFE5BA33CC26CF57E67029F' -and
+   (Get-FileHash -LiteralPath $compilerDll).Hash -ceq '2C230C3E99BC42215221B2C847356FBBE9EAE33A15A842BE429E94FD26E7C436'
+ }
+ if(!$portable -and $version -notmatch '^6\.4\.3(\.|$)'){
   $uninstaller=Join-Path (Split-Path -Parent $Compiler) 'unins000.exe'
   if(!(Test-Path -LiteralPath $uninstaller -PathType Leaf) -or ([string](Get-Item -LiteralPath $uninstaller).VersionInfo.ProductVersion).Trim() -notmatch '^6\.4\.3(\.|$)'){throw 'INNO_COMPILER_VERSION_MISMATCH; approved version is 6.4.3'}
   $signature=Get-AuthenticodeSignature -LiteralPath $uninstaller

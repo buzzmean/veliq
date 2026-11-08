@@ -133,7 +133,9 @@ try{
  Invoke-OwnedInstaller $setup 'invalid-image' -ExpectedExit 1 -InvalidClubImage
  $failure=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
  if($failure.result -cne 'FAIL' -or $failure.code -cne 'CLUB_CODE_FILE_INVALID' -or (Get-OwnedServiceState) -ne 'ABSENT'){throw 'FAILED_SETUP_FALSE_SUCCESS_OR_STATE_MUTATION'}
- Invoke-OwnedInstaller (Join-Path $app 'unins000.exe') 'invalid-image-uninstall'
+ # The failed transaction restores the previously empty payload. There are no
+ # installed package scripts to delegate uninstall to in this negative case.
+ if(Test-Path -LiteralPath (Join-Path $app 'installer/install-package.ps1')){throw 'FAILED_FRESH_INSTALL_LEFT_PAYLOAD'}
  foreach($path in @($installed,$app)){if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}}
  Write-Output 'BETA_NEGATIVE_SETUP_PASS exit=1; invalid legacy file; no SCM service'
  Invoke-OwnedInstaller $setup 'install'

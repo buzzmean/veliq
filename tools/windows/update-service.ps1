@@ -66,6 +66,7 @@ try{
  if($watchdogWasRunning){Stop-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog';Start-Sleep -Milliseconds 500}
  Copy-Item -LiteralPath $source -Destination $pending
  Set-BinaryOwnerReadExecute $pending $owner.Value
+ Set-Service VELIQ -StartupType Disabled
  Stop-Service VELIQ
  $stopped=$true
  $service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
@@ -75,6 +76,7 @@ try{
  Set-BinaryOwnerReadExecute $target $owner.Value
  if((Get-FileHash -LiteralPath $target).Hash -ne (Get-FileHash -LiteralPath $source).Hash){throw 'Installed binary hash mismatch'}
  if($NativeTcpFirewall){$nativeFirewallCreated=Add-NativeTcpFirewallAdmission $target}
+ Set-Service VELIQ -StartupType Manual
  Start-Service VELIQ
  $service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
  $deadline=[DateTime]::UtcNow.AddSeconds(30);$ready=$false
@@ -96,7 +98,8 @@ try{
  $firewallRollbackError=$false
  if($nativeFirewallCreated){try{Remove-NativeTcpFirewallAdmission $target}catch{$firewallRollbackError=$true}}
  if(!$replaced){
-  if($stopped){try{Start-Service VELIQ;$service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30))}catch{throw "Executable was not replaced; previous service could not restart. Backup: $backup"}}
+  Restore-VeliqServiceStartup $oldStartMode
+  if($stopped){try{if($oldStartMode -eq 'Disabled'){Set-Service VELIQ -StartupType Manual};Start-Service VELIQ;$service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30));Restore-VeliqServiceStartup $oldStartMode}catch{throw "Executable was not replaced; previous service could not restart. Backup: $backup"}}
   throw "Windows update refused before replacement; previous binary/ACL retained: $failure. Backup: $backup"
  }
  try{
