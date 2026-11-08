@@ -101,6 +101,22 @@ function Resume-OwnedGui($Record) {
   }finally{Unregister-ScheduledTask -TaskName $name -Confirm:$false -ErrorAction SilentlyContinue}
  }
 }
+function Stop-TransactionWatchdog {
+ $helper=Join-Path $transaction 'payload\tools\windows\browser-policy-watchdog.ps1'
+ if(!(Test-Path -LiteralPath $helper)){$helper=Join-Path $app 'tools\windows\browser-policy-watchdog.ps1'}
+ if(!(Test-Path -LiteralPath $helper)){return}
+ . $helper
+ $task=Get-VeliqPolicyWatchdog $serviceRoot
+ if(!$task){return}
+ Disable-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'|Out-Null
+ Stop-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'
+ foreach($details in @(Get-CimInstance Win32_Process -Filter "Name='veliq-service.exe'")){
+  if($details.ExecutablePath -ine (Join-Path $serviceRoot 'veliq-service.exe') -or [string]$details.CommandLine -notlike '* -browser-policy-watchdog -config *'){continue}
+  $owner=Invoke-CimMethod -InputObject $details -MethodName GetOwnerSid
+  if($owner.ReturnValue -ne 0 -or $owner.Sid -ne 'S-1-5-18'){throw 'INSTALL_WATCHDOG_OWNER_UNCONFIRMED'}
+  try{$p=[Diagnostics.Process]::GetProcessById([int]$details.ProcessId);try{if(!$p.WaitForExit(30000)){throw 'INSTALL_WATCHDOG_CLOSE_TIMEOUT'}}finally{$p.Dispose()}}catch [ArgumentException]{}
+ }
+}
 try{
  Assert-TransactionParents $transaction
  Assert-TransactionParents $app
@@ -118,6 +134,15 @@ try{
   $record.gui=@(Stop-OwnedGui)
   $record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
   Assert-VeliqInstallPreflight $app
+  $watchdogHelper=Join-Path $app 'tools\windows\browser-policy-watchdog.ps1'
+  if(Test-Path -LiteralPath $watchdogHelper){
+   . $watchdogHelper
+   $task=Get-VeliqPolicyWatchdog $serviceRoot
+   if($task){
+    Export-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'|Set-Content -LiteralPath (Join-Path $transaction 'watchdog.xml') -Encoding Unicode
+    $record.watchdog_running=[string]$task.State -eq 'Running'
+   }
+  }
   if($record.uninstall_key_existed){
    $registered=Get-ItemProperty -LiteralPath $uninstallKey
    if($registered.DisplayName -notlike 'VELIQ*' -or [string]$registered.InstallLocation -ine ($app+'\')){throw 'INSTALL_FOREIGN_UNINSTALL_KEY'}
@@ -139,6 +164,7 @@ try{
   if($record.app -ine $app){throw 'INSTALL_TRANSACTION_TARGET_MISMATCH'}
   if($record.phase -eq 'PREPARED'){
    $null=Stop-OwnedGui
+   Stop-TransactionWatchdog
    $scm=Get-OwnedService
    if(!$record.service_existed -and $scm){
     & (Join-Path $app 'tools\windows\uninstall.ps1') -InstallDirectory $serviceRoot
@@ -186,6 +212,11 @@ try{
      . (Join-Path $app 'tools\windows\common.ps1')
      $status=Invoke-ServiceIPC 'status' $null (Join-Path $serviceRoot 'ipc.token')
      if(!$status.PSObject.Properties['backend']){throw 'INSTALL_ROLLBACK_IPC_FAILED'}
+    }
+    $watchdogBackup=Join-Path $transaction 'watchdog.xml'
+    if(Test-Path -LiteralPath $watchdogBackup){
+     Register-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog' -Xml ([IO.File]::ReadAllText($watchdogBackup)) -Force|Out-Null
+     if($record.watchdog_running){Start-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'}
     }
    }elseif($scm){
     & sc.exe delete VELIQ|Out-Null;if($LASTEXITCODE){throw 'INSTALL_ROLLBACK_SCM_FAILED'}

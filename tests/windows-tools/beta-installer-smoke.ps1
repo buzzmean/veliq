@@ -148,7 +148,10 @@ try{
  Copy-Item -LiteralPath $payload -Destination $failurePayload -Recurse
  $badService=Join-Path $failurePayload 'service/veliq-service.exe'
  Remove-Item -LiteralPath $badService
- Add-Type -TypeDefinition 'public static class FailedVeliqServiceFixture { public static int Main() { return 42; } }' -Language CSharp -OutputAssembly $badService -OutputType ConsoleApplication
+ $failureSource=Join-Path $failureStage 'failed-service.go'
+ [IO.File]::WriteAllText($failureSource,'package main; import "os"; func main() { os.Exit(42) }',[Text.UTF8Encoding]::new($false))
+ & go build -trimpath -o $badService $failureSource
+ if($LASTEXITCODE){throw 'SERVICE_FAILURE_BINARY_BUILD_FAILED'}
  $badManifest=Get-Content -Raw -LiteralPath (Join-Path $failurePayload 'package.json')|ConvertFrom-Json
  foreach($entry in $badManifest.files){if($entry.path -eq 'service/veliq-service.exe'){$entry.sha256=(Get-FileHash -LiteralPath $badService).Hash.ToLowerInvariant()}}
  $badManifest|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $failurePayload 'package.json') -Encoding UTF8
