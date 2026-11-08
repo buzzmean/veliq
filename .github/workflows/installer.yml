@@ -35,13 +35,13 @@ jobs:
           $download=Join-Path $env:RUNNER_TEMP 'innosetup-6.4.3.exe'
           Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe' -OutFile $download
           $signature=Get-AuthenticodeSignature -LiteralPath $download
-          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Jordan Russell|O=Pyrsys B\\.V\\.') { throw 'INNO_INSTALLER_SIGNATURE_INVALID' }
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Jordan Russell|O=Pyrsys B\.V\.') { throw 'INNO_INSTALLER_SIGNATURE_INVALID' }
           $compilerHome=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3'
           $process=Start-Process -FilePath $download -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$compilerHome+'"')) -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw 'INNO_INSTALL_FAILED' }
           $compiler=Join-Path $compilerHome 'ISCC.exe'
           if (!(Test-Path -LiteralPath $compiler)) { throw 'INNO_COMPILER_MISSING' }
-          [IO.File]::AppendAllText($env:GITHUB_ENV,('INNO_COMPILER='+$compiler+`"`n`"),[Text.UTF8Encoding]::new($false))
+          [IO.File]::AppendAllText($env:GITHUB_ENV,('INNO_COMPILER='+$compiler+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
       - name: Compile non-distributable fixture when public trust is not configured
         if: ${{ vars.VELIQ_PUBLIC_CA_PEM == '' }}
         shell: powershell
@@ -52,7 +52,7 @@ jobs:
           try {
             & openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=VELIQ-CI-ONLY -keyout $key -out bin/public-trust/ca.pem
             if($LASTEXITCODE){throw 'FIXTURE_CA_FAILED'}
-            & .\installer\build.ps1 -PublicTrustDirectory -Compiler $env:INNO_COMPILER .\bin\public-trust -ControlPlaneUrl https://127.0.0.1:1 -ProbeTarget 127.0.0.1:1 -Fixture
+            & .\installer\build.ps1 -PublicTrustDirectory .\bin\public-trust -ControlPlaneUrl https://127.0.0.1:1 -ProbeTarget 127.0.0.1:1 -Fixture -Compiler $env:INNO_COMPILER
           } finally {Remove-Item -LiteralPath $key -Force -ErrorAction SilentlyContinue}
       - name: Package using owner-provided PUBLIC trust
         if: ${{ vars.VELIQ_PUBLIC_CA_PEM != '' }}
@@ -65,7 +65,7 @@ jobs:
           $ErrorActionPreference='Stop'
           New-Item bin/public-trust -ItemType Directory -Force|Out-Null
           [IO.File]::WriteAllText((Join-Path $PWD 'bin/public-trust/ca.pem'),$env:PUBLIC_CA,[Text.UTF8Encoding]::new($false))
-          & .\installer\build.ps1 -PublicTrustDirectory -Compiler $env:INNO_COMPILER .\bin\public-trust -ControlPlaneUrl $env:CP_URL -ProbeTarget $env:PROBE
+          & .\installer\build.ps1 -PublicTrustDirectory .\bin\public-trust -ControlPlaneUrl $env:CP_URL -ProbeTarget $env:PROBE -Compiler $env:INNO_COMPILER
       - uses: actions/upload-artifact@v4
         if: ${{ vars.VELIQ_PUBLIC_CA_PEM != '' }}
         with:
