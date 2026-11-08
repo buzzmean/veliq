@@ -34,6 +34,7 @@ $ownedWatchdog=Get-VeliqPolicyWatchdog $InstallDirectory
 $watchdogWasRunning=$null -ne $ownedWatchdog -and [string]$ownedWatchdog.State -eq 'Running'
 $oldDisplayName=[string]$scm.DisplayName
 $serviceProcess=[int]$scm.ProcessId
+$watchdogProcessIds=@()
 foreach($process in @(Get-Process -Name veliq-service -ErrorAction SilentlyContinue)){
  if($process.Path -ieq $target -and $process.Id -ne $serviceProcess){
   $watchdogProcess=Get-CimInstance Win32_Process -Filter ('ProcessId='+$process.Id) -OperationTimeoutSec 5
@@ -43,6 +44,7 @@ foreach($process in @(Get-Process -Name veliq-service -ErrorAction SilentlyConti
    $isOwnedWatchdog=$principal.ReturnValue -eq 0 -and $principal.Sid -eq 'S-1-5-18'
   }
   if(!$isOwnedWatchdog){throw 'Close VELIQ (or legacy NeExitLag) GUI first: its owner-scoped recovery process still uses the installed binary'}
+  $watchdogProcessIds+=$process.Id
  }
 }
 $backupRoot=Join-Path $root 'backups'
@@ -63,7 +65,16 @@ function Set-BinaryOwnerReadExecute([string]$Path,[string]$OwnerSid){
 $pending=Join-Path $root ('.service-update-'+[Guid]::NewGuid().ToString('N')+'.exe')
 $stopped=$false;$replaced=$false;$nativeFirewallCreated=$false
 try{
- if($watchdogWasRunning){Stop-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog';Start-Sleep -Milliseconds 500}
+ if($watchdogWasRunning){
+  Disable-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'|Out-Null
+  Stop-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'
+  foreach($watchdogId in $watchdogProcessIds){
+   try{
+    $process=[Diagnostics.Process]::GetProcessById($watchdogId)
+    try{if($process.Path -ieq $target -and !$process.WaitForExit(30000)){throw 'INSTALL_WATCHDOG_CLOSE_TIMEOUT'}}finally{$process.Dispose()}
+   }catch [ArgumentException]{}
+  }
+ }
  Copy-Item -LiteralPath $source -Destination $pending
  Set-BinaryOwnerReadExecute $pending $owner.Value
  Set-Service VELIQ -StartupType Disabled
@@ -116,4 +127,4 @@ try{
  }catch{throw "Windows update failed ($failure); automatic binary rollback failed. Backup retained: $backup"}
  if($firewallRollbackError){throw "Windows update failed; previous binary/ACL restored, but owned native firewall rule cleanup failed. Backup: $backup"}
  throw "Windows update failed; previous binary/ACL restored: $failure. Backup: $backup"
-}finally{if(Test-Path -LiteralPath $pending){Remove-Item -LiteralPath $pending -Force};if($watchdogWasRunning){Start-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'}}
+}finally{if(Test-Path -LiteralPath $pending){Remove-Item -LiteralPath $pending -Force};if($watchdogWasRunning){Enable-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'|Out-Null;Start-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'}}

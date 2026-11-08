@@ -2,6 +2,9 @@
 param([ValidateSet('Prepare','Rollback','Commit')][string]$Action,
  [string]$AppDirectory,[string]$TransactionDirectory,[string]$DiagnosticFile)
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
+if($PSVersionTable.PSEdition -eq 'Desktop'){
+ $env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')+';'+[Environment]::GetEnvironmentVariable('PSModulePath','Machine')
+}
 . (Join-Path $PSScriptRoot 'install-safety.ps1') -DiagnosticFile $DiagnosticFile -AppDirectory $AppDirectory
 $app=[IO.Path]::GetFullPath($AppDirectory).TrimEnd('\')
 $transaction=[IO.Path]::GetFullPath($TransactionDirectory).TrimEnd('\')

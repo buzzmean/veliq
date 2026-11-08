@@ -310,6 +310,14 @@ function Assert-VeliqInstalledBinaries([string]$Root,[string]$ServiceDirectory) 
  }
  return $hashes
 }
+function Assert-VeliqInstalledDriver([string]$Root,[string]$ServiceDirectory) {
+ foreach($name in @('WinDivert.dll','WinDivert64.sys')){
+  $source=Join-Path $Root ('driver\'+$name);$target=Join-Path $ServiceDirectory ('driver\'+$name)
+  if(!(Test-Path -LiteralPath $target -PathType Leaf)){throw 'INSTALL_DRIVER_MISSING'}
+  if((Get-Item -LiteralPath $target -Force).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'INSTALL_REPARSE_POINT_REJECTED'}
+  if((Get-FileHash -LiteralPath $source).Hash -ine (Get-FileHash -LiteralPath $target).Hash){throw 'INSTALL_DRIVER_HASH_MISMATCH'}
+ }
+}
 function New-VeliqInstallResult([string]$Result,[string]$Step,$Reboot,[string]$Code='',$Hashes=$null) {
  if($Result -eq 'PASS'){Assert-VeliqNoPendingReboot $Reboot}
  $record=[ordered]@{result=$Result;step=$Step;reboot_required=$Reboot.required;reboot_check_known=$Reboot.known;reboot_reasons=@($Reboot.reasons);checked_at=[DateTime]::UtcNow.ToString('o');browser_processes='UNTOUCHED';credentials='PRESERVED'}

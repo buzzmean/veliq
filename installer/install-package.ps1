@@ -92,11 +92,17 @@ try{
   elseif($ClubCodeFile -ne ''){$step='CLUB_STAGE';& (Join-Path $scripts 'stage-club-activation.ps1') -ProtectedCodeFile $ClubCodeFile -InstallDirectory $installed}
   $step='VERIFY';$state=Get-Service VELIQ;if(($ClubImage -and $ClubCodeFile -and $state.Status -ne 'Stopped') -or ((!$ClubImage -or !$ClubCodeFile) -and $state.Status -ne 'Running')){throw 'INSTALL_SERVICE_NOT_RUNNING'}
   $installedHashes=Assert-VeliqInstalledBinaries $root $installed
+  Assert-VeliqInstalledDriver $root $installed
   if($state.Status -eq 'Running'){
    $step='IPC_READINESS';. (Join-Path $scripts 'common.ps1')
    $deadline=[DateTime]::UtcNow.AddSeconds(30);$ready=$false
    do{
-    try{$status=Invoke-ServiceIPC 'status' $null (Join-Path $installed 'ipc.token');$ready=$null -ne $status.PSObject.Properties['backend']}catch{$ready=$false}
+    try{
+     $status=Invoke-ServiceIPC 'status' $null (Join-Path $installed 'ipc.token')
+     $ready=$null -ne $status.PSObject.Properties['backend']
+     $backendError=$status.backend.PSObject.Properties['error']
+     if($ready -and $status.capture_permitted -and $backendError -and [string]$backendError.Value){$ready=$false}
+    }catch{$ready=$false}
     if(!$ready){Start-Sleep -Milliseconds 300}
    }while(!$ready -and [DateTime]::UtcNow -lt $deadline)
    if(!$ready){throw 'INSTALL_SERVICE_IPC_NOT_READY'}

@@ -377,6 +377,15 @@ try{
  foreach($name in @('gui/VELIQ.exe','VELIQ.exe')){[IO.File]::WriteAllText((Join-Path $root $name),'GUI fixture')}
  foreach($name in @('service/veliq-service.exe','installed/veliq-service.exe')){[IO.File]::WriteAllText((Join-Path $root $name),'service fixture')}
  $hashes=Assert-VeliqInstalledBinaries $root (Join-Path $root 'installed')
+ foreach($dir in @('driver','installed/driver')){[void][IO.Directory]::CreateDirectory((Join-Path $root $dir))}
+ foreach($name in @('WinDivert.dll','WinDivert64.sys')){
+  foreach($dir in @('driver','installed/driver')){[IO.File]::WriteAllText((Join-Path $root ($dir+'/'+$name)),'pinned driver fixture')}
+ }
+ Assert-VeliqInstalledDriver $root (Join-Path $root 'installed')
+ $installedDriver=Join-Path $root 'installed/driver/WinDivert.dll'
+ [IO.File]::WriteAllText($installedDriver,'damaged installed driver')
+ Reject {Assert-VeliqInstalledDriver $root (Join-Path $root 'installed')} 'INSTALL_DRIVER_HASH_MISMATCH'
+ [IO.File]::WriteAllText($installedDriver,'pinned driver fixture')
  Check ($hashes.gui_sha256.Length -eq 64 -and $hashes.service_sha256.Length -eq 64) 'missing binary evidence'
  $record=New-VeliqInstallResult 'PASS' 'VERIFY' (Get-VeliqRebootState) -Hashes $hashes
  Check (!$record.reboot_required -and $record.reboot_check_known -and $record.gui_sha256 -ceq $hashes.gui_sha256) 'clean result'

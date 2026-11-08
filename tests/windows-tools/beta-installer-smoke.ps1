@@ -140,6 +140,33 @@ try{
  Write-Output 'BETA_NEGATIVE_SETUP_PASS exit=1; invalid legacy file; no SCM service'
  Invoke-OwnedInstaller $setup 'install'
  Assert-InstalledCandidate
+ # A verified package with a deliberately failing service must restore both
+ # the previous executable AND the previous GUI/package/uninstall metadata.
+ $failureStage=Join-Path $env:RUNNER_TEMP ('beta-service-failure-'+[guid]::NewGuid().ToString('N'))
+ $failurePayload=Join-Path $failureStage 'payload'
+ New-Item -ItemType Directory -Path $failureStage|Out-Null
+ Copy-Item -LiteralPath $payload -Destination $failurePayload -Recurse
+ $badService=Join-Path $failurePayload 'service/veliq-service.exe'
+ Remove-Item -LiteralPath $badService
+ Add-Type -TypeDefinition 'public static class FailedVeliqServiceFixture { public static int Main() { return 42; } }' -Language CSharp -OutputAssembly $badService -OutputType ConsoleApplication
+ $badManifest=Get-Content -Raw -LiteralPath (Join-Path $failurePayload 'package.json')|ConvertFrom-Json
+ foreach($entry in $badManifest.files){if($entry.path -eq 'service/veliq-service.exe'){$entry.sha256=(Get-FileHash -LiteralPath $badService).Hash.ToLowerInvariant()}}
+ $badManifest|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $failurePayload 'package.json') -Encoding UTF8
+ $compiler=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3/ISCC.exe'
+ & $compiler /Q ('/DStageRoot='+$failureStage) (Join-Path $PSScriptRoot '../../installer/setup.iss')
+ if($LASTEXITCODE){throw 'SERVICE_FAILURE_FIXTURE_COMPILE_FAILED'}
+ $preserved=@{}
+ foreach($name in @('service.json','ipc.token')){$preserved[$name]=(Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash}
+ $oldPackageHash=(Get-FileHash -LiteralPath (Join-Path $app 'package.json')).Hash
+ Invoke-OwnedInstaller (Join-Path $failureStage 'output/VELIQ-Setup.exe') 'service-start-failure' -ExpectedExit 1
+ if((Get-OwnedServiceState) -ne 'Running' -or (Get-FileHash -LiteralPath (Join-Path $app 'package.json')).Hash -cne $oldPackageHash){throw 'SERVICE_FAILURE_PREVIOUS_PACKAGE_NOT_RESTORED'}
+ foreach($name in $preserved.Keys){if((Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash -cne $preserved[$name]){throw 'SERVICE_FAILURE_CONFIGURATION_CHANGED'}}
+ if((Get-FileHash -LiteralPath (Join-Path $installed 'veliq-service.exe')).Hash -cne (Get-FileHash -LiteralPath (Join-Path $payload 'service/veliq-service.exe')).Hash){throw 'SERVICE_FAILURE_PREVIOUS_BINARY_NOT_RESTORED'}
+ if(Test-Path -LiteralPath (Join-Path $app 'install-success.json')){throw 'SERVICE_FAILURE_FALSE_SUCCESS'}
+ # The same verified Setup must recover from this failure on a normal retry.
+ Invoke-OwnedInstaller $setup 'retry-after-service-failure'
+ Assert-InstalledCandidate
+ Write-Output 'BETA_SERVICE_FAILURE_ROLLBACK_PASS real SCM start failure; previous package/binary/config/token restored; normal retry PASS'
  # A real incompatible file handle must stop both interactive-owner and SYSTEM
  # update modes BEFORE [InstallDelete], preserving the running service and GUI.
  $beforeService=Get-CimInstance Win32_Service -Filter "Name='VELIQ'"

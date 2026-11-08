@@ -78,7 +78,8 @@ Name: "{autoprograms}\VELIQ"; Filename: "{app}\VELIQ.exe"
 Name: "{autodesktop}\VELIQ"; Filename: "{app}\VELIQ.exe"; Tasks: desktopicon; Check: NotClubImage
 [Code]
 var TransactionPrepared, PackageCompleted: Boolean;
-    DiagnosticPath: String;
+    DiagnosticPath, TransactionPath: String;
+    TransactionAttempt: Integer;
 
 function RunTransaction(Action: String): Integer;
 var Code: Integer; Command: String;
@@ -86,7 +87,7 @@ begin
  Result := 1;
  Command := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\transaction.ps1') +
   '" -Action ' + Action + ' -AppDirectory "' + ExpandConstant('{app}') + '" -TransactionDirectory "' +
-  ChangeFileExt(DiagnosticPath, '.transaction') + '" -DiagnosticFile "' + DiagnosticPath + '"';
+  TransactionPath + '" -DiagnosticFile "' + DiagnosticPath + '"';
  if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Command, '', SW_HIDE, ewWaitUntilTerminated, Code) then Result := Code;
  Log('VELIQ transaction ' + Action + ' exit=' + IntToStr(Result));
 end;
@@ -168,6 +169,8 @@ var Code: Integer;
 begin
  Result := '';
  if TransactionPrepared then Exit;
+ TransactionAttempt := TransactionAttempt + 1;
+ TransactionPath := ChangeFileExt(DiagnosticPath, '.' + IntToStr(TransactionAttempt) + '.transaction');
  if Pos('''', ExpandConstant('{app}'))>0 then begin
    Result := 'INSTALL_PREFLIGHT_PATH_INVALID';
    Exit;
@@ -193,7 +196,7 @@ begin
 end;
 function ShowAccountSetup(): Boolean;
 begin
- Result := FileExists(ExpandConstant('{app}\install-success.json')) and
+ Result := PackageCompleted and FileExists(ExpandConstant('{app}\install-success.json')) and
    (NotClubImage() or (ClubCodeFile('')=''));
 end;
 procedure ClearInstallMarker;
@@ -230,9 +233,16 @@ begin
  if not FileExists(ExpandConstant('{app}\install-success.json')) then
  begin
    if RunTransaction('Rollback')=0 then TransactionPrepared := False;
-   RaiseException('Установка VELIQ не завершена. Диагностика: ' + DiagnosticPath + '. Журнал: ' + ExpandConstant('{log}'));
+   Log('VELIQ_INSTALL_FAILED; diagnostics=' + DiagnosticPath);
+   if not WizardSilent then MsgBox('Установка VELIQ не завершена. Диагностика: ' + DiagnosticPath + '. Журнал: ' + ExpandConstant('{log}'), mbError, MB_OK);
+   Exit;
  end;
- if RunTransaction('Commit')<>0 then RaiseException('Не удалось подтвердить завершение VELIQ. Диагностика: ' + DiagnosticPath);
+ if RunTransaction('Commit')<>0 then begin
+   if RunTransaction('Rollback')=0 then TransactionPrepared := False;
+   Log('VELIQ_COMMIT_FAILED; diagnostics=' + DiagnosticPath);
+   if not WizardSilent then MsgBox('Не удалось подтвердить завершение VELIQ. Диагностика: ' + DiagnosticPath, mbError, MB_OK);
+   Exit;
+ end;
  PackageCompleted := True;
 end;
 
@@ -240,7 +250,7 @@ procedure DeinitializeSetup;
 begin
  if TransactionPrepared and not PackageCompleted then begin
    if RunTransaction('Rollback')<>0 then
-     Log('VELIQ ROLLBACK_FAILED; backup retained at ' + ChangeFileExt(DiagnosticPath, '.transaction'));
+     Log('VELIQ ROLLBACK_FAILED; backup retained at ' + TransactionPath);
  end;
 end;
 
