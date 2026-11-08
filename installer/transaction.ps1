@@ -235,7 +235,7 @@ try{
  exit 0
 }catch{
  $code='INSTALL_TRANSACTION_FAILED';if($_.Exception.Message -cmatch '^[A-Z][A-Z0-9_]{3,80}$'){$code=$_.Exception.Message}
- Write-VeliqInstallDiagnostic 'TRANSACTION_ERROR' @{action=$Action;code=$code}
+ Write-VeliqInstallDiagnostic 'TRANSACTION_ERROR' @{action=$Action;code=$code;exception_type=$_.Exception.GetType().FullName;line=$_.InvocationInfo.ScriptLineNumber;hresult=$_.Exception.HResult;category=[string]$_.CategoryInfo.Category}
  Write-Output $code
  if($code -eq 'INSTALL_REBOOT_REQUIRED'){exit 20}
  exit 1

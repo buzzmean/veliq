@@ -18,12 +18,12 @@ try{
  [IO.File]::WriteAllText((Join-Path $app 'gui/data.dll'),'old library bytes')
  [IO.File]::WriteAllText((Join-Path $app 'unins000.dat'),'old uninstall bytes')
  & $hostExe -NoProfile -File $script -Action Prepare -AppDirectory $app -TransactionDirectory $backup -DiagnosticFile $log
- if($LASTEXITCODE){throw 'FILES_PREPARE_FAILED'}
+ if($LASTEXITCODE){if(Test-Path -LiteralPath $log){Get-Content -LiteralPath $log -Tail 4|Write-Output};throw 'FILES_PREPARE_FAILED'}
  [IO.File]::WriteAllText((Join-Path $app 'VELIQ.exe'),'new failed GUI bytes')
  [void][IO.Directory]::CreateDirectory((Join-Path $app 'service'))
  [IO.File]::WriteAllText((Join-Path $app 'service/new.exe'),'new payload')
  & $hostExe -NoProfile -File $script -Action Rollback -AppDirectory $app -TransactionDirectory $backup -DiagnosticFile $log
- if($LASTEXITCODE){throw 'FILES_ROLLBACK_FAILED'}
+ if($LASTEXITCODE){if(Test-Path -LiteralPath $log){Get-Content -LiteralPath $log -Tail 4|Write-Output};throw 'FILES_ROLLBACK_FAILED'}
  foreach($pair in @(@('VELIQ.exe','old GUI bytes'),@('gui/data.dll','old library bytes'),@('unins000.dat','old uninstall bytes'))){
   if([IO.File]::ReadAllText((Join-Path $app $pair[0])) -cne $pair[1]){throw 'FILES_PREVIOUS_BYTES_NOT_RESTORED'}
  }
