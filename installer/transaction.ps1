@@ -7,7 +7,10 @@ $app=[IO.Path]::GetFullPath($AppDirectory).TrimEnd('\')
 $transaction=[IO.Path]::GetFullPath($TransactionDirectory).TrimEnd('\')
 $serviceRoot=Join-Path $env:ProgramData 'VELIQ'
 $recordPath=Join-Path $transaction 'transaction.json'
-$names=@('VELIQ.exe','package.json','service','gui','tools','installer','public','driver')
+$names=@('VELIQ.exe','package.json','service','gui','tools','installer','public','driver','unins000.exe','unins000.dat','unins000.msg')
+$uninstallKey='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{E18D91DB-2E64-4405-A05E-AB15A4192318}_is1'
+$regKey='HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{E18D91DB-2E64-4405-A05E-AB15A4192318}_is1'
+$shortcuts=@((Join-Path ([Environment]::GetFolderPath('CommonPrograms')) 'VELIQ.lnk'),(Join-Path ([Environment]::GetFolderPath('CommonDesktopDirectory')) 'VELIQ.lnk'))
 function Assert-TransactionParents([string]$Path) {
  $current=$Path
  while($current){
@@ -107,11 +110,18 @@ try{
   if(Test-Path -LiteralPath $recordPath){throw 'INSTALL_TRANSACTION_ALREADY_PREPARED'}
   Protect-TransactionDirectory $transaction
   $snapshot=Join-Path $transaction 'payload';[void][IO.Directory]::CreateDirectory($snapshot)
-  $record=@{app=$app;service_existed=($null -ne $scm);service_running=($null -ne $scm -and $scm.State -eq 'Running');start_mode=if($scm){$scm.StartMode}else{''};gui=@();phase='PREPARING'}
+  $record=@{app=$app;service_existed=($null -ne $scm);service_running=($null -ne $scm -and $scm.State -eq 'Running');start_mode=if($scm){$scm.StartMode}else{''};gui=@();phase='PREPARING';uninstall_key_existed=(Test-Path -LiteralPath $uninstallKey)}
   $record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
   $record.gui=@(Stop-OwnedGui)
   $record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
   Assert-VeliqInstallPreflight $app
+  if($record.uninstall_key_existed){
+   $registered=Get-ItemProperty -LiteralPath $uninstallKey
+   if($registered.DisplayName -notlike 'VELIQ*' -or [string]$registered.InstallLocation -ine ($app+'\')){throw 'INSTALL_FOREIGN_UNINSTALL_KEY'}
+   & reg.exe export $regKey (Join-Path $transaction 'uninstall.reg') /y|Out-Null
+   if($LASTEXITCODE){throw 'INSTALL_REGISTRY_BACKUP_FAILED'}
+  }
+  for($i=0;$i -lt $shortcuts.Count;$i++){if(Test-Path -LiteralPath $shortcuts[$i]){Copy-Item -LiteralPath $shortcuts[$i] -Destination (Join-Path $transaction ('shortcut-'+$i+'.lnk'))}}
   foreach($name in $names){$path=Join-Path $app $name;if(Test-Path -LiteralPath $path){Copy-Item -LiteralPath $path -Destination $snapshot -Recurse}}
   if($scm){
    $binary=Join-Path $serviceRoot 'veliq-service.exe'
@@ -146,6 +156,22 @@ try{
     if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}
     $old=Join-Path (Join-Path $transaction 'payload') $name
     if(Test-Path -LiteralPath $old){Copy-Item -LiteralPath $old -Destination $app -Recurse -Force}
+   }
+   if($record.uninstall_key_existed){
+    & reg.exe import (Join-Path $transaction 'uninstall.reg')|Out-Null
+    if($LASTEXITCODE){throw 'INSTALL_REGISTRY_RESTORE_FAILED'}
+   }elseif(Test-Path -LiteralPath $uninstallKey){
+    $registered=Get-ItemProperty -LiteralPath $uninstallKey
+    if($registered.DisplayName -notlike 'VELIQ*' -or [string]$registered.InstallLocation -ine ($app+'\')){throw 'INSTALL_FOREIGN_UNINSTALL_KEY'}
+    Remove-Item -LiteralPath $uninstallKey -Recurse -Force
+   }
+   for($i=0;$i -lt $shortcuts.Count;$i++){
+    $backup=Join-Path $transaction ('shortcut-'+$i+'.lnk')
+    if(Test-Path -LiteralPath $backup){Copy-Item -LiteralPath $backup -Destination $shortcuts[$i] -Force}
+    elseif(Test-Path -LiteralPath $shortcuts[$i]){
+     $shell=New-Object -ComObject WScript.Shell
+     if($shell.CreateShortcut($shortcuts[$i]).TargetPath -ieq (Join-Path $app 'VELIQ.exe')){Remove-Item -LiteralPath $shortcuts[$i] -Force}
+    }
    }
    if($record.service_existed){
     $binary=Join-Path $serviceRoot 'veliq-service.exe';Copy-Item -LiteralPath (Join-Path $transaction 'service.exe') -Destination $binary -Force

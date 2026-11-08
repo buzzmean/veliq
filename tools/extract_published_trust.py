@@ -8,6 +8,8 @@ import subprocess
 import tarfile
 import tempfile
 import urllib.request
+import urllib.error
+import time
 
 SETUP_URL = 'https://github.com/buzzmean/veliq/releases/download/v0.3.577/VELIQ-Setup.exe'
 SETUP_HASH = 'd3b98904f1f0360607fae3479a0bc7de34861131fe933363015433f79f8556c8'
@@ -18,6 +20,17 @@ CA_PIN = '622db56fba69041b108fc31b5b3cf81a5ed722faa3110ef2b896b8fac42abd85'
 
 
 def download(url, path, expected, limit):
+    for attempt in range(3):
+        try:
+            return download_once(url, path, expected, limit)
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            path.unlink(missing_ok=True)
+            if attempt == 2:
+                raise
+            time.sleep(2 ** attempt)
+
+
+def download_once(url, path, expected, limit):
     digest = hashlib.sha256()
     count = 0
     with urllib.request.urlopen(url, timeout=90) as response, path.open('xb') as out:
@@ -83,9 +96,10 @@ def main():
     args = parser.parse_args()
     try:
         recover(args.output)
-    except (OSError, ValueError, subprocess.SubprocessError, tarfile.TarError):
+    except (OSError, ValueError, subprocess.SubprocessError, tarfile.TarError) as error:
         # No certificate/key material or arbitrary downstream exception text.
-        print('PUBLIC_TRUST_RECOVERY_FAILED; source pin, parser and CA checks required')
+        code = str(error) if isinstance(error, ValueError) and str(error).isupper() and str(error).replace('_', '').isalnum() else type(error).__name__
+        print('PUBLIC_TRUST_RECOVERY_FAILED code=' + code + '; source pin, parser and CA checks required')
         return 1
     return 0
 

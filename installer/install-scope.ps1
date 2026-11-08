@@ -18,6 +18,11 @@ function Convert-VeliqPendingPath([string]$Path) {
  }
  $item=Get-Item -LiteralPath $ancestor -Force -ErrorAction Stop
  if($item.Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'INSTALL_PENDING_PATH_UNRESOLVED'}
+ $parent=[IO.Path]::GetDirectoryName($item.FullName)
+ while($parent){
+  if((Get-Item -LiteralPath $parent -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint){throw 'INSTALL_PENDING_PATH_UNRESOLVED'}
+  $parent=[IO.Path]::GetDirectoryName($parent)
+ }
  $resolved=$item.FullName.TrimEnd('\')
  foreach($part in $tail){$resolved=Join-Path $resolved $part}
  return $resolved

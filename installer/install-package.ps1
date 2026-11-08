@@ -115,7 +115,7 @@ try{
  Remove-Item -LiteralPath $success -Force -ErrorAction SilentlyContinue
  Write-VeliqInstallDiagnostic 'PACKAGE_FAILED' @{step=$step;code=$safe}
  New-VeliqInstallResult 'FAIL' $step (Get-VeliqInstallRebootState $root) -Code $safe|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $result -Encoding UTF8
- throw ('VELIQ_SETUP_FAILED stage='+$step+' code='+$safe+'; existing state preserved')
+ throw ('VELIQ_SETUP_FAILED stage='+$step+' code='+$safe+'; installation incomplete; inspect transaction diagnostics')
 }finally{
  $env:PSModulePath=$installerModulePath
 }

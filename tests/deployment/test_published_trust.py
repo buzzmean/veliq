@@ -16,6 +16,20 @@ SPEC.loader.exec_module(trust)
 
 
 class PublishedTrustTests(unittest.TestCase):
+    def test_transient_download_retries_but_keeps_hash_gate(self):
+        with tempfile.TemporaryDirectory() as d:
+            payload = b'checked source'
+            target = Path(d)/'source'
+            with patch.object(trust.urllib.request, 'urlopen', side_effect=[trust.urllib.error.URLError('transient'), io.BytesIO(payload)]) as request, patch.object(trust.time, 'sleep'):
+                trust.download('https://example.test', target, hashlib.sha256(payload).hexdigest(), 100)
+                self.assertEqual(request.call_count, 2)
+                self.assertEqual(target.read_bytes(), payload)
+            target.unlink()
+            with patch.object(trust.urllib.request, 'urlopen', return_value=io.BytesIO(payload)) as request:
+                with self.assertRaises(ValueError):
+                    trust.download('https://example.test', target, '0'*64, 100)
+                self.assertEqual(request.call_count, 1)
+
     def test_hash_and_size_are_required_before_extraction(self):
         with tempfile.TemporaryDirectory() as d:
             with patch.object(trust.urllib.request, 'urlopen', return_value=io.BytesIO(b'wrong source')):
