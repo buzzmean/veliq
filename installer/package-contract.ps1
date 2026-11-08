@@ -1,7 +1,7 @@
 function Assert-VeliqPackage([string]$Root,[switch]$ForPackaging){
  $manifest=Get-Content -Raw -LiteralPath (Join-Path $Root 'package.json')|ConvertFrom-Json
  if($manifest.product -ne 'VELIQ' -or $manifest.commit -notmatch '^[0-9a-f]{40}$' -or @($manifest.files).Count -gt 128){throw 'INSTALL_PACKAGE_INVALID'}
- $required=@('service/veliq-service.exe','gui/VELIQ.exe','driver/WinDivert.dll','driver/WinDivert64.sys','driver/pins.json','public/ca.pem','public/release.json','installer/install-package.ps1','installer/package-contract.ps1','installer/install-safety.ps1')
+ $required=@('service/veliq-service.exe','gui/VELIQ.exe','driver/WinDivert.dll','driver/WinDivert64.sys','driver/pins.json','public/ca.pem','public/release.json','installer/install-package.ps1','installer/package-contract.ps1','installer/install-safety.ps1','installer/install-scope.ps1','installer/transaction.ps1')
  $names=@($manifest.files|ForEach-Object {([string]$_.path).Replace('\','/').ToLowerInvariant()})
  foreach($name in $names){
   if($name -match '(^|/)(identity\.json|device\.pem|ipc\.token|admin\.token|activation-code\.json.*)$' -or $name -match '\.(key|pfx|p12)$'){throw 'INSTALL_SECRET_FILE_REJECTED'}

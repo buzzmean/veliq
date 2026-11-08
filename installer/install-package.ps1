@@ -1,12 +1,12 @@
 [CmdletBinding()]
-param([string]$ClubCodeFile='',[switch]$ClubImage,[switch]$Remove,[switch]$Update)
+param([string]$ClubCodeFile='',[switch]$ClubImage,[switch]$Remove,[switch]$Update,[string]$DiagnosticFile='')
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 $root=Split-Path $PSScriptRoot -Parent
 $result=Join-Path $root 'install-result.json';$success=Join-Path $root 'install-success.json'
 Remove-Item -LiteralPath $success -Force -ErrorAction SilentlyContinue
 $step='PACKAGE_PREFLIGHT'
 $installerModulePath=$env:PSModulePath
-. (Join-Path $PSScriptRoot 'install-safety.ps1')
+. (Join-Path $PSScriptRoot 'install-safety.ps1') -DiagnosticFile $DiagnosticFile
 try{
  # Inno inherits the launching shell's environment. A PS7 PSModulePath can hide
  # Windows PowerShell's Get-FileHash even though other cmdlets still resolve.
@@ -17,7 +17,9 @@ try{
  }
  . (Join-Path $PSScriptRoot 'package-contract.ps1')
  Assert-VeliqPackage $root
- Assert-VeliqNoPendingReboot (Get-VeliqRebootState $root)
+ $packageInfo=Get-Content -Raw -LiteralPath (Join-Path $root 'package.json')|ConvertFrom-Json
+ Write-VeliqInstallDiagnostic 'PACKAGE_VERIFIED' @{commit=$packageInfo.commit;file_count=@($packageInfo.files).Count}
+ Assert-VeliqNoPendingReboot (Get-VeliqInstallRebootState $root)
  $installed=Join-Path $env:ProgramData 'VELIQ';$manifest=Join-Path $installed 'service.json'
  if($Update){
   # Service-driven update (SYSTEM): the installed owner stays the owner.
@@ -90,18 +92,36 @@ try{
   elseif($ClubCodeFile -ne ''){$step='CLUB_STAGE';& (Join-Path $scripts 'stage-club-activation.ps1') -ProtectedCodeFile $ClubCodeFile -InstallDirectory $installed}
   $step='VERIFY';$state=Get-Service VELIQ;if(($ClubImage -and $ClubCodeFile -and $state.Status -ne 'Stopped') -or ((!$ClubImage -or !$ClubCodeFile) -and $state.Status -ne 'Running')){throw 'INSTALL_SERVICE_NOT_RUNNING'}
   $installedHashes=Assert-VeliqInstalledBinaries $root $installed
+  Assert-VeliqInstalledDriver $root $installed
+  if($state.Status -eq 'Running'){
+   $step='IPC_READINESS';. (Join-Path $scripts 'common.ps1')
+   $deadline=[DateTime]::UtcNow.AddSeconds(30);$ready=$false
+   do{
+    try{
+     $status=Invoke-ServiceIPC 'status' $null (Join-Path $installed 'ipc.token')
+     $ready=$null -ne $status.PSObject.Properties['backend']
+     $backendError=$status.backend.PSObject.Properties['error']
+     if($ready -and $status.capture_permitted -and $backendError -and [string]$backendError.Value){$ready=$false}
+    }catch{$ready=$false}
+    if(!$ready){Start-Sleep -Milliseconds 300}
+   }while(!$ready -and [DateTime]::UtcNow -lt $deadline)
+   if(!$ready){throw 'INSTALL_SERVICE_IPC_NOT_READY'}
+   Write-VeliqInstallDiagnostic 'IPC_READY' @{service='VELIQ';hashes=$installedHashes}
+  }
  }
- $reboot=Get-VeliqRebootState $root
+ $reboot=Get-VeliqInstallRebootState $root
  Assert-VeliqNoPendingReboot $reboot
  $hashes=$null;if(!$Remove){$hashes=$installedHashes}
  New-VeliqInstallResult 'PASS' $step $reboot -Hashes $hashes|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $success -Encoding UTF8
  Copy-Item -LiteralPath $success -Destination $result -Force
+ Write-VeliqInstallDiagnostic 'PACKAGE_COMPLETED' @{step=$step;result='COMPLETED'}
 }catch{
  # Preserve safe constant error codes only; never print arbitrary exception text.
  $safe='INSTALL_STEP_FAILED';if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;|$)'){$safe=$Matches[1]}
  Remove-Item -LiteralPath $success -Force -ErrorAction SilentlyContinue
- New-VeliqInstallResult 'FAIL' $step (Get-VeliqRebootState $root) -Code $safe|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $result -Encoding UTF8
- throw ('VELIQ_SETUP_FAILED stage='+$step+' code='+$safe+'; existing state preserved')
+ Write-VeliqInstallDiagnostic 'PACKAGE_FAILED' @{step=$step;code=$safe}
+ New-VeliqInstallResult 'FAIL' $step (Get-VeliqInstallRebootState $root) -Code $safe|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $result -Encoding UTF8
+ throw ('VELIQ_SETUP_FAILED stage='+$step+' code='+$safe+'; installation incomplete; inspect transaction diagnostics')
 }finally{
  $env:PSModulePath=$installerModulePath
 }

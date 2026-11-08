@@ -133,11 +133,50 @@ try{
  Invoke-OwnedInstaller $setup 'invalid-image' -ExpectedExit 1 -InvalidClubImage
  $failure=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
  if($failure.result -cne 'FAIL' -or $failure.code -cne 'CLUB_CODE_FILE_INVALID' -or (Get-OwnedServiceState) -ne 'ABSENT'){throw 'FAILED_SETUP_FALSE_SUCCESS_OR_STATE_MUTATION'}
- Invoke-OwnedInstaller (Join-Path $app 'unins000.exe') 'invalid-image-uninstall'
+ # The failed transaction restores the previously empty payload. There are no
+ # installed package scripts to delegate uninstall to in this negative case.
+ if(Test-Path -LiteralPath (Join-Path $app 'installer/install-package.ps1')){throw 'FAILED_FRESH_INSTALL_LEFT_PAYLOAD'}
  foreach($path in @($installed,$app)){if(Test-Path -LiteralPath $path){Remove-Item -LiteralPath $path -Recurse -Force}}
  Write-Output 'BETA_NEGATIVE_SETUP_PASS exit=1; invalid legacy file; no SCM service'
  Invoke-OwnedInstaller $setup 'install'
  Assert-InstalledCandidate
+ # A verified package with a deliberately failing service must restore both
+ # the previous executable AND the previous GUI/package/uninstall metadata.
+ $failureStage=Join-Path $env:RUNNER_TEMP ('beta-service-failure-'+[guid]::NewGuid().ToString('N'))
+ $failurePayload=Join-Path $failureStage 'payload'
+ New-Item -ItemType Directory -Path $failureStage|Out-Null
+ Copy-Item -LiteralPath $payload -Destination $failurePayload -Recurse
+ $badService=Join-Path $failurePayload 'service/veliq-service.exe'
+ Remove-Item -LiteralPath $badService
+ $failureSource=Join-Path $failureStage 'failed-service.go'
+ $startedMarker=Join-Path $failureStage 'failed-service-started.txt'
+ $markerLiteral=$startedMarker|ConvertTo-Json -Compress
+ $fakeSource='package main; import ("os"; "strconv"); func main() { _ = os.WriteFile('+$markerLiteral+', []byte(strconv.Itoa(os.Getppid())), 0600); os.Exit(42) }'
+ [IO.File]::WriteAllText($failureSource,$fakeSource,[Text.UTF8Encoding]::new($false))
+ & go build -trimpath -o $badService $failureSource
+ if($LASTEXITCODE){throw 'SERVICE_FAILURE_BINARY_BUILD_FAILED'}
+ $badManifest=Get-Content -Raw -LiteralPath (Join-Path $failurePayload 'package.json')|ConvertFrom-Json
+ foreach($entry in $badManifest.files){if($entry.path -eq 'service/veliq-service.exe'){$entry.sha256=(Get-FileHash -LiteralPath $badService).Hash.ToLowerInvariant()}}
+ $badManifest|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $failurePayload 'package.json') -Encoding UTF8
+ $compiler=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3/ISCC.exe'
+ & $compiler /Q ('/DStageRoot='+$failureStage) (Join-Path $PSScriptRoot '../../installer/setup.iss')
+ if($LASTEXITCODE){throw 'SERVICE_FAILURE_FIXTURE_COMPILE_FAILED'}
+ $preserved=@{}
+ foreach($name in @('service.json','ipc.token')){$preserved[$name]=(Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash}
+ $oldPackageHash=(Get-FileHash -LiteralPath (Join-Path $app 'package.json')).Hash
+ Invoke-OwnedInstaller (Join-Path $failureStage 'output/VELIQ-Setup.exe') 'service-start-failure' -ExpectedExit 1
+ if(!(Test-Path -LiteralPath $startedMarker)){throw 'SERVICE_FAILURE_FIXTURE_NEVER_EXECUTED'}
+ $serviceParent=[int][IO.File]::ReadAllText($startedMarker)
+ $scmPids=@(Get-CimInstance Win32_Process -Filter "Name='services.exe'"|ForEach-Object {[int]$_.ProcessId})
+ if($serviceParent -notin $scmPids){throw 'SERVICE_FAILURE_WAS_NOT_STARTED_BY_SCM'}
+ if((Get-OwnedServiceState) -ne 'Running' -or (Get-FileHash -LiteralPath (Join-Path $app 'package.json')).Hash -cne $oldPackageHash){throw 'SERVICE_FAILURE_PREVIOUS_PACKAGE_NOT_RESTORED'}
+ foreach($name in $preserved.Keys){if((Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash -cne $preserved[$name]){throw 'SERVICE_FAILURE_CONFIGURATION_CHANGED'}}
+ if((Get-FileHash -LiteralPath (Join-Path $installed 'veliq-service.exe')).Hash -cne (Get-FileHash -LiteralPath (Join-Path $payload 'service/veliq-service.exe')).Hash){throw 'SERVICE_FAILURE_PREVIOUS_BINARY_NOT_RESTORED'}
+ if(Test-Path -LiteralPath (Join-Path $app 'install-success.json')){throw 'SERVICE_FAILURE_FALSE_SUCCESS'}
+ # The same verified Setup must recover from this failure on a normal retry.
+ Invoke-OwnedInstaller $setup 'retry-after-service-failure'
+ Assert-InstalledCandidate
+ Write-Output 'BETA_SERVICE_FAILURE_ROLLBACK_PASS real SCM start failure; previous package/binary/config/token restored; normal retry PASS'
  # A real incompatible file handle must stop both interactive-owner and SYSTEM
  # update modes BEFORE [InstallDelete], preserving the running service and GUI.
  $beforeService=Get-CimInstance Win32_Service -Filter "Name='VELIQ'"
@@ -161,6 +200,33 @@ try{
  # Re-install the identical package exercises the real existing-service update.
  Invoke-OwnedInstaller $setup 'update'
  Assert-InstalledCandidate
+ # The shipping updater launches detached as SYSTEM with UPDATE=1. Exercise
+ # that exact installer context without changing Latest or contacting the CP.
+ $systemTask='VELIQ-Setup-System-Fixture-'+[guid]::NewGuid().ToString('N')
+ $systemLog=Join-Path $env:RUNNER_TEMP ('beta-inno-system-update-'+[guid]::NewGuid().ToString('N')+'.log')
+ $beforeSystem=@{}
+ foreach($name in @('service.json','ipc.token')){$beforeSystem[$name]=(Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash}
+ $started=[DateTime]::UtcNow
+ try{
+  $action=New-ScheduledTaskAction -Execute $setup -Argument ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCLOSEAPPLICATIONS /UPDATE=1 /RESTARTEXITCODE=3010 /LOG="'+$systemLog+'"')
+  $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+  $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(3))
+  Register-ScheduledTask -TaskName $systemTask -Action $action -Principal $principal -Settings $settings|Out-Null
+  Start-ScheduledTask -TaskName $systemTask
+  $deadline=[DateTime]::UtcNow.AddSeconds(180);$completed=$false
+  do{
+   $task=Get-ScheduledTask -TaskName $systemTask
+   $info=Get-ScheduledTaskInfo -TaskName $systemTask
+   $completed=$info.LastRunTime.ToUniversalTime() -ge $started.AddSeconds(-1) -and [string]$task.State -ne 'Running' -and $info.LastTaskResult -notin @(267009,267011)
+   if(!$completed){Start-Sleep -Milliseconds 300}
+  }while(!$completed -and [DateTime]::UtcNow -lt $deadline)
+  if(!$completed -or $info.LastTaskResult -ne 0){throw 'SYSTEM_UPDATE_INSTALLER_FAILED'}
+  Assert-InstalledCandidate
+  foreach($name in $beforeSystem.Keys){if((Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash -cne $beforeSystem[$name]){throw 'SYSTEM_UPDATE_CHANGED_OWNER_OR_TOKEN'}}
+  Write-Output 'BETA_SYSTEM_UPDATE_PASS real SYSTEM Setup UPDATE=1; original owner/config/token and running service preserved'
+ }finally{
+  Unregister-ScheduledTask -TaskName $systemTask -Confirm:$false -ErrorAction SilentlyContinue
+ }
  $uninstaller=Join-Path $app 'unins000.exe'
  if(!(Test-Path -LiteralPath $uninstaller)){throw 'REAL_UNINSTALLER_REQUIRED'}
  Invoke-OwnedInstaller $uninstaller 'uninstall'

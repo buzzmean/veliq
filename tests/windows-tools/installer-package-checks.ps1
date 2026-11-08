@@ -8,7 +8,7 @@ function Get-FileHash {param([string]$LiteralPath,[string]$Algorithm='SHA256')
  Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $LiteralPath -Algorithm $Algorithm
 }
 try{
- $names=@('service/veliq-service.exe','gui/VELIQ.exe','driver/WinDivert.dll','driver/WinDivert64.sys','driver/pins.json','public/ca.pem','public/release.json','installer/install-package.ps1','installer/package-contract.ps1','installer/install-safety.ps1')
+ $names=@('service/veliq-service.exe','gui/VELIQ.exe','driver/WinDivert.dll','driver/WinDivert64.sys','driver/pins.json','public/ca.pem','public/release.json','installer/install-package.ps1','installer/package-contract.ps1','installer/install-safety.ps1','installer/install-scope.ps1','installer/transaction.ps1')
  foreach($name in $names){$p=Join-Path $root $name;[void][IO.Directory]::CreateDirectory((Split-Path $p));[IO.File]::WriteAllText($p,'fixture')}
  $rsa=[Security.Cryptography.RSACryptoServiceProvider]::new(2048);$rsa.PersistKeyInCsp=$false
  $request=[Security.Cryptography.X509Certificates.CertificateRequest]::new('CN=VELIQ-CI-ONLY',$rsa,[Security.Cryptography.HashAlgorithmName]::SHA256,[Security.Cryptography.RSASignaturePadding]::Pkcs1)

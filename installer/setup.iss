@@ -1,4 +1,4 @@
-﻿; Build dependency only. Runtime uses Windows PowerShell 5.1, no SDK/Git/Go.
+; Build dependency only. Runtime uses Windows PowerShell 5.1, no SDK/Git/Go.
 #ifndef StageRoot
  #define StageRoot "..\bin\installer"
 #endif
@@ -33,6 +33,8 @@ WizardSmallImageFile=assets\wizard-small-100.bmp,assets\wizard-small-125.bmp,ass
 WizardImageStretch=no
 RestartIfNeededByRun=no
 AlwaysRestart=no
+SetupLogging=yes
+SetupMutex=Global\VELIQ-Install-Transaction
 UninstallRestartComputer=no
 ; A busy GUI is a preflight failure. Never defer replacement to a later boot.
 ; Interactive Setup selects and locks "do not restart" itself. Automation and
@@ -62,16 +64,33 @@ Type: filesandordirs; Name: "{app}\driver"
 [Tasks]
 Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; GroupDescription: "Ярлыки:"; Check: NotClubImage
 [Files]
+Source: "{#StageRoot}\payload\installer\transaction.ps1"; Flags: dontcopy
+Source: "{#StageRoot}\payload\installer\install-safety.ps1"; Flags: dontcopy
+Source: "{#StageRoot}\payload\installer\install-scope.ps1"; Flags: dontcopy
 Source: "{#StageRoot}\payload\installer\install-safety.ps1"; DestName: "veliq-install-preflight.ps1"; Flags: dontcopy
 Source: "{#StageRoot}\payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageRoot}\payload\gui\VELIQ.exe"; DestDir: "{app}"; Flags: ignoreversion
 [Run]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""& '{app}\installer\install-package.ps1' -ClubCodeFile '{code:ClubCodeFile}' {code:ClubImageArgument} {code:UpdateArgument}"""; Flags: runhidden waituntilterminated; StatusMsg: "Устанавливаем VELIQ…"; BeforeInstall: ClearInstallMarker; AfterInstall: CheckInstall
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""& '{app}\installer\install-package.ps1' -DiagnosticFile '{code:DiagnosticFile}' -ClubCodeFile '{code:ClubCodeFile}' {code:ClubImageArgument} {code:UpdateArgument}"""; Flags: runhidden waituntilterminated; StatusMsg: "Устанавливаем VELIQ…"; BeforeInstall: ClearInstallMarker; AfterInstall: CheckInstall
 Filename: "{app}\VELIQ.exe"; Description: "Открыть VELIQ и подключить аккаунт"; Flags: runasoriginaluser nowait postinstall skipifsilent; Check: ShowAccountSetup
 [Icons]
 Name: "{autoprograms}\VELIQ"; Filename: "{app}\VELIQ.exe"
 Name: "{autodesktop}\VELIQ"; Filename: "{app}\VELIQ.exe"; Tasks: desktopicon; Check: NotClubImage
 [Code]
+var TransactionPrepared, PackageCompleted: Boolean;
+    DiagnosticPath, TransactionPath: String;
+    TransactionAttempt: Integer;
+
+function RunTransaction(Action: String): Integer;
+var Code: Integer; Command: String;
+begin
+ Result := 1;
+ Command := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\transaction.ps1') +
+  '" -Action ' + Action + ' -AppDirectory "' + ExpandConstant('{app}') + '" -TransactionDirectory "' +
+  TransactionPath + '" -DiagnosticFile "' + DiagnosticPath + '"';
+ if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Command, '', SW_HIDE, ewWaitUntilTerminated, Code) then Result := Code;
+ Log('VELIQ transaction ' + Action + ' exit=' + IntToStr(Result));
+end;
 function SafeSessionArguments(RequireNoRestart: Boolean): Boolean;
 var I, Separator: Integer; Arg: String; NoRestart: Boolean;
 begin
@@ -108,16 +127,28 @@ end;
 
 procedure InitializeWizard;
 begin
+ DiagnosticPath := ExpandConstant('{commonappdata}\VELIQ-Setup\Logs\') + GetDateTimeString('yyyymmdd-hhnnss', '-', ':') + '.jsonl';
+ ForceDirectories(ExtractFileDir(DiagnosticPath));
+ Log('VELIQ build {#AppVersion}; diagnostics=' + DiagnosticPath);
  LockNoRestartChoice;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
  LockNoRestartChoice;
+ if (CurPageID=wpFinished) and not PackageCompleted then begin
+   WizardForm.FinishedHeadingLabel.Caption := 'Установка не завершена';
+   WizardForm.FinishedLabel.Caption := 'Не удалось подтвердить работу VELIQ. Диагностика: ' + DiagnosticPath;
+   WizardForm.RunList.Visible := False;
+ end;
  { Never offer the user an enabled restart choice, even if Inno detected a
    late restart requirement. The pending operation itself remains untouched. }
 end;
 
+function DiagnosticFile(Param: String): String;
+begin
+ Result := DiagnosticPath;
+end;
 function ClubCodeFile(Param: String): String;
 begin
  Result := ExpandConstant('{param:CLUBCODEFILE|}');
@@ -134,30 +165,30 @@ begin
  if ExpandConstant('{param:UPDATE|0}')='1' then Result := '-Update';
 end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var Code: Integer; Script: String;
+var Code: Integer;
 begin
  Result := '';
- NeedsRestart := False; { A refusal must never offer/trigger a system restart. }
+ if TransactionPrepared then Exit;
+ TransactionAttempt := TransactionAttempt + 1;
+ TransactionPath := ChangeFileExt(DiagnosticPath, '.' + IntToStr(TransactionAttempt) + '.transaction');
  if Pos('''', ExpandConstant('{app}'))>0 then begin
    Result := 'INSTALL_PREFLIGHT_PATH_INVALID';
    Exit;
  end;
- ExtractTemporaryFile('veliq-install-preflight.ps1');
- Script := ExpandConstant('{tmp}\veliq-install-preflight.ps1');
- if Pos('''', Script)>0 then begin
-   Result := 'INSTALL_PREFLIGHT_PATH_INVALID';
-   Exit;
- end;
- if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-  '-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$ErrorActionPreference=' + #39 + 'Stop' + #39 + '; & ' + #39 + Script + #39 + ' -Preflight -AppDirectory ' + #39 + ExpandConstant('{app}') + #39 + '; exit $LASTEXITCODE"',
-  '', SW_HIDE, ewWaitUntilTerminated, Code) then begin
-   Result := 'INSTALL_PREFLIGHT_UNAVAILABLE';
-   Exit;
- end;
- if Code=3010 then
-   Result := 'INSTALL_REBOOT_REQUIRED: установка отложена; перезагрузка не выполняется.'
+ ExtractTemporaryFile('transaction.ps1');
+ ExtractTemporaryFile('install-safety.ps1');
+ ExtractTemporaryFile('install-scope.ps1');
+ Code := RunTransaction('Prepare');
+ if Code=20 then
+   Result := 'Ожидающая операция Windows затрагивает VELIQ или WinDivert. Установка заблокирована; перезагрузка не выполняется.'
  else if Code<>0 then
-   Result := 'INSTALL_PREFLIGHT_FAILED: проверьте состояние Windows и закройте только VELIQ. Браузеры закрывать не нужно.';
+   Result := 'Не удалось подготовить обновление VELIQ. Файлы не заменены.';
+ if Result<>'' then
+ begin
+   RunTransaction('Rollback');
+   Result := Result + #13#10 + 'Диагностика: ' + DiagnosticPath + #13#10 + 'Журнал Setup: ' + ExpandConstant('{log}');
+ end
+ else TransactionPrepared := True;
 end;
 function NotClubImage(): Boolean;
 begin
@@ -165,7 +196,7 @@ begin
 end;
 function ShowAccountSetup(): Boolean;
 begin
- Result := FileExists(ExpandConstant('{app}\install-success.json')) and
+ Result := PackageCompleted and FileExists(ExpandConstant('{app}\install-success.json')) and
    (NotClubImage() or (ClubCodeFile('')=''));
 end;
 procedure ClearInstallMarker;
@@ -200,7 +231,27 @@ end;
 procedure CheckInstall;
 begin
  if not FileExists(ExpandConstant('{app}\install-success.json')) then
-   RaiseException('Установка VELIQ не завершена. Состояние сохранено; код причины в install-result.json.');
+ begin
+   if RunTransaction('Rollback')=0 then TransactionPrepared := False;
+   Log('VELIQ_INSTALL_FAILED; diagnostics=' + DiagnosticPath);
+   if not WizardSilent then MsgBox('Установка VELIQ не завершена. Диагностика: ' + DiagnosticPath + '. Журнал: ' + ExpandConstant('{log}'), mbError, MB_OK);
+   Exit;
+ end;
+ if RunTransaction('Commit')<>0 then begin
+   if RunTransaction('Rollback')=0 then TransactionPrepared := False;
+   Log('VELIQ_COMMIT_FAILED; diagnostics=' + DiagnosticPath);
+   if not WizardSilent then MsgBox('Не удалось подтвердить завершение VELIQ. Диагностика: ' + DiagnosticPath, mbError, MB_OK);
+   Exit;
+ end;
+ PackageCompleted := True;
+end;
+
+procedure DeinitializeSetup;
+begin
+ if TransactionPrepared and not PackageCompleted then begin
+   if RunTransaction('Rollback')<>0 then
+     Log('VELIQ ROLLBACK_FAILED; backup retained at ' + TransactionPath);
+ end;
 end;
 
 function GetCustomSetupExitCode(): Integer;
@@ -209,6 +260,6 @@ begin
  { Exceptions from AfterInstall can be suppressed by /SUPPRESSMSGBOXES while
    Inno otherwise returns success. The durable marker is written only by a
    successful package script and cleared before every invocation. }
- if not FileExists(ExpandConstant('{app}\install-success.json')) then
+ if not PackageCompleted or not FileExists(ExpandConstant('{app}\install-success.json')) then
    Result := 1;
 end;
