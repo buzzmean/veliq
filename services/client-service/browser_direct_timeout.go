@@ -58,7 +58,7 @@ func (c *Controller) directTimeoutKey(current profilesResult, q browserproxy.Req
 // Только подтверждённые ошибки открытия меняют failure verdict. Успешный
 // TCP connect и непроверенный TLS байт не подтверждают работоспособность сайта.
 func (c *Controller) observeDirectOpen(current profilesResult, q browserproxy.Request, plan browserproxy.Plan, err error, now time.Time) {
-	if current.network == "" || !directTimeoutEligible(q, plan) {
+	if current.network == "" || !directTimeoutEligible(q, plan) || !c.automaticScopeCurrent(current) {
 		return
 	}
 	key := c.directTimeoutKey(current, q, plan)

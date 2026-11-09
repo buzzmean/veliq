@@ -1,0 +1,1 @@
+(function(){'use strict';window.veliqPricing={"version":"20261107","currency":"RUB","period_days":30,"prices":{"player":399,"club":199},"terms":[{"months":1,"discount":0},{"months":3,"discount":5},{"months":6,"discount":10},{"months":12,"discount":20}],"reminder_days":7};})();

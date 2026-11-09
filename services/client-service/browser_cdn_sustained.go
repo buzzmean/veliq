@@ -73,6 +73,9 @@ func (m *youtubeMeter) promotionEvidenceLocked(now time.Time, inspection *locals
 	return false, ""
 }
 func (m *youtubeMeter) maybePromoteTrial(now time.Time) {
+	if !m.recoveryScopeCurrent() {
+		return
+	}
 	inspection := m.currentInspection()
 	m.mu.Lock()
 	eligible, _ := m.promotionEvidenceLocked(now, inspection)
@@ -85,7 +88,7 @@ func (m *youtubeMeter) maybePromoteTrial(now time.Time) {
 	m.trialDone.Do(func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
-		if ok, reason := m.promotionEvidenceLocked(now, inspection); ok && m.r.promoteRunningFor(m.trialID, m.key, m.strategy, m.rx, now) {
+		if ok, reason := m.promotionEvidenceLocked(now, inspection); ok && m.recoveryScopeCurrent() && m.r.promoteRunningFor(m.trialID, m.key, m.strategy, m.rx, now) {
 			m.promoted = true
 			promotedNow = true
 			m.r.mu.Lock()

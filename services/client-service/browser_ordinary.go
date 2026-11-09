@@ -81,6 +81,11 @@ func (r *youtubeRuntime) ordinaryUpdate(id uint64, update func(*ordinaryFlowEvid
 	}
 }
 func (c *Controller) openOrdinaryAddresses(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	cur = c.captureAutomaticScope(cur)
+	if !c.automaticScopeCurrent(cur) {
+		return nil, p, errAutomaticScopeChanged
+	}
+	open = c.automaticScopedOpen(cur, open)
 	candidates := []netip.AddrPort{}
 	add := func(a netip.AddrPort) {
 		if len(candidates) >= 2 || !a.IsValid() || !a.Addr().Is4() || !browserproxy.PublicDNSAddress(a.Addr()) || a.Port() != q.Port {
@@ -122,6 +127,9 @@ func (c *Controller) openOrdinaryAddresses(ctx context.Context, cur profilesResu
 	}
 	if ctx.Err() != nil {
 		return nil, p, ctx.Err()
+	}
+	if !c.automaticScopeCurrent(cur) {
+		return nil, p, errAutomaticScopeChanged
 	}
 	// p.Destination was eligible and remains first. No IP/subnet pin is introduced.
 	p.DirectCandidates = candidates

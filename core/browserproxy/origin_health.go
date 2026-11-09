@@ -120,6 +120,17 @@ func (h *OriginHealth) Resolve(ctx context.Context, scope string, lookup func(co
 		return DNSAnswer{}, errors.New("ORIGIN_DNS_CAPACITY")
 	}
 	a, err := lookup(ctx)
+	// A cancelled policy/owner scope is not DNS evidence. Release all existing
+	// waiters with the same error, but allow the next current flow a fresh query.
+	if errors.Is(err, ErrOriginScopeChanged) {
+		h.mu.Lock()
+		v.err = err
+		delete(h.dns, scope)
+		close(v.done)
+		v.done = nil
+		h.mu.Unlock()
+		return DNSAnswer{}, err
+	}
 	if len(a.Addresses) > 64 {
 		a.Addresses = a.Addresses[:64]
 	}

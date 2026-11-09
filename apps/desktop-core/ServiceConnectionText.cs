@@ -1,7 +1,7 @@
 namespace Neexitlag.Desktop;
 public static class ServiceConnectionText {
  public static string Describe(Snapshot s) {
-  if(s.Connected && s.Optimizing){var p=s.BrowserPolicy;if((p.ChromeConfigured&&!p.ChromeReady)||(p.EdgeConfigured&&!p.EdgeReady))return "Подготавливаем браузер…";return Text.Get("Connected");}
+  if(s.Connected && s.Optimizing && s.ConnectionReason is "" or "READY"){var p=s.BrowserPolicy;if((p.ChromeConfigured&&!p.ChromeReady)||(p.EdgeConfigured&&!p.EdgeReady))return "Подготавливаем браузер…";return Text.Get("Connected");}
   return s.ConnectionReason switch {
    "ACTIVATION_REQUIRED"=>"Требуется активация",
    "CAPTURE_START_FAILED"=>"Не удалось запустить WinDivert",

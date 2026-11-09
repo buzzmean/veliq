@@ -1,6 +1,17 @@
 using Neexitlag.Desktop;
 using Xunit;
 public class ServiceConnectionTests {
+ [Fact]public void EnabledCaptureWithoutRelayDoesNotClaimWorkingHome(){
+  var vm=new DesktopViewModel(new NeExitLag.Tests.PickerService());
+  vm.Apply(new(){Connected=false,Optimizing=true,ConnectionReason="RELAY_NOT_CONNECTED"},[]);
+  Assert.Contains("Нет готового",vm.OptimizationStatus);
+  Assert.DoesNotContain("заблокированное открывается",vm.HomeLead);
+  vm.Apply(new(){Connected=true,Optimizing=true,ConnectionReason="CAPTURE_NOT_READY"},[]);
+  Assert.Equal("Захват трафика ещё не готов",vm.OptimizationStatus);
+  vm.Apply(new(){Connected=true,Optimizing=true,BrowserPolicy=new(){ChromeConfigured=true,ChromeReady=false}},[]);
+  Assert.Equal("Подготавливаем браузер…",vm.OptimizationStatus);
+  Assert.DoesNotContain("заблокированное открывается",vm.HomeLead);
+ }
  [Fact]public void SuccessfulIpcDoesNotMeanConnected(){
   Assert.NotEqual(Text.Get("Connected"),ServiceConnectionText.Describe(new(){Connected=false,Optimizing=false}));
   Assert.NotEqual(Text.Get("Connected"),ServiceConnectionText.Describe(new(){Connected=true,Optimizing=false}));

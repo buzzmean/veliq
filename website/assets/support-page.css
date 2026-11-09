@@ -1,0 +1,8 @@
+.help-hero{padding:48px 0 32px;border-bottom:1px solid var(--line, #29292d)}
+.help-hero .h1{font-size:clamp(34px,5vw,56px);margin:16px 0}.help-hero .lede{max-width:52ch}
+.help-actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}.help-layout{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:40px;padding:36px 0 56px}
+.help-topics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:32px}
+.help-topic{display:block;padding:20px;border:1px solid var(--line,#303036);border-radius:14px;text-decoration:none;background:var(--bg-raised,#141416);color:inherit}.help-topic:hover{border-color:#ed582d}.help-topic strong{display:block;margin-bottom:8px}.help-topic span{font-size:14px;opacity:.7;line-height:1.5}
+.help-checklist{padding:24px;border:1px solid var(--line,#303036);border-radius:16px;align-self:start}.help-checklist h2{margin-top:0}.help-checklist ol{padding-left:20px;line-height:1.7}.help-checklist .btn{margin-top:12px}.help-faq{scroll-margin-top:100px}.help-faq h2{margin-top:28px}.help-faq details{border-bottom:1px solid var(--line,#303036);padding:16px 0}.help-faq summary{cursor:pointer;font-weight:600}.help-faq details p{max-width:65ch;line-height:1.65;opacity:.8}
+@media(max-width:800px){.help-layout{grid-template-columns:1fr;gap:24px}.help-hero{padding-top:28px}.help-topics{gap:10px}.help-topic{padding:16px}}
+@media(max-width:420px){.help-actions .btn{width:100%}}

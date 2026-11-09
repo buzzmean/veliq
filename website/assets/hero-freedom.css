@@ -1,0 +1,40 @@
+/* Первый экран VELIQ: «У свободы свой маршрут». */
+.hero-title--freedom {
+  font-size: clamp(38px, 6.1vw, 82px);
+  line-height: 1.04;
+  letter-spacing: -.045em;
+}
+.hero-title--freedom .hero-title__line {
+  display: block;
+  white-space: nowrap;
+}
+.hero-title__route {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 24px;
+  overflow: visible;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+.hero-title__route path {
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+  animation: freedom-route-in 1400ms var(--ease-route) 150ms backwards;
+}
+@keyframes freedom-route-in {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+@media (max-width: 960px) {
+  .hero-title--freedom { font-size: clamp(34px, 11vw, 82px); }
+  .hero-title__route { max-width: 640px; margin-top: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-title__route path { animation: none; }
+}
+@media print {
+  .hero-title__route path { animation: none; }
+}

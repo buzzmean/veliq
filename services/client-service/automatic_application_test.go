@@ -98,13 +98,14 @@ func TestAutomaticGeminiAndProtectedServiceFloorWithoutExecutableRegistration(t 
 func automaticFixture(t *testing.T) (*Controller, profilesResult, browserproxy.Request, browserproxy.Plan) {
 	t.Helper()
 	c, cur, q, p := youtubeFixture(t)
+	c.enabled, c.settings.Automatic = true, true
 	id := wp.ProcessIdentity{PID: 77, CreationTime: 11, Path: `C:\Apps\new-api-client.exe`}
 	profile, _ := discoveredApplication(id)
 	cur.profile, cur.id = profile, id
 	q.Owner = browserproxy.Owner{PID: id.PID, Birth: id.CreationTime, Exe: id.Path, Profile: profile.ID}
 	q.Ingress, q.Host, q.Secure = "AUTOMATIC_TCP", "ordinary.example.org", true
 	p.Policy = flowpolicy.Result{Action: flowpolicy.Direct, Source: "auto_direct_default", Fallback: flowpolicy.FailOpen}
-	return c, cur, q, p
+	return c, c.captureAutomaticScope(cur), q, p
 }
 
 func TestAutomaticHealthyTLSDoesNotProbeOrOpenRelay(t *testing.T) {
@@ -214,7 +215,15 @@ func TestAutomaticSocketFallbackIsScopedExpiresAndNeverReplaysPayload(t *testing
 		}
 	}
 	actions = nil
-	_, _, err := c.openAutomaticPlan(context.Background(), profilesResult{profile: cur.profile, enabled: true, network: "new-network"}, q, p, func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error) {
+	// A new network is a fresh, authenticated scope, not an old snapshot with
+	// only its display label changed.
+	fresh := cur
+	fresh.network = "new-network"
+	network := *c.network.Load()
+	network.Fingerprint = fresh.network
+	c.network.Store(&network)
+	p.Network = fresh.network
+	_, _, err := c.openAutomaticPlan(context.Background(), fresh, q, p, func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error) {
 		actions = append(actions, flowpolicy.Direct)
 		return nil, context.Canceled
 	})
