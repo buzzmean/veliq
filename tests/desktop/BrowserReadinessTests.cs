@@ -2,6 +2,19 @@ using Neexitlag.Desktop;
 using Xunit;
 namespace NeExitLag.Tests;
 public sealed class BrowserReadinessTests {
+ [Fact] public async Task EmptyNativeWireSnapshotDoesNotBreakReadinessPolling(){
+  var vm=new DesktopViewModel(new EmptyNativeStatusService());
+  vm.Apply(new(){Connected=true,Optimizing=true,Profiles=[new(){Id="chrome",Mode="AUTO",Executables=["chrome.exe"],PolicyData=new(){{"browser_transport",System.Text.Json.JsonSerializer.SerializeToElement("native")}}}]},[]);
+  await vm.ObserveNativeBrowsersAsync();
+  Assert.DoesNotContain("подтверждён",vm.BrowserReadinessText);
+  Assert.Empty(vm.BrowserDomains);
+ }
+ sealed class EmptyNativeStatusService : IServiceClient {
+  public Task<T> Call<T>(string method,object? payload=null,CancellationToken cancellationToken=default){
+   var json=method=="browser.native.status" ? """{"state":"AUTHORITY_REQUEST_OBSERVED","capture_ready":true,"optimizing":true,"authority_transport":{"system_proxy_applied":true,"profiles":null},"records":null}""" : """{"listening":false,"records":null}""";
+   return Task.FromResult(System.Text.Json.JsonSerializer.Deserialize<T>(json,WireJson.Options)!);
+  }
+ }
  [Fact] public void ReadinessNeedsCurrentAuthorityProofAndNeverRawTLSBytes(){
   var vm=new DesktopViewModel(new PickerService());vm.Apply(new(){Optimizing=true,Profiles=[new(){Id="chrome",Name="Chrome",Mode="AUTO",Executables=["chrome.exe"],PolicyData=new(){{"browser_transport",System.Text.Json.JsonSerializer.SerializeToElement("native")}}}]},[]);
   vm.ApplyNativeBrowserReadiness(new(){State="PREPARING"});Assert.Contains("Подготавливаем",vm.BrowserReadinessText);

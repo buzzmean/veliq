@@ -70,7 +70,7 @@ public sealed partial class DesktopViewModel
     public void ApplyNativeBrowserReadiness(NativeBrowserStatus status){
         var configured = Applications.Where(a => NativeBrowser(a.Profile) && a.Profile.Mode == "AUTO").Select(a => a.Profile.Id).ToArray();
         var authority=status.AuthorityTransport;
-        var observed = authority.SystemProxyApplied && configured.Any(id => authority.Profiles.Any(p => p.ProfileId == id && p.Requests > 0 && p.Exchanges > 0));
+        var observed = authority.SystemProxyApplied && configured.Any(id => (authority.Profiles ?? []).Any(p => p.ProfileId == id && p.Requests > 0 && p.Exchanges > 0));
         var next=!Optimizing?"Браузеры используют обычную сеть.":status.CaptureReady&&status.Optimizing&&status.State=="AUTHORITY_REQUEST_OBSERVED"&&observed
           ?"Браузер: обмен по адресатам подтверждён."
           :status.CaptureReady&&status.Optimizing&&status.State=="AUTHORITY_PENDING"
@@ -125,7 +125,7 @@ public sealed partial class DesktopViewModel
         // An empty native ledger must never replace a working PAC snapshot.
         // A PAC ingress may delegate an upstream into native: label both pieces,
         // never count them as two independent requests or a native-only PASS.
-        var records = status.Records.Select(r => r.Connection()).ToArray();
+        var records = (status.Records ?? []).Select(r => r.Connection()).ToArray();
         if (Applications.Any(a => BrowserCatalog.IsChrome(a.Profile) && NativeBrowser(a.Profile)))
         {
             var pac = await ChromeStatusAsync(ct);

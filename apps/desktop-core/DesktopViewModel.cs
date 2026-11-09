@@ -110,7 +110,13 @@ public sealed partial class DesktopViewModel : Observable
     public ObservableCollection<DiagnosticRow> Diagnostics { get; } = []; public ObservableCollection<MeasurementRow> Measurements { get; } = []; public ObservableCollection<string> Changes { get; } = [];
     public ObservableCollection<Choice> ProfileFallbacks {get;}=[new("",Text.Get("InheritFallback")),new("FAIL_OPEN_DIRECT",Text.Get("DirectConnection")),new("RELAY_REQUIRED",Text.Get("RequiredRelayFallback")),new("BLOCK",Text.Get("Block"))];
     public ObservableCollection<Choice> Modes { get; } = [new("AUTO", Text.Mode("AUTO")), new("DIRECT", Text.Mode("DIRECT")), new("DIRECT_PLUS",Text.Mode("DIRECT_PLUS")), new("MANUAL", Text.Mode("MANUAL"))];
-    public bool Optimizing => Available && Snapshot?.Optimizing == true; public string OptimizeLabel => Text.Get(Optimizing ? "DisableOptimization" : "EnableOptimization"); public string OptimizationStatus => Text.Get(!Available ? "NoData" : !Optimizing ? "OptimizationOff" : Snapshot?.HotAttach?.State switch {"HOT_ATTACH_RECONNECTING" or "HOT_ATTACH_PREPARING"=>"HotAttachReconnecting","HOT_ATTACH_INCOMPLETE"=>"HotAttachIncomplete",_=>"OptimizationOn"});
+    public bool Optimizing => Available && Snapshot?.Optimizing == true; public string OptimizeLabel => Text.Get(Optimizing ? "DisableOptimization" : "EnableOptimization");
+    public string OptimizationStatus => !Available ? Text.Get("NoData") : !Optimizing ? Text.Get("OptimizationOff")
+        : Snapshot?.HotAttach?.State switch {
+            "HOT_ATTACH_RECONNECTING" or "HOT_ATTACH_PREPARING" => Text.Get("HotAttachReconnecting"),
+            "HOT_ATTACH_INCOMPLETE" => Text.Get("HotAttachIncomplete"),
+            _ => Connection == Text.Get("Connected") ? Text.Get("OptimizationOn") : Connection
+        };
     public string Primary => Available ? Text.Route(Snapshot?.Primary) : Text.Get("NoData");
     public string ActiveApps => !Available ? Text.Get("NoData") : Snapshot?.ActiveApps.Length > 0 ? string.Join(", ", Snapshot.ActiveApps.Select(id => Snapshot.Profiles.FirstOrDefault(p => p.Id == id)?.Name ?? id)) : Text.Get("NoActiveApps");
     public string Rx => Available && Snapshot is { } s ? Text.Bytes(s.RxBytes) : Text.Get("NoData"); public string Tx => Available && Snapshot is { } s ? Text.Bytes(s.TxBytes) : Text.Get("NoData");
