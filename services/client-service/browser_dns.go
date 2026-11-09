@@ -51,6 +51,10 @@ func (c *Controller) browserDNSCachedPlan(q browserproxy.Request, current profil
 }
 
 func (c *Controller) recoverBrowserDNS(ctx context.Context, q browserproxy.Request, current profilesResult, plan browserproxy.Plan) (browserproxy.Plan, bool) {
+	current = c.captureAutomaticScope(current)
+	if !c.automaticScopeCurrent(current) {
+		return plan, false
+	}
 	if !q.Secure || !current.enabled || current.network == "" || !browserproxy.ValidPublicDNSName(q.Host) {
 		return plan, false
 	}
@@ -71,14 +75,19 @@ func (c *Controller) recoverBrowserDNS(ctx context.Context, q browserproxy.Reque
 	if lookup == nil {
 		lookup = browserproxy.NewDoHResolver().Lookup
 	}
-	result := c.browser.dns.Recover(ctx, c.browserDNSKey(q, current), q.Host, q.Port, c.BrowserProbeRoots, lookup, func(ctx context.Context, dst netip.AddrPort) (net.Conn, error) {
+	var scopeCurrent func() bool
+	if automaticApplication(current.profile) {
+		scopeCurrent = func() bool { return c.automaticScopeCurrent(current) }
+	}
+	open := c.automaticScopedOpen(current, c.browserOpenUnobserved)
+	result := c.browser.dns.RecoverScoped(ctx, c.browserDNSKey(q, current), q.Host, q.Port, c.BrowserProbeRoots, lookup, func(ctx context.Context, dst netip.AddrPort) (net.Conn, error) {
 		candidate := plan
 		candidate.Destination = dst
-		return c.browserOpenUnobserved(ctx, q, candidate)
-	})
+		return open(ctx, q, candidate)
+	}, scopeCurrent)
 	plan.DNSRecovery = &result
 	plan.Trials = append(plan.Trials, result.Trials...)
-	if !result.Usable() {
+	if !result.Usable() || !c.automaticScopeCurrent(current) {
 		return plan, false
 	}
 	// Ownership/policy/network must still match after all independent probes.

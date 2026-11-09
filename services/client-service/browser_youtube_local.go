@@ -144,7 +144,7 @@ type youtubeRuntime struct {
 	peerWriteSeq   uint64
 	peerWriteDone  uint64
 	peerWriteMu    sync.Mutex
-	selecting     bool
+	selecting      bool
 	trialKey       youtubeKey
 	trialStrategy  string
 	trialStarted   time.Time
@@ -447,6 +447,11 @@ func (c *youtubePlanConn) CloseWrite() error {
 }
 
 func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	cur = c.captureAutomaticScope(cur)
+	if !c.automaticScopeCurrent(cur) {
+		return nil, p, errAutomaticScopeChanged
+	}
+	open = c.automaticScopedOpen(cur, open)
 	r := c.browser.youtube
 	if c.catalog != nil {
 		r.setPlans(c.catalog.snapshot().Plans)
@@ -483,6 +488,12 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 	}
 	var step func(context.Context, string, string, int) (net.Conn, browserproxy.Plan, error)
 	step = func(work context.Context, stage, strategy string, depth int) (net.Conn, browserproxy.Plan, error) {
+		if !c.automaticScopeCurrent(cur) {
+			if trial {
+				r.finishTrialOutcomeFor(trialID, key, strategy, "INCONCLUSIVE", false, time.Now(), 0)
+			}
+			return nil, p, errAutomaticScopeChanged
+		}
 		actual := p
 		actual.FirstFlightManaged = true
 		actual.DirectCandidates = nil
@@ -492,6 +503,12 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 		if stage == "LOCAL" {
 			id, _ := c.youtubeEngine(cur, q, actual, strategy)
 			if id == "" {
+				if !c.automaticScopeCurrent(cur) {
+					if trial {
+						r.finishTrialOutcomeFor(trialID, key, strategy, "INCONCLUSIVE", false, time.Now(), 0)
+					}
+					return nil, actual, errAutomaticScopeChanged
+				}
 				r.failed(key, "LOCAL", strategy, "LOCAL_GUARD_OR_CAPACITY", time.Now())
 				if trial {
 					r.finishTrialOutcomeFor(trialID, key, strategy, "FAILED", false, time.Now(), 0)
@@ -532,6 +549,15 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 			conn, err = open(attempt, q, actual)
 		}
 		cancel()
+		if !c.automaticScopeCurrent(cur) {
+			if conn != nil {
+				_ = conn.Close()
+			}
+			if trial {
+				r.finishTrialOutcomeFor(trialID, key, strategy, "INCONCLUSIVE", false, time.Now(), 0)
+			}
+			return nil, actual, errAutomaticScopeChanged
+		}
 		r.mu.Lock()
 		r.seq++
 		record := r.seq
@@ -600,6 +626,9 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 		}
 		ref.set(actual, conn)
 		observer := &youtubeMeter{trialID: trialID, trial: trial && stage == "LOCAL", Conn: conn, r: r, id: record, label: label, key: key, stage: stage, strategy: strategy, started: time.Now(), host: q.Host, destination: actual.Destination.String(), sibling: trialPeer, inspection: func() *localstrategy.Inspection { return c.localPacketInspection(q, actual) }, transform: func() bool { return c.browserTransform(q, actual) }}
+		if automaticApplication(cur.profile) {
+			observer.recoveryCurrent = func() bool { return c.automaticScopeCurrent(cur) }
+		}
 		observer.slot.NeutralShortAttempt = r.cacheAttempt(key)
 		observer.slot.TrialID = trialID
 		observer.recordTrialEvidence(true)
@@ -622,7 +651,8 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 }
 
 type youtubeMeter struct {
-	trialID uint64
+	trialID         uint64
+	recoveryCurrent func() bool
 	net.Conn
 	r                               *youtubeRuntime
 	id                              uint64
@@ -662,7 +692,30 @@ type youtubeMeter struct {
 	bad                             sync.Once
 }
 
+func (m *youtubeMeter) recoveryScopeCurrent() bool {
+	return m.recoveryCurrent == nil || m.recoveryCurrent()
+}
+
 func (m *youtubeMeter) failure(reason string) {
+	if !m.recoveryScopeCurrent() {
+		// An obsolete automatic flow is not a LOCAL failure verdict. Keep the
+		// stream's counters, but never demote the old scope or launch a new route.
+		m.r.mu.Lock()
+		if record, ok := m.r.records[m.id]; ok {
+			record.Reason = "AUTOMATIC_SCOPE_CHANGED"
+			m.r.records[m.id] = record
+		}
+		m.r.mu.Unlock()
+		if m.trial {
+			m.trialDone.Do(func() {
+				m.mu.Lock()
+				defer m.mu.Unlock()
+				m.slot = m.r.finishTrialOutcomeFor(m.trialID, m.key, m.strategy, "INCONCLUSIVE", m.rx > 0, time.Now(), m.rx)
+				m.trialFinalized = true
+			})
+		}
+		return
+	}
 	if strings.Contains(reason, "EOF") && (m.noteClientClose() || m.noteSmallEOF()) {
 		// The first-flight wrapper may report EOF without another meter.Read.
 		// Finalize here, not only on Read/Close, or max1 remains held indefinitely.
@@ -832,6 +885,7 @@ func (m *youtubeMeter) Read(p []byte) (int, error) {
 }
 func isYoutubeTimeout(e error) bool { var n net.Error; return errors.As(e, &n) && n.Timeout() }
 func (m *youtubeMeter) account(tx, rx uint64) {
+	scopeCurrent := m.recoveryScopeCurrent()
 	m.mu.Lock()
 	m.tx += tx
 	m.rx += rx
@@ -856,16 +910,16 @@ func (m *youtubeMeter) account(tx, rx uint64) {
 	}
 	transformed := m.stage != "LOCAL" || m.applied
 
-	dataStarted := m.trial && !m.dataObserved && !m.failed && m.applied && m.postHelloWrite && hello && snapshot.Origin.ApplicationBytes >= cdnDataTrialBytes
+	dataStarted := scopeCurrent && m.trial && !m.dataObserved && !m.failed && m.applied && m.postHelloWrite && hello && snapshot.Origin.ApplicationBytes >= cdnDataTrialBytes
 	if dataStarted {
 		m.dataObserved = true
 	}
-	confirmed := !m.failed && !m.healthy && hello && m.rx > 64*1024 && m.tx > 0 && m.postHelloWrite && transformed
+	confirmed := scopeCurrent && !m.failed && !m.healthy && hello && m.rx > 64*1024 && m.tx > 0 && m.postHelloWrite && transformed
 	if confirmed {
 		m.healthy = true
 	}
 	m.mu.Unlock()
-	if confirmed && m.stage != "RELAY" && !m.trial {
+	if confirmed && m.stage != "RELAY" && !m.trial && m.recoveryScopeCurrent() {
 		m.r.confirmed(m.key, m.stage, m.strategy, time.Now())
 		m.mu.Lock()
 		verified := m.rx
@@ -925,7 +979,7 @@ func (m *youtubeMeter) CloseWrite() error {
 // response without MITM. This is a short-lived hint for NEW connections only:
 // do not close, move or replay the current TLS session on this observation.
 func (m *youtubeMeter) progressGap(now time.Time) {
-	if m.stage == "RELAY" {
+	if m.stage == "RELAY" || !m.recoveryScopeCurrent() {
 		return
 	}
 	m.mu.Lock()

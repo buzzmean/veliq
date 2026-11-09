@@ -110,11 +110,12 @@ func (c *Controller) browserProfile(owner browserproxy.Owner) (profilesResult, e
 
 // Keep mutable ownership resolution separate from immutable request plans.
 type profilesResult struct {
-	profile         profiles.Profile
-	id              wp.ProcessIdentity
-	network         string
-	enabled         bool
-	routingDisabled bool
+	profile           profiles.Profile
+	id                wp.ProcessIdentity
+	network           string
+	enabled           bool
+	routingDisabled   bool
+	automaticRevision string
 }
 
 func (c *Controller) browserLocalAllowed(network string) bool {
@@ -189,7 +190,21 @@ func (c *Controller) browserOpen(ctx context.Context, q browserproxy.Request, pl
 func (c *Controller) browserOpenUnobserved(ctx context.Context, q browserproxy.Request, plan browserproxy.Plan) (net.Conn, error) {
 	return c.openBrowser(ctx, q, plan, false)
 }
-func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, plan browserproxy.Plan, observe bool) (net.Conn, error) {
+func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, plan browserproxy.Plan, observe bool) (conn net.Conn, err error) {
+	if scope, ok := ctx.Value(automaticScopeKey{}).(profilesResult); ok {
+		// Automatic recovery has no cached-PAC DIRECT compatibility entitlement.
+		if !c.automaticScopeCurrent(scope) {
+			return nil, errAutomaticScopeChanged
+		}
+		defer func() {
+			if !c.automaticScopeCurrent(scope) {
+				if conn != nil {
+					_ = conn.Close()
+				}
+				conn, err = nil, errAutomaticScopeChanged
+			}
+		}()
+	}
 	current, err := c.browserProfile(q.Owner)
 	if err != nil {
 		return nil, err
@@ -197,6 +212,9 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 	if scope, ok := ctx.Value(youtubeBackgroundScopeKey{}).(youtubeBackgroundScope); ok && !c.youtubeBackgroundScopeCurrent(scope, current) {
 		scope.cancel()
 		return nil, errors.New("background browser policy changed before upstream open")
+	}
+	if scope, ok := ctx.Value(automaticScopeKey{}).(profilesResult); ok && !c.automaticScopeCurrent(scope) {
+		return nil, errAutomaticScopeChanged
 	}
 	// Cached PAC can still reach this listener after policy removal. Authenticated
 	// browser ownership was checked above; bypass the stopped engine/WinDivert.
@@ -266,7 +284,7 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 		}
 	}
 	admitted := time.Now()
-	conn, err := c.Engine.OpenTCP(ctx, d.Flow)
+	conn, err = c.Engine.OpenTCP(ctx, d.Flow)
 	if videoID != 0 {
 		c.relayUsage().videoOpened(videoID, admitted, time.Now(), err)
 	}

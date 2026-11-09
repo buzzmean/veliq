@@ -110,7 +110,7 @@ func TestDNSRecoveredPinAvailableToQueuedChromeRequests(t *testing.T) {
 func TestGooglevideoDNSRecoveryIsAttemptedAndExplicitDirectPlusIsPreserved(t *testing.T) {
 	c := New(context.Background())
 	defer c.Close()
-	cur := profilesResult{profile: profiles.Profile{ID: "chrome", Mode: profiles.Auto}, network: "net", enabled: true}
+	cur := profilesResult{profile: profiles.Profile{ID: "chrome", Mode: profiles.Auto, Executables: []string{`C:\Chrome\chrome.exe`}}, network: "net", enabled: true}
 	calls := 0
 	c.BrowserAlternativeDNS = func(context.Context, string, browserproxy.DNSOpen) (browserproxy.DNSAnswer, error) {
 		calls++
