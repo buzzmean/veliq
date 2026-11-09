@@ -56,6 +56,10 @@ type nativeBrowserProfileStatus struct {
 	FirstExchangeMS int64                `json:"enable_to_first_exchange_ms"`
 }
 type nativeBrowserRecord struct {
+	Evidence        *connectionEvidence `json:"evidence,omitempty"`
+	LastSent        time.Time           `json:"last_sent_at,omitzero"`
+	LastReceived    time.Time           `json:"last_received_at,omitzero"`
+	LastIO          *connectionIO       `json:"last_io_end,omitempty"`
 	planReporter    browserproxy.PlanReporter
 	OriginPreflight *browserproxy.DNSRecoveryResult `json:"origin_preflight,omitempty"`
 	DomainEvidence  *browserDomainEvidence          `json:"domain_evidence,omitempty"`
@@ -199,24 +203,7 @@ func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
 	}
 	sort.Slice(s.Profiles, func(i, j int) bool { return s.Profiles[i].Profile < s.Profiles[j].Profile })
 	for _, r := range n.records {
-		if r.planReporter != nil {
-			v := r.planReporter.CurrentPlan()
-			r.Policy = v.Policy
-			r.Probe = v.Probe
-			r.Upstream = v.Destination.String()
-		}
-		if r.originReporter != nil {
-			v := r.originReporter.OriginAttempts()
-			r.Origin = &v
-			if v.Selected != "" {
-				r.Upstream = v.Selected
-			}
-		}
-		if r.tlsWire != nil {
-			v := r.tlsWire.Snapshot()
-			r.TLS = &v
-		}
-		s.Records = append(s.Records, r)
+		s.Records = append(s.Records, snapshotConnectionEvidence(r))
 	}
 	sort.Slice(s.Records, func(i, j int) bool { return s.Records[i].ID > s.Records[j].ID })
 	if len(s.Records) > 48 {
@@ -497,6 +484,12 @@ func (n *nativeBrowserRuntime) bytes(id uint64, tx, rx uint64) {
 	wasExchange := r.Sent > 0 && r.Received > 0
 	r.Sent += tx
 	r.Received += rx
+	if tx > 0 {
+		r.LastSent = time.Now().UTC()
+	}
+	if rx > 0 {
+		r.LastReceived = time.Now().UTC()
+	}
 	p := n.profiles[r.Owner.Profile]
 	if p.Profile != "" {
 		p.Sent += tx
@@ -748,6 +741,7 @@ func (c *nativeBrowserConn) Read(p []byte) (int, error) {
 		}
 		c.runtime.bytes(c.record, 0, uint64(n))
 	}
+	c.runtime.observeIOEnd(c.record, "READ", e)
 	return n, e
 }
 func (c *nativeBrowserConn) Write(p []byte) (int, error) {
@@ -758,6 +752,7 @@ func (c *nativeBrowserConn) Write(p []byte) (int, error) {
 		}
 		c.runtime.bytes(c.record, uint64(n), 0)
 	}
+	c.runtime.observeIOEnd(c.record, "WRITE", e)
 	return n, e
 }
 func (c *nativeBrowserConn) Close() error {

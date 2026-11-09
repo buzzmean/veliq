@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/buzzmean/neexitlag/core/browserproxy"
@@ -38,11 +40,34 @@ func nextDirectPlan(p browserproxy.Plan) (browserproxy.Plan, bool) {
 	return p, false
 }
 func retryableDirectOpen(err error) bool {
-	if errors.Is(err, context.Canceled) {
+	if err == nil || errors.Is(err, context.Canceled) {
+		return false
+	}
+	// net.OpError implements net.Error even for local permission/resource errors.
+	// Those errors say nothing about the destination and must not poison its
+	// negative cache or steer subsequent connections through the relay.
+	var dns *net.DNSError
+	if errors.As(err, &dns) {
+		return false // DNS resolution failure is not a failed destination socket.
+	}
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		switch errno {
+		case syscall.ETIMEDOUT, syscall.ECONNREFUSED, syscall.ECONNRESET, syscall.EHOSTUNREACH, syscall.ENETUNREACH:
+			return true
+		}
+		// Windows sockets return Winsock values, not syscall's portable POSIX
+		// aliases. Keep these numbers Windows-only; unknown errno stays unknown.
+		if runtime.GOOS == "windows" {
+			switch errno {
+			case 10060, 10061, 10054, 10065, 10051: // timed out, refused, reset, host/network unreachable
+				return true
+			}
+		}
 		return false
 	}
 	var ne net.Error
-	return errors.Is(err, context.DeadlineExceeded) || errors.As(err, &ne)
+	return errors.Is(err, context.DeadlineExceeded) || errors.As(err, &ne) && ne.Timeout()
 }
 func (c *Controller) browserOpenPlan(ctx context.Context, q browserproxy.Request, p browserproxy.Plan) (net.Conn, browserproxy.Plan, error) {
 	cur, err := c.browserProfile(q.Owner)
