@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Цены — VELIQ</title>
   <meta name="description" content="Тарифы VELIQ для игроков и компьютерных клубов, оплата, автопродление и возврат.">
-  <link rel="canonical" href="https://veliqapp.ru/pricing.html">
+  <link rel="canonical" href="https://veliqapp.ru/pricing">
   <meta name="theme-color" content="#0A0A0B">
   <meta name="color-scheme" content="light dark">
   <meta property="og:type" content="website">
@@ -13,11 +13,11 @@
   <meta property="og:locale" content="ru_RU">
   <meta property="og:title" content="Цены — VELIQ">
   <meta property="og:description" content="Тарифы VELIQ для игроков и компьютерных клубов, оплата, автопродление и возврат.">
-  <meta property="og:url" content="https://veliqapp.ru/pricing.html">
+  <meta property="og:url" content="https://veliqapp.ru/pricing">
   <meta property="og:image" content="https://veliqapp.ru/assets/img/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="VELIQ: нажал — работает.">
+  <meta property="og:image:alt" content="VELIQ: оптимальный маршрут для каждого соединения.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:image" content="https://veliqapp.ru/assets/img/og-image.png">
   <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
@@ -27,7 +27,8 @@
   <link rel="preload" href="assets/fonts/Onest-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/components.css">
-  <link rel="stylesheet" href="assets/site.css?v=279f14b43ad3">
+  <link rel="stylesheet" href="assets/site.css?v=public-20261108">
+  <link rel="stylesheet" href="assets/header-account.css?v=20261105-1">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 </head>
 <body>
@@ -35,23 +36,27 @@
 <a class="skip" href="#main">Перейти к содержанию</a>
 <header class="top">
   <div class="wrap top__in">
-    <a class="logo" href="index.html" aria-label="VELIQ — на главную">
+    <a class="logo" href="/" aria-label="VELIQ — на главную">
       <img class="on-light" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" width="144" height="66">
       <img class="on-dark" src="assets/img/veliq-wordmark-dark.svg" alt="" width="144" height="66">
     </a>
     <nav class="nav" id="nav" aria-label="Основное меню">
-      <a href="how.html">Как работает</a>
-      <a href="index.html#games">Игры</a>
-      <a href="clubs.html">Клубам</a>
-      <a href="pricing.html" aria-current="page">Цены</a>
-      <a href="support.html">Помощь</a>
-      <a href="account.html">Личный кабинет</a>
+      <a href="/how">Как работает</a>
+      <a href="/#games">Игры</a>
+      <a href="/clubs">Клубам</a>
+      <a href="/pricing" aria-current="page">Цены</a>
+      <a href="/support">Помощь</a>
+      <a class="nav__download" href="/download">Скачать для Windows</a>
     </nav>
     <div class="top__tools">
       <button class="btn btn--quiet btn--icon btn--sm theme-btn" type="button" data-theme-toggle aria-label="Сменить тему">
         <svg class="i i-sun-use" aria-hidden="true"><use href="#i-sun"/></svg><svg class="i i-moon-use" aria-hidden="true"><use href="#i-moon"/></svg>
       </button>
-      <a class="btn btn--sm top__cta" href="download.html">Скачать</a>
+      <a class="btn btn--sm top__cta" href="/download">Скачать</a>
+      <a class="btn btn--sm top__account" href="/account" aria-label="Личный кабинет">
+        <svg class="top__account-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg>
+        <span class="top__account-full" aria-hidden="true">Личный кабинет</span><span class="top__account-short" aria-hidden="true">Кабинет</span>
+      </a>
       <button class="btn btn--quiet btn--icon btn--sm menu-btn" type="button" data-menu aria-expanded="false" aria-controls="nav" aria-label="Меню"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
     </div>
   </div>
@@ -60,59 +65,50 @@
 
 <section class="page-head">
   <div class="wrap">
-    <div class="crumbs"><a href="index.html">Главная</a> / Цены</div>
+    <div class="crumbs"><a href="/">Главная</a> / Цены</div>
     <h1 class="h1">Цены</h1>
-    <p class="lede">Подписка на месяц. Платите за число компьютеров, на которых работает VELIQ.</p>
+    <p class="lede">Личная подписка — за аккаунт. Для клуба стоимость зависит от количества подключённых ПК.</p>
   </div>
 </section>
 <section class="sec sec--tight">
   <div class="wrap">
-    <div class="note note--draft" style="margin-bottom:var(--sp-6)"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg><div><strong>Цены готовятся.</strong> Числа появятся здесь перед началом продаж.</div></div>
+    <div class="note" style="margin-bottom:var(--sp-6)"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg><div><strong>Тарифы на период тестирования.</strong> Личный аккаунт — 399 ₽ за 30 дней и одно место. Клуб — 199 ₽ за каждый подключённый ПК за 30 дней.</div></div>
     <div class="plans">
       <div class="plan">
         <h2 class="h3">Игрок</h2>
-        <div class="plan__price">— ₽ <small>в месяц</small></div>
-        <p class="muted" style="margin:0">Один компьютер дома.</p>
-        <ul><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Самый быстрый путь для игр</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Стабильная связь для голосовых чатов и стримов</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Собственная сеть серверов</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Автопродление, отключается в один клик</li></ul>
-        <a class="btn btn--ghost" href="account.html">Оформить подписку</a>
+        <div class="plan__price">399 ₽ <small>за 30 дней</small></div>
+        <p class="muted" style="margin:0">Для личного использования. Одно место — один компьютер.</p>
+        <ul><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Выбор маршрута для поддерживаемых игр</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Маршрутизация голосовых чатов и стримов</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Собственная сеть серверов</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Управление подключением в личном кабинете</li></ul>
+        <a class="btn btn--ghost" href="/account">Перейти в личный кабинет</a>
       </div>
       <div class="plan plan--main">
         <h2 class="h3">Клуб</h2>
-        <div class="plan__price">— ₽ <small>за ПК в месяц</small></div>
-        <p class="muted" style="margin:0">Для компьютерных клубов.</p>
-        <ul><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Всё из тарифа «Игрок»</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Подключение компьютеров из личного кабинета</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Гость не может изменить настройки</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Оплата картой или по счёту</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Помощь с установкой</li></ul>
-        <a class="btn" href="mailto:support@veliqapp.ru?subject=Тариф%20Клуб">Оставить заявку</a>
+        <div class="plan__price">199 ₽ <small>за ПК / 30 дней</small></div>
+        <p class="muted" style="margin:0">Для компьютерных клубов. Число мест выбирается при подключении.</p>
+        <ul><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Всё из тарифа «Игрок»</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Подключение компьютеров из личного кабинета</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Гость не может изменить настройки</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Подбор подключения для клуба</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Помощь с установкой</li></ul>
+        <a class="btn" href="/clubs#apply">Оставить заявку</a>
       </div>
       <div class="plan">
         <h2 class="h3">Сеть клубов</h2>
         <div class="plan__price">по договору</div>
         <p class="muted" style="margin:0">Несколько адресов, свои условия.</p>
         <ul><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Всё из тарифа «Клуб»</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Условия под количество адресов</li></ul>
-        <a class="btn btn--ghost" href="mailto:support@veliqapp.ru?subject=Сеть%20клубов">Написать нам</a>
+        <a class="btn btn--ghost" href="/clubs#apply">Написать нам</a>
       </div>
     </div>
-    <p class="faint" style="font-size:var(--fs-sm);margin:var(--sp-4) 0 0">Цены в рублях, НДС не облагается. Полные условия — в <a href="terms.html">публичной оферте</a>.</p>
+    <p class="faint" style="font-size:var(--fs-sm);margin:var(--sp-4) 0 0">Цены указаны в рублях. Расчётный месяц — 30 дней. Автоматических списаний нет. Полные условия — в <a href="/terms">пользовательском соглашении</a>.</p>
   </div>
 </section>
 <section class="sec band--sunken" id="pay">
   <div class="wrap cols">
     <div class="prose">
-      <h2 style="margin-top:0">Как оплатить</h2>
-      <ol>
-        <li>Войдите в личный кабинет по адресу электронной почты — пароль не нужен, придёт код.</li>
-        <li>Выберите тариф и число компьютеров.</li>
-        <li>Оплатите банковской картой (Мир, Visa, Mastercard) или через СБП. Чек придёт на почту.</li>
-        <li>В программе нажмите «Войти или зарегистрироваться», затем подтвердите компьютер в кабинете.</li>
-      </ol>
-      <p>Клубам выставляем счёт: оплата с расчётного счёта организации или ИП, закрывающие документы — по запросу.</p>
-      <h2 id="renew">Автопродление</h2>
-      <p>Подписка продлевается в последний день оплаченного периода по цене тарифа. За день до списания пришлём письмо. Отключить автопродление можно в личном кабинете в любой момент — доступ сохранится до конца оплаченного периода.</p>
-      <h2 id="refund">Возврат</h2>
-      <p>Если VELIQ не заработал на вашем компьютере, вернём деньги полностью в течение 14 дней после первой оплаты. Позже — за неиспользованные полные дни, если вы отказываетесь от подписки. Напишите на <a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a>; деньги вернутся тем же способом, которым вы платили, обычно в течение 10 дней.</p>
+      <h2 style="margin-top:0">Подключение и оплата</h2><p>Войдите в <a href="/account">личный кабинет</a>. <strong>Онлайн-оплата пока не подключена.</strong> На этапе тестирования подключение и продление оформляются через поддержку. Обратитесь в <a href="/support#chat" data-support-open>онлайн-поддержке</a>. Для клуба <a href="/clubs#apply">оставьте заявку</a> с количеством ПК.</p>
+      <h2>Оплата за длительный срок</h2><div class="pricing-table" role="region" aria-label="Стоимость подписки за весь период" tabindex="0"><table><caption>Стоимость за весь выбранный срок</caption><thead><tr><th>Период</th><th>Скидка</th><th>Личный тариф</th><th>Клубный тариф</th></tr></thead><tbody><tr><td>1 месяц (30 дней)</td><td>0%</td><td>399,00 ₽</td><td>199,00 ₽ / ПК</td></tr><tr><td>3 мес. (90 дней)</td><td>5%</td><td>1137,15 ₽</td><td>567,15 ₽ / ПК</td></tr><tr><td>6 мес. (180 дней)</td><td>10%</td><td>2154,60 ₽</td><td>1074,60 ₽ / ПК</td></tr><tr><td>12 мес. (360 дней)</td><td>20%</td><td>3830,40 ₽</td><td>1910,40 ₽ / ПК</td></tr></tbody></table></div><p>Итог за весь период. Расчётный месяц — 30 дней. Клуб: цена умножается на число мест; личная подписка — одно место. Скидки одинаковы для обоих тарифов. Бессрочный доступ по ранее согласованным условиям сохраняется.</p><h2 id="renew">Продление</h2><p>Автоматического продления и списаний нет. Для следующего периода обратитесь в поддержку. Уже предоставленный срок доступа сохраняется.</p>
+      <h2 id="refund">Отмена и возвраты</h2><p>Для отмены или возврата напишите на <a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a> или в <a href="/support#chat" data-support-open>онлайн-чат поддержки</a>. Укажите почту аккаунта и сведения об оплате, если она была. Порядок рассмотрения и права покупателя описаны в <a href="/terms#refund">соглашении</a>.</p>
     </div>
     <aside class="aside">
-      <div class="note"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg><div><strong>Безопасная оплата.</strong> Платёж проходит на защищённой странице платёжного сервиса ЮKassa (ООО НКО «ЮМани»). Данные карты VELIQ не получает и не хранит.</div></div>
-    </aside>
+      <div class="note"><svg class="i" aria-hidden="true"><use href="#i-lock"/></svg><div><strong>Подключение через поддержку.</strong> Онлайн-оплата, включая Platega, не включена. Мы ответим на вопросы о тарифе, сроке и количестве мест в <a href="/support#chat" data-support-open>онлайн-чат поддержки</a>.<br><a href="/terms#refund">Отмена и возвраты</a> · <a href="/privacy">Конфиденциальность</a></div></div>
+    <p class="muted">VELIQ работает на Windows 10 и 11. Результат маршрутизации зависит от сети; определённая скорость или задержка не гарантируется. Телефонная версия в тариф не входит.</p></aside>
   </div>
 </section>
 
@@ -121,7 +117,7 @@
   <div class="wrap">
     <div class="foot__grid">
       <div>
-        <a class="logo" href="index.html" aria-label="VELIQ — на главную">
+        <a class="logo" href="/" aria-label="VELIQ — на главную">
           <img class="on-light" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" width="144" height="66">
           <img class="on-dark" src="assets/img/veliq-wordmark-dark.svg" alt="" width="144" height="66">
         </a>
@@ -129,25 +125,26 @@
       </div>
       <div>
         <h2>Продукт</h2>
-        <ul><li><a href="download.html">Скачать</a></li><li><a href="how.html">Как работает</a></li><li><a href="index.html#privacy">Что видит сервер</a></li><li><a href="index.html#games">Для игр</a></li><li><a href="pricing.html">Цены</a></li><li><a href="roadmap.html">План развития</a></li></ul>
+        <ul><li><a href="/download">Скачать</a></li><li><a href="/how">Как работает</a></li><li><a href="/#privacy">Что видит сервер</a></li><li><a href="/#games">Для игр</a></li><li><a href="/pricing">Цены</a></li><li><a href="/roadmap">План развития</a></li></ul>
       </div>
       <div>
         <h2>Клубам</h2>
-        <ul><li><a href="clubs.html">VELIQ для клубов</a></li><li><a href="clubs.html#calc">Расчёт выгоды</a></li><li><a href="clubs.html#setup">Установка в клубе</a></li></ul>
+        <ul><li><a href="/clubs">VELIQ для клубов</a></li><li><a href="/clubs#calc">Расчёт выгоды</a></li><li><a href="/clubs#setup">Установка в клубе</a></li></ul>
       </div>
       <div>
         <h2>Помощь</h2>
-        <ul><li><a href="support.html">Вопросы и ответы</a></li><li><a href="support.html#errors">Ошибки и решения</a></li><li><a href="contacts.html">Контакты и реквизиты</a></li><li><a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a></li></ul>
+        <ul><li><a href="/support">Вопросы и ответы</a></li><li><a href="/support#errors">Ошибки и решения</a></li><li><a href="/contacts">Поддержка VELIQ</a></li><li><a href="/support#chat" data-support-open>Онлайн-поддержка</a></li></ul>
       </div>
     </div>
     <div class="foot__bottom">
       <span>© 2026 VELIQ</span>
-      <span><a href="privacy.html">Конфиденциальность</a>&nbsp;&nbsp;&nbsp;<a href="terms.html">Оферта</a>&nbsp;&nbsp;&nbsp;<a href="contacts.html">Контакты</a></span>
+      <span><a href="/privacy">Конфиденциальность</a>&nbsp;&nbsp;&nbsp;<a href="/terms">Пользовательское соглашение</a>&nbsp;&nbsp;&nbsp;<a href="/contacts">Контакты</a>&nbsp;&nbsp; <a href="/pricing">Тарифы</a>&nbsp;&nbsp; <a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a></span>
     </div>
   </div>
 </footer>
 <script src="assets/charts.js"></script>
-<script src="assets/site.js"></script>
-<script src="assets/release.js?v=014d2d929431"></script>
+<script src="assets/site.js?v=20261105-prices2"></script>
+<script src="assets/release.js?v=20261105-prices1"></script>
+<script src="/assets/pricing-policy.js?v=20261107"></script>
 </body>
 </html>

@@ -5,7 +5,7 @@
   var labels = document.querySelectorAll('[data-release-version]');
   if (!links.length && !labels.length) return;
   var endpoint = 'https://api.github.com/repos/buzzmean/veliq/releases/latest';
-  var fallback = 'https://github.com/buzzmean/veliq/releases/latest';
+  var fallback = 'https://github.com/buzzmean/veliq/releases/latest/download/VELIQ-Setup.exe';
   var cacheKey = 'veliq-public-release-v1';
   var ttl = 15 * 60 * 1000;
 
@@ -32,10 +32,10 @@
     return true;
   }
   function unavailable() {
-    labels.forEach(function (el) { el.textContent = 'на GitHub'; });
+    labels.forEach(function (el) { el.textContent = 'для Windows'; });
     links.forEach(function (el) { el.href = fallback; });
     document.querySelectorAll('[data-release-status]').forEach(function (el) {
-      el.textContent = 'Версия и установщик доступны на странице релизов GitHub.';
+      el.textContent = 'Скачать последний опубликованный установщик для Windows.';
     });
   }
   var cached;

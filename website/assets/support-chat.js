@@ -1,0 +1,151 @@
+/* VELIQ support. No message content or access credentials in browser storage. */
+(function () {
+  'use strict';
+  if (document.getElementById('veliq-support')) return;
+  var root = document.createElement('div'); root.id = 'veliq-support';
+  root.innerHTML = '<button class="vs-launch" type="button" aria-expanded="false" aria-controls="vs-panel">Поддержка<span class="vs-badge" hidden> · новый ответ</span></button>' +
+    '<section id="vs-panel" class="vs-panel" role="dialog" aria-modal="false" aria-labelledby="vs-title" hidden>' +
+    '<header class="vs-head"><div><strong id="vs-title">Поддержка VELIQ</strong><p class="vs-status" role="status">Подключаемся…</p></div><div class="vs-head-actions"><button class="vs-info-toggle" type="button" aria-label="О чате" aria-expanded="false" aria-controls="vs-info">i</button><button class="vs-close" type="button" aria-label="Свернуть или завершить диалог">×</button></div></header>' +
+    '<div id="vs-info" class="vs-info" hidden><p>Ответим здесь. Не отправляйте пароли и коды. Переписка передаётся команде через Telegram. <a href="/privacy">Конфиденциальность</a></p><p>Диалог доступен в этом браузере 30 дней. На общем ПК после разговора завершите сессию.</p><button type="button" class="vs-forget">Скрыть переписку на этом ПК</button></div>' +
+    '<button class="vs-older" type="button" hidden>Предыдущие сообщения</button><div class="vs-messages" role="log" aria-label="Переписка" aria-live="polite" aria-relevant="additions"></div>' +
+    '<p class="vs-error" role="alert" hidden></p>' +
+    '<div class="vs-answer-check" hidden><strong>Ваш вопрос решён?</strong><div><button type="button" class="vs-answer-yes">Да, завершить диалог</button><button type="button" class="vs-answer-no">Нет, нужна помощь</button></div></div>' +
+    '<div class="vs-confirm" role="group" aria-labelledby="vs-close-title" hidden><strong id="vs-close-title">Свернуть или завершить диалог?</strong><p>При сворачивании переписка продолжится. Завершайте диалог, если вопрос решён — мы сообщим об этом специалисту.</p><p class="vs-close-error" role="alert" hidden></p><div><button type="button" data-answer="later">Свернуть</button><button type="button" data-answer="yes">Вопрос решён — завершить</button><button type="button" data-answer="no">Продолжить диалог</button></div></div>' +
+    '<form class="vs-form"><label class="vs-sr-only" for="vs-input">Ваше сообщение</label><textarea id="vs-input" maxlength="2000" rows="1" placeholder="Напишите сообщение…" required></textarea><div class="vs-form-bottom"><span class="vs-compose-hint">Enter — отправить · Shift+Enter — новая строка</span><span class="vs-count" hidden>0 / 2000</span><button type="submit">Отправить</button></div></form>' +
+    '<div class="vs-resolved" hidden><p>Вопрос решён. Спасибо за обращение!</p><button type="button" class="vs-new">Новый вопрос</button></div>' +
+    '<div class="vs-forget-confirm" role="alertdialog" aria-labelledby="vs-forget-title" hidden><strong id="vs-forget-title">Завершить сессию на этом ПК?</strong><p>Переписка исчезнет из этого браузера. У поддержки она сохранится, обращение останется открытым.</p><div><button type="button" class="vs-forget-cancel">Продолжить диалог</button><button type="button" class="vs-forget-yes">Завершить сессию</button></div></div></section>';
+  document.body.appendChild(root);
+  var q = function (s) { return root.querySelector(s); };
+  var panel=q('.vs-panel'), launcher=q('.vs-launch'), input=q('textarea'), form=q('form'), list=q('.vs-messages');
+  var state=null, busy=false, opened=false, pending=null, pendingResolve=null, closeRevision=null, dismissedAnswer=0, lastOperator=0, seen=0, timer=null, refreshing=false, creating=false, generation=0;
+  try { opened=sessionStorage.getItem('veliq-support-open')==='1'; seen=Number(sessionStorage.getItem('veliq-support-seen')||0); } catch (_) {}
+  function remember() { try { sessionStorage.setItem('veliq-support-open',opened?'1':'0'); sessionStorage.setItem('veliq-support-seen',String(seen)); } catch (_) {} }
+  function error(message) { q('.vs-error').textContent=message||'';q('.vs-error').hidden=!message; }
+  function key() { return Array.from(crypto.getRandomValues(new Uint8Array(32))).map(function(v){return v.toString(16).padStart(2,'0');}).join(''); }
+  async function api(path, body) {
+    var ctl=new AbortController(), timeout=setTimeout(function(){ctl.abort();},10000);
+    try {
+      var res=await fetch('/api/v1/support/'+path,{method:body?'POST':'GET',credentials:'same-origin',cache:'no-store',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,signal:ctl.signal});
+      var data=await res.json();
+      if (!res.ok) { var e=new Error(data.error||'unavailable');e.status=res.status;throw e; } return data;
+    } finally { clearTimeout(timeout); }
+  }
+  function describe(e) {
+    if(e.status===409)return 'Диалог изменился. Прочитайте новые сообщения и повторите действие.';
+    if(e.status===401)return 'Сессия закончилась. Новое обращение можно начать после обновления страницы.';
+    if(e.status===429)return 'Слишком много сообщений. Подождите минуту и попробуйте снова.';
+    if(e.message==='support_not_connected')return 'Чат пока не подключён. Попробуйте позже.';
+    return 'Связь прервалась. Сообщение не подтверждено: повторите отправку, текст сохранён в поле.';
+  }
+  function show(open) { opened=open;panel.hidden=!open;launcher.setAttribute('aria-expanded',String(open));remember();if(open){q('.vs-badge').hidden=true;refresh();input.focus();}else launcher.focus(); }
+  function append(messages,prepend) {
+    var fragment=document.createDocumentFragment();
+    messages.forEach(function(m){if(list.querySelector('[data-message="'+m.id+'"]'))return;
+      var el=document.createElement('div');el.className='vs-message vs-message--'+m.role;el.dataset.message=m.id;
+      var name=document.createElement('strong');name.textContent=m.role==='visitor'?'Вы':m.role==='operator'?'Специалист VELIQ':'VELIQ';
+      var text=document.createElement('p');text.textContent=m.body;
+      var date=document.createElement('time');date.dateTime=m.created_at;date.textContent=new Date(m.created_at).toLocaleTimeString('ru',{hour:'2-digit',minute:'2-digit'});
+      el.append(name,text,date);fragment.appendChild(el);
+    });
+    var height=list.scrollHeight,nearBottom=list.scrollHeight-list.scrollTop-list.clientHeight<70;
+    if(prepend){list.prepend(fragment);list.scrollTop+=list.scrollHeight-height;}else{list.appendChild(fragment);if(nearBottom)list.scrollTop=list.scrollHeight;}
+  }
+  function render(next) {
+    if(!state||!state.ticket||!next.ticket||state.ticket.id!==next.ticket.id){list.replaceChildren();creating=false;pendingResolve=null;closeRevision=null;dismissedAnswer=0;q('.vs-confirm').hidden=true;q('.vs-close-error').hidden=true;}
+    state=next;
+    var t=state.ticket;
+    q('.vs-status').textContent=!state.available?'Чат пока не подключён':!t?'Напишите нам':t.status==='queued'?'Обращение в очереди':t.status==='assigned'?'Обращение у специалиста':'Вопрос решён';
+    append(state.messages||[],false);q('.vs-older').hidden=!state.has_more;
+    var resolved=t&&t.status==='resolved'&&!creating;
+    q('.vs-resolved').hidden=!resolved;form.hidden=!!resolved;input.disabled=!state.available||busy;q('[type=submit]').disabled=!state.available||busy;
+    var last=0,lastVisitor=0;(state.messages||[]).forEach(function(m){if(m.role==='operator')last=Math.max(last,m.id);if(m.role==='visitor')lastVisitor=Math.max(lastVisitor,m.id);});
+    lastOperator=last;
+    q('.vs-answer-check').hidden=!t||t.status==='resolved'||creating||last<=lastVisitor||last<=dismissedAnswer;
+    if(resolved){if(pendingResolve)error('');q('.vs-confirm').hidden=true;pendingResolve=null;}
+    if(opened){seen=Math.max(seen,last);remember();}else if(last>seen){q('.vs-badge').hidden=false;}
+  }
+  async function refresh() {
+    if(refreshing||busy)return;refreshing=true;var epoch=generation;
+    try {var next=await api('state');if(epoch===generation&&!busy)render(next);}catch(_){q('.vs-status').textContent='Нет связи. Переписка сохранена на сервере.';}
+    finally{refreshing=false;clearTimeout(timer);timer=setTimeout(refresh,document.hidden?30000:opened?4000:15000);}
+  }
+  launcher.addEventListener('click',function(){if(opened)close();else show(true);});
+  function close(){if(busy)return;if(state&&state.ticket&&state.ticket.status!=='resolved'&&!creating){closeRevision=state.ticket.revision;q('.vs-forget-confirm').hidden=true;q('.vs-confirm').hidden=false;q('[data-answer="later"]').focus();}else show(false);}
+  q('.vs-close').addEventListener('click',close);
+  q('.vs-info-toggle').addEventListener('click',function(){var info=q('.vs-info');info.hidden=!info.hidden;this.setAttribute('aria-expanded',String(!info.hidden));});
+  root.addEventListener('keydown',function(e){if(e.key==='Escape'&&opened){e.preventDefault();if(!q('.vs-confirm').hidden){if(!busy){q('.vs-confirm').hidden=true;q('.vs-close').focus();}}else close();}});
+  q('[data-answer="no"]').addEventListener('click',function(){if(busy)return;q('.vs-confirm').hidden=true;input.focus();});
+  q('[data-answer="later"]').addEventListener('click',function(){q('.vs-confirm').hidden=true;show(false);});
+  q('.vs-answer-no').addEventListener('click',function(){dismissedAnswer=lastOperator;q('.vs-answer-check').hidden=true;input.placeholder='Расскажите подробнее: что осталось нерешённым?';input.focus();});
+  q('.vs-answer-yes').addEventListener('click',close);
+  q('[data-answer="yes"]').addEventListener('click',async function(){
+    if(busy||!state||!state.ticket)return;busy=true;var epoch=++generation;error('');
+    q('.vs-close-error').hidden=true;q('.vs-close-error').textContent='';
+    if(!pendingResolve)pendingResolve={key:key(),ticket:state.ticket.id,revision:closeRevision};
+    q('[data-answer="yes"]').disabled=true;q('[data-answer="no"]').disabled=true;input.disabled=true;q('[type=submit]').disabled=true;
+    try{await api('resolve',pendingResolve);if(epoch!==generation)return;pendingResolve=null;q('.vs-confirm').hidden=true;busy=false;await refresh();if(epoch===generation)show(false);}
+    catch(e){if(epoch!==generation)return;{if(e.status===409){pendingResolve=null;q('.vs-confirm').hidden=true;}error(e.status===409?'Появились изменения в диалоге. Прочитайте новые сообщения перед завершением.':'Завершение не подтверждено. Повторите попытку — диалог сохранён.');if(e.status!==409){q('.vs-close-error').textContent='Завершение не подтверждено. Повторите попытку — диалог сохранён.';q('.vs-close-error').hidden=false;}busy=false;}await refresh();}
+    finally{q('[data-answer="yes"]').disabled=false;q('[data-answer="no"]').disabled=false;}
+  });
+  function fitInput(){input.style.height='auto';input.style.height=Math.min(input.scrollHeight,130)+'px';var n=Array.from(input.value).length;q('.vs-count').textContent=n+' / 2000';q('.vs-count').hidden=n<1700;}
+  input.addEventListener('input',fitInput);
+  input.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&e.keyCode!==229){e.preventDefault();if(!busy&&input.value.trim())form.requestSubmit();}});
+  form.addEventListener('submit',async function(e){
+    e.preventDefault();if(busy||!input.value.trim()||!state||!state.available)return;
+    var body=input.value.trim(),ticket=state.ticket&&!creating?state.ticket.id:'';
+    if(!pending||pending.body!==body)pending={key:key(),ticket:ticket,body:body};
+    busy=true;generation++;input.disabled=true;q('[type=submit]').disabled=true;error('');
+    try{if(!state.session){await api('session',{});state.session=true;}await api('message',pending);pending=null;input.value='';q('.vs-count').textContent='0 / 2000';fitInput();creating=false;}
+    catch(ex){error(describe(ex));if(ex.status===409)pending=null;}
+    finally{busy=false;input.disabled=false;q('[type=submit]').disabled=false;await refresh();input.focus();}
+  });
+  q('.vs-new').addEventListener('click',function(){creating=true;q('.vs-resolved').hidden=true;form.hidden=false;input.focus();});
+  q('.vs-older').addEventListener('click',async function(){
+    var first=list.firstElementChild;if(!first||!state.ticket)return;
+    try {var old=await api('state?ticket='+state.ticket.id+'&before='+first.dataset.message);append(old.messages,true);q('.vs-older').hidden=!old.has_more;}catch(e){error(describe(e));}
+  });
+  q('.vs-forget').addEventListener('click',function(){if(busy)return;q('.vs-forget-confirm').hidden=false;q('.vs-forget-cancel').focus();});
+  q('.vs-forget-cancel').addEventListener('click',function(){q('.vs-forget-confirm').hidden=true;q('.vs-forget').focus();});
+  q('.vs-forget-yes').addEventListener('click',async function(){
+    if(busy)return;
+    q('.vs-forget-confirm').hidden=true;q('.vs-info').hidden=true;q('.vs-info-toggle').setAttribute('aria-expanded','false');
+    try{generation++;await api('forget',{});state=null;pending=null;pendingResolve=null;closeRevision=null;dismissedAnswer=0;lastOperator=0;q('.vs-confirm').hidden=true;q('.vs-answer-check').hidden=true;input.value='';list.replaceChildren();seen=0;remember();await refresh();}catch(e){error(describe(e));}
+  });
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)refresh();});
+  /* Explicit user action opens the existing conversation without creating a ticket. */
+  var mobileDraftRequested=false, renderBeforeLink=render;
+  function prepareMobileDraft(){
+    if(!mobileDraftRequested||!state)return;
+    mobileDraftRequested=false;
+    if(state.ticket&&state.ticket.status==='resolved'){
+      creating=true;q('.vs-resolved').hidden=true;form.hidden=false;
+      q('.vs-status').textContent='Новый вопрос';
+      if(opened)input.focus();
+    }
+  }
+  render=function(next){renderBeforeLink(next);prepareMobileDraft();};
+  function openFromLink(topic) {
+    if(topic==='mobile')mobileDraftRequested=true;
+    q('.vs-confirm').hidden=true;
+    show(true);prepareMobileDraft();
+    if(topic==='mobile'&&!input.value.trim()){
+      input.value='Хочу узнать о выходе VELIQ для телефона. Мой контакт для уведомления: ';
+      fitInput();
+    }
+  }
+  document.addEventListener('click',function(e){
+    var a=e.target.closest&&e.target.closest('a[data-support-open]');
+    if(!a||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
+    e.preventDefault();openFromLink(a.getAttribute('data-support-topic'));
+  });
+  function openFromHash(){if(location.hash==='#chat'||location.hash==='#chat-mobile')openFromLink(location.hash==='#chat-mobile'?'mobile':'');}
+  window.addEventListener('hashchange',openFromHash);
+  if(location.hash==='#chat'||location.hash==='#chat-mobile'){
+    opened=true;mobileDraftRequested=location.hash==='#chat-mobile';
+    if(location.hash==='#chat-mobile'&&!input.value.trim()){
+      input.value='Хочу узнать о выходе VELIQ для телефона. Мой контакт для уведомления: ';fitInput();
+    }
+  }
+
+  panel.hidden=!opened;launcher.setAttribute('aria-expanded',String(opened));refresh();
+})();

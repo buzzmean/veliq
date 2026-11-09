@@ -16,9 +16,9 @@
     ACCOUNT_RATE_LIMIT: 'Слишком много попыток. Подождите пару минут.',
     MAIL_NOT_CONFIGURED: 'Вход временно недоступен. Напишите нам — поможем.',
     MAIL_UNAVAILABLE: 'Не удалось отправить письмо. Попробуйте ещё раз через минуту.',
-    ACCOUNT_NOT_CONFIGURED: 'Личный кабинет скоро откроется. Пока напишите нам — оформим подписку вручную.',
-    PAYMENT_NOT_CONFIGURED: 'Онлайн-оплата скоро появится. Пока напишите нам — выставим счёт.',
-    PRICE_NOT_SET: 'Цена тарифа ещё не утверждена. Напишите нам.',
+    ACCOUNT_NOT_CONFIGURED: 'Личный кабинет временно недоступен. Обратитесь в поддержку.',
+    PAYMENT_NOT_CONFIGURED: 'Онлайн-оплата пока не подключена. Для подключения или продления обратитесь в поддержку.',
+    PRICE_NOT_SET: 'Для оформления доступа обратитесь в поддержку. Текущие цены опубликованы на странице тарифов.',
     SUBSCRIPTION_LIMIT: 'Слишком много подписок в одном кабинете. Напишите нам.',
     SUBSCRIPTION_INVALID: 'Проверьте число компьютеров.',
     ACCOUNT_PROFILE_INVALID: 'Выберите тип аккаунта и укажите название клуба.',
@@ -89,7 +89,8 @@
     plans.forEach(function (p) {
       var card = el('form', 'card acc-plan');
       card.appendChild(el('h3', 'h3', p.title));
-      card.appendChild(el('p', 'muted', p.price_per_seat_rub ? (rub(p.price_per_seat_rub) + (p.kind === 'club' ? ' за компьютер' : '') + ' на ' + p.period_days + ' дней') : 'Цена появится перед началом продаж'));
+      var publicPrice = window.veliqPricing && window.veliqPricing.prices[p.kind];
+      card.appendChild(el('p', 'muted', publicPrice ? (rub(publicPrice) + (p.kind === 'club' ? ' за ПК' : ' за одно место') + ' за 30 дней') : 'Условия подключения — в поддержке'));
       var seats = null;
       if (p.max_seats > 1) {
         var label = el('label', 'field'); label.appendChild(el('span', null, 'Сколько компьютеров'));
@@ -112,7 +113,9 @@
     var card = el('article', 'card acc-sub');
     var head = el('div', 'acc-sub__head');
     head.appendChild(el('h3', 'h3', p.title + (s.kind === 'club' ? ' · ' + s.seats + ' ПК' : '')));
-    var status = s.active ? 'Оплачено до ' + date(s.paid_until) : (s.paid_until ? 'Закончилась ' + date(s.paid_until) : 'Не оплачена');
+    var remaining=s.paid_until?new Date(s.paid_until).getTime()-Date.now():NaN;
+    if(!s.lifetime&&remaining>0&&remaining<=7*86400000){var notice=el('p','acc-error','Подписка заканчивается '+date(s.paid_until)+'. Продлите доступ, чтобы продолжить пользоваться VELIQ.');notice.setAttribute('role','status');card.appendChild(notice);}
+    var status = s.lifetime ? 'Бессрочно' : s.active ? 'Оплачено до ' + date(s.paid_until) : (s.paid_until ? 'Закончилась ' + date(s.paid_until) : 'Не оплачена');
     head.appendChild(el('span', 'acc-badge' + (s.active ? ' acc-badge--ok' : ''), status));
     card.appendChild(head);
     card.appendChild(el('p', 'muted', 'Занято компьютеров: ' + s.used_seats + ' из ' + s.seats));
@@ -120,16 +123,27 @@
     var actions = el('div', 'acc-actions');
     var err = el('p', 'acc-error'); err.hidden = true;
     var pay = el('button', 'btn', s.active ? 'Продлить' : 'Оплатить');
+    var duration=el('select','input');duration.setAttribute('aria-label','Срок продления');
+    var policy=window.veliqPricing; (policy?policy.terms:[{months:1,discount:0}]).forEach(function(t){var o=el('option',null,t.months+' мес. · скидка '+t.discount+'%');o.value=t.months;duration.appendChild(o);});
+    var durationLabel=el('label','field');durationLabel.appendChild(el('span',null,'Срок подписки'));durationLabel.appendChild(duration);
+    var promoDetails=el('details');promoDetails.appendChild(el('summary',null,'У меня есть промокод'));var promo=el('input','input');promo.type='text';promo.maxLength=64;promo.autocomplete='off';promo.setAttribute('aria-label','Промокод');promoDetails.appendChild(promo);
+    var quote=el('p','muted');quote.setAttribute('aria-live','polite');
+    function showQuote(){if(!policy||!policy.prices[s.kind])return;var months=Number(duration.value);var t=policy.terms.find(function(t){return t.months===months;});var seats=s.kind==='club'?s.seats:1;var amount=policy.prices[s.kind]*months*seats*(100-t.discount);quote.textContent='За '+(30*months)+' дней: '+(amount/100).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽. Предварительный расчёт. Для оформления обратитесь в поддержку.';}
+    duration.addEventListener('change',showQuote);showQuote();
+    if(!s.lifetime){card.appendChild(durationLabel);card.appendChild(promoDetails);card.appendChild(quote);}
     pay.addEventListener('click', function () {
+      if(!paymentsOn){say(err,'Онлайн-оплата пока не подключена. Для оформления или продления обратитесь в поддержку.');return;}
+      if(Number(duration.value)!==1||promo.value.trim()){say(err,'Для оформления выбранного срока обратитесь в поддержку. Онлайн-оплата пока недоступна.');return;}
+      var expected=window.veliqPricing&&window.veliqPricing.prices[s.kind];if(expected&&p.price_per_seat_rub!==expected){say(err,'Для оформления по актуальному тарифу обратитесь в поддержку. Онлайн-оплата пока недоступна.');return;}
       busy(pay, true); say(err, '');
       call('POST', '/subscriptions/' + s.id + '/pay', { auto_renew: false }).then(function (r) { location.href = r.redirect; })
         .catch(function (x) { say(err, message(x.message)); busy(pay, false); });
     });
-    actions.appendChild(pay);
+    if (!s.lifetime) actions.appendChild(pay);
     card.appendChild(actions);
     card.appendChild(el('p', 'muted acc-small', 'Чтобы подключить компьютер, откройте VELIQ на нём и нажмите «Войти или зарегистрироваться». Копировать код активации не нужно.'));
-    if (!paymentsOn) card.appendChild(el('p', 'muted acc-small', 'Онлайн-оплата скоро появится. Сейчас оплатить можно по счёту — напишите нам.'));
-    if (paymentsOn && autoRenewAvailable) {
+    if (!paymentsOn && !s.lifetime) card.appendChild(el('p', 'muted acc-small', 'Онлайн-оплата пока не подключена. Для подключения или продления обратитесь в поддержку.'));
+    if (paymentsOn && autoRenewAvailable && !s.lifetime) {
       var auto = el('label', 'acc-auto'); var box = el('input'); box.type = 'checkbox'; box.checked = s.auto_renew;
       box.addEventListener('change', function () { call('POST', '/subscriptions/' + s.id + '/auto-renew', { enabled: box.checked }).catch(function (x) { box.checked = !box.checked; say(err, message(x.message)); }); });
       auto.appendChild(box); auto.appendChild(el('span', null, 'Автопродление')); card.appendChild(auto);
