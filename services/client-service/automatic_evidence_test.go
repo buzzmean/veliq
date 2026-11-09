@@ -157,6 +157,30 @@ type automaticEvidenceReporter struct {
 	origin browserproxy.OriginReport
 }
 
+func TestAutomaticEvidenceTerminalRecoveryVerdictSurvivesSocketClose(t *testing.T) {
+	for state, want := range map[string]string{
+		"RECOVERY_BUDGET_EXPIRED":           "FIRST_FLIGHT_TIMEOUT",
+		"EARLY_TLS_REPLY_TIMEOUT_NO_REPLAY": "FIRST_FLIGHT_TIMEOUT",
+		"UNSAFE_FIRST_FLIGHT_NO_REPLAY":     "RETRY_NOT_SAFE",
+	} {
+		t.Run(state, func(t *testing.T) {
+			c, conn, _ := evidenceConnection(t)
+			n := &c.browser.applications
+			n.mu.Lock()
+			r := n.records[conn.record]
+			r.originReporter = &automaticEvidenceReporter{origin: browserproxy.OriginReport{State: state}}
+			n.records[conn.record] = r
+			n.mu.Unlock()
+			n.observeIOEnd(conn.record, "READ", net.ErrClosed)
+			conn.Close()
+			got := evidenceRow(t, c)
+			if got.Evidence.Connection != "FAILED" || got.Evidence.Failure != want || got.Evidence.Cause != "UNKNOWN" || got.Policy.Action != flowpolicy.Direct {
+				t.Fatal(got)
+			}
+		})
+	}
+}
+
 func (r *automaticEvidenceReporter) CurrentPlan() browserproxy.Plan            { return r.plan }
 func (r *automaticEvidenceReporter) OriginAttempts() browserproxy.OriginReport { return r.origin }
 
