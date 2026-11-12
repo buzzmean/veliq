@@ -421,7 +421,8 @@ func (r *youtubeRuntime) finishTrialOutcomeFor(token uint64, k youtubeKey, strat
 	slot = cdnTrialSlot{TrialID: r.trialID, SlotReleasedAt: now, SlotReleaseReason: verdict, NeutralShortAttempt: r.cache[k].NeutralShortStreak + 1}
 	// Runs under r.mu and after the outcome has chosen its cooldown.
 	defer func() { r.releaseTrialSlotLocked(slot) }()
-	if verdict == "INCONCLUSIVE" || verdict == "CLIENT_INITIATED_CLOSE" || verdict == "REMOTE_SMALL_EOF" {
+	shortReply := verdict == "REMOTE_SMALL_EOF" || verdict == "CLIENT_INITIATED_CLOSE" || verdict == cdnShortReplyIdle
+	if verdict == "INCONCLUSIVE" || shortReply {
 		r.selection.TrialInconclusive++
 		if verdict == "CLIENT_INITIATED_CLOSE" {
 			r.selection.ClientInitiatedTrialCloses++
@@ -437,7 +438,7 @@ func (r *youtubeRuntime) finishTrialOutcomeFor(token uint64, k youtubeKey, strat
 		if verdict == "CLIENT_INITIATED_CLOSE" {
 			v.Reason = "CDN_TRIAL_CLIENT_CLOSE_INCONCLUSIVE"
 		}
-		short := (verdict == "REMOTE_SMALL_EOF" || verdict == "CLIENT_INITIATED_CLOSE") && received > 0 && received < cdnDataTrialBytes
+		short := shortReply && received > 0 && received < cdnDataTrialBytes
 		if short {
 			v.NeutralShortStreak++
 			if v.NeutralShortStreak < cdnNeutralShortLimit {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -14,11 +15,15 @@ import (
 
 type terminalTrialConn struct {
 	net.Conn
-	err error
+	err    error
+	closed atomic.Bool
 }
 
 func (c *terminalTrialConn) Read([]byte) (int, error) { return 0, c.err }
-func (*terminalTrialConn) Close() error               { return nil }
+func (c *terminalTrialConn) Close() error {
+	c.closed.Store(true)
+	return nil
+}
 
 func trialMeterFixture(t *testing.T, trace localstrategy.TCPTrace, readErr error) (*youtubeMeter, *youtubeRuntime, youtubeKey, string) {
 	t.Helper()

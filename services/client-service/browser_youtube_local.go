@@ -710,8 +710,7 @@ func (m *youtubeMeter) failure(reason string) {
 			m.trialDone.Do(func() {
 				m.mu.Lock()
 				defer m.mu.Unlock()
-				m.slot = m.r.finishTrialOutcomeFor(m.trialID, m.key, m.strategy, "INCONCLUSIVE", m.rx > 0, time.Now(), m.rx)
-				m.trialFinalized = true
+				m.finishTrialLocked("INCONCLUSIVE", time.Now())
 			})
 		}
 		return
@@ -807,8 +806,10 @@ func (m *youtubeMeter) Read(p []byte) (int, error) {
 	m.wire.ObserveOrigin(p[:n])
 	m.account(0, uint64(n))
 	if n == 0 && isYoutubeTimeout(e) {
-		m.progressGap(time.Now())
-		m.maybePromoteTrial(time.Now())
+		now := time.Now()
+		m.progressGap(now)
+		m.maybePromoteTrial(now)
+		m.releaseIdleShortTrial(now)
 	}
 	v := m.wire.Snapshot().Origin
 	if v.AlertLevel != 0 || v.State == "NON_TLS_OR_INVALID_HEADER" {
@@ -910,7 +911,7 @@ func (m *youtubeMeter) account(tx, rx uint64) {
 	}
 	transformed := m.stage != "LOCAL" || m.applied
 
-	dataStarted := scopeCurrent && m.trial && !m.dataObserved && !m.failed && m.applied && m.postHelloWrite && hello && snapshot.Origin.ApplicationBytes >= cdnDataTrialBytes
+	dataStarted := scopeCurrent && m.trial && !m.trialFinalized && !m.dataObserved && !m.failed && m.applied && m.postHelloWrite && hello && snapshot.Origin.ApplicationBytes >= cdnDataTrialBytes
 	if dataStarted {
 		m.dataObserved = true
 	}
