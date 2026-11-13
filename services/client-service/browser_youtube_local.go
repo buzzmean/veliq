@@ -31,6 +31,10 @@ type youtubeKey struct {
 	Port                     uint16
 	HintOnly                 bool
 }
+type cdnTrialStreak struct {
+	strategy string
+	count    uint32
+}
 type youtubeLearn struct {
 	cdnTrialSlot
 	NeutralShortStreak        uint32
@@ -45,6 +49,7 @@ type youtubeLearn struct {
 	Next                      int
 	Tried                     uint64
 	Failures, Streak          uint32
+	alternateTrialStreak      cdnTrialStreak
 	Qualified                 string
 	VerifiedBytes             uint64
 	Reason                    string
@@ -217,6 +222,7 @@ func (r *youtubeRuntime) failed(k youtubeKey, stage, strategy, reason string, no
 	v.Strategy = ""
 	v.Qualified = ""
 	v.Streak = 0
+	v.alternateTrialStreak = cdnTrialStreak{}
 	v.NeutralShortStreak = 0
 	v.Confirmed = false
 	v.Retry = now.Add(youtubeBackoff(v.Failures))

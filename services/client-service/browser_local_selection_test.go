@@ -195,12 +195,12 @@ func TestCDNPrefersSustainedScopedProofAndCannotResetTrialCooldown(t *testing.T)
 		r.qualifications[youtubeQualification{k.Network, k.Profile, id, k.HintOnly}] = now.Add(youtubeLearnTTL)
 	}
 	r.sustained[youtubeQualification{k.Network, k.Profile, strong, k.HintOnly}] = now.Add(youtubeLearnTTL)
-	if got := r.cdnCandidate(k, youtubeLearn{}, now); got != strong {
+	if got := r.cdnCandidate(k, youtubeLearn{}, cdnEndpoint{}, now); got != strong {
 		t.Fatal("picked unproven catalog prior", got, strong)
 	}
 	other := k
 	other.Network = "other"
-	if r.cdnCandidate(other, youtubeLearn{}, now) != "" {
+	if r.cdnCandidate(other, youtubeLearn{}, cdnEndpoint{}, now) != "" {
 		t.Fatal("cross-network proof")
 	}
 	r.completeCDNQualification(k, strong, now)
@@ -217,7 +217,7 @@ func TestCDNPrefersSustainedScopedProofAndCannotResetTrialCooldown(t *testing.T)
 	}
 	r.finishTrial(k, strong, false, true, now.Add(youtubeTrialCooldown))
 	v := r.cache[k]
-	if v.Streak != 0 || v.Stage != "RELAY" || r.cdnCandidate(k, v, now.Add(youtubeTrialCooldown)) == strong {
+	if v.Streak != 0 || v.Stage != "RELAY" || r.cdnCandidate(k, v, cdnEndpoint{}, now.Add(youtubeTrialCooldown)) == strong {
 		t.Fatal("failed strategy immediately retried", v)
 	}
 }

@@ -126,7 +126,7 @@ func (r *youtubeRuntime) promoteRunningFor(token uint64, k youtubeKey, id string
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	v := r.cache[k]
-	if !r.trialActive || token != 0 && token != r.trialID || r.trialKey != k || r.trialStrategy != id || v.Qualified != id || !r.room(k, now) {
+	if !r.trialActive || token != 0 && token != r.trialID || r.trialKey != k || r.trialStrategy != id || v.Qualified == "" || !r.room(k, now) {
 		return false
 	}
 	// This flow's current sustained proof supersedes its old public prerequisite;
@@ -137,7 +137,12 @@ func (r *youtubeRuntime) promoteRunningFor(token uint64, k youtubeKey, id string
 	v.Stage = "LOCAL"
 	v.Strategy = id
 	v.Confirmed = true
+	if v.Qualified != id {
+		v.Qualified = id
+		v.Streak = 0
+	}
 	v.Streak++
+	v.alternateTrialStreak = cdnTrialStreak{}
 	v.VerifiedBytes = received
 	v.Until = now.Add(youtubeLearnTTL)
 	v.TrialAfter = now.Add(youtubeTrialCooldown)

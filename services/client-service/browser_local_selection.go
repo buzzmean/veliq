@@ -317,12 +317,13 @@ func (r *youtubeRuntime) qualified(k youtubeKey, strategy string, now time.Time)
 
 // Caller holds mu. Prefer actual sustained YouTube proof over a transform-only
 // witness, never transfer evidence across network/profile/hint mode or retry a
-// failed candidate within this sweep. Stable catalog order breaks ties.
-func (r *youtubeRuntime) cdnCandidate(k youtubeKey, v youtubeLearn, now time.Time) string {
+// failed candidate within this sweep. An empty endpoint is a background check.
+// Stable catalog order breaks ties.
+func (r *youtubeRuntime) cdnCandidate(k youtubeKey, v youtubeLearn, endpoint cdnEndpoint, now time.Time) string {
 	best := ""
 	strength := 0
 	for i, id := range r.order {
-		if v.Tried&(uint64(1)<<uint(i)) != 0 || !r.qualified(k, id, now) {
+		if v.Tried&(uint64(1)<<uint(i)) != 0 || !r.qualified(k, id, now) || r.endpointBlockedLocked(k, id, endpoint, now) {
 			continue
 		}
 		score := 1
@@ -347,22 +348,29 @@ func (r *youtubeRuntime) takeEndpointTrial(k youtubeKey, now time.Time, peer rel
 	if !youtubeCDN(k) {
 		return "", 0, false
 	}
+	strategy := v.Qualified
 	reason := "ADMITTED"
 	switch {
 	case r.trialActive:
 		reason = "GLOBAL_TRIAL_ACTIVE"
 	case now.Before(v.TrialAfter):
 		reason = "SUBGROUP_COOLDOWN"
-	case v.Qualified == "":
+	case strategy == "":
 		reason = "NO_QUALIFIED_STRATEGY"
-	case !r.qualified(k, v.Qualified, now):
+	case !r.qualified(k, strategy, now):
 		reason = "STRATEGY_PROOF_EXPIRED"
-	case endpoint.valid() && r.endpointBlockedLocked(k, v.Qualified, endpoint, now):
-		reason = "ENDPOINT_STRATEGY_NEGATIVE_TTL"
-	case peer.MediaRequired && peer.MediaBytes <= cdnStrongBytes:
-		reason = "SCOPED_BULK_RELAY_NOT_OBSERVED"
-	case !peer.Eligible:
-		reason = "RECENT_RELAY_SIBLING_NOT_OBSERVED"
+	default:
+		if r.endpointBlockedLocked(k, strategy, endpoint, now) {
+			strategy = r.cdnCandidate(k, v, endpoint, now)
+		}
+		switch {
+		case strategy == "":
+			reason = "ENDPOINT_STRATEGY_NEGATIVE_TTL"
+		case peer.MediaRequired && peer.MediaBytes <= cdnStrongBytes:
+			reason = "SCOPED_BULK_RELAY_NOT_OBSERVED"
+		case !peer.Eligible:
+			reason = "RECENT_RELAY_SIBLING_NOT_OBSERVED"
+		}
 	}
 	v.Sibling = peer
 	if reason == "RECENT_RELAY_SIBLING_NOT_OBSERVED" {
@@ -387,7 +395,9 @@ func (r *youtubeRuntime) takeEndpointTrial(k youtubeKey, now time.Time, peer rel
 	r.trialEndpoint = endpoint
 	r.trialActive = true
 	r.trialKey = k
-	r.trialStrategy = v.Qualified
+	// Bind the actual strategy to this exposure. The subgroup's preferred
+	// strategy remains available for other endpoints while the trial runs.
+	r.trialStrategy = strategy
 	r.trialStarted = now
 	r.trialRecord = 0
 	r.selection.ActiveTrial = true
@@ -395,7 +405,7 @@ func (r *youtubeRuntime) takeEndpointTrial(k youtubeKey, now time.Time, peer rel
 	v.Retry = now.Add(youtubeTrialCooldown)
 	v.TrialAfter = v.Retry
 	r.cache[k] = v
-	return v.Qualified, r.trialID, true
+	return strategy, r.trialID, true
 }
 func (r *youtubeRuntime) finishTrial(k youtubeKey, strategy string, success, afterReply bool, now time.Time, received ...uint64) {
 	n := uint64(0)
@@ -466,14 +476,10 @@ func (r *youtubeRuntime) finishTrialOutcomeFor(token uint64, k youtubeKey, strat
 	}
 	v := r.cache[k]
 	v.NeutralShortStreak = 0
-	if success && v.Qualified == strategy && r.qualified(k, strategy, now) {
+	if success && v.Qualified != "" && r.qualified(k, strategy, now) {
 		r.score(k, strategy, true, now)
 		r.selection.TrialSuccesses++
-		if received > 64*1024 {
-			v.VerifiedBytes = received
-		}
-		v.Streak++
-		if v.Streak >= youtubeTrialSuccesses {
+		if v.countCDNTrialSuccess(strategy, received) {
 			v.Stage = "LOCAL"
 			v.Strategy = strategy
 			v.Confirmed = true
@@ -499,6 +505,7 @@ func (r *youtubeRuntime) finishTrialOutcomeFor(token uint64, k youtubeKey, strat
 		} else {
 			v.Qualified = ""
 			v.Streak = 0
+			v.alternateTrialStreak = cdnTrialStreak{}
 			v.Stage = "RELAY"
 			v.Strategy = ""
 			v.Confirmed = false
@@ -516,6 +523,30 @@ func (r *youtubeRuntime) finishTrialOutcomeFor(token uint64, k youtubeKey, strat
 	v.cdnTrialSlot = slot
 	r.cache[k] = v
 	return
+}
+
+// Keep an alternate's closed-flow proof tied to its own strategy until it can
+// confirm LOCAL. Existing proof and the preferred strategy remain usable.
+func (v *youtubeLearn) countCDNTrialSuccess(strategy string, received uint64) bool {
+	if v.Qualified == strategy {
+		v.Streak++
+	} else {
+		if v.alternateTrialStreak.strategy != strategy {
+			v.alternateTrialStreak = cdnTrialStreak{strategy: strategy}
+		}
+		v.alternateTrialStreak.count++
+		if v.alternateTrialStreak.count < youtubeTrialSuccesses {
+			return false
+		}
+		v.Qualified = strategy
+		v.Streak = v.alternateTrialStreak.count
+		v.alternateTrialStreak = cdnTrialStreak{}
+		v.VerifiedBytes = 0
+	}
+	if received > 64*1024 {
+		v.VerifiedBytes = received
+	}
+	return v.Streak >= youtubeTrialSuccesses
 }
 
 func youtubeTransferOK(p browserproxy.ProbeResult) bool {
@@ -541,7 +572,7 @@ func (c *Controller) youtubeBackgroundRecheck(cur profilesResult, q browserproxy
 	// guarded real CDN trial, not a LOCAL confirmation or a page-success claim.
 	candidate := r.nextCandidate(key, v)
 	if youtubeCDN(key) {
-		if qualified := r.cdnCandidate(key, v, time.Now()); qualified != "" {
+		if qualified := r.cdnCandidate(key, v, cdnEndpoint{}, time.Now()); qualified != "" {
 			candidate = qualified
 		}
 	}
@@ -743,7 +774,7 @@ func (r *youtubeRuntime) backgroundFailure(k youtubeKey, strategy, reason string
 	if reason == "BACKGROUND_NOT_SUSTAINED_OR_NO_TRANSFORM" && youtubeCDN(k) {
 		now := time.Now()
 		v := r.cache[k]
-		if candidate := r.cdnCandidate(k, v, now); candidate != "" {
+		if candidate := r.cdnCandidate(k, v, cdnEndpoint{}, now); candidate != "" {
 			// The public response failed, but recordLocalProbe may have
 			// witnessed a committed transform. Keep it eligible for the
 			// existing guarded media trial; this is not a CDN failure or
@@ -805,8 +836,15 @@ func (r *youtubeRuntime) completeCDNQualificationLocked(key youtubeKey, strategy
 	if r.trialActive {
 		return
 	} // Never change binding beneath an established trial.
-	if best := r.cdnCandidate(key, r.cache[key], now); best != "" {
+	v := r.cache[key]
+	stillConfirmed := v.Confirmed && v.Stage == "LOCAL" && now.Before(v.Until)
+	if best := r.cdnCandidate(key, v, cdnEndpoint{}, now); best != "" {
 		strategy = best
+	}
+	// Keep the live media proof. A public result can renew the trial
+	// prerequisite only for the strategy it qualified.
+	if stillConfirmed && strategy != v.Strategy {
+		return
 	}
 	if !r.room(key, now) {
 		return
@@ -825,10 +863,9 @@ func (r *youtubeRuntime) completeCDNQualificationLocked(key youtubeKey, strategy
 	if !now.Before(r.qualifications[proof]) {
 		r.qualifications[proof] = now.Add(youtubeLearnTTL)
 	}
-	v := r.cache[key]
-	stillConfirmed := v.Confirmed && v.Stage == "LOCAL" && v.Strategy == strategy && now.Before(v.Until)
 	if !stillConfirmed {
 		v.Streak = 0
+		v.alternateTrialStreak = cdnTrialStreak{}
 		v.Confirmed = false
 		v.Stage = "RELAY"
 		v.Strategy = ""
