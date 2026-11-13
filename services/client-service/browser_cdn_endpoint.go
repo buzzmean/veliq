@@ -57,21 +57,26 @@ func (r *youtubeRuntime) endpointBlockedLocked(k youtubeKey, id string, e cdnEnd
 	return now.Before(r.endpointNegative[cdnEndpointKey{k, e, id}].Until)
 }
 func (r *youtubeRuntime) chooseEndpoint(k youtubeKey, e cdnEndpoint, now time.Time) (string, string) {
+	stage, strategy, _ := r.chooseEndpointWithReason(k, e, now)
+	return stage, strategy
+}
+
+func (r *youtubeRuntime) chooseEndpointWithReason(k youtubeKey, e cdnEndpoint, now time.Time) (string, string, string) {
 	stage, id := r.choose(k, now)
 	if stage == "LOCAL" {
 		r.mu.Lock()
 		bad := r.endpointBlockedLocked(k, id, e, now)
 		r.mu.Unlock()
 		if bad {
-			return "RELAY", ""
+			return "RELAY", "", "LEARNED_STRATEGY_BLOCKED_FOR_ENDPOINT"
 		}
-		return stage, id
+		return stage, id, "LEARNED_LOCAL"
 	}
 	if stage == "RELAY" {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		v := r.cache[k]
-		if peer := r.peerStrategyLocked(k, now);peer != "" && !r.endpointBlockedLocked(k, peer, e, now) {
+		if peer := r.peerStrategyLocked(k, now); peer != "" && !r.endpointBlockedLocked(k, peer, e, now) {
 			r.selection.PeerProvisional++
 			v.Reason = cdnPeerProvisionalReason
 			if v.Stage == "" {
@@ -79,8 +84,9 @@ func (r *youtubeRuntime) chooseEndpoint(k youtubeKey, e cdnEndpoint, now time.Ti
 				v.Until = now.Add(youtubeLearnTTL)
 			}
 			r.cache[k] = v
-			return "LOCAL", peer
+			return "LOCAL", peer, cdnPeerProvisionalReason
 		}
+		return stage, id, "NO_LEARNED_ROUTE"
 	}
-	return stage, id
+	return stage, id, "LEARNED_DIRECT"
 }

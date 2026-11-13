@@ -342,11 +342,16 @@ func (r *youtubeRuntime) takeTrial(k youtubeKey, now time.Time, peer relaySiblin
 	return id, ok
 }
 func (r *youtubeRuntime) takeEndpointTrial(k youtubeKey, now time.Time, peer relaySiblingEvidence, endpoint cdnEndpoint) (string, uint64, bool) {
+	strategy, token, _ := r.decideEndpointTrial(k, now, peer, endpoint)
+	return strategy, token, token != 0
+}
+
+func (r *youtubeRuntime) decideEndpointTrial(k youtubeKey, now time.Time, peer relaySiblingEvidence, endpoint cdnEndpoint) (string, uint64, string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	v := r.cache[k]
 	if !youtubeCDN(k) {
-		return "", 0, false
+		return "", 0, "NOT_A_CDN_TRIAL"
 	}
 	strategy := v.Qualified
 	reason := "ADMITTED"
@@ -384,7 +389,7 @@ func (r *youtubeRuntime) takeEndpointTrial(k youtubeKey, now time.Time, peer rel
 		if r.room(k, now) {
 			r.cache[k] = v
 		}
-		return "", 0, false
+		return "", 0, reason
 	}
 	if v.NeutralShortStreak >= cdnNeutralShortLimit {
 		v.NeutralShortStreak = 0
@@ -405,7 +410,7 @@ func (r *youtubeRuntime) takeEndpointTrial(k youtubeKey, now time.Time, peer rel
 	v.Retry = now.Add(youtubeTrialCooldown)
 	v.TrialAfter = v.Retry
 	r.cache[k] = v
-	return strategy, r.trialID, true
+	return strategy, r.trialID, reason
 }
 func (r *youtubeRuntime) finishTrial(k youtubeKey, strategy string, success, afterReply bool, now time.Time, received ...uint64) {
 	n := uint64(0)
