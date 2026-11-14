@@ -590,7 +590,7 @@ func (c *Controller) openNativeBrowser(ctx context.Context, p profiles.Profile, 
 			}
 			reason := ""
 			if !c.dpiLocalRelayEvidence(q.Host, d.OuterSNI, hints) {
-				if dpiHost := c.dpiLocalEvidenceHost(q.Host, d.OuterSNI, hints); dpiHost != "" {
+				if dpiHost := c.dpiLocalEvidenceHost(q, d.OuterSNI, hints); dpiHost != "" {
 					q.Host = dpiHost
 					reason = "DPI_LOCAL_CONNECT_AUTHORITY_REQUIRED"
 				} else if browserproxy.KnownDoHEndpoint(q.Host, t.Destination) {
@@ -601,7 +601,7 @@ func (c *Controller) openNativeBrowser(ctx context.Context, p profiles.Profile, 
 			}
 			if reason != "" {
 				plan.Policy = dpiLocalBlocked(reason)
-				c.browser.youtube.startOriginDecision(q, cdnDecisionEvent{Destination: t.Destination.String(), Phase: "DENIED", Stage: "BLOCK", Reason: reason})
+				c.browser.youtube.startOriginDecision(q, c.dpiFieldDecision(q, cdnDecisionEvent{Destination: t.Destination.String(), Phase: "DENIED", Stage: "BLOCK", Reason: reason}))
 				err := errors.New(reason)
 				n.opened(record, plan, err)
 				d = applyFlowResult(current.profile, d, plan.Policy, current.network, c.Local)

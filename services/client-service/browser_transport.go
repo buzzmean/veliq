@@ -54,6 +54,7 @@ type browserRuntime struct {
 	plans           map[flowpolicy.LearnKey]chan struct{}
 	directTimeouts  *flowpolicy.DirectTimeoutCache
 	dpiLocalProbes  chan struct{}
+	dpiField        dpiFieldAudit
 }
 
 func newBrowserRuntime() *browserRuntime {
@@ -237,7 +238,7 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 	d := applyFlowResult(current.profile, wp.Decision{}, plan.Policy, current.network, c.browserLocal(plan.Policy.Strategy))
 	d.OriginDomain = q.Host
 	d.OriginHintOnly = q.HintOnly
-	d.Flow = routing.Flow{OriginDomain: q.Host, OriginService: c.browserOriginPolicy(q.Host).Group, OriginReason: c.browserTrafficReason(current, q, plan), Protocol: "tcp", Source: q.Source, Destination: plan.Destination, PID: q.Owner.PID, ProcessPath: q.Owner.Exe, ApplicationID: q.Owner.Profile, Network: current.network, PinnedPolicy: d.Flow.PinnedPolicy}
+	d.Flow = routing.Flow{OriginDomain: q.Host, OriginService: c.browserOriginPolicy(q.Host).Group, OriginReason: c.browserTrafficReason(current, q, plan), Protocol: "tcp", Source: q.Source, Destination: plan.Destination, PID: q.Owner.PID, OwnerBirth: q.Owner.Birth, ProcessPath: q.Owner.Exe, ApplicationID: q.Owner.Profile, Network: current.network, PinnedPolicy: d.Flow.PinnedPolicy}
 	if riotAuto(current.profile) && riotHost(q.Host) {
 		d.Flow.OriginService = "riot-client"
 	}
@@ -347,7 +348,7 @@ func (c *Controller) browserPlan(ctx context.Context, q browserproxy.Request) (b
 		if resolver == nil {
 			resolver = net.DefaultResolver
 		}
-		address, err := dpiLocalDNS(ctx, q.Host, resolver.LookupNetIP)
+		address, err := c.resolveDPIFieldDNS(ctx, q, resolver.LookupNetIP)
 		if err != nil {
 			return browserproxy.Plan{Enabled: true, Network: current.network, Policy: dpiLocalBlocked("DPI_LOCAL_DOH_DNS_FAILED")}, browserproxy.ErrOriginDNS
 		}

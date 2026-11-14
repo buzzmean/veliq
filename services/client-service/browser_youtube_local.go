@@ -719,6 +719,7 @@ type youtubeMeter struct {
 	rememberLocalProof bool
 	releaseProbe       func()
 	releaseProbeOnce   sync.Once
+	fieldAccount       func(tx, rx uint64)
 	net.Conn
 	r                               *youtubeRuntime
 	id                              uint64
@@ -955,6 +956,9 @@ func (m *youtubeMeter) Read(p []byte) (int, error) {
 }
 func isYoutubeTimeout(e error) bool { var n net.Error; return errors.As(e, &n) && n.Timeout() }
 func (m *youtubeMeter) account(tx, rx uint64) {
+	if m.fieldAccount != nil {
+		m.fieldAccount(tx, rx)
+	}
 	scopeCurrent := m.recoveryScopeCurrent()
 	m.mu.Lock()
 	m.tx += tx

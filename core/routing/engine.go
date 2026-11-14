@@ -44,6 +44,7 @@ type Engine struct {
 	limit        int
 	selectPolicy func(Flow) Policy
 	onBytes      func(Flow, uint64, uint64)
+	onRelayOpen  func(Flow)
 }
 
 func New(limit int) *Engine {
@@ -116,6 +117,24 @@ func (e *Engine) SetTrafficObserver(fn func(Flow, uint64, uint64)) {
 	e.onBytes = fn
 	e.mu.Unlock()
 }
+
+// The observer sees each actual relay-provider call, including failed and empty opens.
+func (e *Engine) SetRelayOpenObserver(fn func(Flow)) {
+	e.mu.Lock()
+	e.onRelayOpen = fn
+	e.mu.Unlock()
+}
+
+func (e *Engine) observeRelayOpen(k Key, route Route) {
+	e.mu.Lock()
+	flow, ok := e.flows[k]
+	fn := e.onRelayOpen
+	e.mu.Unlock()
+	if ok && fn != nil {
+		flow.Route = route
+		fn(flow)
+	}
+}
 func (e *Engine) account(k Key, tx, rx uint64) {
 	e.mu.Lock()
 	f, ok := e.flows[k]
@@ -177,6 +196,7 @@ func (e *Engine) OpenUDP(ctx context.Context, f Flow) (Datagram, error) {
 				continue
 			}
 			attempt, stop := context.WithTimeout(ctx, 3*time.Second)
+			e.observeRelayOpen(k, route)
 			d, err = provider.OpenDatagram(attempt, f.Destination)
 			stop()
 			if err == nil && d != nil {
@@ -216,6 +236,7 @@ func (e *Engine) OpenUDP(ctx context.Context, f Flow) (Datagram, error) {
 			if provider == nil {
 				return nil, errors.New("required relay unavailable")
 			}
+			e.observeRelayOpen(k, route)
 			return provider.OpenDatagram(ctx, f.Destination)
 		}}
 	}
@@ -245,6 +266,7 @@ func (e *Engine) OpenTCP(ctx context.Context, f Flow) (net.Conn, error) {
 				continue
 			}
 			attempt, stop := context.WithTimeout(ctx, 3*time.Second)
+			e.observeRelayOpen(k, route)
 			c, err = provider.OpenTCP(attempt, f.Destination)
 			stop()
 			if err == nil && c != nil {

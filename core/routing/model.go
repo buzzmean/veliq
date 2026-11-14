@@ -45,6 +45,7 @@ type Flow struct {
 	Protocol                      string
 	Source, Destination           netip.AddrPort
 	PID                           uint32
+	OwnerBirth                    uint64 `json:"-"`
 	ProcessPath, ApplicationID    string
 	Route                         Route
 	CreatedAt, LastActivity       time.Time

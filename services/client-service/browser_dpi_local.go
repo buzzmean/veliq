@@ -23,7 +23,11 @@ const browserDPILocalConcurrentProbes = 4
 // keep the existing AUTO policy.
 var BrowserDPILocalField = ""
 
-func browserDPILocalFieldEnabled() bool { return BrowserDPILocalField == "pc24" }
+func browserDPILocalFieldEnabled() bool {
+	return BrowserDPILocalField == "pc24" || browserDPIFinalEnabled()
+}
+
+func browserDPIFinalEnabled() bool { return BrowserDPILocalField == "pc24-final" }
 
 func (c *Controller) browserDPILocalOrigin(host string) bool {
 	if !browserDPILocalFieldEnabled() || !browserproxy.ValidPublicDNSName(host) {
@@ -34,7 +38,8 @@ func (c *Controller) browserDPILocalOrigin(host string) bool {
 }
 
 func (c *Controller) browserDPILocalRequest(cur profilesResult, q browserproxy.Request) bool {
-	return cur.enabled && !cur.routingDisabled && (browserAuto(cur.profile) || automaticApplication(cur.profile)) && c.browserDPILocalOrigin(q.Host)
+	return cur.enabled && !cur.routingDisabled && (browserAuto(cur.profile) || automaticApplication(cur.profile)) &&
+		(c.browserDPILocalOrigin(q.Host) || c.dpiFieldAncillary(q))
 }
 
 func dpiLocalBlocked(reason string) flowpolicy.Result {
@@ -45,14 +50,16 @@ func dpiLocalHasAuthority(q browserproxy.Request) bool {
 	return !q.HintOnly && !q.OriginAmbiguous && (q.Ingress == "PAC_CONNECT" || q.Ingress == "PAC_RECOVERY")
 }
 
-func (c *Controller) dpiLocalEvidenceHost(host, outer string, evidence browserDomainEvidence) string {
-	for _, name := range []string{host, outer, evidence.Domain} {
-		if c.browserDPILocalOrigin(name) {
+func (c *Controller) dpiLocalEvidenceHost(q browserproxy.Request, outer string, evidence browserDomainEvidence) string {
+	for _, name := range []string{q.Host, outer, evidence.Domain} {
+		q.Host = name
+		if c.browserDPILocalOrigin(name) || c.dpiFieldAncillary(q) {
 			return name
 		}
 	}
 	for _, name := range evidence.Candidates {
-		if c.browserDPILocalOrigin(name) {
+		q.Host = name
+		if c.browserDPILocalOrigin(name) || c.dpiFieldAncillary(q) {
 			return name
 		}
 	}
@@ -112,10 +119,10 @@ func (c *Controller) planDPILocal(ctx context.Context, current profilesResult, q
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
-	address, err := dpiLocalDNS(ctx, q.Host, resolver.LookupNetIP)
+	address, err := c.resolveDPIFieldDNS(ctx, q, resolver.LookupNetIP)
 	if err != nil {
 		plan.Policy = dpiLocalBlocked("DPI_LOCAL_DNS_FAILED")
-		c.browser.youtube.startOriginDecision(q, cdnDecisionEvent{Phase: "DENIED", Stage: "BLOCK", Reason: plan.Policy.Reason})
+		c.browser.youtube.startOriginDecision(q, c.dpiFieldDecision(q, cdnDecisionEvent{Phase: "DENIED", Stage: "BLOCK", Reason: plan.Policy.Reason}))
 		return plan, browserproxy.ErrOriginDNS
 	}
 	plan.Destination = netip.AddrPortFrom(address, q.Port)
@@ -208,7 +215,7 @@ func (c *Controller) openDPILocal(ctx context.Context, cur profilesResult, q bro
 	p.FirstFlightManaged = true
 	p.DirectCandidates, p.RelayCandidates, p.DirectDeadline = nil, nil, time.Time{}
 	p.Probe = "DPI_LOCAL_ONLY"
-	decision := cdnDecisionEvent{Destination: endpoint.Address, Selection: &evidence, Stage: "LOCAL", Admission: "ADMITTED_LOCAL_ONLY"}
+	decision := c.dpiFieldDecision(q, cdnDecisionEvent{Destination: endpoint.Address, Selection: &evidence, Stage: "LOCAL", Admission: "ADMITTED_LOCAL_ONLY"})
 	block := func(event cdnDecisionEvent, reason string) (net.Conn, browserproxy.Plan, error) {
 		blocked := p
 		blocked.Policy = dpiLocalBlocked(reason)
@@ -350,6 +357,11 @@ func (c *Controller) openDPILocal(ctx context.Context, cur profilesResult, q bro
 				rememberLocalProof: youtubeCDN(key),
 				releaseProbe:       releaseProbe,
 			}
+			if browserDPIFinalEnabled() {
+				if row := c.browser.dpiField.localCDN(q, endpoint.Address, candidate.id, event.ConnectionID, record); row != nil {
+					observer.fieldAccount = func(tx, rx uint64) { c.browser.dpiField.localBytes(row, tx, rx) }
+				}
+			}
 			onFailure := func(failure string) {
 				observer.failure(failure)
 				failed := event
@@ -377,4 +389,16 @@ func (c *Controller) openDPILocal(ctx context.Context, cur profilesResult, q bro
 		return nil, actual, err
 	}
 	return &youtubePlanConn{Conn: conn, ref: ref}, actual, nil
+}
+
+func (c *Controller) resolveDPIFieldDNS(ctx context.Context, q browserproxy.Request, lookup func(context.Context, string, string) ([]netip.Addr, error)) (netip.Addr, error) {
+	address, err := dpiLocalDNS(ctx, q.Host, lookup)
+	if browserDPIFinalEnabled() {
+		result, answers := "DNS_RESPONSE", 1
+		if err != nil {
+			result, answers = "DNS_FAILED", 0
+		}
+		c.browser.dpiField.dns(q, q.Host, "CONNECT_SYSTEM_RESOLVER", result, answers, 1)
+	}
+	return address, err
 }

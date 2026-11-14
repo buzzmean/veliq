@@ -198,6 +198,9 @@ func New(ctx context.Context) *Controller {
 		return p
 	})
 	c.Engine.SetTrafficObserver(c.accountRelayTraffic)
+	if browserDPIFinalEnabled() {
+		c.Engine.SetRelayOpenObserver(c.browser.dpiField.relayOpen)
+	}
 	c.syncPolicies()
 	return c
 }
@@ -409,7 +412,7 @@ func (c *Controller) Classify(identity windowsplatform.ProcessIdentity, t window
 			return decision
 		}
 	}
-	f := routing.Flow{Protocol: t.Protocol, Source: t.Source, Destination: t.Destination, PID: identity.PID, ProcessPath: identity.Path, ApplicationID: profile.ID}
+	f := routing.Flow{Protocol: t.Protocol, Source: t.Source, Destination: t.Destination, PID: identity.PID, OwnerBirth: identity.CreationTime, ProcessPath: identity.Path, ApplicationID: profile.ID}
 	decision.Flow = f
 	decision.Revision = c.policyRevision(profile)
 	if edgeProfile(profile) && !nativeBrowserProfile(profile) && profile.Mode == profiles.Auto && profile.AppPreset == "edge-sites-pending" && !directOnlyFlow(t) {
@@ -704,6 +707,8 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return c.localProbeSnapshot(), nil
 	case "browser.youtube.decisions":
 		return c.browser.youtube.cdnDecisionSnapshot(), nil
+	case "browser.dpi_local.begin", "browser.dpi_local.evidence":
+		return c.handleDPIField(method, raw)
 	case "browser.native.enable", "browser.native.status":
 		return c.handleNativeBrowser(ctx, method, raw)
 	case "edge.silent.apply", "browser.silent.apply", "browser.silent.guard":

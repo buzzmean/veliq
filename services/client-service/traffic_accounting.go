@@ -23,6 +23,9 @@ type remoteTrafficState struct {
 }
 
 func (c *Controller) accountRelayTraffic(f routing.Flow, tx, rx uint64) {
+	if browserDPIFinalEnabled() {
+		c.browser.dpiField.relayBytes(f, tx, rx)
+	}
 	service := f.OriginService
 	if service == "" {
 		service = f.ApplicationID

@@ -28,6 +28,8 @@ type cdnDecisionEvent struct {
 	TrialID      uint64                `json:"trial_id,omitempty"`
 	RecordID     uint64                `json:"upstream_record_id,omitempty"`
 	Selection    *cdnSelectionEvidence `json:"selection,omitempty"`
+	Owner        *dpiFieldIdentity     `json:"owner,omitempty"`
+	Attribution  string                `json:"attribution,omitempty"`
 }
 
 type cdnSelectionEvidence struct {

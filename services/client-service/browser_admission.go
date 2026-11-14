@@ -82,6 +82,7 @@ func (c *Controller) openBrowserPlan(ctx context.Context, current profilesResult
 	}
 	if p.Policy.Source == browserDPILocalSource {
 		conn, err := open(ctx, q, p)
+		c.recordFieldResolverOpen(q, p, err)
 		return conn, p, err
 	}
 	if current.enabled && riotAuto(current.profile) && riotHost(q.Host) && p.Policy.Source == "riot_direct_first" {

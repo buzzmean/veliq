@@ -164,7 +164,10 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 		return nil, browserproxy.ErrOwnerProfile
 	}
 	d := applyFlowResult(p, wp.Decision{}, plan.Policy, plan.Network, c.Local)
-	d.Flow = routing.Flow{Protocol: "tcp", Source: q.Source, Destination: plan.Destination, PID: id.PID, ProcessPath: id.Path, ApplicationID: q.Owner.Profile, Network: plan.Network, PinnedPolicy: d.Flow.PinnedPolicy}
+	d.Flow = routing.Flow{Protocol: "tcp", Source: q.Source, Destination: plan.Destination, PID: id.PID, OwnerBirth: id.CreationTime, ProcessPath: id.Path, ApplicationID: q.Owner.Profile, Network: plan.Network, PinnedPolicy: d.Flow.PinnedPolicy}
+	if browserDPIFinalEnabled() {
+		d.Flow.OriginDomain = q.Host
+	}
 	if d.Route.Local() {
 		backend, ok := c.Backend.(interface {
 			OpenBrowserLocalTCP(context.Context, wp.ProcessIdentity, netip.AddrPort, netip.AddrPort, wp.Decision) (net.Conn, error)

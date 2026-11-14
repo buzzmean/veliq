@@ -105,6 +105,7 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 		return nil, err
 	}
 	host := browserproxy.DNSHost(q)
+	request := browserproxy.Request{Host: host, Owner: browserproxy.Owner{PID: cur.id.PID, Birth: cur.id.CreationTime, Exe: cur.id.Path, Profile: cur.profile.ID}}
 	state := c.browser.dnsWire
 	select {
 	case state.slots <- struct{}{}:
@@ -114,7 +115,7 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 	}
 	path := "SYSTEM_DNS"
 	var answer []byte
-	if cur.enabled && c.browserDPILocalOrigin(host) {
+	if cur.enabled && (c.browserDPILocalOrigin(host) || c.dpiFieldAncillary(request)) {
 		path = "DPI_LOCAL_SYSTEM_DNS"
 		answer, err = browserproxy.ExchangeSystemDNS(ctx, t.Protocol+"4", t.Destination.String(), query)
 	} else if cur.enabled && c.browserOriginPolicy(host).Kind != "" {
@@ -138,6 +139,9 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 		result = "BROWSER_DNS_TRANSACTION_FAILED"
 	}
 	state.record(cur.profile.ID, host, uint16(q.Type), path, result, len(hints))
+	if browserDPIFinalEnabled() {
+		c.browser.dpiField.dns(request, host, path, result, len(hints), uint16(q.Type))
+	}
 	if err != nil {
 		return nil, errors.New(result)
 	} // Never leak resolver errors/payload.
