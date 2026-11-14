@@ -243,3 +243,81 @@ func TestCDNAlternateTrialUsesOnlyItsOwnSuccessEvidence(t *testing.T) {
 		})
 	}
 }
+
+func TestCDNTrialKeepsQualifiedAlternativeAfterLocalConfirmation(t *testing.T) {
+	now := time.Now()
+	endpoint := cdnEndpoint{"rr5---sn-media.googlevideo.com", "74.125.8.99:443"}
+	key := youtubeKey{"net", "chrome", youtubeSubgroup(endpoint.Host), 443, false}
+	peer := testSibling(true)
+	peer.MediaRequired = true
+	peer.MediaBytes = cdnStrongBytes + 1
+	for _, tc := range []struct {
+		name       string
+		proofTTL   time.Duration
+		tried      uint64
+		wantReason string
+	}{
+		{"live proof", youtubeLearnTTL, 0, "ADMITTED"},
+		{"expired proof", 2 * time.Second, 0, "STRATEGY_PROOF_EXPIRED"},
+		{"sweep already excluded the alternate", youtubeLearnTTL, 1 << 1, "ENDPOINT_STRATEGY_NEGATIVE_TTL"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newYoutubeRuntime()
+			first, alternate := r.order[0], r.order[1]
+			for _, strategy := range []string{first, alternate} {
+				r.qualifications[youtubeQualification{key.Network, key.Profile, strategy, key.HintOnly}] = now.Add(tc.proofTTL)
+			}
+			r.completeCDNQualification(key, first, now)
+			v := r.cache[key]
+			v.Tried = tc.tried
+			r.cache[key] = v
+			r.confirmed(key, "LOCAL", first, now.Add(time.Second))
+			failedAt := now.Add(3 * time.Second)
+			if !r.endpointFailed(key, first, endpoint, "ORIGIN_SILENT", failedAt) {
+				t.Fatal("LOCAL failure did not block the old strategy for the endpoint")
+			}
+			chosen, token, reason, _ := r.decideEndpointTrial(key, failedAt, peer, endpoint)
+			if reason != tc.wantReason {
+				t.Fatalf("admission = %s; want %s", reason, tc.wantReason)
+			}
+			if tc.wantReason == "ADMITTED" && (chosen != alternate || token == 0) {
+				t.Fatalf("strategy = %q, trial = %d; want alternate %q and an active trial", chosen, token, alternate)
+			}
+			if tc.wantReason != "ADMITTED" && (chosen != "" || token != 0) {
+				t.Fatalf("rejected strategy admitted a trial: strategy = %q, trial = %d", chosen, token)
+			}
+		})
+	}
+}
+
+func TestCDNLocalConfirmationKeepsAnIndependentTrialCooldown(t *testing.T) {
+	now := time.Now()
+	r := newYoutubeRuntime()
+	endpoint := cdnEndpoint{"rr5---sn-media.googlevideo.com", "74.125.8.99:443"}
+	key := youtubeKey{"net", "chrome", youtubeSubgroup(endpoint.Host), 443, false}
+	first, alternate := r.order[0], r.order[1]
+	for _, strategy := range []string{first, alternate} {
+		r.qualifications[youtubeQualification{key.Network, key.Profile, strategy, key.HintOnly}] = now.Add(youtubeLearnTTL)
+	}
+	r.completeCDNQualification(key, first, now)
+	peer := testSibling(true)
+	peer.MediaRequired = true
+	peer.MediaBytes = cdnStrongBytes + 1
+	strategy, token, reason, _ := r.decideEndpointTrial(key, now, peer, endpoint)
+	if strategy != first || token == 0 || reason != "ADMITTED" {
+		t.Fatalf("first trial = %q, %d, %s", strategy, token, reason)
+	}
+	failedAt := now.Add(time.Second)
+	if !r.endpointFailed(key, first, endpoint, "ORIGIN_SILENT", failedAt) {
+		t.Fatal("failed trial did not block its endpoint and strategy")
+	}
+	slot := r.finishTrialOutcomeFor(token, key, first, "FAILED", false, failedAt, 0)
+	// A separate normal LOCAL connection succeeds on a different endpoint.
+	r.confirmed(key, "LOCAL", first, failedAt.Add(time.Second))
+	if _, token, reason, _ := r.decideEndpointTrial(key, slot.CooldownUntil.Add(-time.Millisecond), peer, endpoint); token != 0 || reason != "SUBGROUP_COOLDOWN" {
+		t.Fatalf("before cooldown: trial = %d, reason = %s", token, reason)
+	}
+	if strategy, token, reason, _ := r.decideEndpointTrial(key, slot.CooldownUntil, peer, endpoint); strategy != alternate || token == 0 || reason != "ADMITTED" {
+		t.Fatalf("after cooldown: strategy = %q, trial = %d, reason = %s", strategy, token, reason)
+	}
+}

@@ -259,7 +259,21 @@ func (r *youtubeRuntime) confirmed(k youtubeKey, stage, strategy string, now tim
 		streak = old.Streak
 	}
 	old := r.cache[k]
-	r.cache[k] = youtubeLearn{Stage: stage, Strategy: strategy, Until: now.Add(youtubeLearnTTL), Retry: now.Add(youtubeRetryAfter), Confirmed: true, Streak: streak, TrialChecks: old.TrialChecks, TrialDenials: old.TrialDenials, LastTrialCheck: old.LastTrialCheck, TrialAdmission: old.TrialAdmission, Sibling: old.Sibling, SiblingWaits: old.SiblingWaits}
+	v := youtubeLearn{Stage: stage, Strategy: strategy, Until: now.Add(youtubeLearnTTL), Retry: now.Add(youtubeRetryAfter), Confirmed: true, Streak: streak, TrialChecks: old.TrialChecks, TrialDenials: old.TrialDenials, LastTrialCheck: old.LastTrialCheck, TrialAdmission: old.TrialAdmission, Sibling: old.Sibling, SiblingWaits: old.SiblingWaits}
+	if stage == "LOCAL" && youtubeCDN(k) {
+		// A regular LOCAL flow can confirm while another endpoint's trial
+		// for this subgroup is cooling down. Keep the trial state independent.
+		v.Qualified = old.Qualified
+		v.TrialAfter = old.TrialAfter
+		if v.Retry.Before(v.TrialAfter) {
+			v.Retry = v.TrialAfter
+		}
+		v.Tried = old.Tried
+		v.Next = old.Next
+		v.cdnTrialSlot = old.cdnTrialSlot
+		v.NeutralShortStreak = old.NeutralShortStreak
+	}
+	r.cache[k] = v
 }
 func (r *youtubeRuntime) snapshot() youtubeSnapshot {
 	r.mu.Lock()
