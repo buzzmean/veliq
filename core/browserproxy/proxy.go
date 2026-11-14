@@ -66,7 +66,8 @@ type Trial struct {
 	DurationMS       int64  `json:"duration_ms"`
 }
 type Plan struct {
-	FirstFlightManaged bool `json:"-"` // Route ladder owns bounded pre-ServerHello retries.
+	FirstFlightManaged     bool   `json:"-"` // Route ladder owns bounded pre-ServerHello retries.
+	YouTubeLocalGeneration uint64 `json:"-"` // Reject stale plans before opening an upstream.
 	// Set only by native planner when no protected DNS/outer association exists.
 	OrdinaryCapacityDirect bool `json:"-"`
 

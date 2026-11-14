@@ -77,6 +77,12 @@ func (c *Controller) browserOpenPlan(ctx context.Context, q browserproxy.Request
 	return c.openBrowserPlan(ctx, cur, q, p, c.browserOpen)
 }
 func (c *Controller) openBrowserPlan(ctx context.Context, current profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	if generation := c.youtubeLocalBetaOriginScope(q); generation != p.YouTubeLocalGeneration {
+		return nil, p, errYouTubeLocalScopeChanged
+	}
+	if p.YouTubeLocalGeneration != 0 {
+		return c.openYouTubeLocalBeta(ctx, current, q, p, open)
+	}
 	if current.enabled && riotAuto(current.profile) && riotHost(q.Host) && p.Policy.Source == "riot_direct_first" {
 		return c.openRiotPlan(ctx, current, q, p, open)
 	}

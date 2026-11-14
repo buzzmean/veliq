@@ -102,6 +102,9 @@ func (c *Controller) knownOriginResolve(ctx context.Context, current profilesRes
 	if !c.automaticScopeCurrent(current) {
 		return browserproxy.DNSAnswer{}, errAutomaticScopeChanged
 	}
+	if c.youtubeLocalBetaOriginScope(q) != 0 {
+		return browserproxy.DNSAnswer{}, errYouTubeLocalScopeChanged
+	}
 	key := c.browserDNSKey(q, current) + ":" + p.Policy.RelayID
 	resolve := c.browser.origins.Resolve
 	if current.network == "" {

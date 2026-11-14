@@ -52,7 +52,7 @@ func (c *Controller) browserDNSCachedPlan(q browserproxy.Request, current profil
 
 func (c *Controller) recoverBrowserDNS(ctx context.Context, q browserproxy.Request, current profilesResult, plan browserproxy.Plan) (browserproxy.Plan, bool) {
 	current = c.captureAutomaticScope(current)
-	if !c.automaticScopeCurrent(current) {
+	if !c.automaticScopeCurrent(current) || c.youtubeLocalBetaOriginScope(q) != 0 {
 		return plan, false
 	}
 	if !q.Secure || !current.enabled || current.network == "" || !browserproxy.ValidPublicDNSName(q.Host) {

@@ -573,6 +573,16 @@ func (c *Controller) openNativeBrowser(ctx context.Context, p profiles.Profile, 
 	evidence := browserDomainEvidence{Source: "CLIENTHELLO_SNI_OR_HTTP_HOST", Domain: q.Host, Confidence: "observed on this connection", Candidates: []string{}}
 	plan := browserproxy.Plan{Enabled: true, Network: current.network, Destination: t.Destination, Policy: d.Policy}
 	if nativeBrowserProfile(current.profile) && q.Secure {
+		if generation := c.youtubeLocalBetaNativeScope(q, current, t.Destination, d.OuterSNI); generation != 0 {
+			reason := "DPI_LOCAL_CONNECT_AUTHORITY_REQUIRED"
+			plan.Policy = youtubeLocalBetaBlock(reason)
+			err := errors.New(reason)
+			c.youtubeLocalBetaOutcome(generation, reason)
+			n.opened(record, plan, err)
+			d = applyFlowResult(current.profile, d, plan.Policy, current.network, c.Local)
+			d.BlockOnFailure, d.NewConnectionsOnly = true, true
+			return nil, d, err
+		}
 		// A ClientHello cannot identify later encrypted HTTP/2 authorities. Until
 		// the browser uses the authority PAC, keep raw TLS on an explicitly
 		// degraded authenticated relay. Never admit LOCAL/DIRECT from initial SNI,

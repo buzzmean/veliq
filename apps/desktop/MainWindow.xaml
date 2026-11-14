@@ -262,6 +262,14 @@
       <ComboBox x:Name="Fallback" DockPanel.Dock="Right" IsEnabled="{Binding Available}" DisplayMemberPath="Label" SelectedValuePath="Value" MinWidth="200" Margin="0"/>
       <TextBlock Text="{ui:Tr FailureBehavior}" FontWeight="Medium" VerticalAlignment="Center"/>
      </DockPanel></Border>
+     <Border x:Name="YouTubeLocalPanel" Style="{StaticResource PanelBox}" Margin="0,0,0,18" Visibility="Collapsed">
+      <StackPanel Margin="16,12">
+       <CheckBox x:Name="YouTubeLocalToggle" Content="{ui:Tr YouTubeLocalTitle}" Click="ToggleYouTubeLocal" Margin="0"/>
+       <TextBlock Text="{ui:Tr YouTubeLocalHelp}" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,4,0,6"/>
+       <TextBlock x:Name="YouTubeLocalMessage" Style="{StaticResource Small}" TextWrapping="Wrap" Margin="0,6,0,0"
+                  AutomationProperties.LiveSetting="Polite"/>
+      </StackPanel>
+     </Border>
      <TextBlock Text="{ui:Tr SetUpdates}" Style="{StaticResource GroupTitle}"/>
      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,8"><DockPanel Margin="16,8">
       <ComboBox x:Name="Channel" DockPanel.Dock="Right" IsEnabled="{Binding Available}" DisplayMemberPath="Label" SelectedValuePath="Value" MinWidth="200" Margin="0"/>
