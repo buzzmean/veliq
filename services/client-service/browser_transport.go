@@ -433,7 +433,7 @@ func (c *Controller) browserPlan(ctx context.Context, q browserproxy.Request) (b
 		plan.Policy.Strategy = ""
 		plan.Policy.RelayID = ""
 		plan.Policy.Fallback = flowpolicy.FailBlock
-		plan.Policy.Reason = "Known DPI group: background verified LOCAL selection; unproven foreground RELAY, no DIRECT stall"
+		plan.Policy.Reason = "Known DPI group: select from scoped DIRECT and LOCAL before relay on authenticated browser CONNECT"
 		plan.Probe = "YOUTUBE_LOCAL_LADDER"
 		return plan, nil
 	}

@@ -717,7 +717,7 @@ type youtubeMeter struct {
 	trialID         uint64
 	recoveryCurrent func() bool
 	net.Conn
-	betaLocal                       bool
+	endpointScoped                  bool
 	betaBytes                       func(uint64)
 	betaConfirmed                   func()
 	releaseProbe                    func()
@@ -804,7 +804,7 @@ func (m *youtubeMeter) failure(reason string) {
 		failure := m.failureEvidenceLocked(reason, time.Now())
 		m.mu.Unlock()
 		endpoint := cdnEndpoint{m.host, m.destination}
-		if m.betaLocal {
+		if m.endpointScoped {
 			m.r.noteEndpointFailure(m.key, m.strategy, endpoint, reason, time.Now())
 		} else if m.stage != "LOCAL" || !m.r.endpointFailed(m.key, m.strategy, endpoint, reason, time.Now()) {
 			m.r.failed(m.key, m.stage, m.strategy, reason, time.Now())
@@ -1003,7 +1003,7 @@ func (m *youtubeMeter) account(tx, rx uint64) {
 		verified := m.rx
 		m.mu.Unlock()
 		m.r.recordVerification(m.key, verified)
-		if m.betaLocal && m.stage == "LOCAL" && youtubeCDN(m.key) {
+		if m.endpointScoped && m.stage == "LOCAL" && youtubeCDN(m.key) {
 			m.r.mu.Lock()
 			now := time.Now()
 			if !m.r.endpointBlockedLocked(m.key, m.strategy, cdnEndpoint{m.host, m.destination}, now) {

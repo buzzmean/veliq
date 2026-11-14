@@ -41,6 +41,8 @@ type OriginConfig struct {
 	NextFlow  func(context.Context, string) (net.Conn, error)
 	OnFailure func(string)
 	Silence   time.Duration
+	// An optional earlier deadline inherited from a parent first-flight attempt.
+	RecoveryDeadline time.Time
 
 	Prior      []OriginAttempt
 	Skipped    int
@@ -106,6 +108,13 @@ func (x *originConn) silence() time.Duration {
 	}
 	return OriginSilenceTimeout
 }
+func (x *originConn) recoveryDeadline() time.Time {
+	deadline := x.first.Add(OriginRecoveryBudget)
+	if limit := x.cfg.RecoveryDeadline; !limit.IsZero() && limit.Before(deadline) {
+		return limit
+	}
+	return deadline
+}
 func (x *originConn) scopeCurrent() bool {
 	return x.cfg.ScopeCurrent == nil || x.cfg.ScopeCurrent()
 }
@@ -139,7 +148,7 @@ func (x *originConn) Write(p []byte) (int, error) {
 		x.first = time.Now()
 		x.attemptAt = x.first
 		x.report.State = "WAITING_ORIGIN"
-		x.timer = time.AfterFunc(OriginRecoveryBudget, func() { x.closeWithReason("RECOVERY_BUDGET_EXPIRED", true) })
+		x.timer = time.AfterFunc(time.Until(x.recoveryDeadline()), func() { x.closeWithReason("RECOVERY_BUDGET_EXPIRED", true) })
 		close(x.firstWrite)
 	}
 	cur := x.cur
@@ -153,7 +162,7 @@ func (x *originConn) Write(p []byte) (int, error) {
 		}
 	}
 	if !x.responded && !x.first.IsZero() {
-		hard := x.first.Add(OriginRecoveryBudget)
+		hard := x.recoveryDeadline()
 		if deadline.IsZero() || hard.Before(deadline) {
 			deadline = hard
 		}
@@ -350,7 +359,7 @@ func (x *originConn) retry(expected net.Conn, reason string, fromRead bool) (ret
 		return ErrOriginReplayUnsafe
 	}
 	flight := append([]byte(nil), x.flight...)
-	hard := x.first.Add(OriginRecoveryBudget)
+	hard := x.recoveryDeadline()
 	callerDeadline := x.writeDeadline
 	if fromRead {
 		callerDeadline = x.readDeadline

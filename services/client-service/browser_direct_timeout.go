@@ -165,6 +165,9 @@ func (c *Controller) stallRetry(ctx context.Context, current profilesResult, q b
 		}
 		plan = next
 	}
+	if c.browserAutoLocalEligible(current, q, plan) {
+		return c.openBrowserAutoLocalAfterDirect(ctx, current, q, plan, open)
+	}
 	next := stallRetryPlan(current, plan)
 	conn, err := open(ctx, q, next)
 	c.browser.directTimeouts.NoteRetry(err == nil)

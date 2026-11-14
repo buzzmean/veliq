@@ -86,6 +86,9 @@ func (c *Controller) openBrowserPlan(ctx context.Context, current profilesResult
 	if current.enabled && riotAuto(current.profile) && riotHost(q.Host) && p.Policy.Source == "riot_direct_first" {
 		return c.openRiotPlan(ctx, current, q, p, open)
 	}
+	if c.browserAutoLocalEligible(current, q, p) && c.localLadderEligible(current, q, p) {
+		return c.openBrowserAutoLocal(ctx, current, q, p, open)
+	}
 	if c.ordinaryAddressRetry(current, q, p) {
 		return c.openOrdinaryAddresses(ctx, current, q, p, open)
 	}
@@ -170,6 +173,9 @@ func (c *Controller) openBrowserPlanAttempt(ctx context.Context, current profile
 	return c.relayAfterDirect(ctx, current, q, p, open)
 }
 func (c *Controller) relayAfterDirect(ctx context.Context, current profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	if c.browserAutoLocalEligible(current, q, p) {
+		return c.openBrowserAutoLocalAfterDirect(ctx, current, q, p, open)
+	}
 	p = stallRetryPlan(current, p)
 	p.Policy.Source = "direct_open_retry"
 	p.Probe = "DIRECT_OPEN_FAILED_RELAY"

@@ -118,12 +118,20 @@ type youtubeLocalCandidate struct {
 	id, reason string
 }
 
-// Caller holds r.mu. Beta observations occupy their own scope to leave ordinary
-// routing decisions and endpoint failures unchanged when the mode is disabled.
 func (r *youtubeRuntime) youtubeLocalBetaCandidatesLocked(key, ordinary youtubeKey, endpoint cdnEndpoint, baseline bool, now time.Time) []youtubeLocalCandidate {
+	return r.youtubeLocalCandidatesLocked(key, ordinary, endpoint, baseline, "last", now)
+}
+
+// Caller holds r.mu. A separate key keeps the optional mode's learnings
+// independent; ordinary AUTO uses one key for both arguments.
+func (r *youtubeRuntime) youtubeLocalCandidatesLocked(key, ordinary youtubeKey, endpoint cdnEndpoint, baseline bool, directOrder string, now time.Time) []youtubeLocalCandidate {
 	candidates := make([]youtubeLocalCandidate, 0, youTubeLocalBetaAttempts)
+	coldLimit := youTubeLocalBetaAttempts
+	if directOrder == "last" {
+		coldLimit--
+	}
 	add := func(id, reason string) {
-		if id == "" || id == "baseline" && !baseline || len(candidates) == youTubeLocalBetaAttempts ||
+		if id == "" || id == "baseline" && !baseline || id == youTubeLocalDirectCandidate && directOrder == "skip" || len(candidates) == youTubeLocalBetaAttempts ||
 			r.endpointBlockedLocked(key, id, endpoint, now) || r.endpointBlockedLocked(ordinary, id, endpoint, now) {
 			return
 		}
@@ -168,14 +176,17 @@ func (r *youtubeRuntime) youtubeLocalBetaCandidatesLocked(key, ordinary youtubeK
 	if baseline {
 		add("baseline", "CONFIGURED_BASELINE")
 	}
+	if directOrder == "first" {
+		add(youTubeLocalDirectCandidate, "PLAIN_DIRECT_PROBE")
+	}
 	if r.qualified(ordinary, r.cache[ordinary].Qualified, now) {
 		add(r.cache[ordinary].Qualified, "QUALIFIED_LOCAL")
 	}
-	if len(r.order) > 0 && len(candidates) < youTubeLocalBetaAttempts-1 {
+	if len(r.order) > 0 && len(candidates) < coldLimit {
 		add(r.order[0], "COLD_LOCAL_PROBE")
 	}
 	for _, id := range append([]string{"split1", "fake5x2-disorder"}, r.order...) {
-		if len(candidates) >= youTubeLocalBetaAttempts-1 {
+		if len(candidates) >= coldLimit {
 			break
 		}
 		add(id, "COLD_LOCAL_PROBE")
@@ -348,9 +359,9 @@ func (c *Controller) openYouTubeLocalBeta(ctx context.Context, cur profilesResul
 
 			observer := &youtubeMeter{Conn: conn, r: r, id: record, label: label, key: key, stage: stage, strategy: candidate.id,
 				started: time.Now(), host: q.Host, destination: endpoint.Address, recoveryCurrent: scopeCurrent,
-				inspection: func() *localstrategy.Inspection { return c.localPacketInspection(q, actual) },
-				transform:  func() bool { return c.browserTransform(q, actual) },
-				betaLocal:  true, releaseProbe: release}
+				inspection:     func() *localstrategy.Inspection { return c.localPacketInspection(q, actual) },
+				transform:      func() bool { return c.browserTransform(q, actual) },
+				endpointScoped: true, releaseProbe: release}
 			if stage == "LOCAL" && isVideo(q) {
 				observer.betaBytes = func(rx uint64) { c.youtubeLocalBetaCount(gen, rx, 0) }
 			}

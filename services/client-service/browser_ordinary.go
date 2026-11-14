@@ -81,6 +81,9 @@ func (r *youtubeRuntime) ordinaryUpdate(id uint64, update func(*ordinaryFlowEvid
 	}
 }
 func (c *Controller) openOrdinaryAddresses(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	if c.browserAutoLocalEligible(cur, q, p) {
+		return c.openOrdinaryAddressesWithFallback(ctx, cur, q, p, open, c.openBrowserAutoLocalAfterDirect)
+	}
 	return c.openOrdinaryAddressesWithFallback(ctx, cur, q, p, open, c.openYoutubeLadder)
 }
 
