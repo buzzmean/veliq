@@ -106,7 +106,7 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 		trafficPath = filepath.Join(m.StateDirectory, "traffic-usage.json")
 	}
 	c.traffic.Configure(trafficPath, identity.ID)
-	if m.StateDirectory != "" {
+	if m.StateDirectory != "" && !browserDPILocalFieldEnabled() {
 		c.browser.youtube.configurePeerStore(filepath.Join(m.StateDirectory, "youtube-cdn-peer.json"), time.Now())
 	}
 	remote := &remoteState{controller: c, cp: cp, tls: cfg, target: target, addresses: make(map[string]string), clients: make(map[string]*transport.Pool)}

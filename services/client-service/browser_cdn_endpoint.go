@@ -24,7 +24,7 @@ type cdnEndpointFailure struct {
 }
 
 func (r *youtubeRuntime) endpointFailed(k youtubeKey, id string, e cdnEndpoint, reason string, now time.Time) bool {
-	if k.Network == "" || k.Profile == "" || !youtubeCDN(k) || !e.valid() {
+	if k.Network == "" || k.Profile == "" || !youtubeCDN(k) && !browserDPILocalFieldEnabled() || !e.valid() {
 		return false
 	}
 	r.mu.Lock()

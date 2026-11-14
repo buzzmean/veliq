@@ -77,6 +77,9 @@ func (c *Controller) browserFlow(p profiles.Profile, id wp.ProcessIdentity, t wp
 		if r, ok := flowpolicy.Evaluate(p.Rules, flowpolicy.Input{Protocol: t.Protocol, Destination: t.Destination, Domain: domain, Network: network}); ok && r.Action == flowpolicy.Block {
 			return r
 		}
+		if result, local := dpiLocalDoHPolicy(domain, t.Destination); local && !protectedBrowserDomain(domain) && c.browserOriginPolicy(domain).Kind != "RELAY" {
+			return result
+		}
 		r := required("known browser Secure DNS endpoint: authenticated relay, TLS unchanged; encrypted DNS answers not inspected")
 		r.Source = "browser_secure_dns_relay"
 		return r

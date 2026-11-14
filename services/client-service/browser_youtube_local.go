@@ -470,6 +470,23 @@ func (c *youtubePlanConn) CloseWrite() error {
 	return nil
 }
 
+// Caller holds r.mu. Keep the currently admitted trial available to its meter.
+func (r *youtubeRuntime) addYoutubeRecordLocked(record youtubeRecord) uint64 {
+	r.seq++
+	record.ID = r.seq
+	if len(r.records) >= 96 {
+		old := record.ID
+		for id := range r.records {
+			if id < old && id != r.trialRecord {
+				old = id
+			}
+		}
+		delete(r.records, old)
+	}
+	r.records[record.ID] = record
+	return record.ID
+}
+
 func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
 	cur = c.captureAutomaticScope(cur)
 	if !c.automaticScopeCurrent(cur) {
@@ -599,21 +616,10 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 			return nil, actual, errAutomaticScopeChanged
 		}
 		r.mu.Lock()
-		r.seq++
-		record := r.seq
-		if len(r.records) >= 96 {
-			old := record
-			for id := range r.records {
-				if id < old && id != r.trialRecord {
-					old = id
-				}
-			}
-			delete(r.records, old)
-		}
+		record := r.addYoutubeRecordLocked(youtubeRecord{cdnTrialSlot: cdnTrialSlot{TrialID: trialID, NeutralShortAttempt: r.cache[key].NeutralShortStreak + 1}, OpenMS: milliseconds(time.Since(openStarted)), Service: service, Active: err == nil, Profile: cur.profile.ID, Domain: q.Host, Destination: actual.Destination.String(), Stage: stage, Strategy: strategy, Reason: "OPEN", Trial: trial && stage == "LOCAL", Updated: time.Now()})
 		if trial && stage == "LOCAL" {
 			r.trialRecord = record
 		}
-		r.records[record] = youtubeRecord{cdnTrialSlot: cdnTrialSlot{TrialID: trialID, NeutralShortAttempt: r.cache[key].NeutralShortStreak + 1}, OpenMS: float64(time.Since(openStarted)) / float64(time.Millisecond), Service: service, Active: err == nil, ID: record, Profile: cur.profile.ID, Domain: q.Host, Destination: actual.Destination.String(), Stage: stage, Strategy: strategy, Reason: "OPEN", Trial: trial && stage == "LOCAL", Updated: time.Now()}
 		if decision.ConnectionID != 0 {
 			openEvent := decision
 			openEvent.Selection = nil
@@ -708,8 +714,11 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 }
 
 type youtubeMeter struct {
-	trialID         uint64
-	recoveryCurrent func() bool
+	trialID            uint64
+	recoveryCurrent    func() bool
+	rememberLocalProof bool
+	releaseProbe       func()
+	releaseProbeOnce   sync.Once
 	net.Conn
 	r                               *youtubeRuntime
 	id                              uint64
@@ -754,6 +763,9 @@ func (m *youtubeMeter) recoveryScopeCurrent() bool {
 }
 
 func (m *youtubeMeter) failure(reason string) {
+	if m.releaseProbe != nil {
+		m.releaseProbeOnce.Do(m.releaseProbe)
+	}
 	if !m.recoveryScopeCurrent() {
 		// An obsolete automatic flow is not a LOCAL failure verdict. Keep the
 		// stream's counters, but never demote the old scope or launch a new route.
@@ -977,12 +989,23 @@ func (m *youtubeMeter) account(tx, rx uint64) {
 		m.healthy = true
 	}
 	m.mu.Unlock()
+	if firstHello && m.releaseProbe != nil {
+		m.releaseProbeOnce.Do(m.releaseProbe)
+	}
 	if confirmed && m.stage != "RELAY" && !m.trial && m.recoveryScopeCurrent() {
-		m.r.confirmed(m.key, m.stage, m.strategy, time.Now())
+		now := time.Now()
+		m.r.confirmed(m.key, m.stage, m.strategy, now)
 		m.mu.Lock()
 		verified := m.rx
 		m.mu.Unlock()
 		m.r.recordVerification(m.key, verified)
+		if m.rememberLocalProof {
+			m.r.mu.Lock()
+			if !m.r.endpointBlockedLocked(m.key, m.strategy, cdnEndpoint{m.host, m.destination}, now) {
+				m.r.notePeerProofLocked(m.key, m.strategy, now)
+			}
+			m.r.mu.Unlock()
+		}
 	}
 	m.r.mu.Lock()
 	s := m.r.stats[m.label]
@@ -1074,6 +1097,9 @@ func (m *youtubeMeter) progressGap(now time.Time) {
 }
 
 func (m *youtubeMeter) Close() error {
+	if m.releaseProbe != nil {
+		m.releaseProbeOnce.Do(m.releaseProbe)
+	}
 	// Inspect before our own Close emits FIN, so that we cannot fabricate neutral proof.
 	if trace := m.currentInspection(); trace != nil && trace.TCPPackets.RemoteRST > 0 {
 		m.failure("REMOTE_RST")

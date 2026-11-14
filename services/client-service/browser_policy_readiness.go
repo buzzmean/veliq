@@ -127,6 +127,9 @@ func (c *Controller) browserPolicyBaseReason() string {
 	if c.Backend == nil || !c.Backend.Status().Ready {
 		return "CAPTURE_NOT_READY"
 	}
+	if browserDPILocalFieldEnabled() {
+		return ""
+	}
 	p := &c.browser.readiness
 	p.mu.Lock()
 	relay := p.relay

@@ -97,10 +97,21 @@ func (r *youtubeRuntime) addCDNDecisionLocked(event cdnDecisionEvent) uint64 {
 
 func (r *youtubeRuntime) startCDNDecision(q browserproxy.Request, event cdnDecisionEvent) cdnDecisionEvent {
 	host := strings.ToLower(strings.TrimSuffix(q.Host, "."))
-	if !(host == "googlevideo.com" || strings.HasSuffix(host, ".googlevideo.com")) || !browserproxy.ValidPublicDNSName(host) {
+	if !(host == "googlevideo.com" || strings.HasSuffix(host, ".googlevideo.com")) {
 		return cdnDecisionEvent{}
 	}
-	event.Host, event.Ingress, event.HintOnly, event.Phase = host, q.Ingress, q.HintOnly, "SELECTED"
+	return r.startOriginDecision(q, event)
+}
+
+func (r *youtubeRuntime) startOriginDecision(q browserproxy.Request, event cdnDecisionEvent) cdnDecisionEvent {
+	host := strings.ToLower(strings.TrimSuffix(q.Host, "."))
+	if !browserproxy.ValidPublicDNSName(host) {
+		return cdnDecisionEvent{}
+	}
+	event.Host, event.Ingress, event.HintOnly = host, q.Ingress, q.HintOnly
+	if event.Phase == "" {
+		event.Phase = "SELECTED"
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	event.ConnectionID = r.addCDNDecisionLocked(event)

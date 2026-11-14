@@ -53,10 +53,11 @@ type browserRuntime struct {
 	local           map[string]*localstrategy.LocalStrategyEngine
 	plans           map[flowpolicy.LearnKey]chan struct{}
 	directTimeouts  *flowpolicy.DirectTimeoutCache
+	dpiLocalProbes  chan struct{}
 }
 
 func newBrowserRuntime() *browserRuntime {
-	return &browserRuntime{youtube: newYoutubeRuntime(), dnsWire: newBrowserDNSRuntime(), origins: browserproxy.NewOriginHealth(), dns: browserproxy.NewDNSRecovery(), learned: flowpolicy.NewBrowserLearning(), probes: make(chan struct{}, 4), local: map[string]*localstrategy.LocalStrategyEngine{}, plans: map[flowpolicy.LearnKey]chan struct{}{}, directTimeouts: flowpolicy.NewDirectTimeoutCache()}
+	return &browserRuntime{youtube: newYoutubeRuntime(), dnsWire: newBrowserDNSRuntime(), origins: browserproxy.NewOriginHealth(), dns: browserproxy.NewDNSRecovery(), learned: flowpolicy.NewBrowserLearning(), probes: make(chan struct{}, 4), local: map[string]*localstrategy.LocalStrategyEngine{}, plans: map[flowpolicy.LearnKey]chan struct{}{}, directTimeouts: flowpolicy.NewDirectTimeoutCache(), dpiLocalProbes: make(chan struct{}, browserDPILocalConcurrentProbes)}
 }
 func (c *Controller) browserOwner(ctx context.Context, source, local netip.AddrPort) (browserproxy.Owner, error) {
 	id, err := wp.LookupTCPPeer(source, local)
@@ -224,6 +225,9 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 	if current.network != plan.Network || current.enabled != plan.Enabled {
 		return nil, errors.New("browser policy changed before upstream open")
 	}
+	if c.browserDPILocalRequest(current, q) && (plan.Policy.Action == flowpolicy.Relay || plan.Policy.Action == flowpolicy.RelayRequired || plan.Policy.RelayID != "") {
+		return nil, errors.New("DPI_LOCAL_RELAY_FORBIDDEN")
+	}
 	if protectedBrowserDomain(q.Host) && plan.Policy.Action != flowpolicy.RelayRequired {
 		return nil, errors.New("protected origin cannot downgrade")
 	}
@@ -333,6 +337,24 @@ func (c *Controller) browserPlan(ctx context.Context, q browserproxy.Request) (b
 	current, err := c.browserProfile(q.Owner)
 	if err != nil {
 		return browserproxy.Plan{}, err
+	}
+	if c.browserDPILocalRequest(current, q) {
+		return c.planDPILocal(ctx, current, q)
+	}
+	if browserDPILocalFieldEnabled() && current.enabled && nativeBrowserProfile(current.profile) && dpiLocalHasAuthority(q) &&
+		browserproxy.KnownDoHEndpoint(q.Host, netip.AddrPortFrom(netip.Addr{}, q.Port)) {
+		resolver := c.BrowserResolver
+		if resolver == nil {
+			resolver = net.DefaultResolver
+		}
+		address, err := dpiLocalDNS(ctx, q.Host, resolver.LookupNetIP)
+		if err != nil {
+			return browserproxy.Plan{Enabled: true, Network: current.network, Policy: dpiLocalBlocked("DPI_LOCAL_DOH_DNS_FAILED")}, browserproxy.ErrOriginDNS
+		}
+		destination := netip.AddrPortFrom(address, q.Port)
+		tuple := wp.Tuple{Protocol: "tcp", Source: q.Source, Destination: destination}
+		return browserproxy.Plan{Enabled: true, Network: current.network, Destination: destination, FirstFlightManaged: true,
+			Policy: c.browserFlow(current.profile, current.id, tuple, q.Host, current.network), Probe: "DPI_LOCAL_ENCRYPTED_RESOLVER"}, nil
 	}
 	if cached, ok := c.browserDNSCachedPlan(q, current); ok {
 		return cached, nil

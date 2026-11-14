@@ -83,9 +83,10 @@ type nativeBrowserRecord struct {
 	Active          bool               `json:"active"`
 }
 type nativeBrowserSnapshot struct {
-	Authority    browserAuthorityView `json:"authority_transport"`
-	YoutubeLocal youtubeSnapshot      `json:"youtube_local_ladder"`
-	DNS          map[string]any       `json:"browser_dns"`
+	Authority     browserAuthorityView `json:"authority_transport"`
+	YoutubeLocal  youtubeSnapshot      `json:"youtube_local_ladder"`
+	DNS           map[string]any       `json:"browser_dns"`
+	DPILocalField bool                 `json:"dpi_local_field,omitempty"`
 
 	DomainCache        map[string]any               `json:"domain_cache"`
 	CaptureIngress     *wp.CaptureIngressSnapshot   `json:"capture_ingress,omitempty"`
@@ -147,6 +148,10 @@ func (c *Controller) nativeBrowserActivation(enabled, wasEnabled bool, at time.T
 }
 func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
 	s := nativeBrowserSnapshot{Authority: c.authorityStatus(), YoutubeLocal: c.browser.youtube.snapshot(), NativeOnlyState: "NATIVE_ONLY_NOT_OBSERVED", NativeOnlyAutoMode: "DEGRADED_AUTHENTICATED_RELAY_WITHOUT_AUTHORITY", Version: 1, Ready: c.nativeBackendReady(), ExistingTCP: "PINNED_UNTIL_CLOSED; reload may reuse HTTP/2", PageVerification: "NOT_OBSERVED; bidirectional bytes are not HTTPS/page PASS", Profiles: []nativeBrowserProfileStatus{}, Records: []nativeBrowserRecord{}}
+	s.DPILocalField = browserDPILocalFieldEnabled()
+	if s.DPILocalField {
+		s.NativeOnlyAutoMode = "DPI_CONNECT_LOCAL_ONLY; unidentified raw TLS requires CONNECT"
+	}
 	c.mu.Lock()
 	s.Enabled = c.enabled
 	c.mu.Unlock()
@@ -171,7 +176,7 @@ func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
 		s.Reason = "BROWSER_PROFILES_PENDING"
 	case !s.Ready:
 		s.Reason = "NATIVE_CAPTURE_NOT_READY"
-	case !c.relayConnected():
+	case !s.DPILocalField && !c.relayConnected():
 		s.Reason = "RELAY_NOT_CONNECTED"
 	default:
 		s.State = "AUTHORITY_PENDING"
@@ -190,6 +195,9 @@ func (c *Controller) nativeSnapshot() nativeBrowserSnapshot {
 	s.RelayUsage = c.relayUsage().snapshot()
 	s.DomainCache = c.browser.domains.snapshot()
 	s.DNS = c.browser.dnsWire.snapshot()
+	if s.DPILocalField {
+		s.DNS["secure_dns_policy"] = "DPI_SYSTEM_DNS; KNOWN_DOH_CONNECT_DIRECT"
+	}
 	n := &c.browser.native
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -573,6 +581,34 @@ func (c *Controller) openNativeBrowser(ctx context.Context, p profiles.Profile, 
 	evidence := browserDomainEvidence{Source: "CLIENTHELLO_SNI_OR_HTTP_HOST", Domain: q.Host, Confidence: "observed on this connection", Candidates: []string{}}
 	plan := browserproxy.Plan{Enabled: true, Network: current.network, Destination: t.Destination, Policy: d.Policy}
 	if nativeBrowserProfile(current.profile) && q.Secure {
+		if browserDPILocalFieldEnabled() {
+			var hints browserDomainEvidence
+			if opaque {
+				hints = c.browser.domains.profileEvidenceFor(current.network, p.ID, t.Destination.Addr(), d.OuterSNI, time.Now(), func(host string) bool {
+					return c.browserOriginPolicy(host).Kind != ""
+				})
+			}
+			reason := ""
+			if !c.dpiLocalRelayEvidence(q.Host, d.OuterSNI, hints) {
+				if dpiHost := c.dpiLocalEvidenceHost(q.Host, d.OuterSNI, hints); dpiHost != "" {
+					q.Host = dpiHost
+					reason = "DPI_LOCAL_CONNECT_AUTHORITY_REQUIRED"
+				} else if browserproxy.KnownDoHEndpoint(q.Host, t.Destination) {
+					reason = "DPI_LOCAL_DOH_REQUIRES_CONNECT"
+				} else if opaque {
+					reason = "DPI_LOCAL_OPAQUE_REQUIRES_CONNECT"
+				}
+			}
+			if reason != "" {
+				plan.Policy = dpiLocalBlocked(reason)
+				c.browser.youtube.startOriginDecision(q, cdnDecisionEvent{Destination: t.Destination.String(), Phase: "DENIED", Stage: "BLOCK", Reason: reason})
+				err := errors.New(reason)
+				n.opened(record, plan, err)
+				d = applyFlowResult(current.profile, d, plan.Policy, current.network, c.Local)
+				d.BlockOnFailure, d.NewConnectionsOnly = true, true
+				return nil, d, err
+			}
+		}
 		// A ClientHello cannot identify later encrypted HTTP/2 authorities. Until
 		// the browser uses the authority PAC, keep raw TLS on an explicitly
 		// degraded authenticated relay. Never admit LOCAL/DIRECT from initial SNI,

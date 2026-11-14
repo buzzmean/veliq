@@ -78,6 +78,9 @@ func (u *updater) set(state, failure string, m *release.Manifest) {
 // Club images are frozen and diskless: an update would be downloaded again on
 // every boot and lost. The owner updates the image instead.
 func (u *updater) disabled() string {
+	if browserDPILocalFieldEnabled() {
+		return "DPI_LOCAL_FIELD_TEST"
+	}
 	if u.current == 0 {
 		return "DEVELOPER_BUILD"
 	}
