@@ -342,16 +342,17 @@ func (r *youtubeRuntime) takeTrial(k youtubeKey, now time.Time, peer relaySiblin
 	return id, ok
 }
 func (r *youtubeRuntime) takeEndpointTrial(k youtubeKey, now time.Time, peer relaySiblingEvidence, endpoint cdnEndpoint) (string, uint64, bool) {
-	strategy, token, _ := r.decideEndpointTrial(k, now, peer, endpoint)
+	strategy, token, _, _ := r.decideEndpointTrial(k, now, peer, endpoint)
 	return strategy, token, token != 0
 }
 
-func (r *youtubeRuntime) decideEndpointTrial(k youtubeKey, now time.Time, peer relaySiblingEvidence, endpoint cdnEndpoint) (string, uint64, string) {
+func (r *youtubeRuntime) decideEndpointTrial(k youtubeKey, now time.Time, peer relaySiblingEvidence, endpoint cdnEndpoint) (string, uint64, string, cdnTrialAdmissionEvidence) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	v := r.cache[k]
+	v, found := r.cache[k]
+	evidence := cdnTrialAdmissionEvidence{CheckedAt: now.UTC(), Cache: cdnCacheSnapshot(v, found)}
 	if !youtubeCDN(k) {
-		return "", 0, "NOT_A_CDN_TRIAL"
+		return "", 0, "NOT_A_CDN_TRIAL", evidence
 	}
 	strategy := v.Qualified
 	reason := "ADMITTED"
@@ -365,8 +366,14 @@ func (r *youtubeRuntime) decideEndpointTrial(k youtubeKey, now time.Time, peer r
 	case !r.qualified(k, strategy, now):
 		reason = "STRATEGY_PROOF_EXPIRED"
 	default:
-		if r.endpointBlockedLocked(k, strategy, endpoint, now) {
+		check := r.endpointCheckLocked(k, strategy, endpoint, now)
+		evidence.Endpoint = &check
+		if check.Blocked {
 			strategy = r.cdnCandidate(k, v, endpoint, now)
+			if strategy != "" {
+				alternate := r.endpointCheckLocked(k, strategy, endpoint, now)
+				evidence.Alternate = &alternate
+			}
 		}
 		switch {
 		case strategy == "":
@@ -389,7 +396,7 @@ func (r *youtubeRuntime) decideEndpointTrial(k youtubeKey, now time.Time, peer r
 		if r.room(k, now) {
 			r.cache[k] = v
 		}
-		return "", 0, reason
+		return "", 0, reason, evidence
 	}
 	if v.NeutralShortStreak >= cdnNeutralShortLimit {
 		v.NeutralShortStreak = 0
@@ -410,7 +417,7 @@ func (r *youtubeRuntime) decideEndpointTrial(k youtubeKey, now time.Time, peer r
 	v.Retry = now.Add(youtubeTrialCooldown)
 	v.TrialAfter = v.Retry
 	r.cache[k] = v
-	return strategy, r.trialID, reason
+	return strategy, r.trialID, reason, evidence
 }
 func (r *youtubeRuntime) finishTrial(k youtubeKey, strategy string, success, afterReply bool, now time.Time, received ...uint64) {
 	n := uint64(0)

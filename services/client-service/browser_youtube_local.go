@@ -27,9 +27,11 @@ const youtubeRetryAfter = time.Minute
 var youtubeLegacyOrder = []string{"fake5x2-disorder", "fake8x2-disorder", "fake5", "fake8-disorder", "fake2", "disorder", "sni", "split1", "fake5-only"}
 
 type youtubeKey struct {
-	Network, Profile, Domain string
-	Port                     uint16
-	HintOnly                 bool
+	Network  string `json:"network"`
+	Profile  string `json:"profile"`
+	Domain   string `json:"domain"`
+	Port     uint16 `json:"port"`
+	HintOnly bool   `json:"hint_only"`
 }
 type cdnTrialStreak struct {
 	strategy string
@@ -187,12 +189,12 @@ func youtubeScope(cur profilesResult, q browserproxy.Request) youtubeKey {
 func (r *youtubeRuntime) choose(k youtubeKey, now time.Time) (string, string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if k.Network != "" {
-		if v, ok := r.cache[k]; ok && now.Before(v.Until) {
-			if v.Stage == "LOCAL" || v.Stage == "DIRECT" {
-				return v.Stage, v.Strategy
-			}
-		}
+	return r.cache[k].route(k.Network, now)
+}
+
+func (v youtubeLearn) route(network string, now time.Time) (string, string) {
+	if network != "" && now.Before(v.Until) && (v.Stage == "LOCAL" || v.Stage == "DIRECT") {
+		return v.Stage, v.Strategy
 	}
 	return "RELAY", ""
 }
@@ -476,7 +478,7 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 	r.register(key, cur, q, p, time.Now())
 	r.shared.notify()
 	endpoint := cdnEndpoint{q.Host, p.Destination.String()}
-	stage, strategy, decisionReason := r.chooseEndpointWithReason(key, endpoint, time.Now())
+	stage, strategy, decisionReason, selection := r.chooseEndpointWithReason(key, endpoint, time.Now())
 	if stage == "RELAY" && p.Policy.Source == "configured_baseline" && p.Policy.Action == flowpolicy.DirectPlus {
 		stage = "LOCAL"
 		strategy = "baseline"
@@ -489,8 +491,9 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 	trialPeer := relaySiblingEvidence{AgeMS: -1, Reason: "NOT_A_CDN_TRIAL"}
 	if stage == "RELAY" {
 		peer := c.relayUsage().mediaTrialSibling(cur.profile.ID, cur.network, q.Host, time.Now())
-		candidate, token, reason := r.decideEndpointTrial(key, time.Now(), peer, endpoint)
+		candidate, token, reason, evidence := r.decideEndpointTrial(key, time.Now(), peer, endpoint)
 		admission = reason
+		selection.Trial = &evidence
 		if token != 0 {
 			trialID = token
 			trialPeer = peer
@@ -501,6 +504,7 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 	}
 	decision := r.startCDNDecision(q, cdnDecisionEvent{
 		Destination: endpoint.Address, Stage: stage, Strategy: strategy, Reason: decisionReason, Admission: admission, TrialID: trialID,
+		Selection: &selection,
 	})
 	var step func(context.Context, string, string, int, string) (net.Conn, browserproxy.Plan, error)
 	step = func(work context.Context, stage, strategy string, depth int, fallbackReason string) (net.Conn, browserproxy.Plan, error) {
@@ -548,7 +552,11 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 			actual.Policy.Source = youtubeLadderSource
 			actual.FirstFlightManaged = true
 			actual.Probe = "YOUTUBE_LOCAL_LADDER"
-
+			if fallbackReason == "" {
+				actual.Policy.Reason = "RELAY selected (" + decisionReason + ", local_admission=" + admission + ")"
+			} else {
+				actual.Policy.Reason = "RELAY fallback (" + fallbackReason + ")"
+			}
 		}
 		budget := 650 * time.Millisecond
 		if stage == "RELAY" {
@@ -559,7 +567,9 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 		var conn net.Conn
 		var err error
 		if stage == "RELAY" {
+			reason := actual.Policy.Reason
 			conn, actual, err = c.openKnownBrowserGroup(attempt, cur, q, actual, open)
+			actual.Policy.Reason = reason
 			actual.FirstFlightManaged = true
 		} else {
 			conn, err = open(attempt, q, actual)
@@ -592,6 +602,7 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 		r.records[record] = youtubeRecord{cdnTrialSlot: cdnTrialSlot{TrialID: trialID, NeutralShortAttempt: r.cache[key].NeutralShortStreak + 1}, OpenMS: float64(time.Since(openStarted)) / float64(time.Millisecond), Service: service, Active: err == nil, ID: record, Profile: cur.profile.ID, Domain: q.Host, Destination: actual.Destination.String(), Stage: stage, Strategy: strategy, Reason: "OPEN", Trial: trial && stage == "LOCAL", Updated: time.Now()}
 		if decision.ConnectionID != 0 {
 			openEvent := decision
+			openEvent.Selection = nil
 			openEvent.RecordID = record
 			openEvent.Stage = stage
 			openEvent.Strategy = strategy
