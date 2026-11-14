@@ -145,6 +145,11 @@ func TestAutomaticHealthyTLSDoesNotProbeOrOpenRelay(t *testing.T) {
 
 func TestAutomaticSilentTLSRecoversBeforeApplicationPayload(t *testing.T) {
 	c, cur, q, p := automaticFixture(t)
+	// Existing no-LOCAL fallback remains useful when the network guard denies a
+	// transform. The separate LOCAL fixtures cover eligible networks.
+	network := *c.network.Load()
+	network.ConflictsObservedAt = time.Time{}
+	c.network.Store(&network)
 	server, roots := youtubeTLSHTTPFixture(t, q.Host, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "recovered") }))
 	var direct, relay atomic.Int32
 	raw, _, err := c.openAutomaticPlan(context.Background(), cur, q, p, func(ctx context.Context, _ browserproxy.Request, plan browserproxy.Plan) (net.Conn, error) {

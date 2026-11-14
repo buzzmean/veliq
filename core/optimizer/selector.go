@@ -4,6 +4,7 @@ package optimizer
 import (
 	"errors"
 	"math"
+	"net/netip"
 	"sort"
 	"sync"
 	"time"
@@ -19,20 +20,24 @@ type RelayCandidate struct {
 	Load    float64 `json:"load,omitempty"`
 }
 type RouteMeasurement struct {
-	RouteID         string        `json:"route_id"`
-	RTT             time.Duration `json:"rtt"`
-	Jitter          time.Duration `json:"jitter"`
-	Loss            float64       `json:"loss"`
-	FailureRate     float64       `json:"failure_rate"`
-	Load            float64       `json:"load"`
-	Stability       float64       `json:"stability"`
-	Available       bool          `json:"available"`
-	ObservedAt      time.Time     `json:"observed_at"`
-	Samples         int           `json:"samples"`
-	Probes          []ProbeSample `json:"-"`
-	ConsecutiveLoss int           `json:"consecutive_loss,omitempty"`
-	MaxLossBurst    int           `json:"max_loss_burst,omitempty"`
-	TransportError  string        `json:"transport_error,omitempty"`
+	Target              netip.AddrPort `json:"-"`
+	RouteAddress        string         `json:"-"`
+	Network             string         `json:"-"`
+	AuthenticatedTarget bool           `json:"-"`
+	RouteID             string         `json:"route_id"`
+	RTT                 time.Duration  `json:"rtt"`
+	Jitter              time.Duration  `json:"jitter"`
+	Loss                float64        `json:"loss"`
+	FailureRate         float64        `json:"failure_rate"`
+	Load                float64        `json:"load"`
+	Stability           float64        `json:"stability"`
+	Available           bool           `json:"available"`
+	ObservedAt          time.Time      `json:"observed_at"`
+	Samples             int            `json:"samples"`
+	Probes              []ProbeSample  `json:"-"`
+	ConsecutiveLoss     int            `json:"consecutive_loss,omitempty"`
+	MaxLossBurst        int            `json:"max_loss_burst,omitempty"`
+	TransportError      string         `json:"transport_error,omitempty"`
 }
 type RouteScore struct {
 	ID          string           `json:"id"`

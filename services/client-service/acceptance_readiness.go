@@ -26,6 +26,7 @@ type acceptanceRelaySource struct {
 	session    acceptanceRelay
 	target     netip.AddrPort
 	generation uint64
+	address    string
 }
 
 func sessionConnected(session acceptanceRelay) bool {

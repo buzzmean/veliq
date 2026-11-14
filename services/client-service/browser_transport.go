@@ -31,7 +31,9 @@ type browserRuntime struct {
 	domains   browserDomainIndex
 	readiness browserPolicyReadiness
 
-	youtubeLocalBetaProbes chan struct{}
+	youtubeLocalBetaProbes  chan struct{}
+	automaticTLSLocal       *localstrategy.Cache
+	automaticTLSLocalProbes chan struct{}
 
 	silent          browserSilentState
 	chromeWrite     func(string, []string, string) error
@@ -58,7 +60,12 @@ type browserRuntime struct {
 }
 
 func newBrowserRuntime() *browserRuntime {
-	return &browserRuntime{youtube: newYoutubeRuntime(), dnsWire: newBrowserDNSRuntime(), origins: browserproxy.NewOriginHealth(), dns: browserproxy.NewDNSRecovery(), learned: flowpolicy.NewBrowserLearning(), probes: make(chan struct{}, 4), youtubeLocalBetaProbes: make(chan struct{}, 4), local: map[string]*localstrategy.LocalStrategyEngine{}, plans: map[flowpolicy.LearnKey]chan struct{}{}, directTimeouts: flowpolicy.NewDirectTimeoutCache()}
+	return &browserRuntime{
+		youtube: newYoutubeRuntime(), dnsWire: newBrowserDNSRuntime(), origins: browserproxy.NewOriginHealth(), dns: browserproxy.NewDNSRecovery(),
+		learned: flowpolicy.NewBrowserLearning(), probes: make(chan struct{}, 4), youtubeLocalBetaProbes: make(chan struct{}, 4),
+		automaticTLSLocal: localstrategy.NewCache(256), automaticTLSLocalProbes: make(chan struct{}, 4),
+		local: map[string]*localstrategy.LocalStrategyEngine{}, plans: map[flowpolicy.LearnKey]chan struct{}{}, directTimeouts: flowpolicy.NewDirectTimeoutCache(),
+	}
 }
 func (c *Controller) browserOwner(ctx context.Context, source, local netip.AddrPort) (browserproxy.Owner, error) {
 	id, err := wp.LookupTCPPeer(source, local)
@@ -260,7 +267,8 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 		}
 	}
 	if d.Route.Local() {
-		managedLocal := plan.Policy.Source == youtubeLadderSource || plan.YouTubeLocalGeneration != 0 && plan.Policy.Source == youTubeLocalBetaSource
+		managedLocal := plan.Policy.Source == youtubeLadderSource || plan.Policy.Source == automaticTLSLocalSource ||
+			plan.YouTubeLocalGeneration != 0 && plan.Policy.Source == youTubeLocalBetaSource
 		if !c.browserLocalAllowed(current.network) && !(managedLocal && c.youtubeLocalAllowed(current.network)) {
 			return nil, errors.New("native local strategy unavailable on current network")
 		}

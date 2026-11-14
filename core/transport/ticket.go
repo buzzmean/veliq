@@ -7,14 +7,58 @@ import (
 	"github.com/buzzmean/neexitlag/core/protocol"
 	"github.com/quic-go/quic-go"
 	"io"
+	"net"
 	"time"
 )
 
 func DialWithTicket(ctx context.Context, addr string, t *tls.Config, ticket []byte) (*Client, error) {
+	c, err := dialWithTicket(ctx, addr, t, ticket, nil)
+	if err == nil {
+		go c.receive()
+	}
+	return c, err
+}
+
+// DialWithTicketPathMigration opts an authenticated session into same-peer
+// local path validation. Non-zero QUIC connection IDs must be negotiated on
+// the initial handshake so the peer's path responses can reach a second socket.
+func DialWithTicketPathMigration(ctx context.Context, addr string, t *tls.Config, ticket []byte) (*Client, error) {
+	peer, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		return nil, err
+	}
+	socket, err := net.ListenUDP("udp", nil)
+	if err != nil {
+		return nil, err
+	}
+	tr := &quic.Transport{Conn: socket}
+	c, err := dialWithTicket(ctx, addr, t, ticket, func(ctx context.Context, cfg *tls.Config) (*quic.Conn, error) {
+		if cfg.ServerName == "" {
+			cfg.ServerName, _, _ = net.SplitHostPort(addr)
+		}
+		return tr.Dial(ctx, peer, cfg, ClientQUICConfig())
+	})
+	if err != nil {
+		_ = tr.Close()
+		_ = socket.Close()
+		return nil, err
+	}
+	c.pathTransports = []*quic.Transport{tr}
+	go c.receive()
+	return c, nil
+}
+
+func dialWithTicket(ctx context.Context, addr string, t *tls.Config, ticket []byte, pathDial func(context.Context, *tls.Config) (*quic.Conn, error)) (*Client, error) {
 	cfg := t.Clone()
 	cfg.NextProtos = []string{protocol.LeaseALPN, protocol.TicketALPN}
 	start := time.Now()
-	conn, e := quic.DialAddr(ctx, addr, cfg, ClientQUICConfig())
+	var conn *quic.Conn
+	var e error
+	if pathDial == nil {
+		conn, e = quic.DialAddr(ctx, addr, cfg, ClientQUICConfig())
+	} else {
+		conn, e = pathDial(ctx, cfg)
+	}
 	if e != nil {
 		return nil, e
 	}
@@ -40,7 +84,7 @@ func DialWithTicket(ctx context.Context, addr string, t *tls.Config, ticket []by
 	if e = protocol.WriteTicket(s, ticket); e != nil {
 		return fail(e)
 	}
-	c := &Client{handshakeMS: handshakeMS, conn: conn, flows: make(map[uint32]*UDPFlow), done: make(chan struct{})}
+	c := newClient(conn, handshakeMS)
 	if conn.ConnectionState().TLS.NegotiatedProtocol == protocol.LeaseALPN {
 		ack, err := protocol.ReadLeaseAck(s)
 		if err != nil {
@@ -64,6 +108,5 @@ func DialWithTicket(ctx context.Context, addr string, t *tls.Config, ticket []by
 			return fail(e)
 		}
 	}
-	go c.receive()
 	return c, nil
 }

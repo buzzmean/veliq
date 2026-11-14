@@ -195,7 +195,7 @@ jobs:
             Get-Content -LiteralPath $file.FullName -Tail 20 | ForEach-Object { Write-Host $_ }
           }
       - name: Build candidate Setup with the verified existing public CA (never execute here)
-        if: ${{ (github.head_ref || github.ref_name) != 'feat/youtube-local-beta' }}
+        if: ${{ (github.head_ref || github.ref_name) != 'feat/youtube-local-beta' && (github.head_ref || github.ref_name) != 'feat/unified-auto-beta' }}
         shell: pwsh
         env:
           EXPECTED_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -223,7 +223,7 @@ jobs:
           [IO.File]::WriteAllLines((Join-Path $PWD 'bin/beta-kit/SHA256SUMS'),$sums,[Text.UTF8Encoding]::new($false))
           Write-Host "BETA_SETUP_BUILT commit=$env:EXPECTED_COMMIT setup_sha256=$setupHash ca_der_sha256=$caPin approval=NOT_APPROVED"
       - uses: actions/upload-artifact@v4
-        if: ${{ (github.head_ref || github.ref_name) != 'feat/youtube-local-beta' }}
+        if: ${{ (github.head_ref || github.ref_name) != 'feat/youtube-local-beta' && (github.head_ref || github.ref_name) != 'feat/unified-auto-beta' }}
         with:
           name: VELIQ-beta-candidate-win-x64-NOT-APPROVED
           path: bin/beta-kit/

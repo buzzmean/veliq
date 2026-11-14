@@ -87,25 +87,25 @@ type Snapshot struct {
 	ActiveApps       []string                      `json:"active_apps"`
 }
 type Controller struct {
-	emergencyHandler func(context.Context,string,json.RawMessage)(any,error)
+	emergencyHandler func(context.Context, string, json.RawMessage) (any, error)
 	emergencyStopped atomic.Bool
-	emergencyClosed atomic.Bool
-	closeOnce sync.Once
-	updater         atomic.Pointer[updater]
-	traffic         *traffic.Client
-	remoteTraffic   remoteTrafficState
-	catalog         *clientCatalog
-	clubConfig      atomic.Pointer[clubConfiguration]
-	clubProbe       atomic.Pointer[ClubRelayCheck]
-	clubMode        atomic.Bool
-	games           gameRuntime
-	activation      activationRuntime
-	subscription    subscriptionRuntime
-	remoteDone      chan struct{}
-	remoteMu        sync.Mutex
-	remoteCancel    context.CancelFunc
-	selfExecutable  string
-	BrowserOwnerSID string // Existing installation owner; restrict the loopback endpoint to this user.
+	emergencyClosed  atomic.Bool
+	closeOnce        sync.Once
+	updater          atomic.Pointer[updater]
+	traffic          *traffic.Client
+	remoteTraffic    remoteTrafficState
+	catalog          *clientCatalog
+	clubConfig       atomic.Pointer[clubConfiguration]
+	clubProbe        atomic.Pointer[ClubRelayCheck]
+	clubMode         atomic.Bool
+	games            gameRuntime
+	activation       activationRuntime
+	subscription     subscriptionRuntime
+	remoteDone       chan struct{}
+	remoteMu         sync.Mutex
+	remoteCancel     context.CancelFunc
+	selfExecutable   string
+	BrowserOwnerSID  string // Existing installation owner; restrict the loopback endpoint to this user.
 	// In-process fixture injection only; production uses the system resolver/roots.
 	BrowserRecoveryExecutable string                 // In-process fixture only; production authenticates its own installed binary.
 	BrowserAlternativeDNS     browserproxy.DNSLookup // In-process fixture only; no IPC/config override.
@@ -171,6 +171,7 @@ func New(ctx context.Context) *Controller {
 	}
 	c.Selector.SetFlapGuard(optimizer.DefaultFlapGuard())
 	c.Measurements.OnFailure = c.Selector.ReportProbeFailure
+	c.Measurements.Network = c.gameMeasurementNetwork
 	c.Engine.SetAutoSelector(func(f routing.Flow) routing.Policy {
 		c.mu.Lock()
 		automatic := c.settings.Automatic
@@ -254,7 +255,13 @@ func (c *Controller) Start() {
 	c.wg.Add(1)
 	go func() { defer c.wg.Done(); c.watchNetwork() }()
 	c.wg.Add(1)
-	go func() { defer c.wg.Done(); c.Measurements.Run(c.ctx, c.Selector.Observe) }()
+	go func() {
+		defer c.wg.Done()
+		c.Measurements.Run(c.ctx, func(m optimizer.RouteMeasurement) {
+			c.Selector.Observe(m)
+			c.games.quality.Observe(m)
+		})
+	}()
 }
 func (c *Controller) Close() {
 	c.closeOnce.Do(c.closeResources)
@@ -598,8 +605,10 @@ func (c *Controller) Snapshot() Snapshot {
 }
 func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMessage) (result any, err error) {
 	if c.emergencyStopped.Load() && !emergencyMethod(method) {
-		if method=="status" {return c.Snapshot(),nil}
-		return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")
+		if method == "status" {
+			return c.Snapshot(), nil
+		}
+		return nil, errors.New("EMERGENCY_STOP_IN_PROGRESS")
 	}
 	if method == "club.status" {
 		return c.clubStatus(), nil
@@ -635,7 +644,9 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 	if isEdgeMutation(method) {
 		c.activationMu.Lock()
 		defer c.activationMu.Unlock()
-		if c.emergencyStopped.Load() {return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")}
+		if c.emergencyStopped.Load() {
+			return nil, errors.New("EMERGENCY_STOP_IN_PROGRESS")
+		}
 		// Include guard-publication failures before/after handleEdge in the same
 		// bounded status diagnostic; otherwise a failure before listener was invisible.
 		defer func() {
@@ -660,7 +671,9 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 	case "optimize", "profile.set", "profile.delete", "settings.set", "local.set", "local.preset.apply", "auto.commit", "browser.silent.guard", "browser.silent.apply", "browser.prepare", "browser.start", "browser.confirm", "browser.native.enable":
 		c.activationMu.Lock()
 		defer c.activationMu.Unlock()
-		if c.emergencyStopped.Load() {return nil,errors.New("EMERGENCY_STOP_IN_PROGRESS")}
+		if c.emergencyStopped.Load() {
+			return nil, errors.New("EMERGENCY_STOP_IN_PROGRESS")
+		}
 		if e := c.publishBrowserGuard(true); e != nil {
 			return nil, e
 		}
@@ -673,8 +686,10 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 	}
 	switch method {
 	case "emergency.status", "emergency.stop", "emergency.finish":
-		if c.emergencyHandler==nil {return nil,errors.New("EMERGENCY_PASSWORD_NOT_CONFIGURED")}
-		return c.emergencyHandler(ctx,method,raw)
+		if c.emergencyHandler == nil {
+			return nil, errors.New("EMERGENCY_PASSWORD_NOT_CONFIGURED")
+		}
+		return c.emergencyHandler(ctx, method, raw)
 	case "update.status":
 		if u := c.updater.Load(); u != nil {
 			return u.snapshot(), nil

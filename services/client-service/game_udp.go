@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"sort"
@@ -34,10 +35,11 @@ type gameEntry struct {
 	persisted uint64
 }
 type gameRuntime struct {
-	mu     sync.Mutex
-	items  map[string]*gameEntry
-	budget *gameudp.Budget
-	error  string
+	mu      sync.Mutex
+	items   map[string]*gameEntry
+	budget  *gameudp.Budget
+	error   string
+	quality gameudp.TargetQuality
 }
 type gameDiskEntry struct {
 	LocalOnly bool               `json:"local_only,omitempty"`
@@ -56,14 +58,15 @@ type GameUDPStatus struct {
 	Error    string                `json:"error,omitempty"`
 }
 type GameProfileStatus struct {
-	Activity  string           `json:"activity"`
-	Ready     bool             `json:"ready"`
-	ProfileID string           `json:"profile_id"`
-	Name      string           `json:"name"`
-	State     string           `json:"state"`
-	Reason    string           `json:"reason"`
-	AntiCheat string           `json:"anti_cheat"`
-	Engine    gameudp.Snapshot `json:"engine"`
+	Activity      string                       `json:"activity"`
+	Ready         bool                         `json:"ready"`
+	ProfileID     string                       `json:"profile_id"`
+	Name          string                       `json:"name"`
+	State         string                       `json:"state"`
+	Reason        string                       `json:"reason"`
+	AntiCheat     string                       `json:"anti_cheat"`
+	Engine        gameudp.Snapshot             `json:"engine"`
+	TargetQuality *gameudp.TargetQualityStatus `json:"target_quality,omitempty"`
 }
 
 func (c *Controller) loadGames() {
@@ -98,7 +101,16 @@ func (c *Controller) saveGamesLocked() error {
 	}
 	v := gameDisk{Version: 2, Games: []gameDiskEntry{}}
 	for _, g := range c.games.items {
-		v.Games = append(v.Games, gameDiskEntry{ProfileID: g.ProfileID, Path: g.Path, Enabled: g.Enabled, LocalOnly: g.LocalOnly, Learning: g.Engine.Snapshot().Learning})
+		// Keep the on-disk history compatible with 708/709. New per-endpoint
+		// ladder steps are valid only in-memory on this build.
+		snapshot := g.Engine.Snapshot()
+		learning := snapshot.Learning[:0]
+		for _, entry := range snapshot.Learning {
+			if entry.Endpoint == "" || entry.LocalOnly || entry.Stage == gameudp.Direct && entry.Confirmed {
+				learning = append(learning, entry)
+			}
+		}
+		v.Games = append(v.Games, gameDiskEntry{ProfileID: g.ProfileID, Path: g.Path, Enabled: g.Enabled, LocalOnly: g.LocalOnly, Learning: learning})
 	}
 	raw, err := json.Marshal(v)
 	if err != nil || len(raw) > 256*1024 {
@@ -329,8 +341,38 @@ func (c *Controller) classifyGameUDP(id wp.ProcessIdentity, t wp.Tuple) (wp.Deci
 	if p.RelayID != "" {
 		d.GameRelayID = p.RelayID
 	}
+	// Exact target evidence is never substituted by the global VPS score. A
+	// user-pinned relay and LOCAL-only settings also stay in their own policy.
+	if p.RelayID == "" && !g.LocalOnly && n.Fingerprint == c.gameMeasurementNetwork() &&
+		c.games.quality.HasTarget(n.Fingerprint, t.Destination) {
+		relays := c.gameRelayAddresses()
+		d.GameQualityRelayID = c.games.quality.Compare(n.Fingerprint, t.Destination, relays, time.Now()).Relay
+		d.GameQualityRelayAddress = relays[d.GameQualityRelayID]
+	}
 	return d, true
 }
+
+func (c *Controller) gameMeasurementNetwork() string {
+	n := c.network.Load()
+	if n == nil || n.Error != "" || len(n.VPN) != 0 || len(n.Conflicts) != 0 ||
+		len(n.Fingerprint) != 64 || time.Since(n.ObservedAt) > 45*time.Second {
+		return ""
+	}
+	return n.Fingerprint
+}
+
+func (c *Controller) gameRelayAddresses() map[string]string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make(map[string]string, len(c.acceptanceRelays))
+	for id, configured := range c.acceptanceRelays {
+		if configured.address != "" && sessionConnected(configured.session) {
+			out[id] = configured.address
+		}
+	}
+	return out
+}
+
 func (c *Controller) gameStatus() GameUDPStatus {
 	// Reflect current guard/capture/optimization state without waiting for the tick.
 	c.updateGamesGate()
@@ -338,6 +380,8 @@ func (c *Controller) gameStatus() GameUDPStatus {
 	c.games.mu.Lock()
 	defer c.games.mu.Unlock()
 	out.Error = c.games.error
+	relays := c.gameRelayAddresses()
+	network, now := c.gameMeasurementNetwork(), time.Now()
 	for _, g := range c.games.items {
 		s := g.Engine.Snapshot()
 		state := "PENDING"
@@ -382,7 +426,14 @@ func (c *Controller) gameStatus() GameUDPStatus {
 		if name == "" {
 			name = g.ProfileID
 		}
-		out.Profiles = append(out.Profiles, GameProfileStatus{ProfileID: g.ProfileID, Name: name, State: state, Reason: reason, AntiCheat: g.AntiCheat, Engine: s, Ready: s.Enabled && reason == "", Activity: activity})
+		row := GameProfileStatus{ProfileID: g.ProfileID, Name: name, State: state, Reason: reason, AntiCheat: g.AntiCheat, Engine: s, Ready: s.Enabled && reason == "", Activity: activity}
+		if len(s.Flows) != 0 {
+			if endpoint, err := netip.ParseAddrPort(s.Flows[0].Destination); err == nil {
+				target := c.games.quality.Compare(network, endpoint, relays, now)
+				row.TargetQuality = &target
+			}
+		}
+		out.Profiles = append(out.Profiles, row)
 	}
 	sort.Slice(out.Profiles, func(i, j int) bool { return out.Profiles[i].ProfileID < out.Profiles[j].ProfileID })
 	// IPC responses must remain within the existing 64 KiB envelope.
@@ -398,6 +449,15 @@ func (c *Controller) gameStatus() GameUDPStatus {
 				f.Flows = f.Flows[:len(f.Flows)-1]
 				f.Truncated = true
 				trimmed = true
+			}
+		}
+		if !trimmed {
+			for i := range out.Profiles {
+				if q := out.Profiles[i].TargetQuality; q != nil && len(q.Samples) != 0 {
+					q.Samples = nil
+					out.Profiles[i].Engine.Truncated = true
+					trimmed = true
+				}
 			}
 		}
 		if !trimmed {

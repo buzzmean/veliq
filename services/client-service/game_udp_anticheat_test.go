@@ -59,7 +59,7 @@ func TestPUBGActiveArmedIsDistinctFromActuallyObservedDecoys(t *testing.T) {
 	c.Backend = &gameGuardFixture{hotBackendFixture: hotBackendFixture{ready: true}, guard: wp.GameUDPGuardStatus{Ready: true, DriverAntiCheat: "VANGUARD_OR_FACEIT", FaceitDriverRunning: true}}
 	c.updateGamesGate()
 	p := c.gameStatus().Profiles[0]
-	if p.State != "ACTIVE" || !p.Ready || p.Activity != "WAITING_NEW_FLOW" || len(p.Engine.Flows) != 0 || p.Reason != "" {
+	if p.State != "READY_NEW_FLOWS" || !p.Ready || p.Activity != "WAITING_NEW_FLOW" || len(p.Engine.Flows) != 0 || p.Reason != "" {
 		t.Fatal("false pending or false traffic evidence", p)
 	}
 	c.Backend.(*gameGuardFixture).guard.Conflict = true

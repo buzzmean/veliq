@@ -28,6 +28,8 @@ type Policy struct {
 	Auto           bool
 	Block          bool
 	Backups        []Route
+	ExactRelay     bool // This route was measured against a specific physical relay.
+	RelayAddress   string
 }
 type Key struct {
 	Protocol            string
@@ -40,17 +42,23 @@ type Engine struct {
 	mu           sync.Mutex
 	policies     map[string]Policy
 	relays       map[string]Relay
+	exactRelays  map[string]exactRelay
 	flows        map[Key]Flow
 	limit        int
 	selectPolicy func(Flow) Policy
 	onBytes      func(Flow, uint64, uint64)
 }
 
+type exactRelay struct {
+	address string
+	relay   Relay
+}
+
 func New(limit int) *Engine {
 	if limit <= 0 {
 		limit = 4096
 	}
-	return &Engine{health: map[udpHealthKey]udpHealth{}, policies: make(map[string]Policy), relays: make(map[string]Relay), flows: make(map[Key]Flow), limit: limit}
+	return &Engine{health: map[udpHealthKey]udpHealth{}, policies: make(map[string]Policy), relays: make(map[string]Relay), exactRelays: make(map[string]exactRelay), flows: make(map[Key]Flow), limit: limit}
 }
 func (e *Engine) SetAutoSelector(pick func(Flow) Policy) {
 	e.mu.Lock()
@@ -70,6 +78,15 @@ func (e *Engine) SetRelay(id string, r Relay) {
 	} else {
 		e.relays[id] = r
 	}
+}
+func (e *Engine) SetExactRelay(id, address string, r Relay) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if r == nil {
+		delete(e.exactRelays, id)
+		return
+	}
+	e.exactRelays[id] = exactRelay{address, r}
 }
 func key(f Flow) Key { return Key{f.Protocol, f.Source, f.Destination, f.PID} }
 func (e *Engine) reserve(f Flow) (Key, Policy, Relay, error) {
@@ -105,6 +122,13 @@ func (e *Engine) reserve(f Flow) (Key, Policy, Relay, error) {
 	f.CreatedAt = time.Now()
 	f.LastActivity = f.CreatedAt
 	e.flows[k] = f
+	if p.ExactRelay {
+		node := e.exactRelays[p.Route.RelayID]
+		if p.RelayAddress == "" || p.RelayAddress != node.address {
+			return k, p, nil, nil
+		}
+		return k, p, node.relay, nil
+	}
 	return k, p, e.relays[p.Route.RelayID], nil
 }
 func (e *Engine) remove(k Key) { e.mu.Lock(); delete(e.flows, k); e.mu.Unlock() }
@@ -161,7 +185,10 @@ func (e *Engine) OpenUDP(ctx context.Context, f Flow) (Datagram, error) {
 	}
 	var d Datagram
 	if !p.Route.Direct() {
-		routes := append([]Route{p.Route}, p.Backups...)
+		routes := []Route{p.Route}
+		if !p.ExactRelay {
+			routes = append(routes, p.Backups...)
+		}
 		for i, route := range routes {
 			if i >= 3 || route.Direct() {
 				break
@@ -202,7 +229,7 @@ func (e *Engine) OpenUDP(ctx context.Context, f Flow) (Datagram, error) {
 		e.remove(k)
 		return nil, err
 	}
-	if p.BlockOnFailure && !p.Route.Direct() {
+	if p.BlockOnFailure && !p.Route.Direct() && !p.ExactRelay {
 		// Reopen only this protected UDP mapping, retaining its pinned relay decision.
 		// No policy reevaluation, DIRECT fallback, endpoint-cache learning or payload replay.
 		e.mu.Lock()

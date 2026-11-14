@@ -197,7 +197,8 @@ func (c *Controller) openAutomaticPlan(ctx context.Context, cur profilesResult, 
 	if !cur.enabled || cur.routingDisabled || !automaticApplication(cur.profile) || directOnlyFlow(wp.Tuple{Protocol: "tcp", Destination: p.Destination}) || !p.Destination.Addr().Is4() {
 		return nil, p, errors.New("AUTOMATIC_SCOPE_EXCLUDED")
 	}
-	if p.Policy.Source == "rule" || p.Policy.Source == "configured_baseline" || p.Policy.Action == flowpolicy.Block {
+	if p.Policy.Source == "rule" || p.Policy.Source == "configured_baseline" || p.Policy.Action == flowpolicy.Block ||
+		p.Policy.Action == flowpolicy.DirectPlus {
 		conn, err := open(ctx, q, p)
 		return conn, p, err
 	}
@@ -209,8 +210,8 @@ func (c *Controller) openAutomaticPlan(ctx context.Context, cur profilesResult, 
 		conn, err := open(ctx, q, p)
 		return conn, p, err
 	}
-	if q.Secure && q.Port == 443 && browserproxy.ValidPublicDNSName(q.Host) {
-		if c.browserOriginPolicy(q.Host).Kind == "DPI" || c.localLadderEligible(cur, q, p) {
+	if q.Secure && q.Port == 443 && !q.HintOnly && !q.OriginAmbiguous && browserproxy.ValidPublicDNSName(q.Host) {
+		if youtubeRelayDomain(q.Host) && c.browserOriginPolicy(q.Host).Kind == "DPI" {
 			return c.openBrowserPlan(ctx, cur, q, p, open)
 		}
 		// Complete ClientHello only, bounded first-flight retry, never HTTP bodies,
@@ -240,8 +241,12 @@ func (c *Controller) openAutomaticPlan(ctx context.Context, cur profilesResult, 
 
 func (c *Controller) openAutomaticTLS(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
 	key := c.directTimeoutKey(cur, q, p)
+	local := c.automaticTLSLocalPlan(cur, q, p)
+	if local.confirmed {
+		return c.openAutomaticTLSLocal(ctx, cur, q, p, open, local, "LOCAL_CONFIRMED_EXACT_ENDPOINT")
+	}
 	if cur.network != "" && c.browser.directTimeouts.AddressFailed(key, time.Now()) {
-		return c.openOrdinaryAddresses(ctx, cur, q, p, open)
+		return c.recoverAutomaticTLS(ctx, cur, q, p, open, local, "DIRECT_CACHED_FAILURE")
 	}
 	failed := func(reason string) {
 		if cur.network != "" && c.automaticScopeCurrent(cur) && automaticNetworkFailure(reason) {
@@ -252,22 +257,43 @@ func (c *Controller) openAutomaticTLS(ctx context.Context, cur profilesResult, q
 	conn, err := open(attempt, q, p)
 	stop()
 	if err != nil {
+		if conn != nil {
+			_ = conn.Close()
+		}
 		if ctx.Err() != nil || !retryableDirectOpen(err) {
 			return nil, p, err
 		}
 		failed("DIRECT_OPEN_FAILED")
-		return c.openOrdinaryAddresses(ctx, cur, q, p, open)
+		return c.recoverAutomaticTLS(ctx, cur, q, p, open, local, "DIRECT_OPEN_FAILED")
+	}
+	if conn == nil {
+		return nil, p, errors.New("AUTOMATIC_DIRECT_OPEN_UNAVAILABLE")
 	}
 	p.FirstFlightManaged = true
 	ref := &youtubePlanRef{}
 	ref.set(p, conn)
-	conn = browserproxy.WatchFirstFlight(c.ctx, conn, 1200*time.Millisecond, func(work context.Context) (net.Conn, error) {
-		next, actual, err := c.openOrdinaryAddresses(work, cur, q, p, open)
+	openNext := func(work context.Context, request browserproxy.Request, actual browserproxy.Plan) (net.Conn, error) {
+		next, err := open(work, request, actual)
 		if err == nil {
 			ref.set(actual, next)
 		}
 		return next, err
-	}, failed)
+	}
+	firstReply := browserproxy.OriginSilenceTimeout
+	if browserproxy.KnownDoHEndpoint(q.Host, p.Destination) {
+		firstReply = 1200 * time.Millisecond // Existing encrypted DNS timeout.
+	}
+	conn = browserproxy.WatchRelayOrigin(conn, browserproxy.OriginConfig{Context: c.ctx, Health: browserproxy.NewOriginHealth(),
+		Initial: p.Destination, Silence: firstReply, OnFailure: failed,
+		ScopeCurrent: func() bool { return c.automaticScopeCurrent(cur) },
+		NextFlow: func(work context.Context, reason string) (net.Conn, error) {
+			next, actual, err := c.recoverAutomaticTLS(work, cur, q, p, openNext, local, reason)
+			if err == nil {
+				ref.set(actual, next)
+			}
+			return next, err
+		},
+	})
 	return &youtubePlanConn{Conn: conn, ref: ref}, p, nil
 }
 
@@ -298,7 +324,7 @@ func (c *Controller) automaticStatus() map[string]any {
 	c.mu.Unlock()
 	status := map[string]any{"version": 2, "observed_at": time.Now().UTC(), "enabled": enabled, "records": rows, "records_total": total, "records_omitted": total - len(rows), "records_lost": lost,
 		"application_verification": "NOT_VERIFIED; TLS records and bytes do not prove service, account or region access",
-		"discovery":                "automatic, ephemeral, verified process; explicit profiles retain priority", "scope": "public IPv4 TCP; HTTPS443 first-flight/local ladder; other TCP connect failures only",
+		"discovery":                "automatic, ephemeral, verified process; explicit profiles retain priority", "scope": "public IPv4 TCP; named HTTPS443 exact LOCAL proof or DIRECT, bounded LOCAL, authenticated RELAY; other TCP connect failures only",
 		"limits": []string{"unknown UDP is not switched on silence", "native IPv6 transport is not implemented", "encrypted application/region/auth errors are not inspected", "existing flows remain pinned"}}
 	// TLS/attempt metadata and long executable paths share the IPC frame budget.
 	// Preserve newest records and report every omission, including size trimming.

@@ -48,6 +48,12 @@ func (c *Controller) riotOwnerProfile(o browserproxy.Owner) (profilesResult, err
 // Reuse the finite first-flight guard: full ClientHello only, never replay after
 // ANY origin byte. No subnet verdict is inferred from a single silent endpoint.
 func (c *Controller) openRiotPlan(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	return c.openTLSAddresses(ctx, cur, q, p, open, c.openYoutubeLadder)
+}
+
+type tlsAddressFallback func(context.Context, profilesResult, browserproxy.Request, browserproxy.Plan, func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error)
+
+func (c *Controller) openTLSAddresses(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error), fallback tlsAddressFallback) (net.Conn, browserproxy.Plan, error) {
 	cur = c.captureAutomaticScope(cur)
 	open = c.automaticScopedOpen(cur, open)
 	ref := &youtubePlanRef{}
@@ -118,9 +124,7 @@ func (c *Controller) openRiotPlan(ctx context.Context, cur profilesResult, q bro
 		if !c.automaticScopeCurrent(cur) {
 			return nil, p, errAutomaticScopeChanged
 		}
-		// Same scoped catalog, background verified GET, LOCAL cache and negative TTL
-		// as browsers. Healthy auth/CDN hosts never enter this branch.
-		conn, actual, e := c.openYoutubeLadder(work, cur, q, p, observedOpen)
+		conn, actual, e := fallback(work, cur, q, p, observedOpen)
 		if e == nil {
 			ref.set(actual, conn)
 		}

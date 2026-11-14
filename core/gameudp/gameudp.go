@@ -90,9 +90,10 @@ type Key struct {
 }
 
 const (
-	Direct = "DIRECT"
-	Local  = "LOCAL_UDP"
-	Relay  = "RELAY"
+	Direct                 = "DIRECT"
+	Local                  = "LOCAL_UDP"
+	Relay                  = "RELAY"
+	MeasuredRelaySelection = "EXACT_TARGET_RELAY_IMPROVES_RTT_AND_LOSS"
 )
 
 type Evidence struct {
@@ -171,6 +172,7 @@ type Engine struct {
 	ladder                     bool
 	localOnly                  bool
 	startLocal                 bool
+	endpointScoped             bool
 	shared                     *Budget
 	application                string
 	network                    string
@@ -191,6 +193,18 @@ func New() *Engine {
 // NewLadder starts every unmeasured network/game DIRECT. Route/variant changes
 // apply to NEXT flows only; the caller owns authenticated relay transport.
 func NewLadder(b *Budget) *Engine { e := New(); e.ladder = true; e.shared = b; return e }
+
+// Scope newly learned failures and successes to a single endpoint. Historical
+// application-wide results remain readable by older builds but do not select a
+// route for a previously unseen game server.
+func (e *Engine) SetEndpointScoped() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if !e.endpointScoped {
+		e.endpointScoped = true
+		e.generation++
+	}
+}
 
 // SetStartLocal affects only subsequent Open calls; existing tuples keep their
 // selected stage and first-flight cutoff. Exact confirmed DIRECT endpoints win.
@@ -233,13 +247,17 @@ func (e *Engine) Enabled() bool         { e.mu.Lock(); defer e.mu.Unlock(); retu
 func endpointKey(n, a, d string) string { return learnKey(n, a) + "\x00" + d }
 func learnKey(n, a string) string       { return n + "\x00" + Canonical(a) }
 func (e *Engine) trialKey(k Key) string {
-	if e.localOnly {
+	if e.localOnly || e.endpointScoped {
 		return endpointKey(k.Network, k.Application, k.Destination.String())
 	}
 	return learnKey(k.Network, k.Application)
 }
 
 func (e *Engine) Open(k Key, now time.Time) (*Flow, error) {
+	return e.OpenWithQuality(k, now, "")
+}
+
+func (e *Engine) OpenWithQuality(k Key, now time.Time, measuredRelay string) (*Flow, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if !e.enabled || e.reason != "" || (e.network != "" && e.network != k.Network) || len(k.Network) != 64 || k.PID == 0 || k.Birth == 0 || !Eligible(k.Application, e.application, "udp", k.Destination) {
@@ -289,6 +307,14 @@ func (e *Engine) Open(k Key, now time.Time) (*Flow, error) {
 	}
 	if e.localOnly && stage == Relay {
 		return nil, errors.New("GAME_UDP_LOCAL_ONLY_EXHAUSTED")
+	}
+	// A transformed LOCAL path is independent evidence. The configured echo
+	// samples DIRECT and cannot authorize replacing a working LOCAL path.
+	sameEndpointLocal := e.learning[endpointKey(k.Network, k.Application, k.Destination.String())]
+	if measuredRelay != "" && e.ladder && !e.localOnly && stage == Direct &&
+		!(cache.Confirmed && cache.Stage == Local) &&
+		!(sameEndpointLocal.Confirmed && sameEndpointLocal.Stage == Local && now.Before(sameEndpointLocal.Expires)) {
+		stage, selection = Relay, MeasuredRelaySelection
 	}
 	v := Variants()[index]
 	if stage != Local {
@@ -447,6 +473,9 @@ func (e *Engine) health(f *Flow, now time.Time) {
 		f.learned = true
 		f.e.State = "SUSTAINED_REPLIES"
 		f.e.Reason = "TRANSPORT_CADENCE_CONFIRMED_NOT_MATCH_LOAD_PROOF"
+		if f.e.Selection == MeasuredRelaySelection {
+			return // The independent quality evidence expires on its own.
+		}
 		index := 0
 		for i, v := range Variants() {
 			if v.ID == f.e.Variant.ID {
@@ -454,7 +483,7 @@ func (e *Engine) health(f *Flow, now time.Time) {
 			}
 		}
 		endpoint := ""
-		if e.localOnly {
+		if e.localOnly || e.endpointScoped {
 			endpoint = f.key.Destination.String()
 		}
 		if e.ladder && f.e.Stage == Direct {
@@ -484,6 +513,9 @@ func (e *Engine) health(f *Flow, now time.Time) {
 	f.failed = true
 	f.e.State = "INSUFFICIENT_REPLIES"
 	f.e.Reason = "NEXT_FLOW_ONLY_NO_REPLAY_OR_MIGRATION"
+	if f.e.Selection == MeasuredRelaySelection {
+		return
+	}
 	index := 0
 	for i, v := range Variants() {
 		if v.ID == f.e.Variant.ID {
@@ -540,7 +572,7 @@ func (e *Engine) health(f *Flow, now time.Time) {
 		expiry = now.Add(time.Hour)
 	}
 	endpoint := ""
-	if e.localOnly {
+	if e.localOnly || e.endpointScoped {
 		endpoint = f.key.Destination.String()
 	}
 	e.putLearning(key, Learning{Endpoint: endpoint, Stage: stage, Exhausted: exhausted, Network: f.key.Network, Application: f.key.Application, Index: next, Tried: tried, Expires: expiry}, now)
