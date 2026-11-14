@@ -112,6 +112,7 @@ type Controller struct {
 	BrowserResolver           *net.Resolver
 	BrowserProbeRoots         *x509.CertPool
 	browser                   *browserRuntime
+	youtubeLocalBeta          youtubeLocalBetaPreference
 	activationMu              sync.Mutex
 	relayPools                map[string]*transport.Pool
 	relayPrimary              *relayPrimaryRuntime
@@ -291,6 +292,7 @@ func (c *Controller) closeResources() {
 }
 func (c *Controller) SetCustomPath(path string) error {
 	c.customPath = path
+	c.loadYouTubeLocalBetaPreference()
 	c.loadGames()
 	if err := c.loadAutoLearning(); err != nil {
 		return err
@@ -704,6 +706,8 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return c.localProbeSnapshot(), nil
 	case "browser.youtube.decisions":
 		return c.browser.youtube.cdnDecisionSnapshot(), nil
+	case "browser.youtube.local.status", "browser.youtube.local.set":
+		return c.handleYouTubeLocalBeta(method, raw)
 	case "browser.native.enable", "browser.native.status":
 		return c.handleNativeBrowser(ctx, method, raw)
 	case "edge.silent.apply", "browser.silent.apply", "browser.silent.guard":

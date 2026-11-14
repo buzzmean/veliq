@@ -7,6 +7,7 @@ namespace Neexitlag.Desktop;
 public partial class MainWindow : Window
 {
     readonly GameCatalogViewModel games;
+    readonly IServiceClient service;
     readonly DesktopViewModel model; readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(2) }; readonly CancellationTokenSource lifetime = new();
     readonly LocalPreferences preferences; readonly bool shutdownOnClose; readonly string? preferencesPath; readonly System.Windows.Forms.NotifyIcon tray; readonly System.Drawing.Icon trayImage; bool exiting, settingsLoaded, startupApplied;
     public MainWindow() : this(LocalPreferences.Load(), true, true) { }
@@ -14,7 +15,7 @@ public partial class MainWindow : Window
     // without starting IPC timers or shutting down the host Application.
     internal MainWindow(LocalPreferences preferences, bool background, bool shutdownOnClose, string? preferencesPath = null, IServiceClient? serviceClient = null)
     {
-        var service=serviceClient ?? new WindowsServiceClient();
+        service = serviceClient ?? new WindowsServiceClient();
         model = new(service);games=new(service);
         this.preferences = preferences;
         this.shutdownOnClose = shutdownOnClose;
@@ -169,6 +170,8 @@ public partial class MainWindow : Window
             LoadSettings(snapshot);
             settingsLoaded = true;
         }
+        if (Settings.Visibility == Visibility.Visible)
+            await RefreshYouTubeLocalAsync();
         }finally{refreshingWindow=false;}
     }
     void LoadSettings(Snapshot snapshot)
@@ -190,8 +193,12 @@ public partial class MainWindow : Window
         if(page=="Games") _=Execute(()=>games.RefreshAsync(lifetime.Token));
         foreach (string name in new[] { "Home", "Games", "Applications", "Diagnostics", "Settings", "About" })
             ((FrameworkElement)FindName(name)).Visibility = name == page ? Visibility.Visible : Visibility.Collapsed;
-        if (page == "Settings" && model.Snapshot is { } snapshot)
-            LoadSettings(snapshot);
+        if (page == "Settings")
+        {
+            if (model.Snapshot is { } snapshot)
+                LoadSettings(snapshot);
+            _ = RefreshYouTubeLocalAsync();
+        }
     }
     void DiagTab(object sender, RoutedEventArgs e) => ShowDiagnosticsTab((string)((Button)sender).Tag);
     internal void ShowDiagnosticsTab(string tab)

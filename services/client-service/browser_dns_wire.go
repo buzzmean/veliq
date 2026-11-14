@@ -105,6 +105,9 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 		return nil, err
 	}
 	host := browserproxy.DNSHost(q)
+	request := browserproxy.Request{Host: host, Ingress: "NATIVE_DNS", Port: 53, Source: t.Source,
+		Owner: browserproxy.Owner{PID: cur.id.PID, Birth: cur.id.CreationTime, Exe: cur.id.Path, Profile: cur.profile.ID}}
+	generation := c.youtubeLocalBetaOriginScope(request)
 	state := c.browser.dnsWire
 	select {
 	case state.slots <- struct{}{}:
@@ -114,7 +117,19 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 	}
 	path := "SYSTEM_DNS"
 	var answer []byte
-	if cur.enabled && c.browserOriginPolicy(host).Kind != "" {
+	if generation != 0 {
+		path = "YOUTUBE_LOCAL_SYSTEM_DNS"
+		if policy := c.browserOriginPolicy(host); policy.Protected || policy.Kind == "RELAY" {
+			c.youtubeLocalBetaOutcome(generation, "DPI_LOCAL_ORIGIN_POLICY_BLOCKED")
+			state.record(cur.profile.ID, host, uint16(q.Type), path, "DPI_LOCAL_ORIGIN_POLICY_BLOCKED", 0)
+			return nil, errors.New("DPI_LOCAL_ORIGIN_POLICY_BLOCKED")
+		}
+		c.youtubeLocalBetaCount(generation, 0, 1)
+		answer, err = browserproxy.ExchangeSystemDNS(ctx, t.Protocol+"4", t.Destination.String(), query)
+		if !c.youtubeLocalBetaCurrent(generation) {
+			return nil, errYouTubeLocalScopeChanged
+		}
+	} else if cur.enabled && c.browserOriginPolicy(host).Kind != "" {
 		path = "AUTHENTICATED_RELAY_DOH"
 		if cur.network == "" {
 			return nil, errors.New("BROWSER_DNS_NETWORK_UNAVAILABLE")
@@ -136,6 +151,9 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 	}
 	state.record(cur.profile.ID, host, uint16(q.Type), path, result, len(hints))
 	if err != nil {
+		if generation != 0 {
+			c.youtubeLocalBetaOutcome(generation, "DPI_LOCAL_DNS_FAILED")
+		}
 		return nil, errors.New(result)
 	} // Never leak resolver errors/payload.
 	if cur.enabled {
@@ -145,6 +163,10 @@ func (c *Controller) exchangeBrowserDNS(ctx context.Context, cur profilesResult,
 }
 
 func (c *Controller) browserDNSRelayWire(ctx context.Context, cur profilesResult, t wp.Tuple, query []byte) ([]byte, error) {
+	question, err := browserproxy.DNSQuestion(query)
+	if err != nil {
+		return nil, err
+	}
 	relay := cur.profile.RelayID
 	if relay == "" {
 		relay = "VPS-01"
@@ -158,6 +180,12 @@ func (c *Controller) browserDNSRelayWire(ctx context.Context, cur profilesResult
 			return nil, err
 		}
 		q := browserproxy.Request{Owner: owner, Source: reserved.Addr().(*net.TCPAddr).AddrPort(), Port: 443, Secure: true}
+		request := q
+		request.Host = browserproxy.DNSHost(question)
+		if c.youtubeLocalBetaOriginScope(request) != 0 {
+			reserved.Close()
+			return nil, errYouTubeLocalScopeChanged
+		}
 		p := browserproxy.Plan{Enabled: true, Network: cur.network, Destination: dst, Policy: flowpolicy.Result{Action: flowpolicy.RelayRequired, RelayID: relay, Fallback: flowpolicy.Required, Source: "browser_dns_wire_doh"}}
 		conn, err := c.browserOpenUnobserved(ctx, q, p)
 		reserved.Close()

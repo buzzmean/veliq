@@ -88,7 +88,7 @@ jobs:
           if ($hash51 -ne $hash7) { throw 'R1_PACKAGE_RUNTIME_BUILD_MISMATCH' }
           Write-Host "R1_PACKAGE_VERIFIED commit=$env:R1_EXPECTED_COMMIT sequence=$sequence sha256=$hash7"
       - uses: actions/upload-artifact@v4
-        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release/beta-candidate-') }}
+        if: ${{ !startsWith(github.head_ref || github.ref_name, 'release/beta-candidate-') && (github.head_ref || github.ref_name) != 'feat/youtube-local-beta' }}
         with:
           name: VELIQ-R1-service-win-x64
           path: bin/r1-service-ps7/

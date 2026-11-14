@@ -566,7 +566,7 @@ func youtubeTransferOK(p browserproxy.ProbeResult) bool {
 }
 
 func (c *Controller) youtubeBackgroundRecheck(cur profilesResult, q browserproxy.Request, p browserproxy.Plan, key youtubeKey) {
-	if !q.Source.IsValid() || q.Source.Addr().IsUnspecified() || !c.youtubeLocalAllowed(cur.network) {
+	if !q.Source.IsValid() || q.Source.Addr().IsUnspecified() || !c.youtubeLocalAllowed(cur.network) || c.youtubeLocalBetaOriginScope(q) != 0 {
 		return
 	}
 	// Do not let a recheck postpone an already-qualified CDN trial's cooldown.
@@ -627,7 +627,7 @@ func (c *Controller) youtubeBackgroundRecheck(cur profilesResult, q browserproxy
 		ctx = context.WithValue(ctx, youtubeBackgroundScopeKey{}, scope)
 		current := func() bool {
 			fresh, err := c.browserProfile(q.Owner)
-			if errors.Is(ctx.Err(), context.Canceled) || err != nil || !c.youtubeBackgroundScopeCurrent(scope, fresh) {
+			if errors.Is(ctx.Err(), context.Canceled) || err != nil || !c.youtubeBackgroundScopeCurrent(scope, fresh) || c.youtubeLocalBetaOriginScope(q) != 0 {
 				cancelled = true
 				cancel()
 				return false
