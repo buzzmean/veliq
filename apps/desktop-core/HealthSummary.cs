@@ -27,9 +27,9 @@ public sealed partial class DesktopViewModel
             var relays = s?.Routes.Where(r => r.Id != "DIRECT").ToArray() ?? [];
             var servers = relays.Any(Fresh) ? new HealthRow("Серверы VELIQ", "в порядке", HealthLevel.Ok)
                 : relays.Length == 0 && !Optimizing ? new("Серверы VELIQ", "VELIQ выключен", HealthLevel.Neutral) : new("Серверы VELIQ", "недоступны", HealthLevel.Warning);
-            var browsers = !Optimizing ? new HealthRow("Браузеры", "обычная сеть", HealthLevel.Neutral)
-                : BrowserReadinessText.Contains("подтверждён") ? new("Браузеры", "в порядке", HealthLevel.Ok) : new("Браузеры", "подключаются", HealthLevel.Neutral);
-            return [new("Служба VELIQ", "в порядке", HealthLevel.Ok), network, servers, browsers];
+            HealthRow[] browsers = !Optimizing ? [new("Браузеры", "обычная сеть", HealthLevel.Neutral)]
+                : browserHealth.Length == 0 ? [new("Браузеры", "автоматическая маршрутизация не настроена", HealthLevel.Neutral)] : browserHealth;
+            return [new("Служба VELIQ", "в порядке", HealthLevel.Ok), network, servers, .. browsers];
         }
     }
     public HealthLevel HealthLevel => Health.Any(r => r.Level == HealthLevel.Problem) ? HealthLevel.Problem : Health.Any(r => r.Level == HealthLevel.Warning) ? HealthLevel.Warning : HealthLevel.Ok;

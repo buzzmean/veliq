@@ -16,11 +16,13 @@ public partial class MainWindow
                 if (!forOptimize && nativeBrowserRetry.TryGetValue(p.Id, out var at) && at > DateTimeOffset.UtcNow) continue;
                 // Native ingress never waits for browser policy or PAC uptake.
                 nativeBrowserRetry[p.Id] = DateTimeOffset.UtcNow.AddSeconds(2);
-                var phase="browser.native.enable";
+                var browser=BrowserCatalog.IsEdge(p)?"edge":"chrome";
+                var phase=browser+".native.enable";
                 try {
                     await model.EnableNativeBrowserAsync(p, lifetime.Token);
+                    model.ClearBrowserPreparationFailure(phase);
                     nativeBrowserRetry[p.Id]=DateTimeOffset.UtcNow.AddSeconds(30);
-                    phase="browser.native.recovery";
+                    phase=browser+".native.recovery";
                     // Restore existing owner-scoped recovery only; never create PAC
                     // or a new browser profile, and never launch/quit a browser.
                     if (BrowserCatalog.IsEdge(p)) {
@@ -28,6 +30,7 @@ public partial class MainWindow
                         if (File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VELIQ", "edge-recovery.json")))
                             await edgeRecovery.StartAsync(lifetime.Token);
                     } else if (ChromePolicy.Monitored || File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VELIQ", "chrome-recovery.json"))) await chromeRecovery.StartAsync(lifetime.Token);
+                    model.ClearBrowserPreparationFailure(phase);
 
                 }
                 catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { throw; }

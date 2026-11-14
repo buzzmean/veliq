@@ -336,10 +336,26 @@ func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string
 	}
 	var q struct {
 		AutoRenew bool `json:"auto_renew"`
+		Months    *int `json:"months"`
 	}
-	_ = body(r, &q)
-	amount := p.PricePerSeatRub * int64(sub.Seats) * 100
-	redirect, providerID, e := a.Settings.Payments.CreatePayment(r.Context(), PaymentRequest{Subscription: id, AmountKopecks: amount, PeriodDays: p.PeriodDays, Description: "Подписка VELIQ «" + p.Title + "»", Email: acc.Email, AccountID: acc.ID, ReturnURL: a.Settings.AccountOrigin + "/account.html", SaveMethod: q.AutoRenew})
+	if body(r, &q) != nil {
+		a.fail(w, 400, "PAYMENT_REQUEST_INVALID")
+		return
+	}
+	if q.AutoRenew {
+		a.fail(w, 409, "PAYMENT_AUTORENEW_UNAVAILABLE")
+		return
+	}
+	months := 1
+	if q.Months != nil {
+		months = *q.Months
+	}
+	amount, days, available := p.checkoutTerm(sub.Seats, months)
+	if !available {
+		a.fail(w, 409, "PAYMENT_TERM_UNAVAILABLE")
+		return
+	}
+	redirect, providerID, e := a.Settings.Payments.CreatePayment(r.Context(), PaymentRequest{Subscription: id, AmountKopecks: amount, PeriodDays: days, Description: "Подписка VELIQ «" + p.Title + "»", Email: acc.Email, AccountID: acc.ID, ReturnURL: a.Settings.AccountOrigin + "/account.html"})
 	if e != nil {
 		if errors.Is(e, ErrAutoRenewUnavailable) {
 			a.fail(w, 409, "PAYMENT_AUTORENEW_UNAVAILABLE")
@@ -348,7 +364,7 @@ func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string
 		a.fail(w, 502, "PAYMENT_UNAVAILABLE")
 		return
 	}
-	if _, _, e = a.Store.RecordPayment(r.Context(), id, a.Settings.Payments.Name(), providerID, amount, p.PeriodDays, "pending", "", "account:"+acc.ID, time.Now()); e != nil {
+	if _, _, e = a.Store.RecordPayment(r.Context(), id, a.Settings.Payments.Name(), providerID, amount, days, "pending", "", "account:"+acc.ID, time.Now()); e != nil {
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		return
 	}

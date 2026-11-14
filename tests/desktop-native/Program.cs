@@ -14,7 +14,7 @@ using Application = System.Windows.Application;
 using ComboBox = System.Windows.Controls.ComboBox;
 using Point = System.Windows.Point;
 
-internal static class Program
+internal static partial class Program
 {
     static readonly string Output = Path.GetFullPath("bin/native-ui-tests");
     static string settings = "";
@@ -329,6 +329,14 @@ internal static class Program
     static int Main(string[] args)
     {
         Directory.CreateDirectory(Output); settings = Path.Combine(Path.GetTempPath(), "neexitlag-native-" + Guid.NewGuid() + ".json");
+        if (args is ["--browser-and-prompt"])
+        {
+            var testApp = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            testApp.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/VELIQ;component/Assets/Theme.xaml", UriKind.Relative) });
+            try { BrowserAndPrompt(); return 0; }
+            catch (Exception e) { Console.Error.WriteLine(e); return 1; }
+            finally { testApp.Shutdown(); }
+        }
         if (args.Length == 3 && args[0] == "--personal-cabinet" && Guid.TryParse(args[1], out var fixture))
         {
             var fixtureApp = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -341,7 +349,9 @@ internal static class Program
             finally { fixtureApp.Shutdown(); }
         }
         var app = new App(); app.InitializeComponent(); app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        try { WelcomeUiChecks.Run(); CabinetUiChecks.Run(); EmergencyUiChecks.Run(); FreshPCSetupChecks.Run(); ChromeProxyValue(); ChromeRecoveryGuard(); ChromePolicyRecoveryLifecycle(); Picker(); StrategiesNull(); Lifecycle(); Dropdowns(); Pass("native WPF desktop regression suite"); return 0; }
+        try {
+            WelcomeUiChecks.Run(); CabinetUiChecks.Run(); EmergencyUiChecks.Run(); FreshPCSetupChecks.Run(); ChromeProxyValue(); ChromeRecoveryGuard(); ChromePolicyRecoveryLifecycle(); Picker(); StrategiesNull(); Lifecycle(); Dropdowns(); BrowserAndPrompt(); Pass("native WPF desktop regression suite"); return 0;
+        }
         catch (Exception e) { Console.Error.WriteLine(e); File.WriteAllText(Path.Combine(Output, "failure.txt"), e.ToString()); return 1; }
         finally { foreach (System.Windows.Window w in app.Windows.Cast<System.Windows.Window>().ToArray()) { if (w is MainWindow m) m.Exit(); else w.Close(); } app.Shutdown(); File.Delete(settings); }
     }

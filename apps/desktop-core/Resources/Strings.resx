@@ -633,6 +633,7 @@
   <data name="TrayDiagnostics" xml:space="preserve"><value>Диагностика</value></data>
   <data name="MetricRoute" xml:space="preserve"><value>Маршрут</value></data>
   <data name="NowViaVeliq" xml:space="preserve"><value>Сейчас через VELIQ</value></data>
+  <data name="OtherActiveApplication" xml:space="preserve"><value>Другое приложение</value></data>
   <data name="AboutService" xml:space="preserve"><value>Служба</value></data>
   <data name="HomeOffLead" xml:space="preserve"><value>Нажмите кнопку, и VELIQ построит оптимальный маршрут для каждого соединения.</value></data>
   <data name="HomeConnectingLead" xml:space="preserve"><value>Замеряем пути и подключаем браузер. Обычно это занимает пару секунд.</value></data>

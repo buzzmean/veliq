@@ -23,6 +23,7 @@ public sealed partial class DesktopViewModel {
    throw;
   }
   startupChromeProfiles.Remove(copy.Id);
+  ClearBrowserLaneIssue(edge ? "Edge" : "Chrome", edge ? "edge.silent.apply" : "browser.silent.apply");
   ClearBrowserPreparationIssue();
   await RefreshAsync(ct);
  }

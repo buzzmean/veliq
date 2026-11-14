@@ -133,10 +133,11 @@
     if(!s.lifetime){card.appendChild(durationLabel);card.appendChild(promoDetails);card.appendChild(quote);}
     pay.addEventListener('click', function () {
       if(!paymentsOn){say(err,'Онлайн-оплата пока не подключена. Для оформления или продления обратитесь в поддержку.');return;}
-      if(Number(duration.value)!==1||promo.value.trim()){say(err,'Для оформления выбранного срока обратитесь в поддержку. Онлайн-оплата пока недоступна.');return;}
+      var months=Number(duration.value);var term=policy&&policy.terms.find(function(t){return t.months===months;});
+      if(promo.value.trim()||(months!==1&&(!term||!p.term_discounts||p.term_discounts[months]!==term.discount))){say(err,'Для оформления выбранного срока или промокода обратитесь в поддержку.');return;}
       var expected=window.veliqPricing&&window.veliqPricing.prices[s.kind];if(expected&&p.price_per_seat_rub!==expected){say(err,'Для оформления по актуальному тарифу обратитесь в поддержку. Онлайн-оплата пока недоступна.');return;}
       busy(pay, true); say(err, '');
-      call('POST', '/subscriptions/' + s.id + '/pay', { auto_renew: false }).then(function (r) { location.href = r.redirect; })
+      call('POST', '/subscriptions/' + s.id + '/pay', { auto_renew: false, months: months }).then(function (r) { location.href = r.redirect; })
         .catch(function (x) { say(err, message(x.message)); busy(pay, false); });
     });
     if (!s.lifetime) actions.appendChild(pay);

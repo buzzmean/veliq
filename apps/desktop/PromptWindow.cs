@@ -4,7 +4,7 @@ using System.Windows.Media;
 namespace Neexitlag.Desktop;
 public sealed class PromptWindow : Window
 {
-    private PromptWindow(Window owner, string key, bool confirm)
+    internal PromptWindow(Window owner, string key, bool confirm)
     {
         Owner = owner;
         Title = "VELIQ";
@@ -14,6 +14,7 @@ public sealed class PromptWindow : Window
         SizeToContent = SizeToContent.Height;
         Width = 440;
         Background = (Brush)FindResource("Bg");
+        Foreground = (Brush)FindResource("Text");
         FontFamily = (FontFamily)FindResource("VeliqFont");
         WindowTheme.UseDarkCaption(this);
         ShowInTaskbar = false;

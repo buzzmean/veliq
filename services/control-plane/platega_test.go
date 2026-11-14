@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -176,10 +177,10 @@ func TestPlategaWebhookValidatesPayloadCurrencyAndAmount(t *testing.T) {
 	p := &PlategaProvider{MerchantID: "merchant-1", Secret: "test-secret"}
 	base := `"id":"1","amount":400,"currency":"RUB","status":"CONFIRMED","paymentMethod":2`
 	for _, body := range []string{
-		`{` + base + `,"payload":"other:` + strings.Repeat("ab", 16) + `"}`,      // foreign payload
-		`{` + base + `,"payload":"veliq:sub:not-hex"}`,                            // malformed subscription id
-		`{` + base + `,"payload":""}`,                                             // missing payload
-		`{"id":"1","amount":400,"currency":"USD","status":"CONFIRMED","paymentMethod":2,"payload":"veliq:sub:` + strings.Repeat("ab", 16) + `"}`, // foreign currency
+		`{` + base + `,"payload":"other:` + strings.Repeat("ab", 16) + `"}`, // foreign payload
+		`{` + base + `,"payload":"veliq:sub:not-hex"}`,                      // malformed subscription id
+		`{` + base + `,"payload":""}`,                                       // missing payload
+		`{"id":"1","amount":400,"currency":"USD","status":"CONFIRMED","paymentMethod":2,"payload":"veliq:sub:` + strings.Repeat("ab", 16) + `"}`,     // foreign currency
 		`{"id":"1","amount":400.005,"currency":"RUB","status":"CONFIRMED","paymentMethod":2,"payload":"veliq:sub:` + strings.Repeat("ab", 16) + `"}`, // sub-kopeck amount
 		`{"id":"1","amount":-1,"currency":"RUB","status":"CONFIRMED","paymentMethod":2,"payload":"veliq:sub:` + strings.Repeat("ab", 16) + `"}`,      // negative
 	} {
@@ -435,5 +436,83 @@ func TestProviderPaymentWithoutSubscriptionMetadata(t *testing.T) {
 	again, extended, e := store.RecordProviderPayment(ctx, "transaction-only-test", "other-tx", "", 30000, "succeeded", "test", now)
 	if e != nil || extended || !again.Equal(until) {
 		t.Fatal("provider duplicate", extended, e)
+	}
+}
+
+func TestPlategaServerPricesDiscountAndDuplicateWebhookCreditsOnce(t *testing.T) {
+	api, store, mailer := accountAPI(t, true)
+	for i := range api.Settings.Plans {
+		p := &api.Settings.Plans[i]
+		p.TermDiscounts = map[int]int{3: 5, 6: 10, 12: 20}
+		p.PricePerSeatRub = 199
+		if p.Kind == "player" {
+			p.PricePerSeatRub = 399
+		}
+	}
+	mock := newMockPlatega(t)
+	api.Settings.Payments = mock.provider()
+	caller := &call{api: api}
+	login(t, caller, mailer, "local-discount@example.test")
+	for i, item := range []struct {
+		plan          string
+		seats, months int
+		amount        int64
+	}{
+		{"player-month", 1, 3, 113715},
+		{"player-month", 1, 6, 215460},
+		{"player-month", 1, 12, 383040},
+		{"club-month", 2, 3, 113430},
+		{"club-month", 2, 6, 214920},
+		{"club-month", 2, 12, 382080},
+	} {
+		status, reply := caller.do(t, "POST", "/api/v1/account/subscriptions", map[string]any{"plan_id": item.plan, "seats": item.seats})
+		if status != 201 {
+			t.Fatal(status, reply)
+		}
+		subscription := reply["id"].(string)
+		path := "/api/v1/account/subscriptions/" + subscription + "/pay"
+		if status, out := caller.do(t, "POST", path, map[string]any{"months": 4}); status != 409 || out["error"] != "PAYMENT_TERM_UNAVAILABLE" {
+			t.Fatal(status, out)
+		}
+		if status, out := caller.do(t, "POST", path, map[string]any{"months": item.months, "auto_renew": true}); status != 409 || out["error"] != "PAYMENT_AUTORENEW_UNAVAILABLE" {
+			t.Fatal(status, out)
+		}
+		if status, out := caller.do(t, "POST", path, map[string]any{"months": item.months, "amount": 1}); status != 400 || out["error"] != "PAYMENT_REQUEST_INVALID" {
+			t.Fatal(status, out)
+		}
+		mock.nextTx.Store(fmt.Sprintf("497f6eca-6276-4993-bfeb-53cbbbba6f%02x", i))
+		if status, out := caller.do(t, "POST", path, map[string]any{"months": item.months}); status != 200 {
+			t.Fatal(status, out)
+		}
+		id := mock.nextTx.Load().(string)
+		ctx := context.Background()
+		var amount int64
+		var days int
+		if err := store.DB.QueryRow(ctx, "SELECT amount_kopecks,period_days FROM payments WHERE provider='platega' AND provider_payment_id=$1", id).Scan(&amount, &days); err != nil || amount != item.amount || days != item.months*30 {
+			t.Fatalf("%s %d seats %d months amount=%d days=%d err=%v", item.plan, item.seats, item.months, amount, days, err)
+		}
+		before := time.Now()
+		payload, _ := json.Marshal(map[string]any{"id": id, "amount": float64(item.amount) / 100, "currency": "RUB", "status": "CONFIRMED", "payload": plategaPayloadPrefix + subscription})
+		var first time.Time
+		for i := range 2 {
+			rec := httptest.NewRecorder()
+			api.Handler().ServeHTTP(rec, plategaWebhookRequest(mock.provider(), string(payload)))
+			if rec.Code != 200 {
+				t.Fatal(rec.Code, rec.Body.String())
+			}
+			var until time.Time
+			if err := store.DB.QueryRow(ctx, "SELECT paid_until FROM subscriptions WHERE id=$1", subscription).Scan(&until); err != nil {
+				t.Fatal(err)
+			}
+			if i == 0 {
+				first = until
+				if delta := until.Sub(before.AddDate(0, 0, days)); delta < -time.Second || delta > time.Second {
+					t.Fatal("wrong credited duration", delta)
+				}
+			} else if !until.Equal(first) {
+				t.Fatal("duplicate extended subscription", first, until)
+			}
+		}
+		t.Logf("%s seats=%d months=%d: %d kopecks, %d days, duplicate left paid_until unchanged", item.plan, item.seats, item.months, amount, days)
 	}
 }

@@ -66,18 +66,7 @@ public sealed class NativeBrowserRecord
 }
 public sealed partial class DesktopViewModel
 {
-    public string BrowserReadinessText {get;private set;}="Подготавливаем браузер…";
-    public void ApplyNativeBrowserReadiness(NativeBrowserStatus status){
-        var configured = Applications.Where(a => NativeBrowser(a.Profile) && a.Profile.Mode == "AUTO").Select(a => a.Profile.Id).ToArray();
-        var authority=status.AuthorityTransport;
-        var observed = authority.SystemProxyApplied && configured.Any(id => (authority.Profiles ?? []).Any(p => p.ProfileId == id && p.Requests > 0 && p.Exchanges > 0));
-        var next=!Optimizing?"Браузеры используют обычную сеть.":status.CaptureReady&&status.Optimizing&&status.State=="AUTHORITY_REQUEST_OBSERVED"&&observed
-          ?"Браузер: обмен по адресатам подтверждён."
-          :status.CaptureReady&&status.Optimizing&&status.State=="AUTHORITY_PENDING"
-          ?"Подготавливаем браузер: временно используется защищённый маршрут."
-          :"Подготавливаем браузер…";
-        if(BrowserReadinessText!=next){BrowserReadinessText=next;Changed(nameof(BrowserReadinessText));HealthChanged();}
-    }
+    public void ApplyNativeBrowserReadiness(NativeBrowserStatus status) => RefreshBrowserReadiness(status);
     public static bool NativeBrowser(Profile p) => p.PolicyData is { } data && data.TryGetValue("browser_transport", out var v)
         && v.ValueKind == JsonValueKind.String && v.GetString() == "native";
     public bool NativeBrowserCandidate(Profile p) => (BrowserCatalog.IsChrome(p) || BrowserCatalog.IsEdge(p))
@@ -127,15 +116,19 @@ public sealed partial class DesktopViewModel
         // never count them as two independent requests or a native-only PASS.
         var records = (status.Records ?? []).Select(r => r.Connection()).ToArray();
         if (Applications.Any(a => BrowserCatalog.IsChrome(a.Profile) && NativeBrowser(a.Profile)))
-        {
-            var pac = await ChromeStatusAsync(ct);
-            ApplyBrowser(CombineBrowserPaths(pac, records, status, Applications.Where(a => BrowserCatalog.IsChrome(a.Profile)).Select(a => a.Profile.Id).ToHashSet(StringComparer.Ordinal)));
-        }
+            await ObserveAuxiliaryAsync(async () =>
+            {
+                var pac = await ChromeStatusAsync(ct);
+                ClearBrowserLaneIssue("Chrome", "chrome.status");
+                ApplyBrowser(CombineBrowserPaths(pac, records, status, Applications.Where(a => BrowserCatalog.IsChrome(a.Profile)).Select(a => a.Profile.Id).ToHashSet(StringComparer.Ordinal)));
+            }, "chrome.status", ct);
         if (Applications.Any(a => BrowserCatalog.IsEdge(a.Profile) && NativeBrowser(a.Profile)))
-        {
-            var pac = await EdgeStatusAsync(ct);
-            ApplyEdge(CombineBrowserPaths(pac.Snapshot(), records, status, Applications.Where(a => BrowserCatalog.IsEdge(a.Profile)).Select(a => a.Profile.Id).ToHashSet(StringComparer.Ordinal)));
-            ApplyEdgePolicyState(pac);
-        }
+            await ObserveAuxiliaryAsync(async () =>
+            {
+                var pac = await EdgeStatusAsync(ct);
+                ClearBrowserLaneIssue("Edge", "edge.status");
+                ApplyEdge(CombineBrowserPaths(pac.Snapshot(), records, status, Applications.Where(a => BrowserCatalog.IsEdge(a.Profile)).Select(a => a.Profile.Id).ToHashSet(StringComparer.Ordinal)));
+                ApplyEdgePolicyState(pac);
+            }, "edge.status", ct);
     }
 }

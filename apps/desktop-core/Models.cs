@@ -116,6 +116,7 @@ public sealed class HotAttachStatus
 public sealed class Snapshot
 {
  public BrowserPolicyView BrowserPolicy {get;set;}=new();
+ public uint ServicePid {get;set;}
  public string ConnectionReason {get;set;}=""; public bool RelayConnected {get;set;}
  public HotAttachStatus? HotAttach {get;set;}
     public string Version { get; set; } = ""; public bool Connected
@@ -139,7 +140,9 @@ public sealed class Snapshot
     {
         get; set;
     }
-    public string[] ActiveApps { get; set; } = []; public BackendStatus Backend { get; set; } = new(); public JsonElement History
+    public string[] ActiveApps { get; set; } = [];
+    public Dictionary<string, string> ActiveAppExecutables { get; set; } = new(StringComparer.Ordinal);
+    public BackendStatus Backend { get; set; } = new(); public JsonElement History
     {
         get; set;
     }
@@ -321,4 +324,4 @@ public sealed class LocalStrategyMetrics { public ulong PacketsInspected {get;se
 
 public sealed class NetworkObservation { public DateTimeOffset ObservedAt {get;set;} public string Fingerprint {get;set;}=""; private string[] _Adapters=[]; public string[] Adapters {get=>_Adapters;set=>_Adapters=value??[];} private string[] _Routes=[]; public string[] Routes {get=>_Routes;set=>_Routes=value??[];} private string[] _Dns=[]; public string[] Dns {get=>_Dns;set=>_Dns=value??[];} private string[] _Conflicts=[]; public string[] Conflicts {get=>_Conflicts;set=>_Conflicts=value??[];} private string[] _Vpn=[]; public string[] Vpn {get=>_Vpn;set=>_Vpn=value??[];} public string Proxy {get;set;}=""; public string SecureDns {get;set;}=""; public string? Error {get;set;} }
 
-public sealed class BrowserPolicyView {public bool ChromeConfigured {get;set;} public bool EdgeConfigured {get;set;} public bool ChromeReady {get;set;} public bool EdgeReady {get;set;} public string Reason {get;set;}="";}
+public sealed class BrowserPolicyView {public bool ChromeConfigured {get;set;} public bool EdgeConfigured {get;set;} public bool ChromeReady {get;set;} public bool EdgeReady {get;set;} public string ChromeReason {get;set;}=""; public string EdgeReason {get;set;}=""; public string Reason {get;set;}="";}

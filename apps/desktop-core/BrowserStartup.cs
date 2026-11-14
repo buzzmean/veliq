@@ -98,6 +98,8 @@ public sealed partial class DesktopViewModel
                 }
             }
             BrowserStartup = new(started, DateTimeOffset.UtcNow, watch.ElapsedMilliseconds, rows.ToArray());
+            foreach (var row in rows.Where(row => row.State is "AUTO_CONFIGURED" or "EXISTING"))
+                ClearBrowserLaneIssue(row.Browser == "chrome" ? "Chrome" : "Edge", "browser.startup." + row.Browser);
             browserStartupComplete = rows.All(r => r.State is not ("FAILED" or "DEFERRED"));
             Changed(nameof(BrowserStartup)); Changed(nameof(BrowserStartupSummary));
         }

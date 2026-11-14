@@ -64,27 +64,28 @@ type Snapshot struct {
 	Version              string                           `json:"version"`
 	// Build is the git commit this binary was built from (plus "+modified" for a dirty tree),
 	// so a stale service or checkout is visible instead of guessed.
-	Build            string                        `json:"build,omitempty"`
-	ServicePID       uint32                        `json:"service_pid"`
-	ConnectionReason string                        `json:"connection_reason"`
-	RelayConnected   bool                          `json:"relay_connected"`
-	BrowserPolicy    BrowserPolicyHealth           `json:"browser_policy"`
-	Connected        bool                          `json:"connected"`
-	Optimizing       bool                          `json:"optimizing"`
-	Demo             bool                          `json:"demo"`
-	Backend          windowsplatform.CaptureStatus `json:"backend"`
-	Primary          string                        `json:"primary"`
-	Secondary        string                        `json:"secondary"`
-	Tertiary         string                        `json:"tertiary"`
-	Routes           []RouteView                   `json:"routes"`
-	Profiles         []profiles.Profile            `json:"profiles"`
-	RXBytes          uint64                        `json:"rx_bytes"`
-	TXBytes          uint64                        `json:"tx_bytes"`
-	History          optimizer.RouteHistory        `json:"history"`
-	Flows            []routing.Flow                `json:"flows"`
-	Settings         Settings                      `json:"settings"`
-	ControlPlane     string                        `json:"control_plane"`
-	ActiveApps       []string                      `json:"active_apps"`
+	Build                string                        `json:"build,omitempty"`
+	ServicePID           uint32                        `json:"service_pid"`
+	ConnectionReason     string                        `json:"connection_reason"`
+	RelayConnected       bool                          `json:"relay_connected"`
+	BrowserPolicy        BrowserPolicyHealth           `json:"browser_policy"`
+	Connected            bool                          `json:"connected"`
+	Optimizing           bool                          `json:"optimizing"`
+	Demo                 bool                          `json:"demo"`
+	Backend              windowsplatform.CaptureStatus `json:"backend"`
+	Primary              string                        `json:"primary"`
+	Secondary            string                        `json:"secondary"`
+	Tertiary             string                        `json:"tertiary"`
+	Routes               []RouteView                   `json:"routes"`
+	Profiles             []profiles.Profile            `json:"profiles"`
+	RXBytes              uint64                        `json:"rx_bytes"`
+	TXBytes              uint64                        `json:"tx_bytes"`
+	History              optimizer.RouteHistory        `json:"history"`
+	Flows                []routing.Flow                `json:"flows"`
+	Settings             Settings                      `json:"settings"`
+	ControlPlane         string                        `json:"control_plane"`
+	ActiveApps           []string                      `json:"active_apps"`
+	ActiveAppExecutables map[string]string             `json:"active_app_executables,omitempty"`
 }
 type Controller struct {
 	emergencyHandler func(context.Context, string, json.RawMessage) (any, error)
@@ -548,9 +549,17 @@ func (c *Controller) Snapshot() Snapshot {
 		}
 	}
 	flows := c.Engine.Snapshot()
+	executables := make(map[string]string)
 	for _, f := range flows {
 		if !f.Route.Direct() {
 			active[f.ApplicationID] = true
+			path := strings.ReplaceAll(f.ProcessPath, "\\", "/")
+			exe := filepath.Base(path)
+			if strings.EqualFold(filepath.Ext(exe), ".exe") && len(exe) <= 255 {
+				if old := executables[f.ApplicationID]; old == "" || exe < old {
+					executables[f.ApplicationID] = exe
+				}
+			}
 		}
 	}
 	apps := []string{}
@@ -575,6 +584,7 @@ func (c *Controller) Snapshot() Snapshot {
 	}
 	snapshot := Snapshot{CaptureActive: backend.Ready, CapturePermitted: c.activationNetworkAllowed(), HotAttach: c.hotAttachStatus(), Version: "0.3.0-dev", Build: buildStamp(), Connected: (c.Demo || backend.Ready) && (controlPlaneURL == "" || c.relayConnected()), Optimizing: enabled && (c.Demo || backend.Ready), Demo: c.Demo, Backend: backend, Primary: selection.Primary, Secondary: selection.Secondary, Tertiary: selection.Tertiary, Routes: views, Profiles: c.Profiles.List(), RXBytes: rx, TXBytes: tx, History: history, Flows: flows, Settings: settings, ControlPlane: controlPlaneURL, ActiveApps: apps}
 	snapshot.ServicePID = uint32(os.Getpid())
+	snapshot.ActiveAppExecutables = executables
 	snapshot.RelayConnected = c.relayConnected()
 	snapshot.ConnectionReason = c.connectionReason(snapshot)
 	snapshot.BrowserPolicy = c.browserPolicyHealth()
@@ -594,6 +604,10 @@ func (c *Controller) Snapshot() Snapshot {
 		}
 		if len(snapshot.Flows) > 0 {
 			snapshot.Flows = snapshot.Flows[:len(snapshot.Flows)-1]
+			continue
+		}
+		if len(snapshot.ActiveAppExecutables) > 0 {
+			snapshot.ActiveAppExecutables = nil
 			continue
 		}
 		break

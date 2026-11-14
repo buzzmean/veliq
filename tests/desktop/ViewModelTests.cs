@@ -35,6 +35,18 @@ public sealed class FakeService : IServiceClient
 public sealed class ViewModelTests
 {
     [Fact]
+    public async Task ActiveAppsUseDisplayNameExecutableOrOtherWithoutExposingInternalIDs()
+    {
+        var service = new FakeService();
+        service.State.ActiveApps = ["game", "auto-abcd", "auto-other", "auto-duplicate"];
+        service.State.ActiveAppExecutables["auto-abcd"] = "example.exe";
+        service.State.ActiveAppExecutables["auto-duplicate"] = "EXAMPLE.exe";
+        var vm = new DesktopViewModel(service);
+        await vm.RefreshAsync();
+        Assert.Equal("Игра, example.exe, Другое приложение", vm.ActiveApps);
+        Assert.Contains("auto-abcd", vm.Snapshot!.ActiveApps);
+    }
+    [Fact]
     public void ApplicationProtocolsUseOnlyFreshAttributedCapture()
     {
         var row=new ApplicationRow();

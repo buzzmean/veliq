@@ -118,7 +118,25 @@ public sealed partial class DesktopViewModel : Observable
             _ => Connection == Text.Get("Connected") ? Text.Get("OptimizationOn") : Connection
         };
     public string Primary => Available ? Text.Route(Snapshot?.Primary) : Text.Get("NoData");
-    public string ActiveApps => !Available ? Text.Get("NoData") : Snapshot?.ActiveApps.Length > 0 ? string.Join(", ", Snapshot.ActiveApps.Select(id => Snapshot.Profiles.FirstOrDefault(p => p.Id == id)?.Name ?? id)) : Text.Get("NoActiveApps");
+    public string ActiveApps
+    {
+        get
+        {
+            if (!Available || Snapshot is not { } snapshot)
+                return Text.Get("NoData");
+            if (snapshot.ActiveApps.Length == 0)
+                return Text.Get("NoActiveApps");
+            var names = snapshot.ActiveApps.Select(id =>
+            {
+                var name = snapshot.Profiles.FirstOrDefault(p => p.Id == id)?.Name?.Trim();
+                if (!string.IsNullOrEmpty(name) && !name.StartsWith("auto-", StringComparison.OrdinalIgnoreCase))
+                    return name;
+                return snapshot.ActiveAppExecutables?.TryGetValue(id, out var exe) == true && !string.IsNullOrWhiteSpace(exe)
+                    ? exe : Text.Get("OtherActiveApplication");
+            });
+            return string.Join(", ", names.Distinct(StringComparer.OrdinalIgnoreCase));
+        }
+    }
     public string Rx => Available && Snapshot is { } s ? Text.Bytes(s.RxBytes) : Text.Get("NoData"); public string Tx => Available && Snapshot is { } s ? Text.Bytes(s.TxBytes) : Text.Get("NoData");
     Route? Current => Snapshot?.Routes.FirstOrDefault(r => r.Id == Snapshot.Primary); public string CurrentLatency => Metric(Current, r => Text.Milliseconds(r.RttMs));
     public string DirectLatency => Metric(Snapshot?.Routes.FirstOrDefault(r => r.Id == "DIRECT"), r => Text.Milliseconds(r.RttMs));

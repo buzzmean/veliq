@@ -20,7 +20,7 @@ public sealed partial class DesktopViewModel {
  public ObservableCollection<BrowserConnection> BrowserDomains {get;}=[];
  BrowserTransportSnapshot primaryBrowser=new();
  public string ChromePolicyState {get;private set;}="Chrome: policy ещё не настроена";
- public void ApplyBrowser(BrowserTransportSnapshot status){primaryBrowser=status;ApplyBrowserRecords(status);var next=!Optimizing?"Chrome: прямая сеть (оптимизация выключена)":"Chrome: "+status.SilentActivation.Notice;if(ChromePolicyState!=next){ChromePolicyState=next;Changed(nameof(ChromePolicyState));}}
+ public void ApplyBrowser(BrowserTransportSnapshot status){primaryBrowser=status;ApplyBrowserRecords(status);var next=!Optimizing?"Chrome: прямая сеть (оптимизация выключена)":browserHealth.FirstOrDefault(row=>row.Name=="Chrome") is {} chrome?"Chrome — "+chrome.State:"Chrome: "+status.SilentActivation.Notice;if(ChromePolicyState!=next){ChromePolicyState=next;Changed(nameof(ChromePolicyState));}}
  void ApplyBrowserRecords(BrowserTransportSnapshot status){
   // Only actual transport records are shown; no assumed success from TCP ACKs.
   Replace(BrowserDomains,status.Records.OrderByDescending(r=>r.Started).ThenByDescending(r=>r.Id).Take(32));

@@ -9,8 +9,8 @@ public class ServiceConnectionTests {
   vm.Apply(new(){Connected=true,Optimizing=true,ConnectionReason="CAPTURE_NOT_READY"},[]);
   Assert.Equal("Захват трафика ещё не готов",vm.OptimizationStatus);
   vm.Apply(new(){Connected=true,Optimizing=true,BrowserPolicy=new(){ChromeConfigured=true,ChromeReady=false}},[]);
-  Assert.Equal("Подготавливаем браузер…",vm.OptimizationStatus);
-  Assert.DoesNotContain("заблокированное открывается",vm.HomeLead);
+  Assert.Equal(Text.Get("OptimizationOn"),vm.OptimizationStatus);
+  Assert.Contains("Chrome — ожидается обмен",vm.BrowserReadinessText);
  }
  [Fact]public void SuccessfulIpcDoesNotMeanConnected(){
   Assert.NotEqual(Text.Get("Connected"),ServiceConnectionText.Describe(new(){Connected=false,Optimizing=false}));

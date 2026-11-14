@@ -63,7 +63,7 @@ public sealed partial class DesktopViewModel {
   return applied;
  }
  public void ApplyEdgePolicyState(EdgeTransportStatus status){
-  EdgeState=!Optimizing?"Edge: прямая сеть (оптимизация выключена)":status.TransportMode=="NATIVE_ARMED_PAC_GUARD"&&status.ReadinessState=="NATIVE_TUNNEL_OBSERVED"?"Edge: есть обмен через native upstream; проверка страницы и PAC отдельно":status.SilentActivation.State=="POLICY_PENDING_BROWSER_REFRESH"?"Edge: настройки записаны, ожидаем подхват браузером":status.Listening&&status.PolicyReady?"Edge: маршруты подготовлены; доступность сайтов проверяется отдельно":"Edge: подготавливаем маршруты, повторная проверка автоматически";
+  EdgeState=!Optimizing?"Edge: прямая сеть (оптимизация выключена)":browserHealth.FirstOrDefault(row=>row.Name=="Edge") is {} edge?"Edge — "+edge.State:status.TransportMode=="NATIVE_ARMED_PAC_GUARD"&&status.ReadinessState=="NATIVE_TUNNEL_OBSERVED"?"Edge: есть обмен через native upstream; проверка страницы и PAC отдельно":status.SilentActivation.State=="POLICY_PENDING_BROWSER_REFRESH"?"Edge: настройки записаны, ожидаем подхват браузером":status.Listening&&status.PolicyReady?"Edge: маршруты подготовлены; доступность сайтов проверяется отдельно":"Edge: подготавливаем маршруты, повторная проверка автоматически";
   if(status.Listening&&status.PolicyReady)ClearBrowserPreparationIssue();
   Changed(nameof(EdgeState));
  }
