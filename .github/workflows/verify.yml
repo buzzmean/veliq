@@ -157,11 +157,13 @@ jobs:
       - run: ./tests/windows-tools/desktop-smoke.ps1
         shell: pwsh
       - uses: actions/upload-artifact@v4
+        if: ${{ (github.head_ref || github.ref_name) != 'feat/youtube-local-beta' && (github.head_ref || github.ref_name) != 'feat/unified-auto-beta' }}
         with:
           name: VELIQ-win-x64
           path: bin/release/
       # Existing artifact consumers retain a compatible download name.
       - uses: actions/upload-artifact@v4
+        if: ${{ (github.head_ref || github.ref_name) != 'feat/youtube-local-beta' && (github.head_ref || github.ref_name) != 'feat/unified-auto-beta' }}
         with:
           name: NeExitLag-win-x64
           path: bin/release/
@@ -242,6 +244,7 @@ jobs:
         shell: pwsh
       - run: go test ./tools/windows-test-client ./internal/e2eprobe ./tools/vps-provision ./tools/route-test ./tools/tcp-test-client ./internal/webprobe
       - uses: actions/upload-artifact@v4
+        if: ${{ (github.head_ref || github.ref_name) != 'feat/youtube-local-beta' && (github.head_ref || github.ref_name) != 'feat/unified-auto-beta' }}
         with:
           name: windows-real-e2e-tools
           path: bin/windows-e2e/

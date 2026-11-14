@@ -18,10 +18,11 @@ import (
 
 type Opener func(context.Context, netip.AddrPort) (routing.Datagram, error)
 type Candidate struct {
-	Metadata optimizer.RelayCandidate
-	Target   netip.AddrPort
-	Open     Opener
-	Load     float64
+	Metadata      optimizer.RelayCandidate
+	Target        netip.AddrPort
+	Open          Opener
+	Load          float64
+	Authenticated bool
 }
 type Settings struct {
 	ActiveInterval, IdleInterval, Timeout, Spacing time.Duration
@@ -44,6 +45,7 @@ type Engine struct {
 	wg         sync.WaitGroup
 	slots      chan struct{}
 	OnFailure  func(string, string, time.Time)
+	Network    func() string
 	accountMu  sync.Mutex
 	accounts   map[string]*routeAccount
 }
@@ -137,7 +139,10 @@ func (e *Engine) Probe(ctx context.Context, c Candidate) optimizer.RouteMeasurem
 	case <-ctx.Done():
 		return optimizer.RouteMeasurement{}
 	}
-	m := optimizer.RouteMeasurement{RouteID: c.Metadata.ID, Load: c.Load, ObservedAt: time.Now(), Stability: 1}
+	m := optimizer.RouteMeasurement{RouteID: c.Metadata.ID, RouteAddress: c.Metadata.Address, Target: c.Target, AuthenticatedTarget: c.Authenticated, Load: c.Load, ObservedAt: time.Now(), Stability: 1}
+	if e.Network != nil {
+		m.Network = e.Network()
+	}
 	if c.Open == nil || !c.Target.IsValid() {
 		m.FailureRate = 1
 		return m
@@ -287,6 +292,9 @@ func (e *Engine) Probe(ctx context.Context, c Candidate) optimizer.RouteMeasurem
 	}
 	m.Stability = 1 - m.Loss
 	m.ObservedAt = time.Now()
+	if e.Network != nil && e.Network() != m.Network {
+		m.Network = ""
+	}
 	return m
 }
 

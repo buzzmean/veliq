@@ -659,4 +659,18 @@
   <data name="EmergencyPasswordSetup" xml:space="preserve"><value>Настроить пароль отключения…</value></data>
   <data name="AutomaticApplicationsTitle" xml:space="preserve"><value>Приложения определяются автоматически</value></data>
   <data name="AutomaticApplicationsHint" xml:space="preserve"><value>Включите VELIQ — добавлять приложения и сайты вручную не требуется. В режиме AUTO маршрут подбирается при сетевом сбое. Заданные ранее правила сохраняются; изменить их можно в расширенных настройках.</value></data>
+  <data name="YouTubeLocalTitle" xml:space="preserve"><value>YouTube без VPS</value></data>
+  <data name="YouTubeLocalHelp" xml:space="preserve"><value>Действует в обычных вкладках Chrome для распознанных подключений YouTube. При выключении новые подключения возвращаются к штатным маршрутам.</value></data>
+  <data name="YouTubeLocalOff" xml:space="preserve"><value>Режим выключен.</value></data>
+  <data name="YouTubeLocalWaiting" xml:space="preserve"><value>Режим включён. Активируйте автооптимизацию Chrome в VELIQ.</value></data>
+  <data name="YouTubeLocalActive" xml:space="preserve"><value>Режим активен для новых подключений к YouTube.</value></data>
+  <data name="YouTubeLocalFailed" xml:space="preserve"><value>Локальный маршрут недоступен. Причина {0}. YouTube не переключён на VPS.</value></data>
+  <data name="YouTubeLocalManaged" xml:space="preserve"><value>Режимом управляет администратор.</value></data>
+  <data name="YouTubeLocalOwner" xml:space="preserve"><value>Режим доступен владельцу установки VELIQ.</value></data>
+  <data name="YouTubeLocalPreferenceUnreadable" xml:space="preserve"><value>Не удалось прочитать настройку режима YouTube.</value></data>
+  <data name="YouTubeLocalCapture" xml:space="preserve"><value>Режим включён. Служба ещё не готова обрабатывать подключения Chrome.</value></data>
+  <data name="YouTubeLocalAuthority" xml:space="preserve"><value>Режим включён. Chrome пока не подключён к локальному прокси VELIQ.</value></data>
+  <data name="YouTubeLocalGuard" xml:space="preserve"><value>Проверка локального маршрута ещё не пройдена. Проверьте VPN и приложения, меняющие сетевой трафик.</value></data>
+  <data name="YouTubeLocalNetwork" xml:space="preserve"><value>Режим включён. VELIQ ожидает активную сеть.</value></data>
+  <data name="YouTubeLocalActivation" xml:space="preserve"><value>Режим станет доступен после активации VELIQ.</value></data>
 </root>

@@ -67,7 +67,7 @@ jobs:
           [IO.File]::WriteAllText((Join-Path $PWD 'bin/public-trust/ca.pem'),$env:PUBLIC_CA,[Text.UTF8Encoding]::new($false))
           & .\installer\build.ps1 -PublicTrustDirectory .\bin\public-trust -ControlPlaneUrl $env:CP_URL -ProbeTarget $env:PROBE -Compiler $env:INNO_COMPILER
       - uses: actions/upload-artifact@v4
-        if: ${{ vars.VELIQ_PUBLIC_CA_PEM != '' }}
+        if: ${{ vars.VELIQ_PUBLIC_CA_PEM != '' && (github.head_ref || github.ref_name) != 'feat/youtube-local-beta' && (github.head_ref || github.ref_name) != 'feat/unified-auto-beta' }}
         with:
           name: VELIQ-Setup
           path: bin/installer/output/*

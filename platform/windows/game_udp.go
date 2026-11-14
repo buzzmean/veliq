@@ -99,23 +99,31 @@ func BindGameUDP(d Decision, id ProcessIdentity, t Tuple, now time.Time) (Decisi
 	if d.GameUDP == nil {
 		return d, nil, nil
 	}
-	f, err := d.GameUDP.Open(gameudp.Key{Network: d.Network, Application: id.Path, PID: id.PID, Birth: id.CreationTime, Source: t.Source, Destination: t.Destination}, now)
+	f, err := d.GameUDP.OpenWithQuality(gameudp.Key{Network: d.Network, Application: id.Path, PID: id.PID, Birth: id.CreationTime, Source: t.Source, Destination: t.Destination}, now, d.GameQualityRelayID)
 	if err != nil {
 		d.GameUDP = nil
 		return d, nil, err
 	}
-	switch d.GameUDP.Evidence(f).Stage {
+	evidence := d.GameUDP.Evidence(f)
+	switch evidence.Stage {
 	case gameudp.Local:
 		d.Policy.Action = flowpolicy.DirectPlus
 		d.Policy.Reason = "LOCAL_UDP probation; originals unchanged"
 	case gameudp.Relay:
+		qualified := evidence.Selection == gameudp.MeasuredRelaySelection
+		if qualified {
+			d.GameRelayID = d.GameQualityRelayID
+		}
 		d.Route = routing.Route{RelayID: d.GameRelayID}
 		d.BlockOnFailure = true
 		d.Policy.Action = flowpolicy.RelayRequired
 		d.Policy.RelayID = d.GameRelayID
 		d.Policy.Fallback = flowpolicy.Required
 		d.Policy.Reason = "game DIRECT and local variants insufficient; authenticated relay trial"
-		d.Flow.PinnedPolicy = &routing.Policy{Route: d.Route, BlockOnFailure: true}
+		if qualified {
+			d.Policy.Reason = gameudp.MeasuredRelaySelection
+		}
+		d.Flow.PinnedPolicy = &routing.Policy{Route: d.Route, BlockOnFailure: true, ExactRelay: qualified, RelayAddress: d.GameQualityRelayAddress}
 	}
 	return d, f, nil
 }

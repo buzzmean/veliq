@@ -29,6 +29,10 @@ type Client struct {
 	controlSend    chan struct{}
 	leaseChanged   chan struct{}
 	conn           *quic.Conn
+	localAddr      net.Addr
+	relayAddr      net.Addr
+	pathMu         sync.Mutex
+	pathTransports []*quic.Transport // Non-nil only for a migration-capable session.
 	leaseMu        sync.Mutex
 	renewalOnce    sync.Once
 	lease          LeaseSnapshot
@@ -61,10 +65,15 @@ func Dial(ctx context.Context, addr string, t *tls.Config) (*Client, error) {
 		c.CloseWithError(1, "datagrams required")
 		return nil, errors.New("relay lacks QUIC DATAGRAM")
 	}
-	x := &Client{handshakeMS: float64(time.Since(start)) / float64(time.Millisecond), conn: c, flows: make(map[uint32]*UDPFlow), done: make(chan struct{})}
+	x := newClient(c, float64(time.Since(start))/float64(time.Millisecond))
 	go x.receive()
 	return x, nil
 }
+
+func newClient(conn *quic.Conn, handshakeMS float64) *Client {
+	return &Client{handshakeMS: handshakeMS, conn: conn, localAddr: conn.LocalAddr(), relayAddr: conn.RemoteAddr(), flows: make(map[uint32]*UDPFlow), done: make(chan struct{})}
+}
+
 func (c *Client) Close() error          { return c.conn.CloseWithError(0, "shutdown") }
 func (c *Client) Done() <-chan struct{} { return c.done }
 func (c *Client) Dropped() uint64       { return c.drops.Load() }
@@ -164,7 +173,7 @@ func (c *Client) OpenTCP(ctx context.Context, dst netip.AddrPort) (net.Conn, err
 	if e != nil {
 		return nil, e
 	}
-	return &streamConn{s, c.conn}, nil
+	return &streamConn{Stream: s, local: c.localAddr, remote: c.relayAddr}, nil
 }
 func (c *Client) receive() {
 	defer func() {
@@ -183,6 +192,7 @@ func (c *Client) receive() {
 		for _, f := range all {
 			f.Close()
 		}
+		c.closePathTransports()
 	}()
 	for {
 		b, e := c.conn.ReceiveDatagram(context.Background())
@@ -289,11 +299,12 @@ func (f *UDPFlow) Close() error {
 
 type streamConn struct {
 	*quic.Stream
-	c *quic.Conn
+	local, remote net.Addr
 }
 
-func (s *streamConn) LocalAddr() net.Addr  { return s.c.LocalAddr() }
-func (s *streamConn) RemoteAddr() net.Addr { return s.c.RemoteAddr() }
+// The tunneled stream retains its logical endpoints across a QUIC path change.
+func (s *streamConn) LocalAddr() net.Addr  { return s.local }
+func (s *streamConn) RemoteAddr() net.Addr { return s.remote }
 func (s *streamConn) Close() error         { s.CancelRead(0); return s.Stream.Close() }
 func (s *streamConn) CloseWrite() error    { return s.Stream.Close() }
 

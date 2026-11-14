@@ -81,6 +81,10 @@ func (r *youtubeRuntime) ordinaryUpdate(id uint64, update func(*ordinaryFlowEvid
 	}
 }
 func (c *Controller) openOrdinaryAddresses(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	return c.openOrdinaryAddressesWithFallback(ctx, cur, q, p, open, c.openYoutubeLadder)
+}
+
+func (c *Controller) openOrdinaryAddressesWithFallback(ctx context.Context, cur profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error), fallback tlsAddressFallback) (net.Conn, browserproxy.Plan, error) {
 	cur = c.captureAutomaticScope(cur)
 	if !c.automaticScopeCurrent(cur) {
 		return nil, p, errAutomaticScopeChanged
@@ -211,7 +215,7 @@ func (c *Controller) openOrdinaryAddresses(ctx context.Context, cur profilesResu
 	// Reuse the already-tested launcher address stepper unchanged: <=2 IPv4,
 	// 900ms first flights/3s budget, per-address TTL, complete ClientHello replay
 	// only before ANY origin byte. Riot profile/scope/guards are not modified.
-	return c.openRiotPlan(ctx, cur, q, p, observed)
+	return c.openTLSAddresses(ctx, cur, q, p, observed, fallback)
 }
 
 type ordinaryEvidenceConn struct {

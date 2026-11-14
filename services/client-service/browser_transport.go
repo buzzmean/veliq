@@ -31,6 +31,10 @@ type browserRuntime struct {
 	domains   browserDomainIndex
 	readiness browserPolicyReadiness
 
+	youtubeLocalBetaProbes  chan struct{}
+	automaticTLSLocal       *localstrategy.Cache
+	automaticTLSLocalProbes chan struct{}
+
 	silent          browserSilentState
 	chromeWrite     func(string, []string, string) error
 	chromeRemove    func(string, []string) error
@@ -56,7 +60,12 @@ type browserRuntime struct {
 }
 
 func newBrowserRuntime() *browserRuntime {
-	return &browserRuntime{youtube: newYoutubeRuntime(), dnsWire: newBrowserDNSRuntime(), origins: browserproxy.NewOriginHealth(), dns: browserproxy.NewDNSRecovery(), learned: flowpolicy.NewBrowserLearning(), probes: make(chan struct{}, 4), local: map[string]*localstrategy.LocalStrategyEngine{}, plans: map[flowpolicy.LearnKey]chan struct{}{}, directTimeouts: flowpolicy.NewDirectTimeoutCache()}
+	return &browserRuntime{
+		youtube: newYoutubeRuntime(), dnsWire: newBrowserDNSRuntime(), origins: browserproxy.NewOriginHealth(), dns: browserproxy.NewDNSRecovery(),
+		learned: flowpolicy.NewBrowserLearning(), probes: make(chan struct{}, 4), youtubeLocalBetaProbes: make(chan struct{}, 4),
+		automaticTLSLocal: localstrategy.NewCache(256), automaticTLSLocalProbes: make(chan struct{}, 4),
+		local: map[string]*localstrategy.LocalStrategyEngine{}, plans: map[flowpolicy.LearnKey]chan struct{}{}, directTimeouts: flowpolicy.NewDirectTimeoutCache(),
+	}
 }
 func (c *Controller) browserOwner(ctx context.Context, source, local netip.AddrPort) (browserproxy.Owner, error) {
 	id, err := wp.LookupTCPPeer(source, local)
@@ -209,6 +218,13 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 	if err != nil {
 		return nil, err
 	}
+	if scoped := c.youtubeLocalBetaOriginScope(q); scoped != plan.YouTubeLocalGeneration {
+		return nil, errYouTubeLocalScopeChanged
+	}
+	if plan.YouTubeLocalGeneration != 0 && (plan.Policy.Action == flowpolicy.Relay || plan.Policy.Action == flowpolicy.RelayRequired || plan.Policy.RelayID != "") {
+		c.youtubeLocalBetaOutcome(plan.YouTubeLocalGeneration, "DPI_LOCAL_RELAY_FORBIDDEN")
+		return nil, errors.New("YOUTUBE_LOCAL_RELAY_FORBIDDEN")
+	}
 	if scope, ok := ctx.Value(youtubeBackgroundScopeKey{}).(youtubeBackgroundScope); ok && !c.youtubeBackgroundScopeCurrent(scope, current) {
 		scope.cancel()
 		return nil, errors.New("background browser policy changed before upstream open")
@@ -251,7 +267,9 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 		}
 	}
 	if d.Route.Local() {
-		if !c.browserLocalAllowed(current.network) && !(plan.Policy.Source == youtubeLadderSource && c.youtubeLocalAllowed(current.network)) {
+		managedLocal := plan.Policy.Source == youtubeLadderSource || plan.Policy.Source == automaticTLSLocalSource ||
+			plan.YouTubeLocalGeneration != 0 && plan.Policy.Source == youTubeLocalBetaSource
+		if !c.browserLocalAllowed(current.network) && !(managedLocal && c.youtubeLocalAllowed(current.network)) {
 			return nil, errors.New("native local strategy unavailable on current network")
 		}
 		backend, ok := c.Backend.(interface {
@@ -333,6 +351,9 @@ func (c *Controller) browserPlan(ctx context.Context, q browserproxy.Request) (b
 	current, err := c.browserProfile(q.Owner)
 	if err != nil {
 		return browserproxy.Plan{}, err
+	}
+	if generation := c.youtubeLocalBetaOriginScope(q); generation != 0 {
+		return c.planYouTubeLocalBeta(ctx, current, q, generation)
 	}
 	if cached, ok := c.browserDNSCachedPlan(q, current); ok {
 		return cached, nil

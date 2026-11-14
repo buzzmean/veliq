@@ -270,6 +270,7 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 			delete(s.clients, id)
 			delete(s.addresses, id)
 			c.Engine.SetRelay(id, nil)
+			c.Engine.SetExactRelay(id, "", nil)
 			c.mu.Lock()
 			delete(c.acceptanceRelays, id)
 			delete(c.relayPools, id)
@@ -298,7 +299,19 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 			return client, nil
 		}
 		if pool := s.clients[node.ID]; pool != nil {
-			pool.UpdateFactory(factory, s.addresses[node.ID] != node.Address)
+			changed := s.addresses[node.ID] != node.Address
+			if changed {
+				c.Engine.SetExactRelay(node.ID, "", nil)
+			}
+			pool.UpdateFactory(factory, changed)
+			if changed {
+				c.Engine.SetExactRelay(node.ID, node.Address, pool)
+				c.mu.Lock()
+				source := c.acceptanceRelays[node.ID]
+				source.address = node.Address
+				c.acceptanceRelays[node.ID] = source
+				c.mu.Unlock()
+			}
 			s.addresses[node.ID] = node.Address
 			continue
 		}
@@ -309,11 +322,12 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 		s.clients[node.ID] = pool
 		s.addresses[node.ID] = node.Address
 		c.Engine.SetRelay(node.ID, pool)
+		c.Engine.SetExactRelay(node.ID, node.Address, pool)
 		generation := c.Selector.RegisterTransport(node.ID)
 		c.mu.Lock()
 		c.transportDrops[node.ID] = pool.DropSnapshot
 		c.relayPools[node.ID] = pool
-		c.acceptanceRelays[node.ID] = acceptanceRelaySource{session: pool, target: s.target, generation: generation}
+		c.acceptanceRelays[node.ID] = acceptanceRelaySource{session: pool, target: s.target, generation: generation, address: node.Address}
 		c.mu.Unlock()
 		pool.SetFailureHandler(func(reason string) { c.Selector.ReportTransportFailure(node.ID, generation, reason, time.Now()) })
 		attempt, cancel := context.WithTimeout(ctx, 3*time.Second)
@@ -331,6 +345,7 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 	if len(s.echoKey) > 0 {
 		for i := range candidates {
 			candidates[i].Open = e2eprobe.ProbeOpener(candidates[i].Open, s.echoKey)
+			candidates[i].Authenticated = true
 		}
 	}
 	c.Measurements.SetCandidates(candidates)

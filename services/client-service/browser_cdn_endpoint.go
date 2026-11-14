@@ -24,7 +24,14 @@ type cdnEndpointFailure struct {
 }
 
 func (r *youtubeRuntime) endpointFailed(k youtubeKey, id string, e cdnEndpoint, reason string, now time.Time) bool {
-	if k.Network == "" || k.Profile == "" || !youtubeCDN(k) || !e.valid() {
+	if !youtubeCDN(k) {
+		return false
+	}
+	return r.noteEndpointFailure(k, id, e, reason, now)
+}
+
+func (r *youtubeRuntime) noteEndpointFailure(k youtubeKey, id string, e cdnEndpoint, reason string, now time.Time) bool {
+	if k.Network == "" || k.Profile == "" || !e.valid() {
 		return false
 	}
 	r.mu.Lock()
