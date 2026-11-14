@@ -1,6 +1,7 @@
 package clientservice
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -8,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -248,11 +250,98 @@ func TestCDNDecisionReportsRelayAfterLocalOpenFailure(t *testing.T) {
 func TestCDNDecisionLinksLocalFirstFlightFailureToRelay(t *testing.T) {
 	c, cur, q, p := youtubeFixture(t)
 	c.Backend = &youtubeTransformFixture{}
+	q.Host = "rr1---sn-target.googlevideo.com"
 	r := c.browser.youtube
-	r.confirmed(youtubeScope(cur, q), "LOCAL", youtubeLegacyOrder[0], time.Now())
-	server, roots := youtubeTLSHTTPFixture(t, q.Host)
+	key := youtubeScope(cur, q)
+	endpoint := cdnEndpoint{q.Host, p.Destination.String()}
+	primary, alternate := youtubeLegacyOrder[0], youtubeLegacyOrder[1]
+	now := time.Now()
+	r.completeCDNQualification(key, primary, now)
+	// Peer proof lets the first connection run as a regular LOCAL flow.
+	// The target subgroup must earn its own confirmation from TLS data.
+	peerKey := key
+	peerKey.Domain = "googlevideo:sn-source"
+	r.mu.Lock()
+	r.qualifications[youtubeQualification{key.Network, key.Profile, alternate, key.HintOnly}] = now.Add(youtubeLearnTTL)
+	r.notePeerProofLocked(peerKey, primary, now)
+	r.mu.Unlock()
+
+	body := bytes.Repeat([]byte("v"), 2*cdnStrongBytes)
+	server, roots := youtubeTLSHTTPFixture(t, q.Host, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	usage := c.relayUsage()
+	dialOrigin := func(ctx context.Context, request browserproxy.Request, plan browserproxy.Plan) (net.Conn, error) {
+		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", server.Listener.Addr().String())
+		if err != nil || plan.Policy.Action != flowpolicy.RelayRequired {
+			return conn, err
+		}
+		now := time.Now()
+		videoID := usage.beginVideo(videoPerformance{Port: request.Port, Network: cur.network, Profile: cur.profile.ID,
+			Domain: request.Host, Destination: plan.Destination.String(), Started: now})
+		usage.videoOpened(videoID, now, now, nil)
+		return &relayMeterConn{Conn: conn, usage: usage, videoID: videoID, profile: cur.profile.ID, domain: request.Host, release: func() {}}, nil
+	}
+	connect := func(open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) *youtubePlanConn {
+		t.Helper()
+		raw, _, err := c.openBrowserPlan(context.Background(), cur, q, p, open)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = raw.Close() })
+		conn, ok := raw.(*youtubePlanConn)
+		if !ok {
+			t.Fatalf("expected CDN ladder connection, got %T", raw)
+		}
+		return conn
+	}
+	transfer := func(conn net.Conn) {
+		t.Helper()
+		secure := tls.Client(conn, &tls.Config{ServerName: q.Host, RootCAs: roots, MinVersion: tls.VersionTLS12, CurvePreferences: []tls.CurveID{tls.CurveP256}})
+		if err := secure.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if err := secure.Handshake(); err != nil {
+			t.Fatal(err)
+		}
+		req, err := http.NewRequest("GET", "https://"+q.Host+"/video-fixture", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Close = true
+		if err := req.Write(secure); err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.ReadResponse(bufio.NewReader(secure), req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		n, err := io.Copy(io.Discard, resp.Body)
+		if err != nil || resp.StatusCode != http.StatusOK || n != int64(len(body)) {
+			t.Fatalf("TLS/HTTP transfer: status=%d bytes=%d error=%v", resp.StatusCode, n, err)
+		}
+	}
+
+	warm := connect(dialOrigin)
+	transfer(warm)
+	_ = warm.Close()
+	warmEvents := r.cdnDecisionSnapshot().Events
+	if len(warmEvents) != 2 || warmEvents[0].Phase != "SELECTED" || warmEvents[0].Reason != cdnPeerProvisionalReason ||
+		warmEvents[0].Stage != "LOCAL" || warmEvents[0].Strategy != primary || warmEvents[0].TrialID != 0 {
+		t.Fatalf("expected ordinary LOCAL from peer proof: %+v", warmEvents)
+	}
+	r.mu.Lock()
+	confirmed := r.cache[key]
+	r.mu.Unlock()
+	if confirmed.Stage != "LOCAL" || !confirmed.Confirmed || confirmed.Strategy != primary || confirmed.VerifiedBytes <= 64*1024 {
+		t.Fatalf("ordinary LOCAL did not confirm the subgroup: %+v", confirmed)
+	}
+	t.Logf("ordinary LOCAL confirmed %s with %d received bytes", confirmed.Strategy, confirmed.VerifiedBytes)
+
+	beforeTimeout := len(warmEvents)
 	firstWrite := make(chan time.Time, 1)
-	open := func(ctx context.Context, _ browserproxy.Request, plan browserproxy.Plan) (net.Conn, error) {
+	openSilentPrimary := func(ctx context.Context, request browserproxy.Request, plan browserproxy.Plan) (net.Conn, error) {
 		if plan.Policy.Action == flowpolicy.DirectPlus {
 			a, b := net.Pipe()
 			go func() {
@@ -271,40 +360,36 @@ func TestCDNDecisionLinksLocalFirstFlightFailureToRelay(t *testing.T) {
 		if plan.Policy.Reason != "RELAY fallback (ORIGIN_SILENT)" {
 			t.Errorf("unexpected fallback status: %q", plan.Policy.Reason)
 		}
-		return (&net.Dialer{}).DialContext(ctx, "tcp", server.Listener.Addr().String())
+		return dialOrigin(ctx, request, plan)
 	}
-	raw, _, err := c.openYoutubeLadder(context.Background(), cur, q, p, open)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer raw.Close()
-	secure := tls.Client(raw, &tls.Config{ServerName: q.Host, RootCAs: roots, MinVersion: tls.VersionTLS12, CurvePreferences: []tls.CurveID{tls.CurveP256}})
-	if err := secure.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	if err := secure.Handshake(); err != nil {
-		t.Fatal(err)
-	}
-	current := snapshotConnectionEvidence(nativeBrowserRecord{Active: true, planReporter: raw.(browserproxy.PlanReporter)})
+	silent := connect(openSilentPrimary)
+	transfer(silent)
+	current := snapshotConnectionEvidence(nativeBrowserRecord{Active: true, planReporter: silent})
 	if current.Policy.Action != flowpolicy.RelayRequired || current.Policy.Reason != "RELAY fallback (ORIGIN_SILENT)" {
 		t.Fatalf("wrong status after LOCAL timeout: %+v", current.Policy)
 	}
-	events := r.cdnDecisionSnapshot().Events
+	_ = silent.Close()
+	events := r.cdnDecisionSnapshot().Events[beforeTimeout:]
 	if len(events) != 3 {
 		t.Fatal(events)
 	}
 	selected, local, relay := events[0], events[1], events[2]
 	if selected.Phase != "SELECTED" || selected.Stage != "LOCAL" || selected.Reason != "LEARNED_LOCAL" || selected.Admission != "NOT_NEEDED" ||
-		local.Phase != "OPENED" || local.Stage != "LOCAL" || local.Strategy != youtubeLegacyOrder[0] ||
+		local.Phase != "OPENED" || local.Stage != "LOCAL" || local.Strategy != primary ||
 		relay.Phase != "OPENED" || relay.Stage != "RELAY" || relay.Reason != "ORIGIN_SILENT" ||
 		relay.ConnectionID != selected.ConnectionID || local.ConnectionID != selected.ConnectionID ||
 		relay.RecordID == local.RecordID || relay.Seq <= local.Seq || local.Selection != nil || relay.Selection != nil {
 		t.Fatal(events)
 	}
+	for _, event := range events {
+		if event.Host != endpoint.Host || event.Destination != endpoint.Address || event.TrialID != 0 {
+			t.Fatalf("wrong endpoint or trial for the confirmed strategy: %+v", event)
+		}
+	}
 	evidence := selected.Selection
 	if evidence == nil || evidence.Cache == nil || evidence.Cache.Stage != "LOCAL" || !evidence.Cache.Confirmed ||
-		evidence.Cache.Strategy != youtubeLegacyOrder[0] || !evidence.CheckedAt.Before(evidence.Cache.Until) ||
-		evidence.Endpoint == nil || evidence.Endpoint.Blocked || evidence.Endpoint.Strategy != youtubeLegacyOrder[0] || evidence.Trial != nil {
+		evidence.Cache.Strategy != primary || !evidence.CheckedAt.Before(evidence.Cache.Until) ||
+		evidence.Endpoint == nil || evidence.Endpoint.Blocked || evidence.Endpoint.Strategy != primary || evidence.Trial != nil {
 		t.Fatalf("wrong LOCAL selection evidence: %+v", evidence)
 	}
 	select {
@@ -313,10 +398,62 @@ func TestCDNDecisionLinksLocalFirstFlightFailureToRelay(t *testing.T) {
 		if elapsed < 850*time.Millisecond || elapsed > 1750*time.Millisecond {
 			t.Fatalf("first client bytes to relay open = %s, expected 900 ms plus open/scheduling time", elapsed)
 		}
-		t.Logf("first client bytes to relay open: %s", elapsed)
+		t.Logf("connection_id=%d: LOCAL to RELAY (ORIGIN_SILENT) in %s from first client bytes", relay.ConnectionID, elapsed)
 	default:
 		t.Fatal("LOCAL saw no client bytes")
 	}
+
+	now = time.Now()
+	r.mu.Lock()
+	denial := r.endpointNegative[cdnEndpointKey{key, endpoint, primary}]
+	bothQualified := r.qualified(key, primary, now) && r.qualified(key, alternate, now)
+	r.mu.Unlock()
+	if denial.Reason != "ORIGIN_SILENT" || !now.Before(denial.Until) || !bothQualified {
+		t.Fatalf("expected an active primary endpoint denial and two scoped proofs: denial=%+v bothQualified=%v", denial, bothQualified)
+	}
+	media := usage.mediaTrialSibling(cur.profile.ID, cur.network, q.Host, now)
+	if !media.Eligible || media.MediaMatch != "EXACT_HOST" || media.MediaBytes <= cdnStrongBytes {
+		t.Fatalf("fallback did not provide the required relay media: %+v", media)
+	}
+
+	next := connect(dialOrigin)
+	events = r.cdnDecisionSnapshot().Events[beforeTimeout+3:]
+	if len(events) != 2 {
+		t.Fatal(events)
+	}
+	selected, opened := events[0], events[1]
+	evidence = selected.Selection
+	if evidence == nil || evidence.Scope != key || evidence.Trial == nil || evidence.Trial.Cache == nil {
+		t.Fatalf("missing selection evidence for the next connection: %+v", evidence)
+	}
+	if selected.Phase != "SELECTED" || selected.Stage != "LOCAL" || selected.Reason != "LEARNED_STRATEGY_BLOCKED_FOR_ENDPOINT" ||
+		selected.Admission != "ADMITTED" || selected.Strategy != alternate || selected.TrialID == 0 {
+		t.Fatalf("next SELECTED %s %s: connection_id=%d trial_id=%d stage=%s reason=%s local_admission=%s strategy=%q qualified=%q, want LOCAL/ADMITTED %q",
+			selected.Host, selected.Destination, selected.ConnectionID, selected.TrialID, selected.Stage, selected.Reason, selected.Admission, selected.Strategy, evidence.Trial.Cache.Qualified, alternate)
+	}
+	if evidence.Trial.Cache.Qualified != primary {
+		t.Fatalf("wrong subgroup qualification at admission: %+v", evidence.Trial.Cache)
+	}
+	for _, check := range []*cdnEndpointCheck{evidence.Endpoint, evidence.Trial.Endpoint} {
+		if check == nil || check.Strategy != primary || !check.Blocked || !check.Until.Equal(denial.Until) {
+			t.Fatalf("primary strategy was not blocked at selection: %+v", check)
+		}
+	}
+	if check := evidence.Trial.Alternate; check == nil || check.Strategy != alternate || check.Blocked {
+		t.Fatalf("wrong alternate endpoint evidence: %+v", check)
+	}
+	if opened.Phase != "OPENED" || opened.Stage != "LOCAL" || opened.Strategy != alternate || selected.ConnectionID == 0 ||
+		opened.ConnectionID != selected.ConnectionID || opened.ConnectionID == relay.ConnectionID ||
+		opened.TrialID != selected.TrialID || opened.Seq <= selected.Seq ||
+		selected.Host != endpoint.Host || opened.Host != endpoint.Host || selected.Destination != endpoint.Address || opened.Destination != endpoint.Address {
+		t.Fatalf("alternate opening did not match its selection: selected=%+v opened=%+v", selected, opened)
+	}
+	transfer(next)
+	if current := next.CurrentPlan(); current.Policy.Action != flowpolicy.DirectPlus {
+		t.Fatalf("alternate did not carry the TLS/HTTP exchange over LOCAL: %+v", current.Policy)
+	}
+	t.Logf("%s %s: SELECTED LOCAL/ADMITTED -> OPENED LOCAL strategy=%s connection_id=%d trial_id=%d relay_rx=%d",
+		opened.Host, opened.Destination, opened.Strategy, opened.ConnectionID, opened.TrialID, media.MediaBytes)
 }
 
 func TestCDNDecisionSnapshotFitsIPCWithSelectionEvidence(t *testing.T) {
