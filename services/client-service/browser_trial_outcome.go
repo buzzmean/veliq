@@ -8,6 +8,8 @@ import (
 	"github.com/buzzmean/neexitlag/core/localstrategy"
 )
 
+const cdnShortReplyIdle = "SHORT_REPLY_IDLE"
+
 // Times are passive observations, never decoded HTTP/2 frames or application
 // contents. TLS1.3 type23 may contain handshake/alerts as well as HTTP data.
 type youtubeTimings struct {
@@ -133,14 +135,42 @@ func (m *youtubeMeter) finishObservation() {
 		if !m.recoveryScopeCurrent() {
 			verdict = "INCONCLUSIVE"
 		}
-		rx := m.rx
 		// Finalize under the meter lock: a late hard error must be counted
 		// either in this outcome or explicitly after it, never lost/doubled.
-		m.slot = m.r.finishTrialOutcomeFor(m.trialID, m.key, m.strategy, verdict, rx > 0, time.Now(), rx)
-		m.trialFinalized = true
+		m.finishTrialLocked(verdict, time.Now())
 		m.mu.Unlock()
 	})
 	m.recordTrialEvidence(false)
+}
+
+func (m *youtubeMeter) finishTrialLocked(verdict string, now time.Time) {
+	if !m.trialFinalized {
+		m.slot = m.r.finishTrialOutcomeFor(m.trialID, m.key, m.strategy, verdict, m.rx > 0, now, m.rx)
+		m.trialFinalized = true
+	}
+}
+
+// Read deadlines already wake the meter while the socket is quiet. Release
+// only the trial slot; the browser may still use this TLS connection.
+func (m *youtubeMeter) releaseIdleShortTrial(now time.Time) {
+	if !m.trial || m.stage != "LOCAL" || !m.recoveryScopeCurrent() {
+		return
+	}
+	m.mu.Lock()
+	if m.trialFinalized || m.promoted || m.failed || m.closing || m.halfClosed ||
+		m.rx == 0 || m.rx >= cdnDataTrialBytes || m.lastReply.IsZero() ||
+		m.lastClientWrite.After(m.lastReply) || now.Sub(m.lastReply) < cdnBurstQuiet {
+		m.mu.Unlock()
+		return
+	}
+	wire := m.wire.Snapshot().Origin
+	if !wire.ServerHelloComplete || wire.AlertLevel != 0 || wire.State == "NON_TLS_OR_INVALID_HEADER" {
+		m.mu.Unlock()
+		return
+	}
+	m.finishTrialLocked(cdnShortReplyIdle, now)
+	m.mu.Unlock()
+	m.recordTrialEvidence(true)
 }
 func (m *youtubeMeter) updateCloseRecord() {
 	inspection := m.currentInspection()

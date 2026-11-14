@@ -1,11 +1,56 @@
 package clientservice
 
 import (
-	"github.com/buzzmean/neexitlag/core/localstrategy"
 	"io"
+	"os"
 	"testing"
 	"time"
+
+	"github.com/buzzmean/neexitlag/core/localstrategy"
 )
+
+func TestCDNIdleShortReplyReleasesOnlyItsOwnTrialSlot(t *testing.T) {
+	trace := localstrategy.TCPTrace{FirstClose: "REMOTE_PACKET", FirstCloseFlags: 17, RemoteFIN: 1}
+	m, r, k, id := trialMeterFixture(t, trace, os.ErrDeadlineExceeded)
+	conn := m.Conn.(*terminalTrialConn)
+	m.trialID = r.trialID
+	now := time.Now()
+	m.lastReply = now.Add(-cdnBurstQuiet)
+	m.lastClientWrite = now.Add(-time.Second)
+	m.releaseIdleShortTrial(now)
+	if !r.trialActive {
+		t.Fatal("released a trial with an unanswered write")
+	}
+	m.lastClientWrite = m.lastReply
+	m.releaseIdleShortTrial(now.Add(-time.Millisecond))
+	if !r.trialActive {
+		t.Fatal("released before the quiet period elapsed")
+	}
+
+	if _, err := m.Read(make([]byte, 100)); err != os.ErrDeadlineExceeded {
+		t.Fatal(err)
+	}
+	s := r.snapshot().Selection
+	if s.ActiveTrial || s.TrialInconclusive != 1 || s.TrialFailures != 0 || s.TrialSuccesses != 0 ||
+		s.SlotReleaseReason != cdnShortReplyIdle || conn.closed.Load() || r.cache[k].Stage != "RELAY" {
+		t.Fatalf("idle short reply: closed=%v selection=%+v", conn.closed.Load(), s)
+	}
+	if len(r.trials) != 1 || !r.trials[0].Active || r.trials[0].SlotActive || r.trials[0].TrialID != m.trialID {
+		t.Fatal("trial evidence lost the open connection or slot identity", r.trials)
+	}
+	_, nextID, ok := r.takeEndpointTrial(k, time.Now(), testSibling(true), cdnEndpoint{})
+	if !ok || nextID == m.trialID {
+		t.Fatal("next eligible flow did not receive a new slot")
+	}
+
+	conn.err = io.EOF
+	m.Read(make([]byte, 100))
+	m.Close()
+	if !r.trialActive || r.trialID != nextID || r.trialStrategy != id || r.selection.TrialInconclusive != 1 ||
+		len(r.trials) != 1 || r.trials[0].TrialResult != "INCONCLUSIVE_SMALL_EOF" || r.trials[0].SlotReleaseReason != cdnShortReplyIdle {
+		t.Fatal("late EOF changed the newer trial or overwrote the earlier release", r.snapshot(), r.trials)
+	}
+}
 
 func TestCDNCallbackSmallEOFReleasesSlotBeforeReadOrClose(t *testing.T) {
 	m, r, _, _ := trialMeterFixture(t, localstrategy.TCPTrace{FirstClose: "REMOTE_PACKET", FirstCloseFlags: 17, RemoteFIN: 1}, io.EOF)

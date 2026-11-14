@@ -56,16 +56,18 @@ func (r *youtubeRuntime) renewPeerProofLocked(k youtubeKey, strategy string, now
 // LOCAL decision whose real flows have not failed with that strategy recently.
 // Background public-origin checks (www/i.ytimg GET) are not CDN flow evidence
 // and neither block nor revoke a peer proof.
-func (r *youtubeRuntime) peerStrategyLocked(k youtubeKey, now time.Time) string {
+func (r *youtubeRuntime) peerProofLocked(k youtubeKey, now time.Time) *cdnPeerEvidence {
 	if !youtubeCDN(k) || k.Network == "" || len(r.peerProofs) == 0 || !r.room(k, now) {
-		return ""
+		return nil
 	}
 	for _, id := range r.order {
-		if now.Before(r.peerProofs[youtubeQualification{k.Network, k.Profile, id, k.HintOnly}]) && !now.Before(r.peerDenied[youtubeScoreKey{k, id}]) {
-			return id
+		until := r.peerProofs[youtubeQualification{k.Network, k.Profile, id, k.HintOnly}]
+		deniedUntil := r.peerDenied[youtubeScoreKey{k, id}]
+		if now.Before(until) && !now.Before(deniedUntil) {
+			return &cdnPeerEvidence{Strategy: id, Until: until, DeniedUntil: deniedUntil}
 		}
 	}
-	return ""
+	return nil
 }
 
 // Caller holds mu. Only a real CDN flow failure counts; BACKGROUND_* reasons and

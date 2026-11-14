@@ -702,6 +702,8 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return c.automaticStatus(), nil
 	case "browser.local.probes":
 		return c.localProbeSnapshot(), nil
+	case "browser.youtube.decisions":
+		return c.browser.youtube.cdnDecisionSnapshot(), nil
 	case "browser.native.enable", "browser.native.status":
 		return c.handleNativeBrowser(ctx, method, raw)
 	case "edge.silent.apply", "browser.silent.apply", "browser.silent.guard":

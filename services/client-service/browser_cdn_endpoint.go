@@ -54,24 +54,39 @@ func (r *youtubeRuntime) endpointFailed(k youtubeKey, id string, e cdnEndpoint, 
 	return true
 }
 func (r *youtubeRuntime) endpointBlockedLocked(k youtubeKey, id string, e cdnEndpoint, now time.Time) bool {
-	return now.Before(r.endpointNegative[cdnEndpointKey{k, e, id}].Until)
+	return r.endpointCheckLocked(k, id, e, now).Blocked
+}
+
+func (r *youtubeRuntime) endpointCheckLocked(k youtubeKey, id string, e cdnEndpoint, now time.Time) cdnEndpointCheck {
+	until := r.endpointNegative[cdnEndpointKey{k, e, id}].Until
+	return cdnEndpointCheck{Strategy: id, Blocked: now.Before(until), Until: until}
 }
 func (r *youtubeRuntime) chooseEndpoint(k youtubeKey, e cdnEndpoint, now time.Time) (string, string) {
-	stage, id := r.choose(k, now)
-	if stage == "LOCAL" {
-		r.mu.Lock()
-		bad := r.endpointBlockedLocked(k, id, e, now)
-		r.mu.Unlock()
-		if bad {
-			return "RELAY", ""
+	stage, strategy, _, _ := r.chooseEndpointWithReason(k, e, now)
+	return stage, strategy
+}
+
+func (r *youtubeRuntime) chooseEndpointWithReason(k youtubeKey, e cdnEndpoint, now time.Time) (string, string, string, cdnSelectionEvidence) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, found := r.cache[k]
+	stage, id := v.route(k.Network, now)
+	evidence := cdnSelectionEvidence{CheckedAt: now.UTC(), Scope: k, Cache: cdnCacheSnapshot(v, found)}
+	switch stage {
+	case "LOCAL":
+		check := r.endpointCheckLocked(k, id, e, now)
+		evidence.Endpoint = &check
+		if check.Blocked {
+			return "RELAY", "", "LEARNED_STRATEGY_BLOCKED_FOR_ENDPOINT", evidence
 		}
-		return stage, id
-	}
-	if stage == "RELAY" {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		v := r.cache[k]
-		if peer := r.peerStrategyLocked(k, now);peer != "" && !r.endpointBlockedLocked(k, peer, e, now) {
+		return stage, id, "LEARNED_LOCAL", evidence
+	case "RELAY":
+		if peer := r.peerProofLocked(k, now); peer != nil {
+			check := r.endpointCheckLocked(k, peer.Strategy, e, now)
+			evidence.Peer, evidence.Endpoint = peer, &check
+			if check.Blocked {
+				return stage, id, "NO_LEARNED_ROUTE", evidence
+			}
 			r.selection.PeerProvisional++
 			v.Reason = cdnPeerProvisionalReason
 			if v.Stage == "" {
@@ -79,8 +94,10 @@ func (r *youtubeRuntime) chooseEndpoint(k youtubeKey, e cdnEndpoint, now time.Ti
 				v.Until = now.Add(youtubeLearnTTL)
 			}
 			r.cache[k] = v
-			return "LOCAL", peer
+			return "LOCAL", peer.Strategy, cdnPeerProvisionalReason, evidence
 		}
+		return stage, id, "NO_LEARNED_ROUTE", evidence
+	default:
+		return stage, id, "LEARNED_DIRECT", evidence
 	}
-	return stage, id
 }

@@ -11,9 +11,8 @@ const cdnStrongBytes = 1024 * 1024
 const cdnStrongRecords = 16
 const cdnStrongSpan = 3 * time.Second
 
-// A fast LOCAL path can deliver a whole media response in under cdnStrongSpan and
-// then idle on keep-alive. Quiet must exceed the 6s midstream watch, so that an
-// unanswered client request is already a failure before the burst can count.
+// Quiet must exceed the 6s midstream watch so an unanswered request is already
+// a failure before a completed burst or an idle short reply can be classified.
 const cdnBurstQuiet = 7 * time.Second
 
 type localFailureEvidence struct {
@@ -88,6 +87,9 @@ func (m *youtubeMeter) maybePromoteTrial(now time.Time) {
 	m.trialDone.Do(func() {
 		m.mu.Lock()
 		defer m.mu.Unlock()
+		if m.trialFinalized {
+			return
+		}
 		if ok, reason := m.promotionEvidenceLocked(now, inspection); ok && m.recoveryScopeCurrent() && m.r.promoteRunningFor(m.trialID, m.key, m.strategy, m.rx, now) {
 			m.promoted = true
 			promotedNow = true
@@ -111,8 +113,7 @@ func (m *youtubeMeter) maybePromoteTrial(now time.Time) {
 		if m.failed {
 			verdict = "FAILED"
 		}
-		m.slot = m.r.finishTrialOutcomeFor(m.trialID, m.key, m.strategy, verdict, m.rx > 0, now, m.rx)
-		m.trialFinalized = true
+		m.finishTrialLocked(verdict, now)
 	})
 	if promotedNow {
 		m.recordTrialEvidence(true)
@@ -125,7 +126,7 @@ func (r *youtubeRuntime) promoteRunningFor(token uint64, k youtubeKey, id string
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	v := r.cache[k]
-	if !r.trialActive || token != 0 && token != r.trialID || r.trialKey != k || r.trialStrategy != id || v.Qualified != id || !r.room(k, now) {
+	if !r.trialActive || token != 0 && token != r.trialID || r.trialKey != k || r.trialStrategy != id || v.Qualified == "" || !r.room(k, now) {
 		return false
 	}
 	// This flow's current sustained proof supersedes its old public prerequisite;
@@ -136,7 +137,12 @@ func (r *youtubeRuntime) promoteRunningFor(token uint64, k youtubeKey, id string
 	v.Stage = "LOCAL"
 	v.Strategy = id
 	v.Confirmed = true
+	if v.Qualified != id {
+		v.Qualified = id
+		v.Streak = 0
+	}
 	v.Streak++
+	v.alternateTrialStreak = cdnTrialStreak{}
 	v.VerifiedBytes = received
 	v.Until = now.Add(youtubeLearnTTL)
 	v.TrialAfter = now.Add(youtubeTrialCooldown)

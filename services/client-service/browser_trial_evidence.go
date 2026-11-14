@@ -43,6 +43,8 @@ func (m *youtubeMeter) recordTrialEvidence(active bool) {
 		result = "INCONCLUSIVE_SMALL_EOF"
 	case m.neutral:
 		result = "INCONCLUSIVE_CLIENT_CLOSE"
+	case active && m.slot.SlotReleaseReason == cdnShortReplyIdle:
+		result = "INCONCLUSIVE_SHORT_REPLY_IDLE"
 	case !active && m.healthy && m.dataObserved:
 		result = "SUCCESS_WEAK_CLOSED"
 	case !active:

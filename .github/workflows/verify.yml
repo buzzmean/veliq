@@ -96,6 +96,10 @@ jobs:
         shell: pwsh
       - run: '& ./tests/windows-tools/youtube-local-checks.ps1'
         shell: powershell
+      - run: '& ./tests/windows-tools/youtube-decisions-collector-checks.ps1'
+        shell: pwsh
+      - run: '& ./tests/windows-tools/youtube-decisions-collector-checks.ps1'
+        shell: powershell
       - run: '& ./tests/windows-tools/video-relay-observer-checks.ps1'
         shell: pwsh
       - run: '& ./tests/windows-tools/video-relay-observer-checks.ps1'
