@@ -17,6 +17,7 @@ import (
 
 const youtubeTrialCooldown = 3 * time.Minute
 const youtubeTrialSuccesses = 3
+const cdnEarlyTrialAdmitted = "ADMITTED_EARLY_LOCAL_LAB"
 
 type youtubeSelectionSnapshot struct {
 	ActiveTrialID       uint64    `json:"active_trial_id"`
@@ -342,11 +343,11 @@ func (r *youtubeRuntime) takeTrial(k youtubeKey, now time.Time, peer relaySiblin
 	return id, ok
 }
 func (r *youtubeRuntime) takeEndpointTrial(k youtubeKey, now time.Time, peer relaySiblingEvidence, endpoint cdnEndpoint) (string, uint64, bool) {
-	strategy, token, _ := r.decideEndpointTrial(k, now, peer, endpoint)
+	strategy, token, _ := r.decideEndpointTrial(k, now, peer, endpoint, false)
 	return strategy, token, token != 0
 }
 
-func (r *youtubeRuntime) decideEndpointTrial(k youtubeKey, now time.Time, peer relaySiblingEvidence, endpoint cdnEndpoint) (string, uint64, string) {
+func (r *youtubeRuntime) decideEndpointTrial(k youtubeKey, now time.Time, peer relaySiblingEvidence, endpoint cdnEndpoint, localAllowed bool) (string, uint64, string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	v := r.cache[k]
@@ -377,6 +378,13 @@ func (r *youtubeRuntime) decideEndpointTrial(k youtubeKey, now time.Time, peer r
 			reason = "RECENT_RELAY_SIBLING_NOT_OBSERVED"
 		}
 	}
+	// Permit a single experimental trial without relay history after the normal
+	// qualification, endpoint, cooldown and shared-slot checks have passed.
+	if (reason == "SCOPED_BULK_RELAY_NOT_OBSERVED" || reason == "RECENT_RELAY_SIBLING_NOT_OBSERVED") &&
+		r.earlyTrialScope != nil && *r.earlyTrialScope == k && localAllowed && endpoint.valid() && r.room(k, now) {
+		r.earlyTrialScope = nil
+		reason = cdnEarlyTrialAdmitted
+	}
 	v.Sibling = peer
 	if reason == "RECENT_RELAY_SIBLING_NOT_OBSERVED" {
 		v.SiblingWaits++
@@ -384,7 +392,7 @@ func (r *youtubeRuntime) decideEndpointTrial(k youtubeKey, now time.Time, peer r
 	v.TrialChecks++
 	v.LastTrialCheck = now
 	v.TrialAdmission = reason
-	if reason != "ADMITTED" {
+	if reason != "ADMITTED" && reason != cdnEarlyTrialAdmitted {
 		v.TrialDenials++
 		if r.room(k, now) {
 			r.cache[k] = v

@@ -127,6 +127,8 @@ type youtubeRuntime struct {
 	endpointNegative                        map[cdnEndpointKey]cdnEndpointFailure
 	cdnDecisionSeq                          uint64
 	cdnDecisions                            [cdnDecisionLimit]cdnDecisionEvent
+	// Set only by the routing experiment on the test stand. Consumed under mu.
+	earlyTrialScope *youtubeKey
 
 	ordinary       []ordinaryFlowEvidence
 	ordinarySeq    uint64
@@ -489,7 +491,7 @@ func (c *Controller) openYoutubeLadder(ctx context.Context, cur profilesResult, 
 	trialPeer := relaySiblingEvidence{AgeMS: -1, Reason: "NOT_A_CDN_TRIAL"}
 	if stage == "RELAY" {
 		peer := c.relayUsage().mediaTrialSibling(cur.profile.ID, cur.network, q.Host, time.Now())
-		candidate, token, reason := r.decideEndpointTrial(key, time.Now(), peer, endpoint)
+		candidate, token, reason := r.decideEndpointTrial(key, time.Now(), peer, endpoint, c.youtubeLocalAllowed(cur.network))
 		admission = reason
 		if token != 0 {
 			trialID = token
