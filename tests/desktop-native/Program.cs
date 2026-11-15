@@ -106,7 +106,7 @@ internal static partial class Program
             var w = Window(LocalPreferences.Load(settings)); bool closed = false; w.Closed += (_, _) => closed = true;
             w.Show(); Pump();
             Require(w.Title == "VELIQ" && (w.TrayIcon.Text == "VELIQ" || w.TrayIcon.Text.StartsWith("VELIQ: ")), "VELIQ window/tray branding");
-            Require(w.TrayVisible == tray, "Startup tray visibility");
+            Require(w.TrayVisible, "Tray icon must coexist with the taskbar window");
             Require(!w.TrayIcon.ContextMenuStrip!.Items.Cast<System.Windows.Forms.ToolStripItem>().Any(item => item.Text?.Contains("Аварийно") == true || item.Text?.Contains("пароль отключения") == true), "Personal tray must not expose club emergency commands");
             Require(w.IsVisible == !(start && tray), "Startup must hide only in tray mode");
             Require(!start || w.WindowState == WindowState.Minimized, "StartMinimized must minimize");
@@ -139,7 +139,7 @@ internal static partial class Program
         var live = Window(new() { MinimizeToTray = true }); live.Show(); Pump();
         live.WindowState = WindowState.Minimized; Pump(); Require(!live.IsVisible, "Initial tray minimize");
         live.SaveLocalPreferences(true, false); Pump();
-        Require(live.IsVisible && live.WindowState == WindowState.Minimized && !live.TrayVisible, "Save OFF must immediately restore taskbar window and remove tray");
+        Require(live.IsVisible && live.WindowState == WindowState.Minimized && live.TrayVisible && live.ShowInTaskbar, "Save OFF must restore taskbar window while keeping tray");
         var saved = LocalPreferences.Load(settings);
         Require(saved.StartMinimized && !saved.MinimizeToTray, "OFF preference persistence");
         live.SaveLocalPreferences(false, true); Pump();
