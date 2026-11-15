@@ -134,7 +134,8 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	c.wg.Add(1)
 	go func() { defer c.wg.Done(); defer workers.Done(); c.runSubscription(remoteCtx, cp) }()
 	if m.StateDirectory != "" && c.updater.Load() == nil {
-		u := newUpdater(keys, filepath.Dir(m.StateDirectory), launchUpdateSetup)
+		u := newUpdater(keys, filepath.Dir(m.StateDirectory), nil)
+		u.launch = func(path string) error { return launchUpdateSetupObserved(path, u.installExited) }
 		u.relay = c.relayHTTPClient()
 		c.updater.Store(u)
 		c.wg.Add(1)

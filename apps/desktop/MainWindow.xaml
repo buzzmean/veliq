@@ -17,6 +17,15 @@
       <TextBlock Text="{Binding GoSub}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,0"/>
      </StackPanel>
     </Border>
+    <StackPanel DockPanel.Dock="Bottom" Margin="8,12,0,4" HorizontalAlignment="Left" Visibility="{Binding ShowUpdate, Converter={StaticResource BoolToVisible}}">
+     <Button x:Name="InstallUpdateButton" Width="36" Height="36" Padding="0" Click="InstallUpdate" IsEnabled="{Binding CanUpdate}" ToolTip="{Binding UpdateTooltip}" AutomationProperties.Name="{Binding UpdateTooltip}">
+      <Button.Template><ControlTemplate TargetType="Button"><Border CornerRadius="18" Background="{StaticResource BgSunken}" BorderBrush="{StaticResource Line}" BorderThickness="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
+      <Grid Width="36" Height="36">
+       <Path Data="M 18,10 L 18,23 M 12,17 L 18,23 L 24,17" Stroke="{StaticResource Text}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+       <Path Data="{Binding UpdateArc}" Stroke="{StaticResource Accent}" StrokeThickness="2" Visibility="{Binding UpdateDownloading, Converter={StaticResource BoolToVisible}}"/>
+      </Grid>
+     </Button>
+    </StackPanel>
     <StackPanel x:Name="NavBottom" DockPanel.Dock="Bottom">
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr NavAbout}" Tag="About" Click="Navigate" ui:Nav.Icon="{StaticResource IconInfo}"/>
     </StackPanel>

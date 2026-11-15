@@ -199,6 +199,7 @@ public sealed partial class DesktopViewModel : Observable
             try { await RefreshGamesAsync(ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
             catch (Exception error) { ReportAuxiliaryFailure(error,"ipc.gameudp"); }
+            await RefreshUpdateAsync(ct);
             Error = "";
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
@@ -270,6 +271,7 @@ public sealed partial class DesktopViewModel : Observable
         InvalidateBrowserPreparation();
         Notice = "";
         Available = false;
+        ApplyUpdate(new());
         Snapshot = null;
         Connection = Text.Failure(e);
         Error = Connection;

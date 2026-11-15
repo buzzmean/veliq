@@ -29,26 +29,31 @@ const updateRepository = "buzzmean/veliq"
 const updateInterval = 6 * time.Hour
 
 type UpdateStatus struct {
-	State     string    `json:"state"`
-	Current   string    `json:"current_build"`
-	Available uint64    `json:"available_build,omitempty"`
-	Version   string    `json:"available_version,omitempty"`
-	Error     string    `json:"error,omitempty"`
-	Via       string    `json:"via,omitempty"`
-	Checked   time.Time `json:"checked_at,omitempty"`
+	Downloaded int64     `json:"downloaded_bytes,omitempty"`
+	Total      int64     `json:"total_bytes,omitempty"`
+	State      string    `json:"state"`
+	Current    string    `json:"current_build"`
+	Available  uint64    `json:"available_build,omitempty"`
+	Version    string    `json:"available_version,omitempty"`
+	Error      string    `json:"error,omitempty"`
+	Via        string    `json:"via,omitempty"`
+	Checked    time.Time `json:"checked_at,omitempty"`
 }
 
 type updater struct {
-	mu       sync.Mutex
-	status   UpdateStatus
-	http     *http.Client
-	relay    *http.Client // optional: same requests through the VELIQ relay
-	viaRelay bool
-	keys     map[string]ed25519.PublicKey
-	dir      string // service install directory, e.g. %ProgramData%\VELIQ
-	api      string
-	launch   func(path string) error
-	current  uint64
+	op        sync.Mutex // Serializes checks and owner-authorized installation.
+	ready     release.Manifest
+	readyPath string
+	mu        sync.Mutex
+	status    UpdateStatus
+	http      *http.Client
+	relay     *http.Client // optional: same requests through the VELIQ relay
+	viaRelay  bool
+	keys      map[string]ed25519.PublicKey
+	dir       string // service install directory, e.g. %ProgramData%\VELIQ
+	api       string
+	launch    func(path string) error
+	current   uint64
 }
 
 func newUpdater(keys map[string]ed25519.PublicKey, dir string, launch func(string) error) *updater {
@@ -127,6 +132,13 @@ type githubRelease struct {
 }
 
 func (u *updater) check(ctx context.Context) {
+	if !u.op.TryLock() {
+		return
+	}
+	defer u.op.Unlock()
+	if u.snapshot().State == "INSTALLING" {
+		return
+	}
 	if reason := u.disabled(); reason != "" {
 		u.set("DISABLED", reason, nil)
 		return
@@ -140,10 +152,8 @@ func (u *updater) check(ctx context.Context) {
 		u.set("UP_TO_DATE", "", &m)
 		return
 	}
-	if u.recentlyAttempted(m.Build) {
-		u.set("WAITING_RETRY", "previous install of this build did not complete", &m)
-		return
-	}
+	u.readyPath = ""
+	u.progress(0, m.SetupSize)
 	u.set("DOWNLOADING", "", &m)
 	path, e := u.download(ctx, setupURL, m)
 	if e != nil {
@@ -154,12 +164,57 @@ func (u *updater) check(ctx context.Context) {
 		u.set("DOWNLOAD_FAILED", e.Error(), &m)
 		return
 	}
-	u.markAttempt(m.Build)
-	u.set("INSTALLING", "", &m)
-	// Setup replaces and restarts this service; it is not waited for.
-	if e = u.launch(path); e != nil {
-		u.set("INSTALL_FAILED", e.Error(), &m)
+	u.ready, u.readyPath = m, path
+	u.progress(m.SetupSize, m.SetupSize)
+	u.set("READY", "", &m)
+}
+
+// Only this authenticated owner IPC action can launch an installer. A timer,
+// download retry, GUI reopen or service restart never implies consent.
+func (u *updater) install(build uint64) error {
+	if !u.op.TryLock() {
+		return errors.New("UPDATE_BUSY")
 	}
+	defer u.op.Unlock()
+	if reason := u.disabled(); reason != "" {
+		u.set("DISABLED", reason, nil)
+		return errors.New(reason)
+	}
+	state := u.snapshot().State
+	if (state != "READY" && state != "INSTALL_FAILED") || u.readyPath == "" || build != u.ready.Build || build <= u.current {
+		return errors.New("UPDATE_NOT_READY")
+	}
+	// Recheck the verified manifest's size/hash immediately before launch.
+	if ok, _ := fileMatches(u.readyPath, u.ready); !ok {
+		u.readyPath = ""
+		u.set("DOWNLOAD_FAILED", "UPDATE_DOWNLOAD_MISMATCH", &u.ready)
+		return errors.New("UPDATE_DOWNLOAD_MISMATCH")
+	}
+	u.set("INSTALLING", "", &u.ready)
+	if err := u.launch(u.readyPath); err != nil {
+		u.set("INSTALL_FAILED", "UPDATE_LAUNCH_FAILED", &u.ready)
+		return errors.New("UPDATE_LAUNCH_FAILED")
+	}
+	return nil
+}
+
+// A successful replacement stops this old service. If it is still alive when
+// Setup exits, expose a retryable failure instead of leaving INSTALLING forever.
+func (u *updater) installExited() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.status.State == "INSTALLING" {
+		u.status.State, u.status.Error = "INSTALL_FAILED", "UPDATE_NOT_COMPLETED"
+	}
+}
+
+func (u *updater) progress(have, total int64) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if have > total {
+		have = total
+	}
+	u.status.Downloaded, u.status.Total = have, total
 }
 
 func (u *updater) get(ctx context.Context, url string, limit int64) ([]byte, error) {
@@ -273,7 +328,7 @@ func (u *updater) download(ctx context.Context, url string, m release.Manifest) 
 	stall := time.AfterFunc(downloadStall, cancel)
 	defer stall.Stop()
 	var got atomic.Int64
-	body := &progressReader{r: io.LimitReader(resp.Body, m.SetupSize-have+1), onRead: func(n int) { got.Add(int64(n)); stall.Reset(downloadStall) }}
+	body := &progressReader{r: io.LimitReader(resp.Body, m.SetupSize-have+1), onRead: func(n int) { got.Add(int64(n)); u.progress(have+got.Load(), m.SetupSize); stall.Reset(downloadStall) }}
 	slow := atomic.Bool{}
 	if !u.usingRelay() && u.relay != nil {
 		// Throttled direct path (seen at ~20 KB/s): give up early and resume via relay.
@@ -339,24 +394,6 @@ func fileMatches(path string, m release.Manifest) (bool, error) {
 	h := sha256.New()
 	n, e := io.Copy(h, f)
 	return e == nil && n == m.SetupSize && hex.EncodeToString(h.Sum(nil)) == m.SetupSHA256, e
-}
-
-// One automatic attempt per build per day: a failing Setup must not loop.
-func (u *updater) attemptFile() string { return filepath.Join(u.dir, "updates", "attempt.json") }
-func (u *updater) recentlyAttempted(build uint64) bool {
-	raw, e := os.ReadFile(u.attemptFile())
-	if e != nil {
-		return false
-	}
-	var a struct {
-		Build uint64    `json:"build"`
-		At    time.Time `json:"at"`
-	}
-	return json.Unmarshal(raw, &a) == nil && a.Build == build && time.Since(a.At) < 24*time.Hour
-}
-func (u *updater) markAttempt(build uint64) {
-	raw, _ := json.Marshal(map[string]any{"build": build, "at": time.Now().UTC()})
-	_ = os.WriteFile(u.attemptFile(), raw, 0o600)
 }
 
 func (u *updater) usingRelay() bool {

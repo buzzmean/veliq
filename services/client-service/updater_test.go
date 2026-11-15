@@ -7,11 +7,13 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -53,11 +55,21 @@ func newTestUpdater(t *testing.T, srv *httptest.Server, trusted ed25519.PublicKe
 	return u, &launched
 }
 
-func TestUpdaterInstallsSignedNewerBuildOnce(t *testing.T) {
+func TestUpdaterWaitsForOwnerAndInstallsOnlyOnce(t *testing.T) {
 	pub, key, _ := ed25519.GenerateKey(rand.Reader)
 	setup := []byte("MZ fixture setup")
 	u, launched := newTestUpdater(t, updateFixture(t, 120, key, setup), pub, "100")
 	u.check(context.Background())
+	if len(*launched) != 0 || u.snapshot().State != "READY" {
+		t.Fatalf("download installed without consent: %+v", u.snapshot())
+	}
+	u.check(context.Background())
+	if len(*launched) != 0 {
+		t.Fatal("repeated check installed without consent")
+	}
+	if err := u.install(120); err != nil {
+		t.Fatal(err)
+	}
 	if len(*launched) != 1 || u.snapshot().State != "INSTALLING" {
 		t.Fatalf("state %+v launched %v", u.snapshot(), *launched)
 	}
@@ -65,7 +77,7 @@ func TestUpdaterInstallsSignedNewerBuildOnce(t *testing.T) {
 		t.Fatal("downloaded setup mismatch")
 	}
 	u.check(context.Background())
-	if len(*launched) != 1 || u.snapshot().State != "WAITING_RETRY" {
+	if len(*launched) != 1 || u.snapshot().State != "INSTALLING" {
 		t.Fatalf("second check must not relaunch: %+v", u.snapshot())
 	}
 }
@@ -110,10 +122,99 @@ func TestUpdaterResumesPartialDownload(t *testing.T) {
 	os.MkdirAll(dir, 0o700)
 	os.WriteFile(filepath.Join(dir, "VELIQ-Setup-130.exe.part"), setup[:len(setup)/2], 0o600)
 	u.check(context.Background())
+	if err := u.install(130); err != nil {
+		t.Fatal(err)
+	}
 	if len(*launched) != 1 {
 		t.Fatalf("resume failed: %+v", u.snapshot())
 	}
 	if raw, _ := os.ReadFile((*launched)[0]); !bytes.Equal(raw, setup) {
 		t.Fatal("resumed file differs")
+	}
+}
+
+func TestUpdaterConsentDoesNotSurviveServiceRestart(t *testing.T) {
+	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+	srv := updateFixture(t, 120, key, []byte("MZ fixture"))
+	u, launched := newTestUpdater(t, srv, pub, "100")
+	u.check(context.Background())
+	restarted := newUpdater(u.keys, u.dir, u.launch)
+	restarted.api, restarted.http = u.api, u.http
+	restarted.check(context.Background())
+	if len(*launched) != 0 || restarted.snapshot().State != "READY" {
+		t.Fatal("cached package installed on restart")
+	}
+	if err := restarted.install(120); err != nil || len(*launched) != 1 {
+		t.Fatalf("explicit install: %v", err)
+	}
+}
+
+func TestUpdaterRejectsTamperedFileStaleConsentAndClubChange(t *testing.T) {
+	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+	u, launched := newTestUpdater(t, updateFixture(t, 120, key, []byte("MZ fixture")), pub, "100")
+	u.check(context.Background())
+	if u.install(119) == nil {
+		t.Fatal("stale version accepted")
+	}
+	os.WriteFile(u.readyPath, []byte("tampered"), 0600)
+	if u.install(120) == nil || len(*launched) != 0 {
+		t.Fatal("tampered setup accepted")
+	}
+	u.check(context.Background())
+	os.WriteFile(filepath.Join(u.dir, "club-mode.json"), []byte("{}"), 0600)
+	if u.install(120) == nil || len(*launched) != 0 {
+		t.Fatal("club setup accepted")
+	}
+}
+
+func TestUpdaterDoubleClickAndRetryNeverAutoLaunch(t *testing.T) {
+	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+	u, _ := newTestUpdater(t, updateFixture(t, 120, key, []byte("MZ fixture")), pub, "100")
+	u.check(context.Background())
+	entered, unblock := make(chan struct{}), make(chan struct{})
+	var wg sync.WaitGroup
+	u.launch = func(string) error { close(entered); <-unblock; return errors.New("failure") }
+	wg.Add(1)
+	go func() { defer wg.Done(); _ = u.install(120) }()
+	<-entered
+	if u.install(120) == nil {
+		t.Fatal("concurrent install accepted")
+	}
+	close(unblock)
+	wg.Wait()
+	if u.snapshot().State != "INSTALL_FAILED" {
+		t.Fatal(u.snapshot())
+	}
+	count := 0
+	u.launch = func(string) error { count++; return nil }
+	u.check(context.Background())
+	if count != 0 || u.snapshot().State != "READY" {
+		t.Fatal("retry installed without consent")
+	}
+	if err := u.install(120); err != nil || count != 1 {
+		t.Fatal(err)
+	}
+	u.installExited()
+	if u.snapshot().State != "INSTALL_FAILED" {
+		t.Fatal("exited setup left old service INSTALLING")
+	}
+}
+
+func TestUpdaterOwnerDispatchAndClubGuard(t *testing.T) {
+	pub, key, _ := ed25519.GenerateKey(rand.Reader)
+	u, launched := newTestUpdater(t, updateFixture(t, 120, key, []byte("MZ fixture")), pub, "100")
+	u.check(context.Background())
+	c := &Controller{}
+	c.updater.Store(u)
+	c.clubMode.Store(true)
+	if _, err := c.HandleOwnerIPC(context.Background(), "update.install", []byte(`{"build":120}`)); err == nil {
+		t.Fatal("club IPC allowed install")
+	}
+	c.clubMode.Store(false)
+	if _, err := c.HandleOwnerIPC(context.Background(), "update.install", []byte(`{"build":120}`)); err != nil {
+		t.Fatal(err)
+	}
+	if len(*launched) != 1 {
+		t.Fatal("IPC did not dispatch install")
 	}
 }

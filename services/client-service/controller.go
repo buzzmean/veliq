@@ -704,6 +704,26 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 			return nil, errors.New("EMERGENCY_PASSWORD_NOT_CONFIGURED")
 		}
 		return c.emergencyHandler(ctx, method, raw)
+	case "update.install":
+		var request struct {
+			Build uint64 `json:"build"`
+		}
+		if err := security.Parse(raw, &request); err != nil {
+			return nil, err
+		}
+		if u := c.updater.Load(); u != nil {
+			if err := u.install(request.Build); err != nil {
+				return nil, err
+			}
+			return u.snapshot(), nil
+		}
+		return nil, errors.New("UPDATE_NOT_STARTED")
+	case "update.retry":
+		if u := c.updater.Load(); u != nil {
+			go u.check(c.ctx)
+			return u.snapshot(), nil
+		}
+		return nil, errors.New("UPDATE_NOT_STARTED")
 	case "update.status":
 		if u := c.updater.Load(); u != nil {
 			return u.snapshot(), nil
