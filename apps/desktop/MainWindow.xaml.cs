@@ -45,7 +45,7 @@ public partial class MainWindow : Window
         {
             Icon = trayImage,
             Text = "VELIQ",
-            Visible = preferences.MinimizeToTray
+            Visible = true
         };
         var menu = new System.Windows.Forms.ContextMenuStrip();
         menu.Items.Add(Text.Get("OpenApp"), null, (_, _) => Dispatcher.Invoke(ShowFromTray));
@@ -101,7 +101,7 @@ public partial class MainWindow : Window
         new LocalPreferences { StartMinimized = startMinimized, MinimizeToTray = minimizeToTray, ShowTechnical = preferences.ShowTechnical }.Save(preferencesPath);
         preferences.StartMinimized = startMinimized;
         preferences.MinimizeToTray = minimizeToTray;
-        tray.Visible = minimizeToTray;
+        tray.Visible = true; // Presence in the tray is independent of hiding the window.
         if (!minimizeToTray && !IsVisible)
         {
             // Disabling tray mode restores a taskbar window immediately.
