@@ -27,7 +27,7 @@ func (a *API) trust() map[string]string {
 
 func statusFor(ent Entitlement, enforced bool, now time.Time) SubscriptionStatus {
 	out := SubscriptionStatus{Managed: ent.Managed, Enforced: enforced, Active: !enforced || ent.Active(now)}
-	if ent.Managed {
+	if ent.Managed && !ent.Lifetime {
 		until, grace := ent.Until.UTC(), ent.Until.Add(SubscriptionGrace).UTC()
 		out.PaidUntil, out.GraceUntil = &until, &grace
 	}

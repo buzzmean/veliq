@@ -34,6 +34,7 @@ type Account struct {
 	Email string `json:"email"`
 }
 type Subscription struct {
+	Lifetime   bool       `json:"lifetime"`
 	CanConnect bool       `json:"can_connect"`
 	ID         string     `json:"id"`
 	PlanID     string     `json:"plan_id"`
@@ -51,24 +52,26 @@ type SeatInfo struct {
 	LastSeen *time.Time `json:"last_seen"`
 }
 type Payment struct {
-	ID         string    `json:"id"`
-	Subscribed string    `json:"subscription_id"`
-	Provider   string    `json:"provider"`
-	Amount     int64     `json:"amount_kopecks"`
-	PeriodDays int       `json:"period_days"`
-	Status     string    `json:"status"`
-	Created    time.Time `json:"created_at"`
+	ReviewRequired bool      `json:"review_required"`
+	ID             string    `json:"id"`
+	Subscribed     string    `json:"subscription_id"`
+	Provider       string    `json:"provider"`
+	Amount         int64     `json:"amount_kopecks"`
+	PeriodDays     int       `json:"period_days"`
+	Status         string    `json:"status"`
+	Created        time.Time `json:"created_at"`
 }
 
 // Entitlement is the access decision for one device. Unmanaged devices (no
 // activation slot, e.g. registered by the operator) are never limited.
 type Entitlement struct {
-	Managed bool
-	Until   time.Time
+	Managed  bool
+	Lifetime bool
+	Until    time.Time
 }
 
 func (e Entitlement) Active(now time.Time) bool {
-	return !e.Managed || now.Before(e.Until.Add(SubscriptionGrace))
+	return !e.Managed || e.Lifetime || now.Before(e.Until.Add(SubscriptionGrace))
 }
 
 func loginHash(email, code string) []byte {
@@ -358,18 +361,18 @@ func (s *Store) SetAutoRenew(ctx context.Context, account Account, subscription 
 }
 
 func (s *Store) AccountSubscriptions(ctx context.Context, account Account, now time.Time) ([]Subscription, error) {
-	rows, e := s.DB.Query(ctx, "SELECT id,plan_id,kind,seats,paid_until,auto_renew FROM subscriptions WHERE account_id=$1 ORDER BY created_at", account.ID)
+	rows, e := s.DB.Query(ctx, "SELECT id,plan_id,kind,seats,paid_until,auto_renew,lifetime FROM subscriptions WHERE account_id=$1 ORDER BY created_at", account.ID)
 	if e != nil {
 		return nil, e
 	}
 	out := []Subscription{}
 	for rows.Next() {
 		var sub Subscription
-		if e = rows.Scan(&sub.ID, &sub.PlanID, &sub.Kind, &sub.Seats, &sub.PaidUntil, &sub.AutoRenew); e != nil {
+		if e = rows.Scan(&sub.ID, &sub.PlanID, &sub.Kind, &sub.Seats, &sub.PaidUntil, &sub.AutoRenew, &sub.Lifetime); e != nil {
 			rows.Close()
 			return nil, e
 		}
-		sub.Active = sub.PaidUntil != nil && now.Before(*sub.PaidUntil)
+		sub.Active = sub.Lifetime || (sub.PaidUntil != nil && now.Before(*sub.PaidUntil))
 		sub.Devices = []SeatInfo{}
 		out = append(out, sub)
 	}
@@ -402,7 +405,7 @@ func (s *Store) AccountSubscriptions(ctx context.Context, account Account, now t
 }
 
 func (s *Store) AccountPayments(ctx context.Context, account Account) ([]Payment, error) {
-	rows, e := s.DB.Query(ctx, "SELECT p.id,p.subscription_id,p.provider,p.amount_kopecks,p.period_days,p.status,p.created_at FROM payments p JOIN subscriptions sub ON sub.id=p.subscription_id WHERE sub.account_id=$1 ORDER BY p.created_at DESC LIMIT 100", account.ID)
+	rows, e := s.DB.Query(ctx, "SELECT p.id,p.subscription_id,p.provider,p.amount_kopecks,p.period_days,p.status,p.created_at,EXISTS(SELECT 1 FROM payment_review_events e WHERE e.payment_id=p.id) FROM payments p JOIN subscriptions sub ON sub.id=p.subscription_id WHERE sub.account_id=$1 ORDER BY p.created_at DESC LIMIT 100", account.ID)
 	if e != nil {
 		return nil, e
 	}
@@ -410,7 +413,7 @@ func (s *Store) AccountPayments(ctx context.Context, account Account) ([]Payment
 	out := []Payment{}
 	for rows.Next() {
 		var p Payment
-		if e = rows.Scan(&p.ID, &p.Subscribed, &p.Provider, &p.Amount, &p.PeriodDays, &p.Status, &p.Created); e != nil {
+		if e = rows.Scan(&p.ID, &p.Subscribed, &p.Provider, &p.Amount, &p.PeriodDays, &p.Status, &p.Created, &p.ReviewRequired); e != nil {
 			return nil, e
 		}
 		out = append(out, p)
@@ -491,8 +494,8 @@ func (s *Store) RecordPayment(ctx context.Context, subscription, provider, provi
 // Platega validates and supplies it from its required payload. Repeats and
 // out-of-order deliveries are harmless: the same status is a no-op, and a
 // payment that already succeeded is never reopened by a later event.
-func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID, expectedSubscription string, amount int64, status, actor string, now time.Time) (time.Time, bool, error) {
-	if provider == "" || len(provider) > 32 || providerID == "" || len(providerID) > 128 || amount < 0 || (status != "succeeded" && status != "canceled") {
+func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID, expectedSubscription string, amount int64, status, actor string, now time.Time, events ...PaymentEvent) (time.Time, bool, error) {
+	if provider == "" || len(provider) > 32 || providerID == "" || len(providerID) > 128 || amount < 0 || (status != "succeeded" && status != "canceled" && status != "review" && status != "pending") {
 		return time.Time{}, false, errors.New("PAYMENT_INVALID")
 	}
 	tx, e := s.DB.Begin(ctx)
@@ -521,7 +524,25 @@ func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID,
 	if paid != nil {
 		until = *paid
 	}
-	if old == "succeeded" || old == status {
+	if status == "review" {
+		if len(events) != 1 {
+			return time.Time{}, false, errors.New("PAYMENT_INVALID")
+		}
+		ev := events[0]
+		if ev.ProviderStatus != "DISPUTED" && ev.ProviderStatus != "CHARGEBACKED" && ev.ProviderStatus != "PARTIALLY_REFUNDED" {
+			return time.Time{}, false, errors.New("PAYMENT_INVALID")
+		}
+		if _, e = tx.Exec(ctx, `INSERT INTO payment_review_events(payment_id,provider_status,refund_id,refund_status,refunded_kopecks)
+            SELECT id,$3,$4,$5,$6 FROM payments WHERE provider=$1 AND provider_payment_id=$2 ON CONFLICT DO NOTHING`, provider, providerID, ev.ProviderStatus, ev.RefundID, ev.RefundStatus, ev.RefundedKopecks); e != nil {
+			return time.Time{}, false, e
+		}
+		return until, false, tx.Commit(ctx)
+	}
+	var review bool
+	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payment_review_events e JOIN payments p ON p.id=e.payment_id WHERE p.provider=$1 AND p.provider_payment_id=$2)`, provider, providerID).Scan(&review); e != nil {
+		return time.Time{}, false, e
+	}
+	if old == "succeeded" || old == status || status == "pending" || review {
 		return until, false, tx.Commit(ctx)
 	}
 	if _, e = tx.Exec(ctx, "UPDATE payments SET status=$3 WHERE provider=$1 AND provider_payment_id=$2", provider, providerID, status); e != nil {
@@ -551,31 +572,32 @@ func (s *Store) DeviceEntitlement(ctx context.Context, device string) (Entitleme
 		return Entitlement{}, e
 	} else if managed {
 		var paid *time.Time
-		var blocked bool
-		e = s.DB.QueryRow(ctx, "SELECT sub.paid_until,(ac.disabled OR c.revoked OR c.expires_at<=now()) FROM account_device_bindings b JOIN subscriptions sub ON sub.id=b.subscription_id JOIN accounts ac ON ac.id=sub.account_id JOIN activation_codes c ON c.subscription_id=sub.id WHERE b.device_id=$1", device).Scan(&paid, &blocked)
+		var blocked, lifetime bool
+		e = s.DB.QueryRow(ctx, "SELECT sub.paid_until,(ac.disabled OR c.revoked OR (NOT sub.lifetime AND c.expires_at<=now())),sub.lifetime FROM account_device_bindings b JOIN subscriptions sub ON sub.id=b.subscription_id JOIN accounts ac ON ac.id=sub.account_id JOIN activation_codes c ON c.subscription_id=sub.id WHERE b.device_id=$1", device).Scan(&paid, &blocked, &lifetime)
 		if e != nil {
 			return Entitlement{}, e
 		}
-		out := Entitlement{Managed: true}
+		out := Entitlement{Managed: true, Lifetime: lifetime && !blocked}
 		if paid != nil && !blocked {
 			out.Until = *paid
 		}
 		return out, nil
 	}
-	rows, e := s.DB.Query(ctx, "SELECT c.subscription_id IS NOT NULL,c.expires_at,sub.paid_until FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id LEFT JOIN subscriptions sub ON sub.id=c.subscription_id WHERE sl.device_id=$1 AND NOT sl.disabled AND NOT c.revoked", device)
+	rows, e := s.DB.Query(ctx, "SELECT c.subscription_id IS NOT NULL,c.expires_at,sub.paid_until,coalesce(sub.lifetime AND NOT ac.disabled,false) FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id LEFT JOIN subscriptions sub ON sub.id=c.subscription_id LEFT JOIN accounts ac ON ac.id=sub.account_id WHERE sl.device_id=$1 AND NOT sl.disabled AND NOT c.revoked", device)
 	if e != nil {
 		return Entitlement{}, e
 	}
 	defer rows.Close()
 	var out Entitlement
 	for rows.Next() {
-		var withSub bool
+		var withSub, lifetime bool
 		var expires time.Time
 		var paid *time.Time
-		if e = rows.Scan(&withSub, &expires, &paid); e != nil {
+		if e = rows.Scan(&withSub, &expires, &paid, &lifetime); e != nil {
 			return Entitlement{}, e
 		}
 		out.Managed = true
+		out.Lifetime = out.Lifetime || lifetime
 		until := expires
 		if withSub {
 			until = time.Time{}
@@ -602,7 +624,7 @@ type CutoffDevice struct {
 func (s *Store) SubscriptionCutoff(ctx context.Context, now time.Time) ([]CutoffDevice, error) {
 	rows, e := s.DB.Query(ctx, `SELECT d.id, max(c.name), max(CASE WHEN c.subscription_id IS NULL THEN c.expires_at ELSE coalesce(sub.paid_until,'epoch'::timestamptz) END) AS until, d.last_authenticated_at
 FROM devices d JOIN activation_slots sl ON sl.device_id=d.id AND NOT sl.disabled JOIN activation_codes c ON c.id=sl.code_id AND NOT c.revoked LEFT JOIN subscriptions sub ON sub.id=c.subscription_id
-WHERE NOT d.revoked GROUP BY d.id, d.last_authenticated_at HAVING max(CASE WHEN c.subscription_id IS NULL THEN c.expires_at ELSE coalesce(sub.paid_until,'epoch'::timestamptz) END) + $1::interval <= $2 ORDER BY d.id LIMIT 1000`, fmt.Sprintf("%d seconds", int(SubscriptionGrace.Seconds())), now)
+WHERE NOT d.revoked GROUP BY d.id, d.last_authenticated_at HAVING NOT bool_or(coalesce(sub.lifetime,false)) AND max(CASE WHEN c.subscription_id IS NULL THEN c.expires_at ELSE coalesce(sub.paid_until,'epoch'::timestamptz) END) + $1::interval <= $2 ORDER BY d.id LIMIT 1000`, fmt.Sprintf("%d seconds", int(SubscriptionGrace.Seconds())), now)
 	if e != nil {
 		return nil, e
 	}
@@ -619,6 +641,7 @@ WHERE NOT d.revoked GROUP BY d.id, d.last_authenticated_at HAVING max(CASE WHEN 
 }
 
 type AdminSubscription struct {
+	Lifetime  bool       `json:"lifetime"`
 	ID        string     `json:"id"`
 	Email     string     `json:"email"`
 	PlanID    string     `json:"plan_id"`
@@ -627,7 +650,7 @@ type AdminSubscription struct {
 }
 
 func (s *Store) AdminSubscriptions(ctx context.Context) ([]AdminSubscription, error) {
-	rows, e := s.DB.Query(ctx, "SELECT sub.id,a.email,sub.plan_id,sub.seats,sub.paid_until FROM subscriptions sub JOIN accounts a ON a.id=sub.account_id ORDER BY sub.created_at DESC LIMIT 1000")
+	rows, e := s.DB.Query(ctx, "SELECT sub.id,a.email,sub.plan_id,sub.seats,sub.paid_until,sub.lifetime FROM subscriptions sub JOIN accounts a ON a.id=sub.account_id ORDER BY sub.created_at DESC LIMIT 1000")
 	if e != nil {
 		return nil, e
 	}
@@ -635,7 +658,7 @@ func (s *Store) AdminSubscriptions(ctx context.Context) ([]AdminSubscription, er
 	out := []AdminSubscription{}
 	for rows.Next() {
 		var x AdminSubscription
-		if e = rows.Scan(&x.ID, &x.Email, &x.PlanID, &x.Seats, &x.PaidUntil); e != nil {
+		if e = rows.Scan(&x.ID, &x.Email, &x.PlanID, &x.Seats, &x.PaidUntil, &x.Lifetime); e != nil {
 			return nil, e
 		}
 		out = append(out, x)

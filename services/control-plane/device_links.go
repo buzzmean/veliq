@@ -89,18 +89,18 @@ func accountSubscriptionTx(ctx context.Context, tx pgx.Tx, account, subscription
 	var out accountSubscription
 	var paid *time.Time
 	var expires time.Time
-	var revoked, disabled bool
-	e := tx.QueryRow(ctx, `SELECT sub.id,sub.kind,sub.seats,sub.paid_until,ac.email,ac.display_name,ac.disabled,c.id,c.revoked,c.expires_at FROM subscriptions sub JOIN accounts ac ON ac.id=sub.account_id JOIN activation_codes c ON c.subscription_id=sub.id WHERE sub.id=$1 AND sub.account_id=$2 FOR UPDATE OF sub,ac,c`, subscription, account).Scan(&out.Binding.Subscription, &out.Binding.Kind, &out.Limit, &paid, &out.Binding.Email, &out.Binding.Name, &disabled, &out.Code, &revoked, &expires)
+	var revoked, disabled, lifetime bool
+	e := tx.QueryRow(ctx, `SELECT sub.id,sub.kind,sub.seats,sub.paid_until,ac.email,ac.display_name,ac.disabled,c.id,c.revoked,c.expires_at,sub.lifetime FROM subscriptions sub JOIN accounts ac ON ac.id=sub.account_id JOIN activation_codes c ON c.subscription_id=sub.id WHERE sub.id=$1 AND sub.account_id=$2 FOR UPDATE OF sub,ac,c`, subscription, account).Scan(&out.Binding.Subscription, &out.Binding.Kind, &out.Limit, &paid, &out.Binding.Email, &out.Binding.Name, &disabled, &out.Code, &revoked, &expires, &lifetime)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return out, errors.New("ACCOUNT_SUBSCRIPTION_REQUIRED")
 	}
 	if e != nil {
 		return out, e
 	}
-	if disabled || revoked || !expires.After(time.Now()) {
+	if disabled || revoked || (!lifetime && !expires.After(time.Now())) {
 		return out, errors.New("ACCOUNT_SUBSCRIPTION_REQUIRED")
 	}
-	if enforce && (paid == nil || !paid.Add(SubscriptionGrace).After(time.Now())) {
+	if enforce && !lifetime && (paid == nil || !paid.Add(SubscriptionGrace).After(time.Now())) {
 		return out, errors.New("SUBSCRIPTION_EXPIRED")
 	}
 	if out.Binding.Name == "" {

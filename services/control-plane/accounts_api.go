@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -20,6 +21,10 @@ type PaymentProvider interface {
 	CreatePayment(ctx context.Context, q PaymentRequest) (redirectURL, providerID string, err error)
 	HandleWebhook(r *http.Request) (PaymentEvent, error)
 }
+type PaymentStatusProvider interface {
+	CheckPayment(context.Context, string) (PaymentEvent, error)
+}
+
 type PaymentRequest struct {
 	Subscription  string
 	AmountKopecks int64
@@ -31,11 +36,15 @@ type PaymentRequest struct {
 	SaveMethod    bool
 }
 type PaymentEvent struct {
-	ProviderID    string
-	Subscription  string
-	AmountKopecks int64
-	PeriodDays    int
-	Status        string
+	ProviderStatus  string
+	RefundID        string
+	RefundStatus    string
+	RefundedKopecks int64
+	ProviderID      string
+	Subscription    string
+	AmountKopecks   int64
+	PeriodDays      int
+	Status          string
 }
 
 func normalizeEmail(raw string) (string, bool) {
@@ -207,14 +216,14 @@ func (a *API) accountView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for i := range subs {
-		subs[i].CanConnect = subs[i].PaidUntil != nil && subs[i].PaidUntil.Add(SubscriptionGrace).After(time.Now())
+		subs[i].CanConnect = subs[i].Lifetime || (subs[i].PaidUntil != nil && subs[i].PaidUntil.Add(SubscriptionGrace).After(time.Now()))
 	}
 	var kind, name string
 	if e = a.Store.DB.QueryRow(r.Context(), "SELECT account_type,display_name FROM accounts WHERE id=$1", acc.ID).Scan(&kind, &name); e != nil {
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		return
 	}
-	respond(w, 200, map[string]any{"email": acc.Email, "kind": kind, "name": name, "subscriptions": subs, "payments": pays, "plans": a.Settings.Plans, "payments_enabled": a.Settings.Payments != nil, "auto_renew_available": false, "subscription_enforced": a.Settings.EnforceSubscription})
+	respond(w, 200, map[string]any{"email": acc.Email, "kind": kind, "name": name, "subscriptions": subs, "payments": pays, "plans": a.Settings.Plans, "payment_terms": paymentTerms(), "payments_enabled": a.Settings.Payments != nil, "auto_renew_available": false, "subscription_enforced": a.Settings.EnforceSubscription})
 }
 
 func (a *API) subscriptionCreate(w http.ResponseWriter, r *http.Request) {
@@ -282,6 +291,10 @@ func (a *API) subscriptionAction(w http.ResponseWriter, r *http.Request) {
 			a.fail(w, 400, "SUBSCRIPTION_INVALID")
 			return
 		}
+		if q.Enabled {
+			a.fail(w, 409, "PAYMENT_AUTORENEW_UNAVAILABLE")
+			return
+		}
 		if e := a.Store.SetAutoRenew(r.Context(), acc, id, q.Enabled); e != nil {
 			a.storeFail(w, e)
 			return
@@ -329,17 +342,42 @@ func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string
 		a.fail(w, 404, "SUBSCRIPTION_NOT_FOUND")
 		return
 	}
+	if sub.Lifetime {
+		a.fail(w, 409, "PAYMENT_NOT_REQUIRED")
+		return
+	}
 	p, found := a.plan(sub.PlanID)
 	if !found || p.PricePerSeatRub == 0 {
 		a.fail(w, 409, "PRICE_NOT_SET")
 		return
 	}
 	var q struct {
-		AutoRenew bool `json:"auto_renew"`
+		AutoRenew      bool   `json:"auto_renew"`
+		Months         *int   `json:"months"`
+		ExpectedAmount *int64 `json:"expected_amount_kopecks"`
 	}
-	_ = body(r, &q)
-	amount := p.PricePerSeatRub * int64(sub.Seats) * 100
-	redirect, providerID, e := a.Settings.Payments.CreatePayment(r.Context(), PaymentRequest{Subscription: id, AmountKopecks: amount, PeriodDays: p.PeriodDays, Description: "Подписка VELIQ «" + p.Title + "»", Email: acc.Email, AccountID: acc.ID, ReturnURL: a.Settings.AccountOrigin + "/account.html", SaveMethod: q.AutoRenew})
+	if body(r, &q) != nil {
+		a.fail(w, 400, "PAYMENT_INVALID")
+		return
+	}
+	if q.AutoRenew {
+		a.fail(w, 409, "PAYMENT_AUTORENEW_UNAVAILABLE")
+		return
+	}
+	months := 1 // Backward-compatible one-off request from an older cabinet.
+	if q.Months != nil {
+		months = *q.Months
+	}
+	amount, term, err := p.QuotePayment(sub.Seats, months)
+	if err != nil {
+		a.fail(w, 409, err.Error())
+		return
+	}
+	if q.ExpectedAmount != nil && *q.ExpectedAmount != amount {
+		a.fail(w, 409, "PAYMENT_PRICE_CHANGED")
+		return
+	}
+	redirect, providerID, e := a.Settings.Payments.CreatePayment(r.Context(), PaymentRequest{Subscription: id, AmountKopecks: amount, PeriodDays: term.Days, Description: "Подписка VELIQ «" + p.Title + "»", Email: acc.Email, AccountID: acc.ID, ReturnURL: a.Settings.AccountOrigin + "/account.html?payment=return", SaveMethod: q.AutoRenew})
 	if e != nil {
 		if errors.Is(e, ErrAutoRenewUnavailable) {
 			a.fail(w, 409, "PAYMENT_AUTORENEW_UNAVAILABLE")
@@ -348,7 +386,7 @@ func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string
 		a.fail(w, 502, "PAYMENT_UNAVAILABLE")
 		return
 	}
-	if _, _, e = a.Store.RecordPayment(r.Context(), id, a.Settings.Payments.Name(), providerID, amount, p.PeriodDays, "pending", "", "account:"+acc.ID, time.Now()); e != nil {
+	if _, _, e = a.Store.RecordPayment(r.Context(), id, a.Settings.Payments.Name(), providerID, amount, term.Days, "pending", fmt.Sprintf("months=%d;discount=%d;seats=%d;base_rub=%d", term.Months, term.Discount, sub.Seats, p.PricePerSeatRub), "account:"+acc.ID, time.Now()); e != nil {
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		return
 	}
@@ -374,7 +412,7 @@ func (a *API) paymentWebhook(w http.ResponseWriter, r *http.Request) {
 	// The store credits against the pending row created at payment time: an
 	// unknown provider id, mismatched amount or subscription is rejected,
 	// and the row itself decides the credited sum and period.
-	_, _, e = a.Store.RecordProviderPayment(r.Context(), a.Settings.Payments.Name(), ev.ProviderID, ev.Subscription, ev.AmountKopecks, ev.Status, "payment:"+a.Settings.Payments.Name(), time.Now())
+	_, _, e = a.Store.RecordProviderPayment(r.Context(), a.Settings.Payments.Name(), ev.ProviderID, ev.Subscription, ev.AmountKopecks, ev.Status, "payment:"+a.Settings.Payments.Name(), time.Now(), ev)
 	if e != nil {
 		switch e.Error() {
 		case "PAYMENT_UNKNOWN", "PAYMENT_MISMATCH", "PAYMENT_INVALID":
