@@ -23,7 +23,7 @@ import urllib.request
 UNIT='neexitlag-control-plane.service'
 BINARY=Path('/opt/neexitlag/bin/control-plane')
 PLANS=Path('/etc/neexitlag/control/plans.platega.json')
-DROPIN=Path('/etc/systemd/system/neexitlag-control-plane.service.d/96-platega-plans.conf')
+DROPIN=Path('/etc/systemd/system/neexitlag-control-plane.service.d/zz-platega-plans.conf')
 BACKUPS=Path('/var/backups/veliq-platega')
 EXPECTED_BINARY='e7f7128431ad62d7570ca22a71344d661ab6fb5561ab95a1bcc9db8e5750008f'
 
@@ -135,6 +135,8 @@ def apply(path,binary,plans,sha):
         DROPIN.chmod(0o644)
         staged=BINARY.with_name('control-plane.platega-new');shutil.copyfile(binary,staged);staged.chmod(0o755);os.replace(staged,BINARY)
         run(['systemctl','daemon-reload']);run(['systemctl','restart',UNIT]);health(args)
+        running,_,_=current()
+        if running!=args+['-plans-file',str(PLANS)]:raise RuntimeError('EFFECTIVE_PAYMENT_ARGUMENTS_MISMATCH')
         if sql(db,port,'SELECT max(version) FROM schema_migrations')!='7':raise RuntimeError('SCHEMA_7_MISSING')
         if protected(db,port)!=state['protected']:raise RuntimeError('PROTECTED_STATE_CHANGED')
         state.update(phase='applied-disabled',binary_after=sha,protected_after=protected(db,port));save(path/'state.json',state)

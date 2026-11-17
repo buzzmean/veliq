@@ -74,6 +74,8 @@ Merchant ID не является API-ключом; сохранить его о
 `-platega-merchant-id <merchant id>` и
 `-platega-secret-file /etc/neexitlag/control/platega.secret`.
 Существующие параметры TLS, SMTP, устройств, relay и enforcement сохранить.
+Проверить итоговые аргументы запущенного процесса: более поздний systemd drop-in
+может сбросить ExecStart. Текущий платёжный drop-in — `zz-platega-plans.conf`.
 Не использовать `-platega-base-url` в production.
 
 Перед включением проверить backup и откат, перечень способов в Platega:

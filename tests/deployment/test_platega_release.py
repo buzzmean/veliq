@@ -27,7 +27,7 @@ class PaymentReleaseTests(unittest.TestCase):
             def run(cmd,**kwargs):
                 calls.append(cmd)
                 return 'unit' if cmd[:2]==['systemctl','cat'] else ''
-            with patch.object(m,'BINARY',binary),patch.object(m,'PLANS',installed_plans),patch.object(m,'DROPIN',dropin),patch.object(m,'current',return_value=(args,'fixture','5432')),patch.object(m,'protected',return_value=state['protected']),patch.object(m,'health'),patch.object(m,'run',side_effect=run),patch.object(m,'sql',return_value='6'):
+            with patch.object(m,'BINARY',binary),patch.object(m,'PLANS',installed_plans),patch.object(m,'DROPIN',dropin),patch.object(m,'current',side_effect=[(args,'fixture','5432'),(args+['-plans-file',str(installed_plans)],'fixture','5432')]),patch.object(m,'protected',return_value=state['protected']),patch.object(m,'health'),patch.object(m,'run',side_effect=run),patch.object(m,'sql',return_value='6'):
                 with self.assertRaisesRegex(RuntimeError,'SCHEMA_7_MISSING'):m.apply(backup,new,plans,m.digest(new))
             self.assertEqual(binary.read_bytes(),b'old');self.assertFalse(installed_plans.exists());self.assertFalse(dropin.exists())
             self.assertEqual(json.loads((backup/'state.json').read_text())['phase'],'rolled-back')
