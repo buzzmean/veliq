@@ -76,7 +76,7 @@ jobs:
           import hashlib,json,os,pathlib
           root=pathlib.Path('bin/account-server-bundle')
           files=[{'path':str(p.relative_to(root)),'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(root.rglob('*')) if p.is_file()]
-          report={'source_commit':os.environ['EXPECTED_COMMIT'],'schema_version':5,'approval':'NOT_DEPLOYED','production_contacted':False,'files':files}
+          report={'source_commit':os.environ['EXPECTED_COMMIT'],'schema_version':7,'approval':'NOT_DEPLOYED','production_contacted':False,'files':files}
           (root/'manifest.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           print('ACCOUNT_SERVER_BUNDLE_BUILT source='+report['source_commit']+' approval=NOT_DEPLOYED')
           PY

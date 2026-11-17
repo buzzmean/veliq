@@ -88,7 +88,7 @@ for name in ('neexitlag-control-plane','neexitlag-relay','veliq-certificate-rene
     leaf.command(['systemctl','is-active','--quiet',name])
 assert leaf.command(['systemctl','show','--value','--property=Result','veliq-certificate-renewal.service']).strip()=='success'
 assert leaf.command(['systemctl','show','--value','--property=ExecMainStatus','veliq-certificate-renewal.service']).strip()=='0'
-# Re-run from an already installed release (schema 5): idempotent preflight and
+# Re-run from an already installed release (schema 7): idempotent preflight and
 # real service due=false path, no forced user/device/certificate replacement.
 leaf.command(['systemctl','start','veliq-certificate-renewal.service'])
 leaf.validate_helper(stage/'fresh-pc')

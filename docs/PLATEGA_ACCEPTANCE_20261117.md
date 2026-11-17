@@ -7,7 +7,8 @@
 - Серверный расчёт 1/3/6/12 месяцев, 30/90/180/360 дней, скидки 0/5/10/20%.
 - Цены 399/199 в отдельном production plans-файле, сверка с публичной политикой.
 - Полный пакет control-plane на Go 1.25.14 / Windows с отдельной PostgreSQL 17:
-  PASS; `go vet` и сборка PASS. Пропуски/точные counts добавляются после финального прогона.
+  103 PASS, 0 SKIP; `go vet` и сборка PASS. Повторный прогон на производственной
+  базе исходников с платёжным patch также PASS; Linux amd64 binary собран локально.
 - 16 сценариев покупки/продления player/club в Go, фиксированная сумма и срок,
   чужой платёж/сессия, неверный merchant/id/payload/amount, ошибка API, повторы,
   конкурентные уведомления, отмены и поздние подтверждения, операторский журнал.
@@ -29,8 +30,41 @@
 
 ## Публикация
 
-Подготовлена. Фактические результаты backup/restore, обновления бинарника,
-публикации сайта и включения адаптера будут записаны после выполнения.
+Опубликовано 17.11.2026 около 16:00 МСК:
+
+- API обновлён платёжным бинарником, схема 7 применена, планы 399/199 установлены.
+  SHA256 бинарника: `c72c2eb0220dc18186ffda15016c54ebe50190b211a0152fd12835ced6ae8d00`.
+- API backup: `/var/backups/veliq-platega/20261117T125652Z`.
+  `pg_restore --list` и полное восстановление в отдельную проверочную БД — PASS;
+  проверочная БД удалена. Снимки subscriptions/activation_slots/account_device_bindings
+  до/после совпали; бессрочные планы не переименованы. Автоматический таймер
+  отката был установлен перед заменой и остановлен после успешной проверки.
+- Сайт: обновлены только account.html (версия JS) и assets/account.js, добавлен
+  точный webhook location с проверкой TLS upstream. `nginx -t` и reload — PASS.
+  Backup: `/var/backups/veliq-platega-site/20261117T130053Z`.
+- HTTPS `/account` и JS — 200, хеши совпали с опубликованными файлами.
+  `/api/v1/account` без сессии — 401 ACCOUNT_LOGIN_REQUIRED;
+  POST webhook — 404 PAYMENT_NOT_CONFIGURED от API (маршрут доставлен).
+  `/api/v1/admin/subscriptions` на публичном сайте остаётся закрыт (404).
+- Platega НЕ ВКЛЮЧЕНА: в процессе нет merchant/secret flags. Секрет не запрашивался
+  в чате, не публиковался и не добавлялся в Git. Реальные транзакции не создавались.
+- Relay, enforcement, SMTP, CA, сертификаты, устройства и посторонние unit-настройки
+  не менялись. В ExecStart добавлен только plans-file; перезапущен только API.
+
+## CI и Git
+
+Черновик [PR #80](https://github.com/buzzmean/veliq/pull/80), без слияния в main.
+На `4b6a8de0054424277a8a653f901276f0fb634fd3`:
+[Platega one-off contracts](https://github.com/buzzmean/veliq/actions/runs/44088223628) — SUCCESS
+(Linux race, PostgreSQL17, vet/build и Chromium);
+[Account onboarding](https://github.com/buzzmean/veliq/actions/runs/44088227403) — SUCCESS.
+
+Первый широкий CI обнаружил оставшиеся ожидания схемы 5 в fresh-pc regression и
+activation preflight. Они обновлены до проверенной схемы 7; неизвестная 8 всё ещё
+отклоняется. Целевой Go regression и проверка schema guard прошли локально.
+Полный Python activation suite требует Linux (`fcntl`), на Windows не засчитан.
+Результаты повторного широкого CI фиксируются отдельно; успех только платёжного
+job не объявляется успехом всего CI.
 
 ## Осталось владельцу и ограничения
 
