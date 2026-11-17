@@ -18,6 +18,12 @@
     MAIL_UNAVAILABLE: 'Не удалось отправить письмо. Попробуйте ещё раз через минуту.',
     ACCOUNT_NOT_CONFIGURED: 'Личный кабинет временно недоступен. Обратитесь в поддержку.',
     PAYMENT_NOT_CONFIGURED: 'Онлайн-оплата пока не подключена. Для подключения или продления обратитесь в поддержку.',
+    PAYMENT_PERIOD_INVALID: 'Выберите срок 1, 3, 6 или 12 месяцев.',
+    PAYMENT_PRICE_CHANGED: 'Цена изменилась. Обновите кабинет и проверьте сумму перед оплатой.',
+    PAYMENT_UNAVAILABLE: 'Не удалось создать оплату. Если деньги уже списаны, не платите повторно: проверьте статус или обратитесь в поддержку.',
+    PAYMENT_CHECK_UNAVAILABLE: 'Сервис оплаты пока не ответил. Доступ не изменён; повторите проверку позже.',
+    PAYMENT_CHECK_TOO_SOON: 'Подождите 15 секунд перед повторной проверкой.',
+    PAYMENT_AUTORENEW_UNAVAILABLE: 'Доступна только разовая оплата без автосписаний.',
     PRICE_NOT_SET: 'Для оформления доступа обратитесь в поддержку. Текущие цены опубликованы на странице тарифов.',
     SUBSCRIPTION_LIMIT: 'Слишком много подписок в одном кабинете. Напишите нам.',
     SUBSCRIPTION_INVALID: 'Проверьте число компьютеров.',
@@ -50,7 +56,7 @@
   }
   function say(el, text) { el.textContent = text || ''; el.hidden = !text; }
   function date(s) { return s ? new Date(s).toLocaleDateString('ru-RU') : ''; }
-  function rub(n) { return n.toLocaleString('ru-RU') + ' ₽'; }
+  function rub(n) { return n.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ₽'; }
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function busy(btn, on) { btn.disabled = on; btn.setAttribute('aria-busy', on ? 'true' : 'false'); }
 
@@ -89,7 +95,7 @@
     plans.forEach(function (p) {
       var card = el('form', 'card acc-plan');
       card.appendChild(el('h3', 'h3', p.title));
-      var publicPrice = window.veliqPricing && window.veliqPricing.prices[p.kind];
+      var publicPrice = state.paymentsOn ? p.price_per_seat_rub : window.veliqPricing && window.veliqPricing.prices[p.kind];
       card.appendChild(el('p', 'muted', publicPrice ? (rub(publicPrice) + (p.kind === 'club' ? ' за ПК' : ' за одно место') + ' за 30 дней') : 'Условия подключения — в поддержке'));
       var seats = null;
       if (p.max_seats > 1) {
@@ -124,19 +130,19 @@
     var err = el('p', 'acc-error'); err.hidden = true;
     var pay = el('button', 'btn', s.active ? 'Продлить' : 'Оплатить');
     var duration=el('select','input');duration.setAttribute('aria-label','Срок продления');
-    var policy=window.veliqPricing; (policy?policy.terms:[{months:1,discount:0}]).forEach(function(t){var o=el('option',null,t.months+' мес. · скидка '+t.discount+'%');o.value=t.months;duration.appendChild(o);});
+    var policy=window.veliqPricing; var terms=state.terms || []; terms.forEach(function(t){var o=el('option',null,t.months+' мес. ('+t.days+' дней) · скидка '+t.discount+'%');o.value=t.months;duration.appendChild(o);});
     var durationLabel=el('label','field');durationLabel.appendChild(el('span',null,'Срок подписки'));durationLabel.appendChild(duration);
-    var promoDetails=el('details');promoDetails.appendChild(el('summary',null,'У меня есть промокод'));var promo=el('input','input');promo.type='text';promo.maxLength=64;promo.autocomplete='off';promo.setAttribute('aria-label','Промокод');promoDetails.appendChild(promo);
     var quote=el('p','muted');quote.setAttribute('aria-live','polite');
-    function showQuote(){if(!policy||!policy.prices[s.kind])return;var months=Number(duration.value);var t=policy.terms.find(function(t){return t.months===months;});var seats=s.kind==='club'?s.seats:1;var amount=policy.prices[s.kind]*months*seats*(100-t.discount);quote.textContent='За '+(30*months)+' дней: '+(amount/100).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽. Предварительный расчёт. Для оформления обратитесь в поддержку.';}
+    function quotedAmount(){var term=terms.find(function(t){return t.months===Number(duration.value);});var base=paymentsOn?p.price_per_seat_rub:policy&&policy.prices[s.kind];return term&&base?base*s.seats*term.months*(100-term.discount):0;}
+    function showQuote(){var term=terms.find(function(t){return t.months===Number(duration.value);});if(!term)return;quote.textContent='За '+term.days+' дней: '+rub(quotedAmount()/100)+'. Скидка '+term.discount+'%. Разовая оплата без автосписаний. Месяц — 30 дней. Комиссия покупателя добавляется на форме Platega: СБП — 4%, криптовалюта — 2,5%. Итог проверьте перед оплатой.';}
     duration.addEventListener('change',showQuote);showQuote();
-    if(!s.lifetime){card.appendChild(durationLabel);card.appendChild(promoDetails);card.appendChild(quote);}
+    if(!s.lifetime){card.appendChild(durationLabel);card.appendChild(quote);}
     pay.addEventListener('click', function () {
       if(!paymentsOn){say(err,'Онлайн-оплата пока не подключена. Для оформления или продления обратитесь в поддержку.');return;}
-      if(Number(duration.value)!==1||promo.value.trim()){say(err,'Для оформления выбранного срока обратитесь в поддержку. Онлайн-оплата пока недоступна.');return;}
       var expected=window.veliqPricing&&window.veliqPricing.prices[s.kind];if(expected&&p.price_per_seat_rub!==expected){say(err,'Для оформления по актуальному тарифу обратитесь в поддержку. Онлайн-оплата пока недоступна.');return;}
+      if(!terms.length || p.period_days!==30 || !quotedAmount()){say(err,'Тариф временно недоступен для онлайн-оплаты. Обратитесь в поддержку.');return;}
       busy(pay, true); say(err, '');
-      call('POST', '/subscriptions/' + s.id + '/pay', { auto_renew: false }).then(function (r) { location.href = r.redirect; })
+      call('POST', '/subscriptions/' + s.id + '/pay', { auto_renew: false, months: Number(duration.value), expected_amount_kopecks: quotedAmount() }).then(function (r) { location.href = r.redirect; })
         .catch(function (x) { say(err, message(x.message)); busy(pay, false); });
     });
     if (!s.lifetime) actions.appendChild(pay);
@@ -170,7 +176,7 @@
 
   function load() {
     return call('GET', '').then(function (data) {
-      state.plans = data.plans || []; state.kind=data.kind || ''; state.subscriptions=data.subscriptions || []; state.enforced=!!data.subscription_enforced;
+      state.plans = data.plans || []; state.terms=data.payment_terms || (!data.payments_enabled && window.veliqPricing ? window.veliqPricing.terms.map(function(t){return {months:t.months,discount:t.discount,days:t.months*30};}):[]); state.paymentsOn=!!data.payments_enabled; state.kind=data.kind || ''; state.subscriptions=data.subscriptions || []; state.enforced=!!data.subscription_enforced;
       if(!state.kind){ updateProfileFields(); show('profile'); return; }
       $('[data-account-email]').textContent = data.email;
       $('[data-account-kind]').textContent = (data.kind === 'club' ? 'Клуб' : 'Пользователь') + (data.name ? ' · ' + data.name : '');
@@ -181,11 +187,21 @@
       var pays = $('[data-payments]'); pays.textContent = '';
       (data.payments || []).forEach(function (p) {
         var li = el('li');
-        li.appendChild(el('span', null, date(p.created_at) + ' · ' + rub(Math.round(p.amount_kopecks / 100)) + ' · ' + p.period_days + ' дней'));
-        li.appendChild(el('span', 'muted', p.status === 'succeeded' ? 'оплачено' : p.status === 'pending' ? 'ожидает оплаты' : 'отменено'));
+        li.appendChild(el('span', null, date(p.created_at) + ' · ' + rub(p.amount_kopecks / 100) + ' · ' + p.period_days + ' дней'));
+        li.appendChild(el('span', 'muted', p.review_required ? 'Требует проверки поддержки: возврат или спор' : p.status === 'succeeded' ? 'оплачено' : p.status === 'pending' ? 'ожидает оплаты' : 'отменено'));
+        if(p.provider==='platega'){
+          var check=el('button','btn btn--sm btn--quiet','Проверить оплату'); var note=el('span','muted');note.setAttribute('role','status');
+          check.addEventListener('click',function(){busy(check,true);say(note,'Проверяем подтверждение…');
+            call('POST','/payments/'+p.id+'/refresh',{}).then(function(result){return load().then(function(){var resultNote=el('p','muted',result.review_required?'Возврат или спор передан на проверку поддержки.':result.status==='succeeded'?'Оплата подтверждена. Срок доступа обновлён.':result.status==='canceled'?'Оплата отменена. Срок доступа не изменён.':'Подтверждение ещё не получено. Повторите проверку позже; не оплачивайте повторно, если деньги списаны.');resultNote.setAttribute('role','status');$('[data-payments]').prepend(resultNote);});})
+              .catch(function(error){say(note,message(error.message));busy(check,false);});
+          });li.appendChild(check);li.appendChild(note);
+        }
         pays.appendChild(li);
       });
       $('[data-payments-empty]').hidden = (data.payments || []).length > 0;
+      if(new URLSearchParams(location.search).get('payment')==='return'){
+        var notice=el('p','muted','Вы вернулись с формы оплаты. Возврат на сайт не подтверждает платёж. Проверьте его в истории ниже; при задержке нажмите «Проверить оплату».');notice.setAttribute('role','status');pays.prepend(notice);
+      }
       show('cabinet'); renderLink(); renderImages();
     }).catch(function (err) {
       if (err.status === 401) { show('email'); return; }

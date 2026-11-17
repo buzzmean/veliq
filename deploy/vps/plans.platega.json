@@ -1,0 +1,4 @@
+[
+  {"id":"player-month","kind":"player","title":"Пользователь","price_per_seat_rub":399,"period_days":30,"max_seats":1},
+  {"id":"club-month","kind":"club","title":"Клуб","price_per_seat_rub":199,"period_days":30,"max_seats":500}
+]
