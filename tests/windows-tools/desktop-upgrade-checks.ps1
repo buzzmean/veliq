@@ -18,6 +18,7 @@ try{
  $shell=New-Object -ComObject WScript.Shell
  $oldLink=Join-Path $links 'NeExitLag.lnk';$link=$shell.CreateShortcut($oldLink);$link.TargetPath=$legacy;$link.Save()
  if(!$hadRunKey){New-Item -Path $runKey -Force|Out-Null}
+ Remove-ItemProperty -LiteralPath $runKey -Name VELIQ -ErrorAction SilentlyContinue
  Set-ItemProperty -LiteralPath $runKey -Name NeExitLag -Value ('"'+$legacy+'"')
  $script=Join-Path $PSScriptRoot '../../tools/windows/install-desktop.ps1'
  & $script -SourceDirectory $source -InstallDirectory $installed -ShortcutDirectory $links
@@ -25,10 +26,22 @@ try{
  if(Test-Path $legacy){throw 'Owned legacy NeExitLag.exe alias not removed'}
  if(Test-Path $oldLink){throw 'Owned legacy shortcut not replaced'}
  if($shell.CreateShortcut((Join-Path $links 'VELIQ.lnk')).TargetPath -ine $target){throw 'New shortcut target mismatch'}
- $runValues=Get-ItemProperty -LiteralPath $runKey;if($runValues.VELIQ -ne ('"'+$target+'"') -or $runValues.PSObject.Properties['NeExitLag']){throw 'Enabled owned startup not moved to VELIQ'}
+ $trayCommand='"'+$target+'" --tray'
+ $runValues=Get-ItemProperty -LiteralPath $runKey
+ if($runValues.VELIQ -cne $trayCommand -or $runValues.PSObject.Properties['NeExitLag']){throw 'Enabled legacy startup did not migrate to tray'}
  [IO.File]::WriteAllText((Join-Path $source 'VELIQ.exe'),'VELIQ GUI fixture v2')
+ Set-ItemProperty -LiteralPath $runKey -Name VELIQ -Value ('"'+$target+'"')
  & $script -SourceDirectory $source -InstallDirectory $installed -ShortcutDirectory $links
  if([IO.File]::ReadAllText($target) -ne 'VELIQ GUI fixture v2'){throw 'Idempotent update failed'}
+ if((Get-ItemProperty -LiteralPath $runKey).VELIQ -cne $trayCommand){throw 'Existing VELIQ startup did not migrate to tray'}
+ . (Join-Path $PSScriptRoot '../../tools/windows/migrate-legacy-install.ps1')
+ Remove-ItemProperty -LiteralPath $runKey -Name VELIQ
+ Update-VeliqGuiAutostart -RunKey $runKey -Gui $target
+ if((Get-ItemProperty -LiteralPath $runKey).PSObject.Properties['VELIQ']){throw 'Disabled autostart was enabled'}
+ $foreignRun='"'+(Join-Path $root 'foreign\VELIQ.exe')+'"'
+ Set-ItemProperty -LiteralPath $runKey -Name VELIQ -Value $foreignRun
+ Update-VeliqGuiAutostart -RunKey $runKey -Gui $target
+ if((Get-ItemProperty -LiteralPath $runKey).VELIQ -cne $foreignRun){throw 'Foreign autostart was modified'}
  foreach($relative in $protected){if((Get-FileHash (Join-Path $root $relative)).Hash -ne $hashes[$relative]){throw "Upgrade changed $relative"}}
  # Execute the service updater's exact atomic replacement expression too;
  # no SCM/IPC/credentials are used by this focused filesystem regression.

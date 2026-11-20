@@ -27,7 +27,7 @@ Register-ScheduledTask -TaskName 'VELIQ Club Boot' -Action $action -Trigger $tri
 # Setup installs the GUI machine-wide next to this payload ({app}\VELIQ.exe).
 $gui=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\VELIQ.exe'))
 $run='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run';New-Item $run -Force|Out-Null
-Set-ItemProperty -LiteralPath $run -Name VELIQ -Value ('"'+$gui+'" --club')
+Set-ItemProperty -LiteralPath $run -Name VELIQ -Value ('"'+$gui+'" --club --tray')
 if(!$ClubCodeFile){Write-Output 'CLUB_ACCOUNT_SIGN_IN_REQUIRED; open VELIQ, sign in and approve the clean image before sealing';return}
 Stop-Service VELIQ -ErrorAction Stop
 (Get-Service VELIQ).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))

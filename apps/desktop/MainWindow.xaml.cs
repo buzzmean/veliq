@@ -12,13 +12,15 @@ public partial class MainWindow : Window
     public MainWindow() : this(LocalPreferences.Load(), true, true) { }
     // The native test host uses the same BAML, event handlers and NotifyIcon,
     // without starting IPC timers or shutting down the host Application.
-    internal MainWindow(LocalPreferences preferences, bool background, bool shutdownOnClose, string? preferencesPath = null, IServiceClient? serviceClient = null)
+    internal MainWindow(LocalPreferences preferences, bool background, bool shutdownOnClose, string? preferencesPath = null,
+        IServiceClient? serviceClient = null, bool applyStartMinimized = true)
     {
         var service=serviceClient ?? new WindowsServiceClient();
         model = new(service);games=new(service);
         this.preferences = preferences;
         this.shutdownOnClose = shutdownOnClose;
         this.preferencesPath = preferencesPath;
+        startupApplied = !applyStartMinimized;
         InitializeComponent();
         Games.DataContext=games;
         InitializeGuiFailureLog();
@@ -37,9 +39,7 @@ public partial class MainWindow : Window
         Channel.SelectedValue = "stable";
         Fallback.ItemsSource = new[] { new Choice("DIRECT", Text.Get("Direct")) };
         Fallback.SelectedValue = "DIRECT";
-        using var iconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/VELIQ;component/Assets/VELIQ.ico"))!.Stream;
-        using var loadedIcon = new System.Drawing.Icon(iconStream);
-        trayImage = (System.Drawing.Icon)loadedIcon.Clone();
+        trayImage = TrayIcons.LoadApplicationIcon();
         tray = new()
         {
             Icon = trayImage,

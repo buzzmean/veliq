@@ -136,6 +136,7 @@
 
 /* ---------- Игры ---------- */
 .games { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 72px); align-items: center; }
+.games .h2 { hyphens: none; overflow-wrap: normal; text-wrap: balance; }
 .games__panel { border-radius: var(--r-lg); border: 1px solid var(--line); padding: clamp(18px, 3vw, 28px); background: var(--bg-raised); }
 .games__panel header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: var(--sp-4); flex-wrap: wrap; }
 .games__panel footer { margin-top: var(--sp-3); font-size: var(--fs-xs); color: var(--text-faint); }

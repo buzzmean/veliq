@@ -46,14 +46,10 @@ try{
  foreach($path in $changed){$old=Join-Path $backup ([IO.Path]::GetFileName($path));if(Test-Path -LiteralPath $old){Copy-Item -LiteralPath $old -Destination $path -Force}else{Remove-Item -LiteralPath $path -Force}}
  throw
 }finally{Remove-Item -LiteralPath $pending -Force -ErrorAction SilentlyContinue}
-# Display name changes; compatibility registry value and persisted directories do
-# not. Only retarget an enabled Run entry which belongs to this installation.
+# Keep disabled autostart disabled. Retarget existing entries owned by this GUI.
+. (Join-Path $PSScriptRoot 'migrate-legacy-install.ps1')
 $runKey='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-$run=Get-ItemProperty -LiteralPath $runKey -ErrorAction SilentlyContinue
-if($null -ne $run -and $null -ne $run.PSObject.Properties['NeExitLag']){
- $old=[string]$run.NeExitLag
- if($old -ieq ('"'+$legacy+'"') -or $old -ieq ('"'+$target+'"')){Set-ItemProperty -LiteralPath $runKey -Name VELIQ -Value ('"'+$target+'"');Remove-ItemProperty -LiteralPath $runKey -Name NeExitLag -ErrorAction SilentlyContinue}
-}
+Update-VeliqGuiAutostart -RunKey $runKey -Gui $target -PreviousGui @($legacy) -PromoteLegacy
 [void][IO.Directory]::CreateDirectory($ShortcutDirectory)
 $shell=New-Object -ComObject WScript.Shell
 $link=Join-Path $ShortcutDirectory 'VELIQ.lnk'
