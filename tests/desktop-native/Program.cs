@@ -31,6 +31,13 @@ internal static class Program
         }
     }
     static void Pass(string label) => Console.WriteLine("PASS " + label);
+    sealed class FixtureApp : App
+    {
+        // WPF queues Startup when Application is constructed. Keep production
+        // startup out of the dispatcher turns used by these window fixtures.
+        protected override void OnStartup(StartupEventArgs e) { }
+    }
+
     sealed class AbsentService : IServiceClient
     {
         public Task<T> Call<T>(string method, object? payload = null, CancellationToken cancellationToken = default)
@@ -51,8 +58,9 @@ internal static class Program
         try
         {
             Pump();
-            Require(app.StartupTrayVisible && app.MainWindow is null && app.Windows.Count == 0,
-                "Automatic startup must expose a tray icon before creating any WPF window");
+            Require(app.StartupTrayVisible, "Automatic startup must expose a tray icon");
+            Require(app.MainWindow is null && app.Windows.Count == 0,
+                "Automatic startup must not create a WPF window");
         }
         finally { app.DisposeStartupTray(); }
         Require(!app.StartupTrayVisible, "Startup icon cleanup");
@@ -361,7 +369,7 @@ internal static class Program
             }
             finally { fixtureApp.Shutdown(); }
         }
-        var app = new App(); app.InitializeComponent(); app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        var app = new FixtureApp(); app.InitializeComponent(); app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         try { TrayAutostart(app); WelcomeUiChecks.Run(); CabinetUiChecks.Run(); EmergencyUiChecks.Run(); FreshPCSetupChecks.Run(); ChromeProxyValue(); ChromeRecoveryGuard(); ChromePolicyRecoveryLifecycle(); Picker(); StrategiesNull(); Lifecycle(); Dropdowns(); Pass("native WPF desktop regression suite"); return 0; }
         catch (Exception e) { Console.Error.WriteLine(e); File.WriteAllText(Path.Combine(Output, "failure.txt"), e.ToString()); return 1; }
         finally { foreach (System.Windows.Window w in app.Windows.Cast<System.Windows.Window>().ToArray()) { if (w is MainWindow m) m.Exit(); else w.Close(); } app.Shutdown(); File.Delete(settings); }
