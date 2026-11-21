@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VELIQ — дизайн-система</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/components.css">
+  <style>
+    .page { display: grid; grid-template-columns: 220px minmax(0, 1fr); min-height: 100vh; }
+    .toc { position: sticky; top: 0; height: 100vh; overflow: auto; padding: 24px 18px; border-right: 1px solid var(--line); display: grid; align-content: start; gap: 18px; background: var(--bg-sunken); }
+    .toc img { height: 40px; width: auto; margin: -9px -4px; }
+    .toc nav { display: grid; gap: 2px; font-size: 14px; }
+    .toc a { text-decoration: none; color: var(--text-muted); padding: 6px 8px; border-radius: 6px; }
+    .toc a:hover { color: var(--text); background: var(--bg-raised); }
+    main { overflow-x: clip; padding: 40px clamp(20px, 4vw, 56px) 96px; max-width: 1180px; }
+    section { padding: 48px 0; border-top: 1px solid var(--line); }
+    section:first-child { border-top: 0; padding-top: 8px; }
+    h1 { font-size: clamp(44px, 6vw, 80px); font-weight: var(--fw-display); letter-spacing: var(--ls-display); line-height: .94; margin: 0 0 20px; }
+    h2 { font-size: var(--fs-3xl); font-weight: var(--fw-bold); letter-spacing: var(--ls-display); margin: 0 0 8px; }
+    h3 { font-size: var(--fs-lg); margin: 28px 0 12px; }
+    p.lead { color: var(--text-muted); max-width: 64ch; margin: 0 0 24px; font-size: var(--fs-lg); }
+    .muted { color: var(--text-muted); }
+    .grid { display: grid; gap: 16px; }
+    .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    @media (max-width: 860px) { .page { grid-template-columns: 1fr; } .toc { position: static; height: auto; } .g2, .g3, .g4 { grid-template-columns: 1fr 1fr; } }
+    .principles { counter-reset: p; list-style: none; padding: 0; margin: 0; display: grid; gap: 0; border-top: 1px solid var(--line-strong); }
+    .principles li { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 7fr); gap: 24px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+    .principles strong { font-size: var(--fs-xl); letter-spacing: var(--ls-heading); }
+    .principles span { color: var(--text-muted); }
+    .logo-tile { border-radius: var(--r-lg); padding: 32px; display: grid; place-items: center; min-height: 200px; border: 1px solid var(--line); }
+    .logo-tile img { max-height: 120px; width: auto; }
+    .logo-tile.ink { background: var(--c-ink-950); } .logo-tile.paper { background: var(--c-white); }
+    .logo-tile.sig { background: var(--c-signal-500); }
+    .dont { position: relative; }
+    .dont::after { content: "Нельзя"; position: absolute; top: 10px; left: 12px; font-size: 12px; font-weight: 600; color: var(--danger); }
+    .sw { border-radius: var(--r-md); overflow: hidden; border: 1px solid var(--line); }
+    .sw i { display: block; height: 84px; }
+    .sw div { padding: 10px 12px; font-size: 13px; display: grid; gap: 2px; }
+    .sw small { color: var(--text-faint); font-variant-numeric: tabular-nums; }
+    .scale { display: grid; gap: 10px; }
+    .scale div { display: grid; grid-template-columns: 110px 1fr; align-items: baseline; gap: 16px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+    .scale small { color: var(--text-faint); font-size: 12px; }
+    .spc { display: flex; align-items: end; gap: 14px; flex-wrap: wrap; }
+    .spc div { display: grid; gap: 6px; justify-items: center; font-size: 12px; color: var(--text-faint); }
+    .spc i { background: var(--accent); display: block; }
+    .rad { display: flex; gap: 16px; flex-wrap: wrap; }
+    .rad div { width: 96px; height: 96px; border: 2px solid var(--text); display: grid; place-items: center; font-size: 12px; color: var(--text-muted); }
+    .icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+    .icons div { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 14px 8px 10px; display: grid; justify-items: center; gap: 8px; font-size: 11px; color: var(--text-faint); }
+    .icons svg { width: 24px; height: 24px; color: var(--text); }
+    .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+    .demo-box { border: 1px solid var(--line); border-radius: var(--r-lg); padding: 24px; background: var(--bg-sunken); }
+    .dark-box { background: var(--c-ink-950); border-radius: var(--r-lg); padding: 28px; }
+    .static-modal { position: static; background: rgba(10,10,11,.55); border-radius: var(--r-lg); padding: 40px 16px; display: grid; place-items: center; }
+    .mot { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .mot div { border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px; font-size: 14px; }
+    .mot strong { display: block; } .mot small { color: var(--text-muted); }
+    .theme-toggle { position: fixed; top: 14px; right: 14px; z-index: 5; }
+  </style>
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<div class="seg theme-toggle" role="group" aria-label="Тема"><button data-t="light" aria-pressed="true">Светлая</button><button data-t="dark" aria-pressed="false">Тёмная</button></div>
+<div class="page">
+  <aside class="toc">
+    <img src="assets/img/veliq-wordmark-light.svg" alt="VELIQ" data-wm>
+    <nav>
+      <a href="#principles">Принципы</a><a href="#voice">Тон текста</a><a href="#logo">Логотип</a><a href="#color">Цвет</a><a href="#type">Типографика</a>
+      <a href="#layout">Сетка и отступы</a><a href="#radius">Радиусы и тени</a><a href="#icons">Иконки</a><a href="#motion">Движение</a><a href="#components">Компоненты</a>
+    </nav>
+    <p class="muted" style="font-size:12px;margin:0">Токены: <code>design/tokens/tokens.json</code> и <code>tokens.css</code>. Тексты: <code>brand/copy.md</code>.</p>
+  </aside>
+  <main>
+    <section>
+      <h1><span class="slit-line"><span class="slit">Дизайн-</span></span><span class="slit-line"><span class="slit">система</span><span class="slit-bar"></span></span></h1>
+      <p class="lead">Один язык для сайта, программы и материалов. Всё выведено из логотипа: чёрно-белая геометрия, контур Q и прорезь с сигнальной линией.</p>
+    </section>
+
+    <section id="principles">
+      <h2>Принципы</h2>
+      <p class="lead">Бренд о том, что сложное происходит само, а человеку остаётся одна кнопка.</p>
+      <ol class="principles">
+        <li><strong>Срез — главный жест</strong><span>Прорезь на 66% высоты из логотипа. Используется в одном крупном объекте на экране: заголовок, большая кнопка, иконка. Сигнальная линия выходит из слова, как маршрут, и никогда не перечёркивает его.</span></li>
+        <li><strong>Сигнальный цвет — только для маршрута</strong><span>#F0502A значит «маршрут построен, VELIQ работает». Не красим им кнопки, фоны и украшения. Ошибки — отдельный красный, всегда со значком и словами.</span></li>
+        <li><strong>Чёрное и белое — основа</strong><span>Монохром, как в логотипе. Глубина — линиями и уровнями фона, а не тенями. Тени — только у всплывающего.</span></li>
+        <li><strong>Факты вместо обещаний</strong><span>Показываем состояние и замеры. Никаких «ускорим в 10 раз». Иллюстрации подписываем как иллюстрации.</span></li>
+        <li><strong>Одна кнопка</strong><span>Главное действие всегда одно и очевидно. Всё остальное — тише.</span></li>
+      </ol>
+    </section>
+
+    <section id="voice">
+      <h2>Тон текста</h2>
+      <p class="lead">На «вы», коротко, глаголами. Пишем о пользе, а не об устройстве. Полный набор — в <code>brand/copy.md</code>.</p>
+      <div class="grid g2">
+        <div class="card"><strong>Так</strong><p class="muted" style="margin:6px 0 0">«Маршруты построены: заблокированное открывается, игры идут по самому быстрому пути.»<br><br>«Нет связи с сервером. Нажмите «Повторить» — программа попробует другой сервер.»</p></div>
+        <div class="card"><strong>Не так</strong><p class="muted" style="margin:6px 0 0">«Трафик направлен через релей veliq-hel-01 по QUIC.»<br><br>«Упс! Что-то пошло не так 😔»<br><br>«Снизим пинг в любой игре!»</p></div>
+      </div>
+    </section>
+
+    <section id="logo">
+      <h2>Логотип</h2>
+      <p class="lead">Файлы в <code>brand/logo/</code> используются как есть: не перерисовывать, не менять цвета и пропорции, не убирать прорезь.</p>
+      <div class="grid g3">
+        <div class="logo-tile paper"><img src="assets/img/veliq-wordmark-light.svg" alt="VELIQ на светлом"></div>
+        <div class="logo-tile ink"><img src="assets/img/veliq-wordmark-dark.svg" alt="VELIQ на тёмном"></div>
+        <div class="logo-tile ink"><img src="assets/img/veliq-symbol-reverse.svg" alt="Знак VELIQ"></div>
+      </div>
+      <h3>Охранное поле и размер</h3>
+      <p class="muted" style="max-width:64ch">Поле вокруг — высота буквы V. Минимальная высота словесного знака на экране — 16 px букв (файл 32 px), знака — 20 px. Ниже 20 px используйте иконку трея из <code>brand/icons/</code>.</p>
+      <h3>Нельзя</h3>
+      <div class="grid g3">
+        <div class="logo-tile sig dont"><img src="assets/img/veliq-wordmark-dark.svg" alt=""></div>
+        <div class="logo-tile paper dont"><img src="assets/img/veliq-wordmark-light.svg" alt="" style="transform:scaleX(1.4)"></div>
+        <div class="logo-tile paper dont" style="background:linear-gradient(135deg,#7FA2FF,#FF8C6B)"><img src="assets/img/veliq-wordmark-light.svg" alt=""></div>
+      </div>
+      <p class="muted" style="font-size:13px">На сигнальном фоне, растянутым, на пёстром фоне или градиенте.</p>
+    </section>
+
+    <section id="color">
+      <h2>Цвет</h2>
+      <p class="lead">Чернила #0A0A0B и сигнальный #F0502A взяты из логотипа. Остальное — нейтральная шкала и служебные цвета. Все пары текста проходят WCAG AA.</p>
+      <h3>Основа</h3>
+      <div class="grid g4">
+        <div class="sw"><i style="background:#0A0A0B"></i><div><strong>Чернила</strong><small>ink-950 #0A0A0B</small></div></div>
+        <div class="sw"><i style="background:#FFFFFF;border-bottom:1px solid var(--line)"></i><div><strong>Бумага</strong><small>white #FFFFFF</small></div></div>
+        <div class="sw"><i style="background:#F0502A"></i><div><strong>Сигнал</strong><small>signal-500 #F0502A</small></div></div>
+        <div class="sw"><i style="background:#B03413"></i><div><strong>Сигнал-текст</strong><small>signal-700 #B03413, на светлом</small></div></div>
+      </div>
+      <h3>Нейтральная шкала</h3>
+      <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(96px,1fr))">
+        <div class="sw"><i style="background:#131417"></i><div><small>900 #131417</small></div></div>
+        <div class="sw"><i style="background:#22252A"></i><div><small>800 #22252A</small></div></div>
+        <div class="sw"><i style="background:#30343B"></i><div><small>700 #30343B</small></div></div>
+        <div class="sw"><i style="background:#474C55"></i><div><small>600 #474C55</small></div></div>
+        <div class="sw"><i style="background:#696F79"></i><div><small>500 #696F79</small></div></div>
+        <div class="sw"><i style="background:#8E939C"></i><div><small>400 #8E939C</small></div></div>
+        <div class="sw"><i style="background:#B5B9BF"></i><div><small>300 #B5B9BF</small></div></div>
+        <div class="sw"><i style="background:#D6D9DD"></i><div><small>200 #D6D9DD</small></div></div>
+        <div class="sw"><i style="background:#E9EBEE"></i><div><small>100 #E9EBEE</small></div></div>
+        <div class="sw"><i style="background:#F4F5F7"></i><div><small>50 #F4F5F7</small></div></div>
+      </div>
+      <h3>Служебные (светлая / тёмная тема)</h3>
+      <div class="grid g4">
+        <div class="sw"><i style="background:linear-gradient(90deg,#13804F 50%,#3CCB8B 50%)"></i><div><strong>Успех</strong><small>#13804F / #3CCB8B</small></div></div>
+        <div class="sw"><i style="background:linear-gradient(90deg,#9A6A00 50%,#F2C14A 50%)"></i><div><strong>Внимание</strong><small>#9A6A00 / #F2C14A</small></div></div>
+        <div class="sw"><i style="background:linear-gradient(90deg,#C42A42 50%,#FF6B7F 50%)"></i><div><strong>Ошибка</strong><small>#C42A42 / #FF6B7F</small></div></div>
+        <div class="sw"><i style="background:linear-gradient(90deg,#3D63D6 50%,#7FA2FF 50%)"></i><div><strong>Второй ряд данных</strong><small>#3D63D6 / #7FA2FF</small></div></div>
+      </div>
+      <p class="muted" style="font-size:13px;margin-top:12px">В коде используйте смысловые токены (<code>--text</code>, <code>--accent</code>, <code>--danger</code>…), а не шкалу напрямую: они сами переключаются между темами.</p>
+    </section>
+
+    <section id="type">
+      <h2>Типографика</h2>
+      <p class="lead">Onest — один шрифт на всё (OFL, кириллица, переменная толщина 100–900, 48 КБ). В программе на Windows запасной — Segoe UI Variable. Цифры — табличные.</p>
+      <div class="scale">
+        <div><small>Дисплей 820<br>54–136 / 0.94</small><span style="font-size:72px;font-weight:820;letter-spacing:-.045em;line-height:.94">Нажал — работает.</span></div>
+        <div><small>H1 820, 70</small><span style="font-size:54px;font-weight:820;letter-spacing:-.045em;line-height:1">Скачать VELIQ</span></div>
+        <div><small>H2 720, 54</small><span style="font-size:42px;font-weight:720;letter-spacing:-.045em;line-height:1.04">Оптимальный маршрут для игр</span></div>
+        <div><small>H3 620, 21</small><span style="font-size:21px;font-weight:620;letter-spacing:-.025em">Своя сеть серверов</span></div>
+        <div><small>Вводный 18–21</small><span style="font-size:19px;color:var(--text-muted)">VELIQ сам выстраивает оптимальный маршрут для каждого соединения.</span></div>
+        <div><small>Текст 400, 16 / 1.5</small><span>Windows один раз спросит права администратора — это для службы, которая строит маршруты.</span></div>
+        <div><small>Мелкий 14 и 12</small><span style="font-size:14px;color:var(--text-muted)">Иллюстрация. Настоящий замер VELIQ делает на вашем компьютере.</span></div>
+        <div><small>Цифры, табличные</small><span class="num" style="font-size:34px;font-weight:820;letter-spacing:-.045em">41 мс   1,24 ГБ   0%</span></div>
+      </div>
+      <p class="muted" style="font-size:13px;margin-top:12px">Без капслока в подписях, без выделения одного слова цветом, строка текста — до 64 знаков.</p>
+    </section>
+
+    <section id="layout">
+      <h2>Сетка и отступы</h2>
+      <p class="lead">Шаг 4 px. Сайт: контейнер 1240 px (1440 px на больших экранах), 12 колонок, поля 16–40 px. Программа: окно 1040 × 680, боковая панель 208 px, поля экрана 32 px. Выравнивание — по левому краю.</p>
+      <div class="spc">
+        <div><i style="width:4px;height:4px"></i>4</div><div><i style="width:8px;height:8px"></i>8</div><div><i style="width:12px;height:12px"></i>12</div><div><i style="width:16px;height:16px"></i>16</div>
+        <div><i style="width:24px;height:24px"></i>24</div><div><i style="width:32px;height:32px"></i>32</div><div><i style="width:48px;height:48px"></i>48</div><div><i style="width:64px;height:64px"></i>64</div><div><i style="width:96px;height:96px"></i>96</div><div><i style="width:128px;height:128px"></i>128</div>
+      </div>
+      <h3>Экраны</h3>
+      <p class="muted" style="max-width:70ch">Телефон от 320 px — одна колонка, кнопки на всю ширину. Планшет 768–1024 — две колонки там, где это помогает. Ноутбук и монитор — полная сетка. От 1680 px контейнер шире, от 2200 px страница масштабируется (1.25, 1.6, 2.0 для 4K), чтобы на телевизоре текст читался с расстояния, а фокус клавиатуры и пульта — крупнее.</p>
+    </section>
+
+    <section id="radius">
+      <h2>Радиусы и тени</h2>
+      <p class="lead">Радиус растёт вместе с объектом. Контур Q (36%) — только у главных объектов: большая кнопка и иконка приложения.</p>
+      <div class="rad">
+        <div style="border-radius:4px">4 метки</div><div style="border-radius:8px">8 кнопки</div><div style="border-radius:12px">12 карточки</div><div style="border-radius:20px">20 панели</div><div style="border-radius:28px">28 блоки</div><div style="border-radius:36%">36% Q</div>
+      </div>
+      <h3>Тени</h3>
+      <div class="row"><div class="card" style="width:220px">Обычный уровень — линия, без тени</div><div class="card" style="width:220px;box-shadow:var(--shadow-current)">Всплывающее: меню, модальное окно, уведомление</div></div>
+    </section>
+
+    <section id="icons">
+      <h2>Иконки</h2>
+      <p class="lead">Сетка 24, линия 1.75, прямые торцы и острые углы — как буквы V, E, L, I. Скругление — только у круглых форм, как контур Q. Файл: <code>design/icons/sprite.svg</code>. Логотипы чужих сервисов не используем — вместо них монограммы.</p>
+      <div class="icons" data-icon-grid></div>
+      <h3>Иконка приложения и трей</h3>
+      <div class="row">
+        <img src="assets/img/app-icon.svg" alt="Иконка приложения" width="96" height="96">
+        <img src="assets/img/app-icon.svg" alt="" width="48" height="48">
+        <img src="assets/img/app-icon.svg" alt="" width="32" height="32">
+        <img src="assets/img/app-icon.svg" alt="" width="16" height="16">
+        <span class="dark-box row" style="padding:12px 16px;gap:16px">
+          <img src="assets/img/tray/tray-off-dark.svg" width="20" height="20" alt="Выключено"><img src="assets/img/tray/tray-connecting-dark.svg" width="20" height="20" alt="Подключение"><img src="assets/img/tray/tray-on-dark.svg" width="20" height="20" alt="Работает"><img src="assets/img/tray/tray-error-dark.svg" width="20" height="20" alt="Ошибка">
+        </span>
+        <span class="row" style="padding:12px 16px;gap:16px;background:#F3F3F3;border-radius:var(--r-lg)">
+          <img src="assets/img/tray/tray-off-light.svg" width="20" height="20" alt=""><img src="assets/img/tray/tray-connecting-light.svg" width="20" height="20" alt=""><img src="assets/img/tray/tray-on-light.svg" width="20" height="20" alt=""><img src="assets/img/tray/tray-error-light.svg" width="20" height="20" alt="">
+        </span>
+      </div>
+      <p class="muted" style="font-size:13px">Трей: серый знак — выключено, половина линии — подключение, полная линия — работает, красная точка — ошибка. Для тёмной и светлой панели задач.</p>
+    </section>
+
+    <section id="motion">
+      <h2>Движение</h2>
+      <p class="lead">Движение отвечает на действие или показывает работу маршрута. Одно запоминающееся движение на экран. При «уменьшить движение» в системе всё мгновенно.</p>
+      <div class="mot">
+        <div><strong>120 мс, out</strong><small>наведение, нажатие, переключатель</small></div>
+        <div><strong>200 мс, out</strong><small>смена вкладки, раскрытие</small></div>
+        <div><strong>420 мс, route</strong><small>сигнальная линия заполняет срез</small></div>
+        <div><strong>1400 мс, route</strong><small>линии маршрута загораются по очереди, один раз</small></div>
+      </div>
+    </section>
+
+    <section id="components">
+      <h2>Компоненты</h2>
+      <p class="lead">Живые примеры из <code>design/components.css</code>. Ими собраны сайт и макеты программы.</p>
+
+      <h3>Большая кнопка</h3>
+      <div class="dark-box row" style="justify-content:space-around">
+        <button class="go" data-state="off" style="--size:200px;font-size:16px"><span class="go__label"><span>Оптимизировать</span><small>выключено</small></span></button>
+        <button class="go" data-state="connecting" style="--size:200px;font-size:16px"><span class="go__label"><span>Подключаем</span><small>строим маршруты</small></span></button>
+        <button class="go" data-state="on" style="--size:200px;font-size:16px"><span class="go__label"><span>Работает</span><small>маршруты построены</small></span></button>
+        <button class="go" data-state="error" style="--size:200px;font-size:16px"><span class="go__label"><span>Повторить</span><small>нет связи</small></span></button>
+      </div>
+
+      <h3>Кнопки</h3>
+      <div class="row"><button class="btn btn--lg">Скачать для Windows</button><button class="btn">Установить</button><button class="btn btn--ghost">Отмена</button><button class="btn btn--quiet">Подробнее</button><button class="btn btn--danger btn--sm">Удалить</button><button class="btn btn--sm" disabled>Недоступно</button></div>
+
+      <h3>Переключатели, сегменты, поля</h3>
+      <div class="row" style="gap:28px">
+        <label class="switch"><input type="checkbox" checked><span class="switch__track"></span>Включено</label>
+        <label class="switch"><input type="checkbox"><span class="switch__track"></span>Выключено</label>
+        <div class="seg" role="group" aria-label="Сервер"><button aria-pressed="true">Авто</button><button aria-pressed="false">Сервер 1</button><button aria-pressed="false">Сервер 2</button></div>
+        <label class="field" style="min-width:240px"><span>Адрес сайта</span><input class="input" placeholder="example.com"></label>
+      </div>
+
+      <h3>Статусы и метки</h3>
+      <div class="row" style="gap:22px">
+        <span class="status status--off"><i class="status__mark"></i>Выключено</span>
+        <span class="status status--connecting"><i class="status__mark"></i>Подключение</span>
+        <span class="status status--on"><i class="status__mark"></i>Работает</span>
+        <span class="status status--warn"><i class="status__mark"></i>Внимание</span>
+        <span class="status status--error"><i class="status__mark"></i>Ошибка</span>
+        <span class="tag tag--relay">через VELIQ</span><span class="tag">авто</span><span class="tag tag--ok">выбран</span><span class="tag tag--warn">медленно</span><span class="tag tag--danger">недоступен</span>
+      </div>
+
+      <h3>Таблица и полоса трафика</h3>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="table"><thead><tr><th>Приложение</th><th>Маршрут</th><th class="num">Соединений</th><th style="width:36%">Трафик</th></tr></thead>
+          <tbody><tr><td>chrome.exe</td><td><span class="tag tag--relay">через VELIQ</span></td><td class="num">184</td><td><div class="meter meter--relay"><span style="width:82%"></span></div></td></tr>
+          <tr><td>Discord.exe</td><td><span class="tag">авто</span></td><td class="num">23</td><td><div class="meter meter--relay"><span style="width:14%"></span></div></td></tr></tbody></table>
+      </div>
+
+      <h3>График пинга</h3>
+      <div class="card"><ul class="legend" style="margin-bottom:8px"><li><i class="direct"></i>обычный путь</li><li><i class="hel"></i>маршрут VELIQ</li><li><i class="swe"></i>второй сервер</li></ul><div data-chart></div></div>
+
+      <h3>Модальное окно и уведомления</h3>
+      <div class="grid g2">
+        <div class="static-modal"><div class="modal"><h2>Включить режим клуба?</h2><p>Гость увидит только состояние и кнопку. Настройки откроются по паролю.</p><div class="modal__actions"><button class="btn btn--ghost">Отмена</button><button class="btn">Включить</button></div></div></div>
+        <div class="demo-box" style="display:grid;gap:10px;align-content:center;justify-items:center">
+          <div class="toast toast--ok"><svg class="toast__icon"><use href="#i-ok"/></svg><div><strong>VELIQ работает</strong><p>Маршруты построены.</p></div><span></span></div>
+          <div class="toast toast--info"><svg class="toast__icon"><use href="#i-route"/></svg><div><strong>Найден путь быстрее на 31 мс</strong><p>Применится к следующему матчу.</p></div><span></span></div>
+          <div class="toast toast--error"><svg class="toast__icon"><use href="#i-error"/></svg><div><strong>Связь с сервером потеряна</strong><p>Перестраиваем маршрут через другой сервер.</p></div><span></span></div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<script src="assets/charts.js"></script>
+<script>
+  (function () {
+    var ids = Array.prototype.map.call(document.querySelectorAll('symbol[id^="i-"]'), function (s) { return s.id; });
+    document.querySelector('[data-icon-grid]').innerHTML = ids.map(function (id) { return '<div><svg><use href="#' + id + '"/></svg>' + id.slice(2) + '</div>'; }).join('');
+    veliqPingChart(document.querySelector('[data-chart]'), { height: 200, series: [
+      { id: 'direct', name: 'обычный', values: [71,74,70,77,72,73,79,71,70,75,72,74,73,76,72,71] },
+      { id: 'swe', name: 'сервер 2', values: [49,47,50,48,48,51,47,49,48,48,50,47,48,49,48,47] },
+      { id: 'hel', name: 'VELIQ', values: [42,41,43,40,41,42,41,44,41,40,41,42,41,41,43,41] } ] });
+    var root = document.documentElement;
+    document.querySelectorAll('[data-t]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        root.setAttribute('data-theme', b.dataset.t);
+        document.querySelectorAll('[data-t]').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+        document.querySelector('[data-wm]').src = 'assets/img/veliq-wordmark-' + (b.dataset.t === 'dark' ? 'dark' : 'light') + '.svg';
+        veliqPingChart(document.querySelector('[data-chart]'), { height: 200, series: [
+          { id: 'direct', name: 'обычный', values: [71,74,70,77,72,73,79,71,70,75,72,74,73,76,72,71] },
+          { id: 'swe', name: 'сервер 2', values: [49,47,50,48,48,51,47,49,48,48,50,47,48,49,48,47] },
+          { id: 'hel', name: 'VELIQ', values: [42,41,43,40,41,42,41,44,41,40,41,42,41,41,43,41] } ] });
+      });
+    });
+  })();
+</script>
+</body>
+</html>

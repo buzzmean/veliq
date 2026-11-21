@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -6 112 112" role="img" aria-label="VELIQ: connecting">
+  <defs>
+    <mask id="slit-light-connecting" maskUnits="userSpaceOnUse" x="-30" y="-30" width="170" height="170">
+      <rect x="-30" y="-30" width="170" height="170" fill="#fff"/>
+      <rect x="-30" y="66" width="170" height="6" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="#0A0A0B" mask="url(#slit-light-connecting)">
+    <path fill-rule="evenodd" d="M36 0H64A36 36 0 0 1 100 36V64A36 36 0 0 1 64 100H36A36 36 0 0 1 0 64V36A36 36 0 0 1 36 0Z M40 18H60A22 22 0 0 1 82 40V60A22 22 0 0 1 60 82H40A22 22 0 0 1 18 60V40A22 22 0 0 1 40 18Z"/>
+    <path transform="translate(26.1 27) scale(.46)" d="M0 0H22L52 70L82 0H104L63 100H41Z"/>
+    <rect x="44" y="-9" width="28" height="18" transform="translate(50 50) rotate(45)"/>
+  </g>
+  <rect fill="#F0502A" x="0" y="66" width="50" height="6"/>
+</svg>

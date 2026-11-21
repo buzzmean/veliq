@@ -1,0 +1,139 @@
+{
+  "uid": "neexitlag-dev",
+  "title": "neexitlag development",
+  "schemaVersion": 40,
+  "version": 1,
+  "refresh": "15s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Sessions",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "neexitlag-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "neexitlag_active_sessions"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Flows",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "neexitlag-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "neexitlag_active_flows"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "RX/TX bytes per second",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "neexitlag-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(neexitlag_rx_bytes_total[1m]) + rate(neexitlag_tx_bytes_total[1m])"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Drops per second",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "neexitlag-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(neexitlag_packet_drops_total[1m])"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Auth failures",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "neexitlag-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(neexitlag_auth_failures_total[1m])"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Healthy relays",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "neexitlag-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "neexitlag_healthy_relays"
+        }
+      ]
+    }
+  ]
+}

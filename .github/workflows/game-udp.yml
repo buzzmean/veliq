@@ -1,0 +1,49 @@
+name: Game UDP
+on:
+  push:
+    branches: [main]
+    paths: ['core/gameudp/**', 'platform/windows/**', 'services/client-service/**', 'apps/**', 'tests/desktop/**', 'tests/windows-tools/game-udp-checks.ps1', 'tools/windows/*game-udp*', '.github/workflows/game-udp.yml']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - run: go test -race ./core/gameudp ./platform/windows ./services/client-service
+      - run: go vet ./core/gameudp ./platform/windows ./services/client-service
+      - run: go build ./...
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Compile all filters with pinned WinDivert before Windows tests
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force|Out-Null
+          & go test ./platform/windows -run '^TestServiceWinDivertFilterInventory$'
+          if($LASTEXITCODE){throw 'FILTER_INVENTORY_FAILED'}
+          & go test -c -o bin/filter-tests.exe ./platform/windows
+          if($LASTEXITCODE){throw 'FILTER_TEST_BUILD_FAILED'}
+          & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
+      - run: go test -race -p 1 -timeout 120s ./core/gameudp ./platform/windows ./services/client-service -run 'Game|PUBG|Reflect'
+      - run: go vet ./core/gameudp ./platform/windows ./services/client-service
+      - run: go build ./...
+      - run: '& ./tests/windows-tools/game-udp-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/game-udp-checks.ps1'
+        shell: pwsh
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+      - run: dotnet build apps/desktop/Neexitlag.Desktop.csproj -c Release --nologo
+# No actual game or anti-cheat/ISP PASS is inferred from these tests.

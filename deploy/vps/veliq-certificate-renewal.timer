@@ -1,0 +1,10 @@
+[Unit]
+Description=VELIQ daily certificate expiry check
+[Timer]
+OnCalendar=daily
+OnBootSec=30s
+RandomizedDelaySec=15m
+Persistent=true
+Unit=veliq-certificate-renewal.service
+[Install]
+WantedBy=timers.target

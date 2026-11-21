@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup>
+  <OutputType>Exe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><EnableWindowsTargeting>true</EnableWindowsTargeting>
+  <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>NeExitLag.Desktop.NativeTests</AssemblyName>
+ </PropertyGroup>
+ <ItemGroup><ProjectReference Include="../../apps/desktop/Neexitlag.Desktop.csproj"/></ItemGroup>
+</Project>

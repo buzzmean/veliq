@@ -1,0 +1,8 @@
+# Build override for a managed worker with its injected CA trust.
+services:
+  dev-init:
+    build:
+      secrets: [proxy_ca]
+secrets:
+  proxy_ca:
+    file: ${BUILD_PROXY_CA_CERT}

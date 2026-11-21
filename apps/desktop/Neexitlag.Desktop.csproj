@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup>
+  <OutputType>WinExe</OutputType><TargetFramework>net8.0-windows</TargetFramework><UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms><EnableWindowsTargeting>true</EnableWindowsTargeting>
+  <Nullable>enable</Nullable><ImplicitUsings>disable</ImplicitUsings><AssemblyName>VELIQ</AssemblyName><RootNamespace>Neexitlag.Desktop</RootNamespace><Product>VELIQ</Product><Description>Клиент оптимизации соединения VELIQ</Description>
+  <ApplicationIcon>Assets/VELIQ.ico</ApplicationIcon><ApplicationManifest>app.manifest</ApplicationManifest>
+ </PropertyGroup>
+ <ItemGroup><ProjectReference Include="../desktop-core/NeExitLag.Client.csproj"/><Resource Include="Assets/VELIQ.ico"/><Resource Include="Assets/Tray/*.ico"/><Resource Include="Assets/Fonts/*.ttf"/></ItemGroup>
+</Project>

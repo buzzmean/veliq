@@ -1,0 +1,79 @@
+name: neexitlag-dev
+services:
+  dev-init:
+    image: neexitlag/dev:local
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    user: "0:0"
+    command: ["sh", "-c", "/app/dev-init -control-dir /control -relay-dir /relay -public-dir /public -database-dir /database && chown -R 10001:10001 /control /relay /public /database /state"]
+    volumes:
+      - control-keys:/control
+      - relay-keys:/relay
+      - public-keys:/public
+      - database-keys:/database
+      - relay-state:/state
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: neexitlag
+      POSTGRES_DB: neexitlag
+      POSTGRES_PASSWORD_FILE: /database/password
+    volumes:
+      - database-keys:/database:ro
+      - postgres-data:/var/lib/postgresql/data
+    depends_on:
+      dev-init: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neexitlag -d neexitlag"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  control-plane:
+    image: neexitlag/dev:local
+    command: ["/app/control-plane", "-listen", ":8080", "-signing-key", "/control/signing.key", "-ca", "/control/ca.pem", "-ca-key", "/control/ca.key", "-admin-token-file", "/control/admin.token", "-database-password-file", "/database/password", "-seed-relay-id", "FRA-01", "-seed-relay-address", "relay:4433", "-seed-heartbeat-token-file", "/control/heartbeat.token"]
+    environment:
+      DATABASE_URL: postgres://neexitlag@postgres:5432/neexitlag?sslmode=disable
+      NO_PROXY: postgres,control-plane,relay,echo,localhost,127.0.0.1
+    ports: ["127.0.0.1:8080:8080"]
+    volumes: ["control-keys:/control:ro", "database-keys:/database:ro"]
+    depends_on:
+      postgres: {condition: service_healthy}
+  relay:
+    image: neexitlag/dev:local
+    command: ["/app/relay", "-listen", ":4433", "-metrics", ":9090", "-cert", "/relay/relay.pem", "-key", "/relay/relay.key", "-ca", "/relay/ca.pem", "-relay-id", "FRA-01", "-ticket-keys", "/relay/trust.json", "-replay-cache", "/state/replay.json", "-control-plane", "http://control-plane:8080", "-allow-http-development", "-heartbeat-token-file", "/relay/heartbeat.token", "-allow-cidrs", "172.29.0.0/24"]
+    environment:
+      NO_PROXY: postgres,control-plane,relay,echo,localhost,127.0.0.1
+    ports: ["127.0.0.1:4433:4433/udp", "127.0.0.1:9090:9090"]
+    volumes: ["relay-keys:/relay:ro", "relay-state:/state"]
+    depends_on:
+      dev-init: {condition: service_completed_successfully}
+      control-plane: {condition: service_started}
+  echo:
+    image: neexitlag/dev:local
+    command: ["/app/echo", "-listen", ":9000"]
+    # Echo is deliberately not published to the host or public Internet.
+    depends_on:
+      dev-init: {condition: service_completed_successfully}
+  dev-client:
+    image: neexitlag/dev:local
+    profiles: ["test"]
+    command: ["/app/dev-client", "-control-plane", "http://control-plane:8080", "-relay-address", "relay:4433", "-target", "echo:9000", "-allow-http-development", "-admin-token-file", "/control/admin.token", "-trust", "/public/trust.json", "-ca", "/public/ca.pem"]
+    environment:
+      NO_PROXY: postgres,control-plane,relay,echo,localhost,127.0.0.1
+    volumes: ["control-keys:/control:ro", "public-keys:/public:ro"]
+    depends_on:
+      control-plane: {condition: service_started}
+      relay: {condition: service_started}
+      echo: {condition: service_started}
+networks:
+  default:
+    ipam:
+      config: [{subnet: 172.29.0.0/24}]
+volumes:
+  control-keys:
+  relay-keys:
+  public-keys:
+  database-keys:
+  relay-state:
+  postgres-data:

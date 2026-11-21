@@ -1,0 +1,87 @@
+name: Edge policy acceptance
+on:
+  push:
+    paths:
+      - '.github/workflows/edge-native.yml'
+      - 'apps/desktop/EdgeRouting*.cs'
+      - 'apps/desktop/ChromeRouting.cs'
+      - 'apps/desktop/MainWindow.xaml'
+      - 'apps/desktop-core/**'
+      - 'tests/desktop/**'
+      - 'services/client-service/edge*'
+      - 'services/client-service/browser*'
+      - 'services/client-service/controller.go'
+      - 'services/client-service/ipc_handlers.go'
+      - 'tools/windows/diag-no-vpn.ps1'
+      - 'platform/windows/edge_policy*'
+      - 'core/browserproxy/**'
+      - 'core/flowpolicy/direct_timeout*'
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  edge-policy:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Parse focused diagnostics with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $tokens=$null; $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path tools/windows/diag-no-vpn.ps1),[ref]$tokens,[ref]$errors)
+          if ($errors.Count) { throw ($errors | Out-String) }
+      - name: Parse focused diagnostics with PowerShell 7
+        shell: pwsh
+        run: |
+          $tokens=$null; $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path tools/windows/diag-no-vpn.ps1),[ref]$tokens,[ref]$errors)
+          if ($errors.Count) { throw ($errors | Out-String) }
+      - name: Desktop core regressions, including unchanged Chrome behavior
+        run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+      - name: WPF build
+        run: dotnet build apps/desktop/Neexitlag.Desktop.csproj --nologo
+      - name: Real Edge policy, HTTPS, authenticated relay and recovery
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .e2e | Out-Null
+          go test -c -o .e2e/browser-recovery-acceptance.exe ./services/client-service/cmd/service
+          if ($LASTEXITCODE) { throw "Recovery helper build failed" }
+          $env:NEEXITLAG_TEST_BROWSER_RECOVERY=(Resolve-Path .e2e/browser-recovery-acceptance.exe).Path
+          $env:NEEXITLAG_TEST_EDGE_POLICY='1'
+          go test -v -count=1 -timeout 120s ./services/client-service -run '^(TestEdgeActualPolicyHTTPSOutageRestart|TestEdgePolicyRefusesForeignAndWrongOwnerSID)$' 2>&1 | Tee-Object edge-native.log
+          if ($LASTEXITCODE) { throw "Actual Edge policy acceptance failed: $LASTEXITCODE" }
+      - name: Already running Chrome and Edge silent policy uptake (no restart)
+        shell: pwsh
+        run: |
+          $env:NEEXITLAG_TEST_SILENT_POLICY='1'
+          go test -v -count=1 -timeout 150s ./services/client-service -run '^TestSilentPACRunningChromeEdgePolicyUptake$' 2>&1 | Tee-Object silent-policy.log
+          if ($LASTEXITCODE) { throw "Silent policy acceptance failed: $LASTEXITCODE" }
+      - name: Running Chrome and Edge survive disable and host close with real policy
+        shell: pwsh
+        run: |
+          $env:NEEXITLAG_TEST_BROWSER_DISABLE='1'
+          go test -v -count=1 -timeout 180s ./services/client-service -run '^TestWindowsBrowserDisablePolicyContinuity$' 2>&1 | Tee-Object browser-disable.log
+          if ($LASTEXITCODE) { throw "Browser disable continuity failed: $LASTEXITCODE" }
+      - name: Browsers started before native controller, no PAC, authenticated relay and OFF
+        shell: pwsh
+        run: |
+          $env:NEEXITLAG_TEST_NATIVE_BROWSER='1'
+          go test -v -count=1 -timeout 180s ./services/client-service -run '^TestWindowsNativeBrowserStartsBeforeControllerWithoutPAC$' 2>&1 | Tee-Object native-hot-attach.log
+          if ($LASTEXITCODE) { throw "Native controller browser fixture failed: $LASTEXITCODE" }
+      - name: Chrome and Edge service/owner regressions
+        run: go test -p 1 -race -count=1 ./services/client-service ./platform/windows -run 'Edge|Chrome|Browser'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: edge-native-evidence
+          path: |
+            edge-native.log
+            silent-policy.log
+            browser-disable.log
+            native-hot-attach.log

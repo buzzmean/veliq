@@ -1,0 +1,84 @@
+<UserControl x:Class="Neexitlag.Desktop.GamesView" PreviewMouseDown="ClickOutside" PreviewKeyDown="EscapeCloses" Unloaded="Leave" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:Neexitlag.Desktop">
+ <!-- «Игры»: each game is a Q badge (radius 36%, slit at 66%); the slit turns signal when the game has its own route.
+      Clicking a badge opens the route strip with real choices only (direct, local, auto, relays reported by the service). -->
+ <UserControl.Resources>
+  <Style x:Key="GameTile" TargetType="Button">
+   <Setter Property="Width" Value="156"/><Setter Property="Margin" Value="0,0,14,22"/><Setter Property="Cursor" Value="Hand"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+    <StackPanel Background="Transparent">
+     <Border x:Name="Shape" Width="132" Height="132" CornerRadius="47.5" BorderThickness="2" BorderBrush="{StaticResource LineStrong}" Background="{StaticResource BgRaised}">
+      <Grid>
+       <Grid>
+        <Grid.Clip><RectangleGeometry Rect="0,0,128,128" RadiusX="45.5" RadiusY="45.5"/></Grid.Clip>
+        <Grid.RowDefinitions><RowDefinition Height="66*"/><RowDefinition Height="6*"/><RowDefinition Height="28*"/></Grid.RowDefinitions>
+        <Rectangle x:Name="Slit" Grid.Row="1" Fill="{StaticResource Bg}"/>
+        <TextBlock x:Name="Badge" Text="{Binding Badge}" FontSize="{Binding BadgeSize}" FontWeight="ExtraBold" Foreground="{StaticResource TextMuted}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="8,0,8,4" TextTrimming="CharacterEllipsis"/>
+       </Grid>
+      </Grid>
+     </Border>
+     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13" Foreground="{StaticResource Text}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,10,0,0"/>
+     <TextBlock x:Name="Route" Text="{Binding RouteLabel}" FontSize="12" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
+    </StackPanel>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Shape" Property="BorderBrush" Value="{StaticResource TextFaint}"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Shape" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+     <DataTrigger Binding="{Binding IsCustom}" Value="True"><Setter TargetName="Slit" Property="Fill" Value="{StaticResource Accent}"/><Setter TargetName="Route" Property="Foreground" Value="{StaticResource Text}"/></DataTrigger>
+     <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter TargetName="Shape" Property="BorderBrush" Value="{StaticResource Text}"/><Setter TargetName="Shape" Property="Background" Value="{StaticResource Bg}"/><Setter TargetName="Badge" Property="Foreground" Value="{StaticResource Text}"/></DataTrigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+  <Style x:Key="RoutePill" TargetType="Button">
+   <Setter Property="Margin" Value="0,0,8,0"/><Setter Property="Cursor" Value="Hand"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+    <Border x:Name="Pill" CornerRadius="10" BorderThickness="1" BorderBrush="{StaticResource Line}" Background="Transparent" Padding="14,7">
+     <StackPanel>
+      <TextBlock x:Name="Label" Text="{Binding Label}" FontWeight="SemiBold" Foreground="{StaticResource TextMuted}"/>
+      <TextBlock Text="{Binding Hint}" FontSize="11" Foreground="{StaticResource TextFaint}" Margin="0,2,0,0"/>
+     </StackPanel>
+    </Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Pill" Property="BorderBrush" Value="{StaticResource LineStrong}"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Pill" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+     <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter TargetName="Pill" Property="BorderBrush" Value="{StaticResource Text}"/><Setter TargetName="Pill" Property="Background" Value="{StaticResource Bg}"/><Setter TargetName="Label" Property="Foreground" Value="{StaticResource Text}"/></DataTrigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+ </UserControl.Resources>
+ <DockPanel>
+  <StackPanel DockPanel.Dock="Top">
+   <Grid MaxWidth="360" HorizontalAlignment="Left" Margin="0,0,0,8">
+    <TextBox x:Name="SearchBox" Text="{Binding Search,UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="{ui:Tr GameCatalogSearch}" Padding="38,0,10,0" Width="360" Margin="0"/>
+    <Path Data="{StaticResource IconSearch}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource TextFaint}" StrokeThickness="1.75" StrokeStartLineCap="Round" StrokeEndLineCap="Round" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" IsHitTestVisible="False"/>
+    <TextBlock Text="{ui:Tr GameCatalogSearch}" Foreground="{StaticResource TextFaint}" VerticalAlignment="Center" Margin="40,0,0,0" IsHitTestVisible="False">
+     <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Search}" Value=""><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+    </TextBlock>
+   </Grid>
+   <TextBlock Text="{Binding Notice}" Style="{StaticResource Small}" Margin="0,4,0,14" Visibility="{Binding Notice, Converter={StaticResource EmptyToCollapsed}}"/>
+  </StackPanel>
+  <!-- Route strip for the selected game. -->
+  <Border x:Name="RoutePanel" DockPanel.Dock="Bottom" Style="{StaticResource Card}" Padding="18,14" Margin="0,8,0,0" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVisible}}" IsEnabled="{Binding CanInteract}">
+   <DockPanel>
+    <StackPanel DockPanel.Dock="Left" Width="190" VerticalAlignment="Center" Margin="0,0,16,0">
+     <TextBlock Text="{Binding Selected.Name}" FontWeight="Bold" FontSize="15" TextTrimming="CharacterEllipsis"/>
+     <TextBlock Text="{Binding Selected.Details}" Style="{StaticResource Caption}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"/>
+    </StackPanel>
+    <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0">
+     <Button Content="{ui:Tr GameCatalogApply}" Click="Apply" Style="{StaticResource Primary}" Margin="0"/>
+     <Button Content="{ui:Tr GameCatalogRepair}" Click="Repair" Style="{StaticResource Quiet}" Margin="0,6,0,0" Visibility="{Binding Selected.CanRepair, Converter={StaticResource BoolToVisible}}"/>
+    </StackPanel>
+    <StackPanel VerticalAlignment="Center">
+     <ItemsControl ItemsSource="{Binding Routes}"><ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate><DataTemplate><Button Style="{StaticResource RoutePill}" Click="ChooseRoute" Margin="0,0,8,6"/></DataTemplate></ItemsControl.ItemTemplate>
+     </ItemsControl>
+     <TextBlock Text="{Binding Selected.Compatibility}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,4,0,0" Visibility="{Binding Selected.Compatibility, Converter={StaticResource EmptyToCollapsed}}"/>
+    </StackPanel>
+   </DockPanel>
+  </Border>
+  <ScrollViewer VerticalScrollBarVisibility="Auto">
+   <ItemsControl ItemsSource="{Binding Games}" IsEnabled="{Binding CanInteract}">
+    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+    <ItemsControl.ItemTemplate><DataTemplate><Button Style="{StaticResource GameTile}" Click="SelectGame" AutomationProperties.Name="{Binding Name}"/></DataTemplate></ItemsControl.ItemTemplate>
+   </ItemsControl>
+  </ScrollViewer>
+ </DockPanel>
+</UserControl>

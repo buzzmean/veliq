@@ -1,0 +1,323 @@
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:Neexitlag.Desktop" x:Class="Neexitlag.Desktop.MainWindow" Title="VELIQ" Icon="Assets/VELIQ.ico" Width="1180" Height="780" MinWidth="960" MinHeight="640" Background="{StaticResource Bg}" Foreground="{StaticResource Text}" FontFamily="{StaticResource VeliqFont}" FontSize="14" Language="ru-RU" WindowStartupLocation="CenterScreen" TextOptions.TextFormattingMode="Display" UseLayoutRounding="True">
+ <!-- Layout and states follow app-ui/index.html: rail + screens, activation overlay on top. -->
+ <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="208"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+  <Border Background="{StaticResource BgSunken}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+   <DockPanel Margin="10,14,10,14">
+    <Image DockPanel.Dock="Top" Source="{StaticResource VeliqWordmark}" Height="48" HorizontalAlignment="Left" Margin="2,-6,0,8" AutomationProperties.Name="VELIQ"/>
+    <StackPanel x:Name="NavTop" DockPanel.Dock="Top">
+     <Button Style="{StaticResource NavButton}" Content="{ui:Tr Home}" Tag="Home" Click="Navigate" ui:Nav.Icon="{StaticResource IconHome}" ui:Nav.IsCurrent="True"/>
+     <Button Style="{StaticResource NavButton}" Content="{ui:Tr NavServices}" Tag="Applications" Click="Navigate" ui:Nav.Icon="{StaticResource IconServices}"/>
+     <Button Style="{StaticResource NavButton}" Content="{ui:Tr Games}" Tag="Games" Click="Navigate" ui:Nav.Icon="{StaticResource IconGames}"/>
+     <Button Style="{StaticResource NavButton}" Content="{ui:Tr Diagnostics}" Tag="Diagnostics" Click="Navigate" ui:Nav.Icon="{StaticResource IconDiagnostics}"/>
+     <Button Style="{StaticResource NavButton}" Content="{ui:Tr Settings}" Tag="Settings" Click="Navigate" ui:Nav.Icon="{StaticResource IconSettings}"/>
+    </StackPanel>
+    <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="6,14,6,2" Margin="0,8,0,0">
+     <StackPanel>
+      <StackPanel Orientation="Horizontal"><Border Style="{StaticResource StatusMark}" VerticalAlignment="Center" Margin="0,0,8,0"><Grid><Rectangle Height="2.5" VerticalAlignment="Top" Margin="0,5.4,0,0" Fill="{StaticResource Accent}" Visibility="{Binding Optimizing, Converter={StaticResource BoolToVisible}}"/></Grid></Border><TextBlock Text="{Binding OptimizationStatus}" FontWeight="Medium" FontSize="13" VerticalAlignment="Center"/></StackPanel>
+      <TextBlock Text="{Binding GoSub}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+     </StackPanel>
+    </Border>
+    <StackPanel x:Name="NavBottom" DockPanel.Dock="Bottom">
+     <Button Style="{StaticResource NavButton}" Content="{ui:Tr NavAbout}" Tag="About" Click="Navigate" ui:Nav.Icon="{StaticResource IconInfo}"/>
+    </StackPanel>
+    <Border/>
+   </DockPanel>
+  </Border>
+
+  <DockPanel Grid.Column="1" Margin="32,26,32,24">
+   <StackPanel DockPanel.Dock="Top">
+    <StackPanel x:Name="PageHeader" Visibility="Collapsed" Margin="0,0,0,20">
+     <TextBlock x:Name="PageTitle" Text="{ui:Tr Home}" Style="{StaticResource H1}"/>
+     <TextBlock x:Name="PageLead" Style="{StaticResource Lead}" Margin="0,8,0,0" MaxWidth="640" HorizontalAlignment="Left"/>
+    </StackPanel>
+    <Border Style="{StaticResource Banner}" Visibility="{Binding Error, Converter={StaticResource EmptyToCollapsed}}">
+     <DockPanel>
+      <Button DockPanel.Dock="Right" Content="{ui:Tr Retry}" Click="Reconnect" Style="{StaticResource Primary}" Margin="12,0,0,0" VerticalAlignment="Center"/>
+      <Path DockPanel.Dock="Left" Data="{StaticResource IconError}" Width="20" Height="20" Stretch="Uniform" Stroke="{StaticResource Danger}" StrokeThickness="1.75" VerticalAlignment="Top" Margin="0,1,12,0"/>
+      <TextBlock Text="{Binding Error}" TextWrapping="Wrap" VerticalAlignment="Center"/>
+     </DockPanel>
+    </Border>
+    <TextBlock Text="{Binding Notice}" Style="{StaticResource Small}" Margin="0,0,0,12" Visibility="{Binding Notice, Converter={StaticResource EmptyToCollapsed}}"/>
+   </StackPanel>
+   <Grid>
+    <!-- ============ Главная ============ -->
+    <Grid x:Name="Home">
+     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="280"/></Grid.ColumnDefinitions>
+     <DockPanel Margin="0,0,28,0">
+      <StackPanel DockPanel.Dock="Top">
+       <TextBlock Text="{Binding OptimizationStatus}" Style="{StaticResource Display}"/>
+       <TextBlock Text="{Binding HomeLead}" Style="{StaticResource Lead}" Margin="0,10,0,0" MaxWidth="560" HorizontalAlignment="Left"/>
+      </StackPanel>
+      <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="0,12,0,0">
+       <StackPanel>
+        <TextBlock Text="{ui:Tr NowViaVeliq}" Style="{StaticResource Caption}"/>
+        <TextBlock Text="{Binding ActiveApps}" TextWrapping="Wrap" FontWeight="Medium" Margin="0,6,0,0"/>
+        <TextBlock Text="{Binding BrowserReadinessText}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="{Binding Optimizing, Converter={StaticResource BoolToVisible}}"/>
+       </StackPanel>
+      </Border>
+      <Button Style="{StaticResource GoButton}" Click="ToggleOptimize" IsEnabled="{Binding CanControl}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,20" AutomationProperties.Name="{Binding OptimizeLabel}">
+       <StackPanel>
+        <TextBlock Text="{Binding OptimizeLabel}" HorizontalAlignment="Center" FontSize="20" FontWeight="Bold"/>
+        <TextBlock Text="{Binding GoSub}" HorizontalAlignment="Center" FontSize="13" FontWeight="Medium" Foreground="{StaticResource TextFaint}" Margin="0,6,0,0" TextTrimming="CharacterEllipsis" MaxWidth="190"/>
+       </StackPanel>
+      </Button>
+     </DockPanel>
+     <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+       <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="{ui:Tr MetricServer}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding Server}" Style="{StaticResource Metric}" FontSize="22" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding ServerHint}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,0"/></StackPanel></Border>
+       <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="{ui:Tr RelayLatency}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding RelayLatency}" Style="{StaticResource Metric}"/><TextBlock Style="{StaticResource Caption}" Margin="0,4,0,0"><Run Text="{ui:Tr DirectLatency}"/><Run Text="{Binding DirectLatency, Mode=OneWay, StringFormat=': {0}'}"/></TextBlock></StackPanel></Border>
+       <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="{ui:Tr Jitter}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding Jitter}" Style="{StaticResource Metric}"/><TextBlock Style="{StaticResource Caption}" Margin="0,4,0,0"><Run Text="{ui:Tr PacketLoss}"/><Run Text="{Binding Loss, Mode=OneWay, StringFormat=': {0}'}"/></TextBlock></StackPanel></Border>
+       <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="{ui:Tr Received}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding Rx}" Style="{StaticResource Metric}"/><TextBlock Style="{StaticResource Caption}" Margin="0,4,0,0"><Run Text="{ui:Tr Sent}"/><Run Text="{Binding Tx, Mode=OneWay, StringFormat=': {0}'}"/></TextBlock></StackPanel></Border>
+      </StackPanel>
+     </ScrollViewer>
+    </Grid>
+
+    <!-- ============ Игры ============ -->
+    <ui:GamesView x:Name="Games" Visibility="Collapsed"/>
+
+    <!-- ============ Сервисы (приложения и сайты) ============ -->
+    <DockPanel x:Name="Applications" Visibility="Collapsed">
+     <StackPanel DockPanel.Dock="Top">
+      <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="{ui:Tr AutomaticApplicationsTitle}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{ui:Tr AutomaticApplicationsHint}" TextWrapping="Wrap" Style="{StaticResource Hint}" Margin="0,8,0,0"/></StackPanel></Border>
+      <WrapPanel Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}">
+       <Button Style="{StaticResource Primary}" Click="AddApplication" IsEnabled="{Binding CanControl}"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconPlus}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource OnControl}" StrokeThickness="1.75" Margin="0,0,8,0"/><TextBlock Text="{ui:Tr AddApplication}" Foreground="{StaticResource OnControl}"/></StackPanel></Button>
+       <Button Content="{ui:Tr AutoOptimize}" Click="UseAuto" IsEnabled="{Binding CanControl}" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
+       <Button Content="{ui:Tr GameUdpEnable}" Click="EnableSelectedGameUdp" IsEnabled="{Binding CanControl}" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
+       <Button Content="{ui:Tr RemoveApplication}" Click="DeleteApplication" IsEnabled="{Binding CanControl}"/>
+      </WrapPanel>
+      <!-- Route for the selected row; fallback and a fixed server are technical choices. -->
+      <WrapPanel Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}">
+       <ComboBox x:Name="Mode" ItemsSource="{Binding Modes}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedIndex="0" SelectionChanged="ModeChanged" MinWidth="180"/>
+       <ComboBox x:Name="ProfileFallback" ItemsSource="{Binding ProfileFallbacks}" DisplayMemberPath="Label" SelectedValuePath="Value" SelectedIndex="0" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
+       <ComboBox x:Name="RelayChoice" ItemsSource="{Binding Relays}" DisplayMemberPath="Label" SelectedValuePath="Value" MinWidth="190" IsEnabled="False" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
+       <Button Content="{ui:Tr Apply}" Click="ApplyMode" IsEnabled="{Binding CanControl}" VerticalAlignment="Center"/>
+      </WrapPanel>
+      <Expander x:Name="AppAdvanced" Header="{ui:Tr AdvancedDiagnostics}" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"><StackPanel>
+       <WrapPanel>
+        <Button Content="{ui:Tr ChromeSites}" Click="OpenChromeSites" IsEnabled="{Binding CanControl}"/>
+        <Button Content="{ui:Tr DisableChromeSites}" Click="DisableChromeSites"/>
+        <Button Content="{ui:Tr EdgeSites}" Click="OpenEdgeSites" IsEnabled="{Binding CanControl}"/>
+        <Button Content="{ui:Tr DisableEdgeSites}" Click="DisableEdgeSites" IsEnabled="{Binding CanControl}"/>
+       </WrapPanel>
+       <WrapPanel><ComboBox x:Name="AppPreset" DisplayMemberPath="Label" SelectedValuePath="Id" MinWidth="180"/><CheckBox x:Name="AppQuic" IsChecked="True" Content="{ui:Tr QuicFallback}" VerticalAlignment="Center"/><Button Content="{ui:Tr ApplyPreset}" Click="ApplyPreset" IsEnabled="{Binding CanControl}" VerticalAlignment="Center"/></WrapPanel>
+       <TextBlock Text="{ui:Tr ApplicationSelectionHint}" Style="{StaticResource Hint}"/>
+       <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto"><ItemsControl ItemsSource="{Binding Applications}"><ItemsControl.ItemTemplate><DataTemplate><StackPanel Margin="4"><TextBlock Text="{Binding Name}" FontWeight="SemiBold"/><TextBlock Text="{Binding LocalDetails}" TextWrapping="Wrap" Style="{StaticResource Hint}"/></StackPanel></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+      </StackPanel></Expander>
+     </StackPanel>
+     <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}">
+      <Expander Header="{ui:Tr GameUdpTitle}"><StackPanel><TextBlock Text="{ui:Tr GameUdpHint}" TextWrapping="Wrap" Style="{StaticResource Hint}"/>
+       <ScrollViewer MaxHeight="200"><ItemsControl ItemsSource="{Binding GameUdpProfiles}"><ItemsControl.ItemTemplate><DataTemplate><Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="{Binding Name}" FontWeight="SemiBold"/><TextBlock Text="{Binding Summary}" TextWrapping="Wrap" Style="{StaticResource Small}" Margin="0,4,0,8"/><Button Content="{Binding ButtonLabel}" Click="ToggleGameUdp" HorizontalAlignment="Left" Margin="0"/></StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></ScrollViewer>
+      </StackPanel></Expander>
+      <Expander Header="{ui:Tr AdvancedDiagnostics}"><StackPanel>
+       <TextBlock Text="{Binding EdgeState}" Style="{StaticResource Hint}"/>
+       <DataGrid ItemsSource="{Binding EdgeDomains}" MaxHeight="140"><DataGrid.Columns><DataGridTextColumn Header="{ui:Tr EdgeDomainLabel}" Binding="{Binding Domain}" Width="*"/><DataGridTextColumn Header="{ui:Tr CurrentRoute}" Binding="{Binding Route}" Width="140"/><DataGridTextColumn Header="{ui:Tr ReasonLabel}" Binding="{Binding Reason}" Width="2*"/><DataGridTextColumn Header="{ui:Tr TransportOutcome}" Binding="{Binding Outcome}" Width="2*"/></DataGrid.Columns></DataGrid>
+       <TextBlock Text="{Binding ChromePolicyState}" Style="{StaticResource Hint}"/><TextBlock Text="{ui:Tr ChromeSitesHint}" Style="{StaticResource Hint}"/>
+       <DataGrid ItemsSource="{Binding BrowserDomains}" MaxHeight="180"><DataGrid.Columns><DataGridTextColumn Header="{ui:Tr DomainLabel}" Binding="{Binding Domain}" Width="*"/><DataGridTextColumn Header="{ui:Tr CurrentRoute}" Binding="{Binding Route}" Width="140"/><DataGridTextColumn Header="{ui:Tr ReasonLabel}" Binding="{Binding Reason}" Width="2*"/><DataGridTextColumn Header="{ui:Tr Result}" Binding="{Binding Outcome}" Width="2*"/></DataGrid.Columns></DataGrid>
+      </StackPanel></Expander>
+     </StackPanel>
+     <DataGrid x:Name="AppGrid" ItemsSource="{Binding Applications}" SelectionChanged="ApplicationSelected" SelectionMode="Single" Margin="0,8,0,0"><DataGrid.Columns>
+      <DataGridTextColumn Header="{ui:Tr Application}" Binding="{Binding Name}" Width="150"/>
+      <DataGridTextColumn Header="{ui:Tr Executable}" Binding="{Binding Path}" Width="2*"/>
+      <DataGridTextColumn Header="{ui:Tr Mode}" Binding="{Binding Mode}" Width="120"/>
+      <DataGridTextColumn Header="{ui:Tr ProcessStatus}" Binding="{Binding ProcessStatus}" Width="130"/>
+      <DataGridTextColumn Header="{ui:Tr CurrentRoute}" Binding="{Binding UserStatus}" Width="*"/>
+      <DataGridTextColumn Header="{ui:Tr UdpTraffic}" Binding="{Binding Udp}" Width="130" Visibility="Collapsed"/>
+      <DataGridTextColumn Header="{ui:Tr TcpTraffic}" Binding="{Binding Tcp}" Width="130" Visibility="Collapsed"/>
+      <DataGridTextColumn Header="{ui:Tr IPv4Label}" Binding="{Binding Ipv4}" Width="130" Visibility="Collapsed"/>
+      <DataGridTextColumn Header="{ui:Tr IPv6Label}" Binding="{Binding Ipv6}" Width="180" Visibility="Collapsed"/>
+      <DataGridTextColumn Header="{ui:Tr LocalDetails}" Binding="{Binding LocalDetails}" Width="300" Visibility="Collapsed"/>
+     </DataGrid.Columns></DataGrid>
+    </DockPanel>
+
+    <!-- ============ Диагностика: проверка, маршруты, статистика, локальные стратегии ============ -->
+    <DockPanel x:Name="Diagnostics" Visibility="Collapsed">
+     <!-- Plain verdict for everyone; the technical tabs below appear only with «Технические детали» on. -->
+     <ScrollViewer DockPanel.Dock="Top" VerticalScrollBarVisibility="Auto" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToCollapsed}}"><StackPanel MaxWidth="640" HorizontalAlignment="Left">
+      <Border Style="{StaticResource PanelBox}" Padding="18,16" Margin="0,0,0,16"><StackPanel>
+       <StackPanel Orientation="Horizontal"><Ellipse Width="10" Height="10" VerticalAlignment="Center" Margin="0,0,10,0"><Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="{StaticResource TextFaint}"/><Style.Triggers><DataTrigger Binding="{Binding HealthLevel}" Value="Ok"><Setter Property="Fill" Value="{StaticResource Ok}"/></DataTrigger><DataTrigger Binding="{Binding HealthLevel}" Value="Warning"><Setter Property="Fill" Value="{StaticResource Warn}"/></DataTrigger><DataTrigger Binding="{Binding HealthLevel}" Value="Problem"><Setter Property="Fill" Value="{StaticResource Danger}"/></DataTrigger></Style.Triggers></Style></Ellipse.Style></Ellipse><TextBlock Text="{Binding HealthTitle}" FontSize="20" FontWeight="SemiBold"/></StackPanel>
+       <TextBlock Text="{Binding HealthAdvice}" Style="{StaticResource Small}" Margin="20,6,0,0" Visibility="{Binding HealthAdvice, Converter={StaticResource EmptyToCollapsed}}"/>
+      </StackPanel></Border>
+      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,16"><ItemsControl x:Name="HealthRows" ItemsSource="{Binding Health}"><ItemsControl.ItemTemplate><DataTemplate>
+       <Border Style="{StaticResource SetRow}"><DockPanel><StackPanel DockPanel.Dock="Right" Orientation="Horizontal"><Ellipse Width="10" Height="10" VerticalAlignment="Center" Margin="0,0,10,0"><Ellipse.Style><Style TargetType="Ellipse"><Setter Property="Fill" Value="{StaticResource TextFaint}"/><Style.Triggers><DataTrigger Binding="{Binding Level}" Value="Ok"><Setter Property="Fill" Value="{StaticResource Ok}"/></DataTrigger><DataTrigger Binding="{Binding Level}" Value="Warning"><Setter Property="Fill" Value="{StaticResource Warn}"/></DataTrigger><DataTrigger Binding="{Binding Level}" Value="Problem"><Setter Property="Fill" Value="{StaticResource Danger}"/></DataTrigger></Style.Triggers></Style></Ellipse.Style></Ellipse><TextBlock Text="{Binding State}" Foreground="{StaticResource TextMuted}"/></StackPanel><TextBlock Text="{Binding Name}" FontWeight="Medium"/></DockPanel></Border>
+      </DataTemplate></ItemsControl.ItemTemplate></ItemsControl></Border>
+      <WrapPanel>
+       <Button Style="{StaticResource Primary}" Click="RunDiagnostics" IsEnabled="{Binding CanControl}"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconRefresh}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource OnControl}" StrokeThickness="1.75" Margin="0,0,8,0"/><TextBlock Text="{ui:Tr DiagRecheck}" Foreground="{StaticResource OnControl}"/></StackPanel></Button>
+       <Button Content="{ui:Tr SupportReport}" Click="SaveSupportReport"/>
+      </WrapPanel>
+     </StackPanel></ScrollViewer>
+     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,16" LastChildFill="False" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}">
+      <Border Style="{StaticResource Seg}" DockPanel.Dock="Left">
+       <StackPanel x:Name="DiagTabs" Orientation="Horizontal">
+        <Button Style="{StaticResource SegButton}" Content="{ui:Tr DiagChecksTab}" Tag="DiagChecks" Click="DiagTab" ui:Nav.IsCurrent="True"/>
+        <Button Style="{StaticResource SegButton}" Content="{ui:Tr Routes}" Tag="Routes" Click="DiagTab"/>
+        <Button Style="{StaticResource SegButton}" Content="{ui:Tr Statistics}" Tag="Statistics" Click="DiagTab"/>
+        <Button Style="{StaticResource SegButton}" Content="{ui:Tr LocalStrategies}" Tag="LocalStrategies" Click="DiagTab"/>
+       </StackPanel>
+      </Border>
+     </DockPanel>
+     <Grid Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}">
+      <DockPanel x:Name="DiagChecks">
+       <StackPanel DockPanel.Dock="Top">
+        <Button Style="{StaticResource Primary}" HorizontalAlignment="Left" Click="RunDiagnostics" IsEnabled="{Binding CanControl}"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconRefresh}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource OnControl}" StrokeThickness="1.75" Margin="0,0,8,0"/><TextBlock Text="{ui:Tr RunDiagnostics}" Foreground="{StaticResource OnControl}"/></StackPanel></Button>
+        <TextBlock Text="{ui:Tr DiagnosticMtu}" Style="{StaticResource Hint}"/>
+        <TextBlock Text="{Binding BrowserStartupSummary}" Style="{StaticResource Hint}"/>
+       </StackPanel>
+       <DataGrid ItemsSource="{Binding Diagnostics}"><DataGrid.Columns>
+        <DataGridTextColumn Header="{ui:Tr Check}" Binding="{Binding Name}" Width="180"/>
+        <DataGridTextColumn Header="{ui:Tr Result}" Binding="{Binding Status}" Width="140"/>
+        <DataGridTextColumn Header="{ui:Tr Details}" Binding="{Binding Detail}" Width="*"/>
+       </DataGrid.Columns></DataGrid>
+      </DockPanel>
+
+      <DockPanel x:Name="Routes" Visibility="Collapsed"><TextBlock DockPanel.Dock="Top" Text="{ui:Tr RoutesHint}" Style="{StaticResource Hint}" Margin="2,0,2,12"/>
+       <DataGrid ItemsSource="{Binding Routes}"><DataGrid.Columns>
+        <DataGridTextColumn Header="{ui:Tr CurrentRoute}" Binding="{Binding Name}" Width="*"/>
+        <DataGridTextColumn Header="{ui:Tr RouteStatus}" Binding="{Binding Status}" Width="125"/>
+        <DataGridTextColumn Header="{ui:Tr Latency}" Binding="{Binding Rtt}" Width="110"/>
+        <DataGridTextColumn Header="{ui:Tr Jitter}" Binding="{Binding Jitter}" Width="100"/>
+        <DataGridTextColumn Header="{ui:Tr PacketLoss}" Binding="{Binding Loss}" Width="115"/>
+        <DataGridTextColumn Header="{ui:Tr Score}" Binding="{Binding Score}" Width="95"/>
+        <DataGridTextColumn Header="{ui:Tr RouteRole}" Binding="{Binding Role}" Width="125"/>
+        <DataGridTextColumn Header="{ui:Tr BurstLoss}" Binding="{Binding Burst}" Width="110"/>
+        <DataGridTextColumn Header="{ui:Tr Stability}" Binding="{Binding Stability}" Width="125"/>
+        <DataGridTextColumn Header="{ui:Tr Samples}" Binding="{Binding SampleCount}" Width="160"/>
+        <DataGridTextColumn Header="{ui:Tr MedianPing}" Binding="{Binding Median}" Width="155"/>
+        <DataGridTextColumn Header="{ui:Tr P95Ping}" Binding="{Binding P95}" Width="130"/>
+       </DataGrid.Columns></DataGrid>
+      </DockPanel>
+
+      <DockPanel x:Name="Statistics" Visibility="Collapsed"><StackPanel DockPanel.Dock="Top">
+       <UniformGrid Columns="4" Margin="0,0,0,4">
+        <Border Style="{StaticResource Card}" Margin="0,0,10,10"><StackPanel><TextBlock Text="{ui:Tr Latency}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding CurrentLatency}" Style="{StaticResource Metric}" FontSize="20"/></StackPanel></Border>
+        <Border Style="{StaticResource Card}" Margin="0,0,10,10"><StackPanel><TextBlock Text="{ui:Tr Jitter}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding Jitter}" Style="{StaticResource Metric}" FontSize="20"/></StackPanel></Border>
+        <Border Style="{StaticResource Card}" Margin="0,0,10,10"><StackPanel><TextBlock Text="{ui:Tr PacketLoss}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding Loss}" Style="{StaticResource Metric}" FontSize="20"/></StackPanel></Border>
+        <Border Style="{StaticResource Card}" Margin="0,0,0,10"><StackPanel><TextBlock Text="{ui:Tr BurstLoss}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding CurrentBurst}" Style="{StaticResource Metric}" FontSize="20"/></StackPanel></Border>
+        <Border Style="{StaticResource Card}" Margin="0,0,10,10"><StackPanel><TextBlock Text="{ui:Tr Received}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding Rx}" Style="{StaticResource Metric}" FontSize="20"/></StackPanel></Border>
+        <Border Style="{StaticResource Card}" Margin="0,0,10,10"><StackPanel><TextBlock Text="{ui:Tr Sent}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding Tx}" Style="{StaticResource Metric}" FontSize="20"/></StackPanel></Border>
+        <Border Style="{StaticResource Card}" Margin="0,0,10,10"><StackPanel><TextBlock Text="{ui:Tr Stability}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding CurrentStability}" Style="{StaticResource Metric}" FontSize="20"/></StackPanel></Border>
+        <Border Style="{StaticResource Card}" Margin="0,0,0,10"><StackPanel><TextBlock Text="{ui:Tr Samples}" Style="{StaticResource Caption}"/><TextBlock Text="{Binding CurrentSamples}" Style="{StaticResource Metric}" FontSize="20"/></StackPanel></Border>
+       </UniformGrid>
+       <TextBlock Text="{ui:Tr QualityScope}" Style="{StaticResource Hint}"/>
+       <TextBlock Text="{ui:Tr RecentMeasurements}" Style="{StaticResource H2}" Margin="0,4,0,0"/><TextBlock Text="{ui:Tr MeasurementsHint}" Style="{StaticResource Hint}"/>
+      </StackPanel>
+       <StackPanel DockPanel.Dock="Bottom" Margin="0,16,0,0"><TextBlock Text="{ui:Tr RouteChanges}" Style="{StaticResource H2}" Margin="0,0,0,8"/><ListBox ItemsSource="{Binding Changes}" Height="130"/></StackPanel>
+       <DataGrid ItemsSource="{Binding Measurements}"><DataGrid.Columns>
+        <DataGridTextColumn Header="{ui:Tr Time}" Binding="{Binding Time}" Width="110"/>
+        <DataGridTextColumn Header="{ui:Tr CurrentRoute}" Binding="{Binding Route}" Width="*"/>
+        <DataGridTextColumn Header="{ui:Tr Latency}" Binding="{Binding Rtt}" Width="130"/>
+        <DataGridTextColumn Header="{ui:Tr Jitter}" Binding="{Binding Jitter}" Width="130"/>
+        <DataGridTextColumn Header="{ui:Tr PacketLoss}" Binding="{Binding Loss}" Width="130"/>
+       </DataGrid.Columns></DataGrid>
+      </DockPanel>
+
+      <ScrollViewer x:Name="LocalStrategies" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><StackPanel MaxWidth="900" HorizontalAlignment="Left">
+       <WrapPanel><Button Content="{ui:Tr DiscordPreset}" Tag="discord" Click="QuickPreset"/><Button Content="{ui:Tr YouTubePreset}" Tag="youtube" Click="QuickPreset"/></WrapPanel>
+       <TextBlock Text="{ui:Tr PresetHint}" Style="{StaticResource Hint}"/>
+       <TextBlock Text="{ui:Tr LocalWarning}" TextWrapping="Wrap" Style="{StaticResource Hint}"/>
+       <WrapPanel><CheckBox x:Name="LocalEnabled" Content="{ui:Tr LocalEnabled}"/><CheckBox x:Name="LocalAuto" Content="{ui:Tr AutoStrategy}"/></WrapPanel>
+       <TextBlock Text="{ui:Tr LocalAutoHint}" Style="{StaticResource Hint}" TextWrapping="Wrap"/>
+       <WrapPanel><Button Content="{ui:Tr LocalLoad}" Click="LoadLocal"/><Button Content="{ui:Tr LocalSave}" Click="SaveLocal" IsEnabled="{Binding CanControl}"/></WrapPanel>
+       <TextBlock x:Name="LocalCounters" TextWrapping="Wrap" Style="{StaticResource Hint}"/>
+       <Button Content="{ui:Tr ApplyVariant}" Click="ApplyVariant" HorizontalAlignment="Left" IsEnabled="{Binding CanControl}"/>
+       <DataGrid x:Name="LocalGrid" Height="180" AutoGenerateColumns="False" SelectionChanged="SelectLocal" Margin="0,4,0,16"><DataGrid.Columns>
+        <DataGridTextColumn Header="{ui:Tr PresetVersionLabel}" Binding="{Binding Name}" Width="190"/><DataGridTextColumn Header="{ui:Tr Application}" Binding="{Binding Application}" Width="*"/><DataGridTextColumn Header="{ui:Tr LocalDetails}" Binding="{Binding Advanced}" Width="420"/><DataGridTextColumn Header="{ui:Tr Enabled}" Binding="{Binding Enabled}" Width="80"/>
+       </DataGrid.Columns></DataGrid>
+       <TextBlock Text="{ui:Tr LocalApp}" Style="{StaticResource Small}"/><TextBox x:Name="LocalApp"/>
+       <ComboBox x:Name="LocalMechanism" SelectedIndex="0" HorizontalAlignment="Left" MinWidth="260"><ComboBoxItem Tag="tcp-split" Content="{ui:Tr LocalTcpCustom}"/><ComboBoxItem Tag="tcp-split-1" Content="{ui:Tr LocalTcp1}"/><ComboBoxItem Tag="tcp-split-5" Content="{ui:Tr LocalTcp5}"/><ComboBoxItem Tag="udp-fragment-24" Content="{ui:Tr LocalUdp24}"/></ComboBox>
+       <TextBlock Text="{ui:Tr LocalSplitPosition}" Style="{StaticResource Small}"/><TextBox x:Name="LocalSplitPosition"/>
+       <TextBlock Text="{ui:Tr LocalPorts}" Style="{StaticResource Small}"/><TextBox x:Name="LocalPorts"/>
+       <TextBlock Text="{ui:Tr LocalDomains}" Style="{StaticResource Small}"/><TextBox x:Name="LocalDomains"/>
+       <TextBlock Text="{ui:Tr LocalIPs}" Style="{StaticResource Small}"/><TextBox x:Name="LocalIPs"/>
+       <TextBlock Text="{ui:Tr LocalExcludeDomains}" Style="{StaticResource Small}"/><TextBox x:Name="LocalExcludeDomains"/>
+       <TextBlock Text="{ui:Tr LocalExcludeIPs}" Style="{StaticResource Small}"/><TextBox x:Name="LocalExcludeIPs"/>
+       <WrapPanel><Button Content="{ui:Tr LocalAdd}" Click="AddLocal"/><Button Content="{ui:Tr LocalRemove}" Click="RemoveLocal"/></WrapPanel>
+       <TextBlock Text="{ui:Tr LocalURL}" Style="{StaticResource Small}" Margin="0,8,0,0"/><TextBox x:Name="LocalURL"/>
+       <TextBlock Text="{ui:Tr LocalToken}" Style="{StaticResource Small}"/><TextBox x:Name="LocalToken"/>
+       <TextBlock Text="{ui:Tr LocalCA}" Style="{StaticResource Small}"/><TextBox x:Name="LocalCA"/>
+       <WrapPanel><Button Content="{ui:Tr LocalTestV2}" Click="TestLocalV2" IsEnabled="{Binding CanControl}"/><Button Content="{ui:Tr LocalTest}" Click="TestLocal" IsEnabled="{Binding CanControl}"/></WrapPanel>
+      </StackPanel></ScrollViewer>
+     </Grid>
+    </DockPanel>
+
+    <!-- ============ Настройки ============ -->
+    <ScrollViewer x:Name="Settings" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><StackPanel Width="620" HorizontalAlignment="Left">
+     <TextBlock Text="{ui:Tr AccountHeading}" Style="{StaticResource GroupTitle}"/>
+     <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><DockPanel Margin="16,12">
+      <Button DockPanel.Dock="Right" Content="{ui:Tr AccountCabinet}" Click="OpenAccountCabinet" Margin="12,0,0,0" VerticalAlignment="Center"/>
+      <StackPanel VerticalAlignment="Center"><TextBlock x:Name="AccountSummary" Text="{ui:Tr AccountLabel}" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="AccountHint" Style="{StaticResource Small}" Margin="0,2,0,0" TextWrapping="Wrap"/><TextBlock x:Name="ActivationSummary" Visibility="Collapsed"/><TextBlock x:Name="ActivationCertificates" Style="{StaticResource Small}" Margin="0,2,0,0"/></StackPanel>
+     </DockPanel></Border>
+     <Border x:Name="SubscriptionRow" Style="{StaticResource PanelBox}" Margin="0,-6,0,18" Visibility="Collapsed"><DockPanel Margin="16,12">
+      <Button DockPanel.Dock="Right" Content="{ui:Tr RenewSubscription}" Click="RenewSubscription" Margin="12,0,0,0" VerticalAlignment="Center"/>
+      <StackPanel VerticalAlignment="Center"><TextBlock x:Name="SubscriptionSummary" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="SubscriptionHint" Style="{StaticResource Small}" Margin="0,2,0,0" TextWrapping="Wrap"/></StackPanel>
+     </DockPanel></Border>
+     <TextBlock Text="{ui:Tr SetStart}" Style="{StaticResource GroupTitle}"/>
+     <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><StackPanel>
+      <Border Style="{StaticResource SetRow}"><CheckBox x:Name="Launch" Content="{ui:Tr AutoStart}" Margin="0"/></Border>
+      <Border Style="{StaticResource SetRow}"><CheckBox x:Name="StartMinimized" Content="{ui:Tr StartMinimized}" Margin="0"/></Border>
+      <Border Style="{StaticResource SetRow}"><CheckBox x:Name="MinimizeToTray" Content="{ui:Tr MinimizeToTray}" Margin="0"/></Border>
+      <Border Style="{StaticResource SetRow}" BorderThickness="0"><CheckBox x:Name="Automatic" Content="{ui:Tr AutoOptimization}" IsEnabled="{Binding Available}" Margin="0"/></Border>
+     </StackPanel></Border>
+     <TextBlock Text="{ui:Tr SetNetwork}" Style="{StaticResource GroupTitle}"/>
+     <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><DockPanel Margin="16,8">
+      <ComboBox x:Name="Fallback" DockPanel.Dock="Right" IsEnabled="{Binding Available}" DisplayMemberPath="Label" SelectedValuePath="Value" MinWidth="200" Margin="0"/>
+      <TextBlock Text="{ui:Tr FailureBehavior}" FontWeight="Medium" VerticalAlignment="Center"/>
+     </DockPanel></Border>
+     <TextBlock Text="{ui:Tr SetUpdates}" Style="{StaticResource GroupTitle}"/>
+     <Border Style="{StaticResource PanelBox}" Margin="0,0,0,8"><DockPanel Margin="16,8">
+      <ComboBox x:Name="Channel" DockPanel.Dock="Right" IsEnabled="{Binding Available}" DisplayMemberPath="Label" SelectedValuePath="Value" MinWidth="200" Margin="0"/>
+      <TextBlock Text="{ui:Tr UpdateChannel}" FontWeight="Medium" VerticalAlignment="Center"/>
+     </DockPanel></Border>
+     <TextBlock Text="{ui:Tr SetSupport}" Style="{StaticResource GroupTitle}"/>
+     <Border Style="{StaticResource PanelBox}" Margin="0,10,0,18"><Border Style="{StaticResource SetRow}" BorderThickness="0"><CheckBox x:Name="ShowTechnical" Content="{ui:Tr ShowTechnical}" IsChecked="{Binding ShowTechnical, Mode=OneWay}" Click="ToggleTechnical" Margin="0"/></Border></Border>
+     <Button Content="{ui:Tr SaveSettings}" Style="{StaticResource Primary}" HorizontalAlignment="Left" Click="SaveSettings" Margin="0,4,0,8"/>
+    </StackPanel></ScrollViewer>
+
+    <!-- ============ О программе ============ -->
+    <ScrollViewer x:Name="About" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+     <Grid MaxWidth="720" HorizontalAlignment="Left">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="120"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Border Width="120" Height="120" CornerRadius="28" Background="{StaticResource BgRaised}" BorderBrush="{StaticResource Line}" BorderThickness="1" VerticalAlignment="Top"><Image Source="{StaticResource VeliqSymbol}" Margin="18"/></Border>
+      <StackPanel Grid.Column="1" Margin="28,0,0,0">
+       <Image Source="{StaticResource VeliqWordmark}" Height="64" HorizontalAlignment="Left" Margin="-6,-14,0,0" AutomationProperties.Name="VELIQ"/>
+       <TextBlock Text="{ui:Tr AboutLead}" Style="{StaticResource Lead}" Margin="0,0,0,18"/>
+       <Border Style="{StaticResource PanelBox}" Padding="16,12" Margin="0,0,0,16">
+        <StackPanel>
+         <DockPanel><TextBlock Text="{ui:Tr AboutVersion}" Style="{StaticResource Small}" Width="140"/><TextBlock x:Name="AboutVersion" FontWeight="Medium"/></DockPanel>
+         <DockPanel Margin="0,8,0,0"><TextBlock Text="{ui:Tr AboutService}" Style="{StaticResource Small}" Width="140"/><TextBlock Text="{Binding Connection}" TextWrapping="Wrap"/></DockPanel>
+        </StackPanel>
+       </Border>
+       <TextBlock Text="{ui:Tr AboutFont}" Style="{StaticResource Caption}" TextWrapping="Wrap"/>
+      </StackPanel>
+     </Grid>
+    </ScrollViewer>
+   </Grid>
+  </DockPanel>
+
+  <!-- ============ Подписка закончилась (поверх окна) ============ -->
+  <Border x:Name="SubscriptionPanel" Grid.ColumnSpan="2" Background="#F50A0A0B" Visibility="Collapsed" Panel.ZIndex="9">
+   <StackPanel Width="420" VerticalAlignment="Center" HorizontalAlignment="Center">
+    <Image Source="{StaticResource VeliqSymbol}" Width="56" Height="56" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+    <TextBlock Text="{ui:Tr SubscriptionEnded}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+    <TextBlock Text="{ui:Tr SubscriptionEndedLead}" Style="{StaticResource Lead}" TextAlignment="Center" Margin="0,10,0,22"/>
+    <Button Content="{ui:Tr RenewSubscription}" Click="RenewSubscription" Style="{StaticResource Primary}" FontSize="16" MinHeight="48" Margin="0,0,0,10"/>
+    <Button Content="{ui:Tr SubscriptionRecheck}" Click="RecheckSubscription" HorizontalAlignment="Center"/>
+   </StackPanel>
+  </Border>
+
+  <!-- ============ Активация (поверх окна) ============ -->
+  <Border x:Name="ActivationPanel" Grid.ColumnSpan="2" Background="#F50A0A0B" Visibility="Collapsed" Panel.ZIndex="10">
+   <StackPanel Width="420" VerticalAlignment="Center" HorizontalAlignment="Center">
+    <Image Source="{StaticResource VeliqSymbol}" Width="56" Height="56" HorizontalAlignment="Center" Margin="0,0,0,20"/>
+    <TextBlock x:Name="AccountTitle" Text="{ui:Tr AccountTitle}" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"/>
+    <TextBlock x:Name="AccountLead" Text="{ui:Tr AccountLead}" Style="{StaticResource Lead}" TextAlignment="Center" Margin="0,10,0,22"/>
+    <Button x:Name="AccountConnect" Content="{ui:Tr AccountSignIn}" Click="ConnectAccount" Style="{StaticResource Primary}" FontSize="16" MinHeight="48"/>
+    <TextBlock x:Name="AccountOnboardingHint" TextWrapping="Wrap" TextAlignment="Center" Style="{StaticResource Small}" Margin="0,12,0,16"/>
+    <Expander x:Name="LegacyActivation" Header="{ui:Tr AccountLegacyCode}" IsExpanded="False"><StackPanel>
+    <PasswordBox x:Name="ActivationCode" MaxLength="64" FontSize="18" AutomationProperties.Name="{ui:Tr EnterActivationCode}"/>
+    <Button x:Name="ActivationSubmit" Content="{ui:Tr ActivateCode}" Click="SubmitActivation" Style="{StaticResource Primary}" FontSize="16" MinHeight="48" Margin="0,14,0,12"/>
+    <TextBlock x:Name="ActivationError" TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource TextMuted}"/>
+    </StackPanel></Expander>
+   </StackPanel>
+  </Border>
+ </Grid>
+</Window>

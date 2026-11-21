@@ -1,0 +1,3609 @@
+{
+  "version": 1,
+  "reviewed": "2026-10-23",
+  "flowseal_release": "1.10.4",
+  "flowseal_files": [
+    "general (ALT).bat",
+    "general (ALT10).bat",
+    "general (ALT11).bat",
+    "general (ALT12).bat",
+    "general (ALT13).bat",
+    "general (ALT2).bat",
+    "general (ALT3).bat",
+    "general (ALT4).bat",
+    "general (ALT5).bat",
+    "general (ALT6).bat",
+    "general (ALT7).bat",
+    "general (ALT8).bat",
+    "general (ALT9).bat",
+    "general (EXP).bat",
+    "general (FAKE TLS AUTO ALT).bat",
+    "general (FAKE TLS AUTO ALT2).bat",
+    "general (FAKE TLS AUTO ALT3).bat",
+    "general (FAKE TLS AUTO).bat",
+    "general (SIMPLE FAKE ALT).bat",
+    "general (SIMPLE FAKE ALT2).bat",
+    "general (SIMPLE FAKE).bat",
+    "general.bat"
+  ],
+  "sources": [
+    {
+      "id": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "license": "MIT",
+      "url": "https://github.com/Flowseal/zapret-discord-youtube"
+    },
+    {
+      "id": "zapret",
+      "revision": "c4d0b1990129dce2b28095277173ee0d7702d304",
+      "license": "MIT",
+      "url": "https://github.com/bol-van/zapret"
+    },
+    {
+      "id": "zapret2",
+      "revision": "4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d",
+      "license": "MIT",
+      "url": "https://github.com/bol-van/zapret2"
+    },
+    {
+      "id": "zapretgui",
+      "revision": "34c3bf9a775f30fdc14fdb2ceefdca1fe9991e8d",
+      "license": "MIT",
+      "url": "https://github.com/zapret-discordyoutube/zapretgui"
+    }
+  ],
+  "rules": [
+    {
+      "id": "flowseal-89c246e1fb1a",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-5f2edaa9df73",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake,fakedsplit"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fakedsplit-pattern": [
+          "0x00"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-de2e74e54cfe",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,fakedsplit"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fakedsplit-pattern": [
+          "0x00"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun.bin",
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-ddfb6f97bbaa",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-edc644c05407",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,fakedsplit"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fakedsplit-pattern": [
+          "0x00"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun.bin",
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-1f7217ae75a2",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT10).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-25dec9adb2c8",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT10).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-68c62100a68a",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT10).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun.bin",
+          "%BIN%tls_clienthello_4pda_to.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-4c19069a4fb4",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT10).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-96ab4e9e4a3d",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT10).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun.bin",
+          "%BIN%tls_clienthello_4pda_to.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-0c58a035ea75",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT11).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-5edba3338cee",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT11).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-5682981008d9",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT11).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "664"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun2.bin",
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-3b9561fc9b52",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT11).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-07621043104b",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT11).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "664"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun2.bin",
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-8f6d06aa65aa",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT12).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-5900306687b6",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT12).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "hostfakesplit"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=www.google.com"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-405a4ec2b566",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT12).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "664"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun.bin",
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-4d9f33c1244b",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT12).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-d7661833ce9b",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT12).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "664"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun.bin",
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-6a06b1f04f2d",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT13).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-4cc13283da19",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT13).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "dpi-desync": [
+          "hostfakesplit"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=www.google.com"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-9ee71d973854",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT13).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,hostfakesplit"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=mail.ru,altorder=1"
+        ],
+        "dpi-desync-repeats": [
+          "5"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_sochi_park.bin",
+          "%BIN%stun2.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_sochi_park.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-406fcd8e2f9b",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT13).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-611d92d746c3",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT13).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,hostfakesplit"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=mail.ru,altorder=1"
+        ],
+        "dpi-desync-repeats": [
+          "5"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_sochi_park.bin",
+          "%BIN%stun2.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_sochi_park.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-d5abb0d08dd8",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT2).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-2abbca6e4166",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT2).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "652"
+        ],
+        "dpi-desync-split-pos": [
+          "2"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-b24273244139",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT2).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "652"
+        ],
+        "dpi-desync-split-pos": [
+          "2"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-b7c9a287315c",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT2).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-eef55f15db23",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT2).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "652"
+        ],
+        "dpi-desync-split-pos": [
+          "2"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-94a86689554d",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT3).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-839691944347",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT3).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake,hostfakesplit"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=www.google.com,altorder=1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-0903615d52bc",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT3).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,hostfakesplit"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=ya.ru"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=ya.ru,altorder=1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-b5e5df290069",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT3).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-4f5630d43aae",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT3).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,hostfakesplit"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=ya.ru"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=ya.ru,altorder=1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-890c3726d151",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT4).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-9bc347f05473",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT4).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "1000"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-f4be20aaf9fd",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT4).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "1000"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun.bin",
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-13f627edd130",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT4).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-b19f83c58072",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT4).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "1000"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun.bin",
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-5a3ac55d9e03",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT5).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-d579c750ca4b",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT5).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,2053,2083,2087,2096,8443"
+        ],
+        "dpi-desync": [
+          "syndata,multidisorder"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-1c55ad5bb177",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT5).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-c475aa6b3b95",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT6).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-56fea9fd14ac",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT6).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-7edbf39dac79",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT6).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-af5ed0ca7246",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT6).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-42f79012e3a0",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT6).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-7f2f7c862b2e",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT7).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-244f0e899998",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT7).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-pos": [
+          "2,sniext+1"
+        ],
+        "dpi-desync-split-seqovl": [
+          "679"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-46fa8e79bd5b",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT7).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-pos": [
+          "2,sniext+1"
+        ],
+        "dpi-desync-split-seqovl": [
+          "679"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-ddb6fd1a995c",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT7).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-86c624f42cc7",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT7).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "syndata"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-3d67d12b5e2f",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT8).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-ecaf3471d72d",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT8).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "none"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "2"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-dae8ac4941a0",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT8).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "none"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "2"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-b1d199186934",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT8).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-9361b1d64d3a",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT8).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "none"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "2"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-10838b8f1213",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT9).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-a068653a6007",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT9).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "hostfakesplit"
+        ],
+        "dpi-desync-repeats": [
+          "4"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=www.google.com"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-93e20dd1b68c",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT9).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "hostfakesplit"
+        ],
+        "dpi-desync-repeats": [
+          "4"
+        ],
+        "dpi-desync-fooling": [
+          "ts,md5sig"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=ozon.ru"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-e994c2782f49",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT9).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-ae00ffe9924c",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (ALT9).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "hostfakesplit"
+        ],
+        "dpi-desync-repeats": [
+          "4"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=ozon.ru"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-d14707eb0040",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (EXP).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "hostfakesplit"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=www.google.com"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-5fa66c0f1b99",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (EXP).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "480"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-repeats": [
+          "4"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%stun2.bin"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-c73d6d993f01",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (EXP).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-f9320da454fb",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (EXP).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "480"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-repeats": [
+          "4"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%stun2.bin"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-8b38c7beaa23",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-2ee5b14c9999",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake,fakedsplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "2"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-9bf1cb36cf0c",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,fakedsplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "2"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-c94e24cd3259",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-afad6439918e",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,fakedsplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "2"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-169653384de1",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT2).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-9e16d659e126",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT2).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "10000000"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-b55ce3f55b19",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT2).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "10000000"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-34f9315a918f",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT2).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-ae5ff8e06c24",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT2).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "10000000"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-81dbaa983dc6",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT3).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-08737553e0e6",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT3).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-86776084b3c6",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT3).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-5090101d3c48",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT3).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-3038cd4f6333",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO ALT3).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-repeats": [
+          "8"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-14c9e795672b",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-e504c5bb5f7e",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake,multidisorder"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-fake-tls": [
+          "0x00000000",
+          "^!"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-01ae5f11f524",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake,multidisorder"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-fake-tls": [
+          "0x00000000",
+          "^!"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-161b29d5383f",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-986d0c888f1b",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (FAKE TLS AUTO).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake,multidisorder"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-repeats": [
+          "11"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-fake-tls": [
+          "0x00000000",
+          "^!"
+        ],
+        "dpi-desync-fake-tls-mod": [
+          "rnd,dupsid,sni=www.google.com"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-b9223d55ba6e",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE ALT).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-20e21f77ce33",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE ALT).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "2"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-83be805d40a0",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE ALT).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "2"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun2.bin",
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-22421a77847d",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE ALT).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-e410696efdfe",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE ALT).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-badseq-increment": [
+          "2"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun2.bin",
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-df6d5015e036",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE ALT2).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-bcf21343125c",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE ALT2).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-0f03195ab9ae",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE ALT2).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun2.bin",
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-6fa54210914e",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE ALT2).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-d0c1004751c3",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE ALT2).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%stun2.bin",
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-10d8015e1a9d",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-5001cdf38e20",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE).bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "hostfakesplit"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-hostfakesplit-mod": [
+          "host=www.google.com"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-5ddec376e80f",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-24d54d77acf8",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE).bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-69ed447fe3da",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general (SIMPLE FAKE).bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fooling": [
+          "ts"
+        ],
+        "dpi-desync-fake-tls": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ],
+        "dpi-desync-fake-http": [
+          "%BIN%tls_clienthello_www_sferum_ru.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-1e18e22ccbf0",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general.bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-c9f4c09805b2",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general.bat",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "443"
+        ],
+        "hostlist": [
+          "%LISTS%list-google.txt"
+        ],
+        "ip-id": [
+          "zero"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "681"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-6854bea174b7",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general.bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443"
+        ],
+        "hostlist": [
+          "%LISTS%list-general.txt",
+          "%LISTS%list-general-user.txt"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "568"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_4pda_to.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-a4b3f5868cb5",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general.bat",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "filter-udp": [
+          "443"
+        ],
+        "dpi-desync": [
+          "fake"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ],
+        "dpi-desync-fake-quic": [
+          "%BIN%quic_initial_www_google_com.bin"
+        ]
+      }
+    },
+    {
+      "id": "flowseal-1e8ee0b8db62",
+      "source": "flowseal",
+      "revision": "176f56dc3f11ce5915c26abcdde903f93d835b64",
+      "file": "general.bat",
+      "applies": [
+        "tcp80",
+        "tcp443"
+      ],
+      "options": {
+        "filter-tcp": [
+          "80,443,8443"
+        ],
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-seqovl": [
+          "568"
+        ],
+        "dpi-desync-split-pos": [
+          "1"
+        ],
+        "dpi-desync-split-seqovl-pattern": [
+          "%BIN%tls_clienthello_4pda_to.bin"
+        ]
+      }
+    },
+    {
+      "id": "zapret-multisplit",
+      "source": "zapret",
+      "revision": "c4d0b1990129dce2b28095277173ee0d7702d304",
+      "file": "blockcheck.sh",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "multisplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapret-multidisorder",
+      "source": "zapret",
+      "revision": "c4d0b1990129dce2b28095277173ee0d7702d304",
+      "file": "blockcheck.sh",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "multidisorder"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapret-fake-multisplit",
+      "source": "zapret",
+      "revision": "c4d0b1990129dce2b28095277173ee0d7702d304",
+      "file": "blockcheck.sh",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapret-fake-fakedsplit",
+      "source": "zapret",
+      "revision": "c4d0b1990129dce2b28095277173ee0d7702d304",
+      "file": "blockcheck.sh",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "fake,fakedsplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapret-fake-fakeddisorder",
+      "source": "zapret",
+      "revision": "c4d0b1990129dce2b28095277173ee0d7702d304",
+      "file": "blockcheck.sh",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "fake,fakeddisorder"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapret-hostfakesplit",
+      "source": "zapret",
+      "revision": "c4d0b1990129dce2b28095277173ee0d7702d304",
+      "file": "blockcheck.sh",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "hostfakesplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapret2-fake-multisplit",
+      "source": "zapret2",
+      "revision": "4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d",
+      "file": "blockcheck2.d/standard",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapret2-fake-fakedsplit",
+      "source": "zapret2",
+      "revision": "4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d",
+      "file": "blockcheck2.d/standard",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "fake,fakedsplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapret2-fake-hostfakesplit",
+      "source": "zapret2",
+      "revision": "4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d",
+      "file": "blockcheck2.d/standard",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "fake,hostfakesplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapret2-quic-fake",
+      "source": "zapret2",
+      "revision": "4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d",
+      "file": "blockcheck2.d/standard",
+      "applies": [
+        "quic443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "quic-fake"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapretgui-fake-multisplit",
+      "source": "zapretgui",
+      "revision": "34c3bf9a775f30fdc14fdb2ceefdca1fe9991e8d",
+      "file": "src/presets/builtin/winws1",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "fake,multisplit"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    },
+    {
+      "id": "zapretgui-fake-multidisorder",
+      "source": "zapretgui",
+      "revision": "34c3bf9a775f30fdc14fdb2ceefdca1fe9991e8d",
+      "file": "src/presets/builtin/winws1",
+      "applies": [
+        "tcp443"
+      ],
+      "options": {
+        "dpi-desync": [
+          "fake,multidisorder"
+        ],
+        "dpi-desync-split-pos": [
+          "1,midsld"
+        ],
+        "dpi-desync-fooling": [
+          "badseq"
+        ],
+        "dpi-desync-repeats": [
+          "6"
+        ]
+      }
+    }
+  ]
+}

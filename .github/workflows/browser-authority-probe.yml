@@ -1,0 +1,154 @@
+name: Owner browser authority probe (isolated)
+on:
+  push:
+    branches: ['test/r1-browser-authority-*', 'feat/account-onboarding-beta-*']
+  workflow_dispatch:
+    inputs:
+      gp_diagnostics:
+        description: Reproduce historical Group Policy/PAC diagnostics
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: owner-authority-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  authority-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chrome, edge]
+        scenario: [OwnerFixedProxyAppliedToRunningBrowser, FixedProxyNativeLocalFirst, FixedProxyNativeRequiredThenLocal, NativeRequiredThenLocal, NativeLocalFirst]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Actual owner worker, live authority and safe raw TLS fallback
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go build -o bin/veliq-service.exe ./services/client-service/cmd/service
+          if ($LASTEXITCODE) { throw 'OWNER_WORKER_BUILD_FAILED' }
+          $env:VELIQ_TEST_OWNER_WORKER=(Resolve-Path bin/veliq-service.exe).Path
+          $env:VELIQ_TEST_AUTHORITY_RUNTIME='1'
+          $env:VELIQ_ORIGIN_BROWSER='${{ matrix.browser }}'
+          $env:VELIQ_ORIGIN_REUSE_CASE='${{ matrix.scenario }}'
+          & ./tools/windows/fetch-windivert.ps1
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          & go test -v -count=1 -timeout 120s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
+          if ($LASTEXITCODE) { throw 'AUTHORITY_RUNTIME_FAILED' }
+  owner-lifecycle:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: SYSTEM owner, full restore, other applications and startup guard
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go build -o bin/veliq-service.exe ./services/client-service/cmd/service
+          if ($LASTEXITCODE) { throw 'OWNER_WORKER_BUILD_FAILED' }
+          $env:VELIQ_TEST_OWNER_WORKER=(Resolve-Path bin/veliq-service.exe).Path
+          $env:VELIQ_TEST_AUTHORITY_RUNTIME='1'
+          & go test -v -count=1 -timeout 90s ./services/client-service '-run' '^TestWindows(OwnerAuthorityWorkerAndOtherApplications|OwnerProxyWorkerFromSYSTEM|AuthorityControllerStartAndCrashGuard)$'
+          if ($LASTEXITCODE) { throw 'OWNER_LIFECYCLE_FAILED' }
+  owner-gp-event:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gp_diagnostics }}
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Actual owner Group Policy event and user-only refresh
+        shell: powershell
+        run: |
+          $env:VELIQ_TEST_GP_NOTIFY='1'
+          & go test -v -count=1 -timeout 90s ./platform/windows '-run' '^TestOwnerPolicyRefreshEventProbe$'
+          if ($LASTEXITCODE) { throw 'OWNER_GP_PROBE_FAILED' }
+  live-authority:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gp_diagnostics }}
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Prepare harmless Local GPO registry notification canary
+        shell: powershell
+        run: |
+          $env:VELIQ_TEST_GP_NOTIFY='1'
+          $env:VELIQ_TEST_GP_KEEP='1'
+          & go test -v -count=1 -timeout 90s ./platform/windows '-run' '^TestOwnerPolicyRefreshEventProbe$'
+          if ($LASTEXITCODE) { throw 'OWNER_GP_PREPARATION_FAILED' }
+      - name: Pinned DLL and actual live policy delivery
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go test -c -o bin/owner-gpo-tests.exe ./platform/windows
+          if ($LASTEXITCODE) { throw 'OWNER_GPO_HELPER_BUILD_FAILED' }
+          $env:VELIQ_TEST_GPO_COMMIT_EXEC=(Resolve-Path bin/owner-gpo-tests.exe).Path
+          $env:VELIQ_TEST_GPO_GPUPDATE='1'
+          & ./tools/windows/fetch-windivert.ps1
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          $env:VELIQ_ORIGIN_REUSE_CASE='OwnedPACAppliedToRunningBrowser'
+          & go test -v -count=1 -timeout 110s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$' 2>&1 | Tee-Object -FilePath owner-authority-probe.log
+          if ($LASTEXITCODE) { throw 'LIVE_AUTHORITY_UPTAKE_NOT_PROVEN' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owner-authority-probe
+          path: owner-authority-probe.log
+
+  capture-independent:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [CaptureOutageGuarded, CaptureOutageAvailability]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Actual DIRECT and protected RELAY without capture
+        shell: powershell
+        env:
+          VELIQ_ORIGIN_REUSE_CASE: ${{ matrix.scenario }}
+        run: |
+          & ./tools/windows/fetch-windivert.ps1
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          & go test -v -count=1 -timeout 110s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
+          if ($LASTEXITCODE) { throw 'CAPTURE_INDEPENDENT_ROUTE_FAILED' }
+
+  owner-system-pac:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.gp_diagnostics }}
+    runs-on: windows-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [persistent, pulse]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Real owner system proxy notification with unchanged browser
+        shell: powershell
+        run: |
+          & ./tools/windows/fetch-windivert.ps1
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          $env:VELIQ_ORIGIN_REUSE_CASE='OwnedPACAppliedToRunningBrowser'
+          $env:VELIQ_TEST_OWNER_WININET='1'
+          if ('${{ matrix.mode }}' -eq 'pulse') { $env:VELIQ_TEST_OWNER_WININET_PULSE='1' }
+          & go test -v -count=1 -timeout 110s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
+          if ($LASTEXITCODE) { throw 'OWNER_SYSTEM_PAC_UPTAKE_NOT_PROVEN' }

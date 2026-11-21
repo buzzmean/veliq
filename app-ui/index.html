@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VELIQ — макеты программы</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/components.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+<script src="assets/icons.js"></script>
+
+<div class="stage">
+  <!-- ================= Панель макета (не часть программы) ================= -->
+  <aside class="proto" aria-label="Управление макетом">
+    <div>
+      <img class="proto__logo" src="assets/img/veliq-wordmark-light.svg" alt="VELIQ">
+      <p style="margin-top:10px">Кликабельный макет Windows-программы. Всё внутри окна нажимается. Здесь — быстрый переход к экранам и состояниям.</p>
+    </div>
+
+    <div>
+      <h2>Экран</h2>
+      <nav data-proto-nav>
+        <button data-go-screen="home">Главная</button>
+        <button data-go-screen="services">Сервисы</button>
+        <button data-go-screen="games">Игры</button>
+        <button data-go-screen="diag">Диагностика</button>
+        <button data-go-screen="settings">Настройки</button>
+        <button data-go-screen="about">О программе</button>
+        <button data-go-club>Режим клуба <small>для гостя</small></button>
+        <a class="opt" href="installer.html" style="text-decoration:none">Установщик <small style="opacity:.6">отдельная страница</small></a>
+      </nav>
+    </div>
+
+    <div>
+      <h2>Состояние</h2>
+      <nav data-proto-states>
+        <button data-set-state="off">Выключено</button>
+        <button data-set-state="connecting">Подключение</button>
+        <button data-set-state="on">Работает</button>
+        <button data-set-state="error" data-error="service">Ошибка: VELIQ не может запуститься</button>
+        <button data-set-state="error" data-error="relay">Ошибка: нет связи с сервером</button>
+        <button data-set-state="error" data-error="browser">Ошибка: часть сайтов не открывается</button>
+        <button data-set-state="error" data-error="identity">Ошибка: код активации не принят</button>
+        <button data-set-state="on" data-warn="update">Работает + есть обновление</button>
+        <button data-set-state="on" data-warn="fallback">Работает через запасной сервер</button>
+      </nav>
+    </div>
+
+    <div>
+      <h2>Активация</h2>
+      <nav data-proto-act>
+        <button data-act-set="code">Первый запуск: ввод кода</button>
+        <button data-act-set="busy">Проверяем код</button>
+        <button data-act-set="done">Код принят</button>
+        <button data-act-set="change">Смена кода из настроек</button>
+        <button data-act-set="expiring">Настройки: скоро истекает</button>
+      </nav>
+      <label class="proto-field">Ошибка активации
+        <select class="select select--sm" data-act-error-pick aria-label="Ошибка активации">
+          <option value="">— выбрать —</option>
+        </select>
+      </label>
+    </div>
+
+    <div>
+      <h2>Игры</h2>
+      <nav data-proto-games>
+        <button data-games-notice-set="">Обычный вид</button>
+        <button data-games-notice-set="service">Служба не отвечает</button>
+        <button data-games-notice-set="club">Клубный ПК: настройки у администратора</button>
+      </nav>
+    </div>
+
+    <div>
+      <h2>Окно</h2>
+      <div style="display:grid;gap:8px">
+        <div class="seg" role="group" aria-label="Тема окна"><button data-theme-set="light" aria-pressed="false">Светлая</button><button data-theme-set="dark" aria-pressed="true">Тёмная</button></div>
+        <div class="seg" role="group" aria-label="Язык"><button data-lang-set="ru" aria-pressed="true">Русский</button><button data-lang-set="en" aria-pressed="false">English</button></div>
+      </div>
+    </div>
+
+    <div>
+      <h2>Трей и уведомления</h2>
+      <div class="proto-row">
+        <button class="btn btn--ghost btn--sm" data-open-flyout>Мини-окно</button>
+        <button class="btn btn--ghost btn--sm" data-open-ctx>Меню трея</button>
+      </div>
+      <div class="proto-row" style="margin-top:6px">
+        <button class="btn btn--ghost btn--sm" data-toast="on">Уведомление</button>
+        <button class="btn btn--ghost btn--sm" data-toast="lost">Ошибка</button>
+      </div>
+    </div>
+    <p style="font-size:12px">Иконки трея: <a href="../brand/icons/">brand/icons</a>. Тексты всех сообщений: <a href="../brand/copy.md">brand/copy.md</a>.</p>
+  </aside>
+
+  <!-- ================= «Рабочий стол» ================= -->
+  <main class="desk">
+    <span class="desk__label" data-desk-label>Главная — выключено</span>
+
+    <!-- ============ Окно программы ============ -->
+    <div class="win app" id="win" data-state="off" role="application" aria-label="VELIQ">
+      <div class="win__title">
+        <img data-wm src="assets/img/veliq-wordmark-dark.svg" alt="VELIQ">
+        <span class="grow"></span>
+        <span class="club-chip" data-club-only hidden data-i18n="club.chip">Клубный ПК 14</span>
+        <div class="win__ctl" aria-hidden="true">
+          <button tabindex="-1"><svg><use href="#i-minimize"/></svg></button>
+          <button tabindex="-1"><svg><use href="#i-maximize"/></svg></button>
+          <button tabindex="-1" class="close"><svg><use href="#i-close"/></svg></button>
+        </div>
+      </div>
+
+      <!-- ============ АКТИВАЦИЯ (поверх окна) ============ -->
+      <div class="activate" data-activate hidden role="dialog" aria-modal="true" aria-labelledby="act-title">
+        <div class="activate__box">
+          <img class="activate__mark" data-act-mark src="assets/img/veliq-symbol-reverse.svg" alt="" width="56" height="56">
+          <h1 id="act-title" data-act-title>Введите код активации</h1>
+          <p class="activate__lead" data-act-lead>Код выдаётся после заявки для клуба или отдельно для игрока.</p>
+          <form class="activate__form" data-act-form autocomplete="off">
+            <label class="sr-only" for="act-code">Код активации</label>
+            <input class="input activate__code" id="act-code" data-act-code spellcheck="false" autocapitalize="characters" placeholder="Код активации" maxlength="64">
+            <div class="activate__msg" data-act-msg role="alert" hidden></div>
+            <div class="activate__actions">
+              <button class="btn btn--ghost" type="button" data-act-cancel hidden>Отмена</button>
+              <button class="btn" type="submit" data-act-submit>Активировать</button>
+            </div>
+            <div class="activate__run" aria-hidden="true"><i></i></div>
+          </form>
+          <div class="activate__done" data-act-done hidden>
+            <button class="btn btn--lg" type="button" data-act-finish>Начать</button>
+          </div>
+          <p class="activate__help" data-act-help>Нет кода? Напишите на support@veliq.app</p>
+        </div>
+      </div>
+
+      <div class="win__body">
+        <nav class="rail" aria-label="Разделы">
+          <button data-screen-btn="home" aria-current="page"><svg class="i"><use href="#i-home"/></svg><span data-i18n="nav.home">Главная</span></button>
+          <button data-screen-btn="services"><svg class="i"><use href="#i-services"/></svg><span data-i18n="nav.services">Сервисы</span></button>
+          <button data-screen-btn="games"><svg class="i"><use href="#i-games"/></svg><span data-i18n="nav.games">Игры</span></button>
+          <button data-screen-btn="diag"><svg class="i"><use href="#i-diagnostics"/></svg><span data-i18n="nav.diag">Диагностика</span></button>
+          <button data-screen-btn="settings"><svg class="i"><use href="#i-settings"/></svg><span data-i18n="nav.settings">Настройки</span></button>
+          <span class="spacer"></span>
+          <button data-screen-btn="about"><svg class="i"><use href="#i-info"/></svg><span data-i18n="nav.about">О программе</span></button>
+          <div class="rail__state">
+            <span class="status status--off" data-rail-status><i class="status__mark"></i><span>Выключено</span></span>
+            <span data-rail-server>—</span>
+          </div>
+        </nav>
+
+        <div style="min-height:0;display:grid">
+          <!-- ============ ГЛАВНАЯ ============ -->
+          <section class="screen is-active" data-screen="home" aria-label="Главная">
+            <div class="home">
+              <div class="home__main">
+                <div>
+                  <div class="home__state"><h1 data-home-title>Выключено</h1></div>
+                  <p class="muted" style="margin:8px 0 0" data-home-sub>Нажмите кнопку, чтобы YouTube, Discord, Telegram и ChatGPT заработали.</p>
+                  <div data-banner-slot style="margin-top:14px"></div>
+                </div>
+                <div class="home__center">
+                  <button class="go" type="button" data-go data-state="off" aria-pressed="false">
+                    <span class="go__label"><span data-go-label>Оптимизировать</span><small data-go-sub>выключено</small></span>
+                  </button>
+                </div>
+                <div class="home__routes">
+                  <div class="route" aria-label="Маршруты">
+                    <div class="route__row route__row--relay"><span class="route__name">YouTube</span><span class="route__line"></span><span class="route__via" data-via>Хельсинки</span></div>
+                    <div class="route__row route__row--relay"><span class="route__name">Discord</span><span class="route__line"></span><span class="route__via" data-via>Хельсинки</span></div>
+                    <div class="route__row route__row--relay"><span class="route__name">ChatGPT</span><span class="route__line"></span><span class="route__via">Швеция</span></div>
+                    <div class="route__row route__row--relay"><span class="route__name">Игры</span><span class="route__line"></span><span class="route__via">лучший путь</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="metrics">
+                <div class="metric">
+                  <div class="metric__k"><span>Сервер</span><button class="btn btn--quiet btn--sm" style="height:24px;padding:0 6px;font-size:12px" data-screen-btn="settings">Сменить</button></div>
+                  <div class="metric__v" data-m-server>—</div>
+                  <div class="metric__s" data-m-server-sub>выбирается автоматически</div>
+                </div>
+                <div class="metric">
+                  <div class="metric__k"><span>Пинг до сервера</span></div>
+                  <div class="metric__v num" data-m-ping>— <small>мс</small></div>
+                  <svg class="spark" viewBox="0 0 200 28" preserveAspectRatio="none" aria-hidden="true"><path d="M0 18 L10 16 L20 17 L30 14 L40 15 L50 13 L60 16 L70 15 L80 12 L90 14 L100 15 L110 13 L120 16 L130 14 L140 15 L150 12 L160 14 L170 15 L180 13 L190 14 L200 14"/></svg>
+                </div>
+                <div class="metric">
+                  <div class="metric__k"><span>Через VELIQ сегодня</span></div>
+                  <div class="metric__v num" data-m-traffic>— <small>ГБ</small></div>
+                  <div class="metric__s num" data-m-traffic-sub>получено и отправлено</div>
+                </div>
+                <div class="metric">
+                  <div class="metric__k"><span>Маршрутов</span><button class="btn btn--quiet btn--sm" style="height:24px;padding:0 6px;font-size:12px" data-screen-btn="services">Список</button></div>
+                  <div class="metric__v num" data-m-routes>— <small>активно</small></div>
+                  <div class="metric__s">подобраны автоматически</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ СЕРВИСЫ ============ -->
+          <section class="screen" data-screen="services" aria-label="Сервисы">
+            <div class="screen__head">
+              <div><h1 data-i18n="nav.services">Сервисы</h1><p>Сервисы, для которых VELIQ открывает доступ. Остальные соединения VELIQ ведёт по самому быстрому пути сам.</p></div>
+              <div class="toolbar">
+                <label class="search"><svg><use href="#i-search"/></svg><input class="input" placeholder="Найти сервис" aria-label="Найти сервис"></label>
+                <button class="btn btn--sm" data-modal-open="add"><svg class="i i--sm"><use href="#i-plus"/></svg>Добавить</button>
+              </div>
+            </div>
+            <div class="panel">
+              <table class="table">
+                <thead><tr><th>Сервис</th><th>Маршрут</th><th>Сервер</th><th class="num">Сегодня</th><th>Вкл.</th></tr></thead>
+                <tbody>
+                  <tr><td><div class="svc"><span class="mono">YT</span><div>YouTube<small>youtube.com, googlevideo.com</small></div></div></td><td><span class="tag tag--relay">через VELIQ</span></td><td><select class="select select--sm"><option>Авто</option><option>Хельсинки</option><option>Швеция</option></select></td><td class="num">1,02 ГБ</td><td><label class="switch"><input type="checkbox" checked aria-label="YouTube"><span class="switch__track"></span></label></td></tr>
+                  <tr><td><div class="svc"><span class="mono">DS</span><div>Discord<small>сайт, приложение, голос</small></div></div></td><td><span class="tag tag--relay">через VELIQ</span></td><td><select class="select select--sm"><option>Авто</option><option>Хельсинки</option><option>Швеция</option></select></td><td class="num">118 МБ</td><td><label class="switch"><input type="checkbox" checked aria-label="Discord"><span class="switch__track"></span></label></td></tr>
+                  <tr><td><div class="svc"><span class="mono">TG</span><div>Telegram<small>сайт и приложение</small></div></div></td><td><span class="tag tag--relay">через VELIQ</span></td><td><select class="select select--sm"><option>Авто</option><option>Хельсинки</option><option>Швеция</option></select></td><td class="num">64 МБ</td><td><label class="switch"><input type="checkbox" checked aria-label="Telegram"><span class="switch__track"></span></label></td></tr>
+                  <tr><td><div class="svc"><span class="mono">AI</span><div>ChatGPT<small>chatgpt.com, openai.com</small></div></div></td><td><span class="tag tag--relay">только через VELIQ</span></td><td><select class="select select--sm"><option>Швеция</option><option>Авто</option><option>Хельсинки</option></select></td><td class="num">22 МБ</td><td><label class="switch"><input type="checkbox" checked aria-label="ChatGPT"><span class="switch__track"></span></label></td></tr>
+                  <tr><td><div class="svc"><span class="mono">CL</span><div>Claude<small>claude.ai, anthropic.com</small></div></div></td><td><span class="tag tag--relay">только через VELIQ</span></td><td><select class="select select--sm"><option>Авто</option><option>Хельсинки</option><option>Швеция</option></select></td><td class="num">9 МБ</td><td><label class="switch"><input type="checkbox" checked aria-label="Claude"><span class="switch__track"></span></label></td></tr>
+                  <tr><td><div class="svc"><span class="mono">IG</span><div>Instagram<small>instagram.com</small></div></div></td><td><span class="tag tag--relay">через VELIQ</span></td><td><select class="select select--sm"><option>Авто</option><option>Хельсинки</option><option>Швеция</option></select></td><td class="num">0 МБ</td><td><label class="switch"><input type="checkbox" checked aria-label="Instagram"><span class="switch__track"></span></label></td></tr>
+                  <tr><td><div class="svc"><span class="mono">VK</span><div>vk.ru<small>добавлен вручную</small></div></div></td><td><span class="tag">авто</span></td><td><select class="select select--sm"><option>Авто</option><option>Хельсинки</option><option>Швеция</option></select></td><td class="num">—</td><td><label class="switch"><input type="checkbox" aria-label="vk.ru"><span class="switch__track"></span></label></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="muted" style="font-size:13px;margin:12px 2px 0">«Только через VELIQ» — сервис не откроется в обход серверов VELIQ, даже если они недоступны. Так ваш адрес не уйдёт сервису.</p>
+          </section>
+
+          <!-- ============ ИГРЫ ============ -->
+          <section class="screen" data-screen="games" aria-label="Игры">
+            <div class="screen__head">
+              <div><h1 data-i18n="nav.games">Игры</h1><p>Выберите режим для игры. Пинг VELIQ пока не замеряет, поэтому режим «Через VELIQ» может его увеличить.</p></div>
+              <label class="search"><svg><use href="#i-search"/></svg><input class="input" type="search" placeholder="Игра или лаунчер" aria-label="Поиск игры или лаунчера" data-game-search></label>
+            </div>
+            <div data-games-notice></div>
+            <div class="games-grid">
+              <div class="game-list" role="listbox" aria-label="Каталог игр" data-game-list></div>
+              <div class="game-detail" data-game-detail></div>
+            </div>
+          </section>
+
+          <!-- ============ ДИАГНОСТИКА ============ -->
+          <section class="screen" data-screen="diag" aria-label="Диагностика">
+            <div class="screen__head">
+              <div><h1 data-i18n="nav.diag">Диагностика</h1><p>Проверка всех частей VELIQ. Отчёт можно отправить в поддержку — в нём нет паролей и ключей.</p></div>
+              <div class="toolbar"><button class="btn btn--sm btn--ghost"><svg class="i i--sm"><use href="#i-refresh"/></svg>Проверить</button><button class="btn btn--sm"><svg class="i i--sm"><use href="#i-download"/></svg>Сохранить отчёт</button></div>
+            </div>
+            <div class="checks" style="margin-bottom:16px">
+              <div class="check"><span class="status status--on"><i class="status__mark"></i>Служба</span><small>запущена, 2 ч 14 мин</small></div>
+              <div class="check"><span class="status status--on"><i class="status__mark"></i>Перехват трафика</span><small>драйвер загружен</small></div>
+              <div class="check"><span class="status status--on"><i class="status__mark"></i>Хельсинки</span><small>veliq-hel-01, 38 мс</small></div>
+              <div class="check"><span class="status status--on"><i class="status__mark"></i>Швеция</span><small>veliq-swe-01, 46 мс</small></div>
+              <div class="check"><span class="status status--on"><i class="status__mark"></i>Chrome</span><small>маршрут подключён</small></div>
+              <div class="check"><span class="status status--warn"><i class="status__mark"></i>Edge</span><small>не запущен, подключится при старте</small></div>
+            </div>
+            <div class="panel" style="margin-bottom:16px">
+              <div class="panel__head"><h2>Через серверы VELIQ по приложениям</h2><span class="faint" style="font-size:12px">с момента включения</span></div>
+              <table class="table">
+                <thead><tr><th>Приложение</th><th>Сервер</th><th class="num">Соединений</th><th style="width:38%">Получено / отправлено</th></tr></thead>
+                <tbody>
+                  <tr><td>chrome.exe</td><td>Хельсинки</td><td class="num">184</td><td><div class="bar-cell"><div class="meter meter--relay"><span style="width:86%"></span></div><span class="num">1,02 ГБ / 41 МБ</span></div></td></tr>
+                  <tr><td>Discord.exe</td><td>Хельсинки</td><td class="num">23</td><td><div class="bar-cell"><div class="meter meter--relay"><span style="width:12%"></span></div><span class="num">118 МБ / 30 МБ</span></div></td></tr>
+                  <tr><td>Telegram.exe</td><td>Хельсинки</td><td class="num">9</td><td><div class="bar-cell"><div class="meter meter--relay"><span style="width:6%"></span></div><span class="num">64 МБ / 12 МБ</span></div></td></tr>
+                  <tr><td>cs2.exe</td><td>Хельсинки, авто</td><td class="num">2</td><td><div class="bar-cell"><div class="meter meter--relay"><span style="width:3%"></span></div><span class="num">21 МБ / 9 МБ</span></div></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="panel">
+              <div class="panel__head"><h2>Журнал</h2><button class="btn btn--quiet btn--sm"><svg class="i i--sm"><use href="#i-copy"/></svg>Копировать</button></div>
+<pre class="log">14:30:02  <span class="o">служба запущена</span>, версия 1.0.0
+14:30:03  перехват: драйвер загружен, IPv4
+14:30:04  сервер veliq-hel-01: 38 мс, veliq-swe-01: 46 мс — выбран Хельсинки
+14:30:04  Chrome: маршрут подключён без перезапуска
+14:30:05  <span class="w">Edge: не запущен — подключится при старте</span>
+14:31:40  YouTube: первое соединение через Хельсинки, 212 мс
+14:32:10  cs2.exe: сравнение путей — Хельсинки 41 мс, обычный 72 мс, выбран Хельсинки
+14:32:58  <span class="e">telegram: сервер не ответил за 2 с — повтор через Швецию</span>
+14:32:59  <span class="o">telegram: соединение через Швецию</span></pre>
+            </div>
+          </section>
+
+          <!-- ============ НАСТРОЙКИ ============ -->
+          <section class="screen" data-screen="settings" aria-label="Настройки">
+            <div class="screen__head"><div><h1 data-i18n="nav.settings">Настройки</h1></div></div>
+            <div class="settings">
+              <div class="setgroup"><h2>Активация</h2><div class="setlist">
+                <div class="setrow"><div><strong data-act-set-title>VELIQ активирован</strong><small data-act-set-sub>Действует до 24.01.2027</small></div><button class="btn btn--ghost btn--sm" data-act-change>Сменить код</button></div>
+              </div></div>
+              <div class="setgroup"><h2 data-i18n="set.start">Запуск</h2><div class="setlist">
+                <div class="setrow"><div><strong data-i18n="set.autostart">Запускать вместе с Windows</strong><small data-i18n="set.autostart.d">Программа стартует свёрнутой в трей</small></div><label class="switch"><input type="checkbox" checked aria-label="Запускать вместе с Windows"><span class="switch__track"></span></label></div>
+                <div class="setrow"><div><strong data-i18n="set.autoopt">Оптимизировать при запуске</strong><small data-i18n="set.autoopt.d">Не нужно нажимать кнопку после включения компьютера</small></div><label class="switch"><input type="checkbox" checked aria-label="Оптимизировать при запуске"><span class="switch__track"></span></label></div>
+                <div class="setrow"><div><strong data-i18n="set.close">Закрытие окна сворачивает в трей</strong><small data-i18n="set.close.d">Маршрут продолжает работать</small></div><label class="switch"><input type="checkbox" checked aria-label="Закрытие окна сворачивает в трей"><span class="switch__track"></span></label></div>
+              </div></div>
+              <div class="setgroup"><h2 data-i18n="set.server">Сервер</h2><div class="setlist">
+                <div class="setrow"><div><strong data-i18n="set.server.choice">Сервер для сервисов</strong><small data-i18n="set.server.d">«Авто» выбирает самый быстрый и переключает при сбое</small></div><div class="seg" role="group" aria-label="Сервер"><button aria-pressed="true">Авто</button><button aria-pressed="false">Хельсинки</button><button aria-pressed="false">Швеция</button></div></div>
+              </div></div>
+              <div class="setgroup"><h2 data-i18n="set.look">Внешний вид</h2><div class="setlist">
+                <div class="setrow"><div><strong data-i18n="set.theme">Тема</strong></div><div class="seg" role="group" aria-label="Тема" data-app-theme><button aria-pressed="false" data-theme-set="system" data-i18n="set.theme.sys">Как в Windows</button><button aria-pressed="false" data-theme-set="light" data-i18n="set.theme.light">Светлая</button><button aria-pressed="true" data-theme-set="dark" data-i18n="set.theme.dark">Тёмная</button></div></div>
+                <div class="setrow"><div><strong data-i18n="set.lang">Язык</strong></div><select class="select select--sm" data-lang-select aria-label="Язык"><option value="ru">Русский</option><option value="en">English</option></select></div>
+              </div></div>
+              <div class="setgroup"><h2 data-i18n="set.updates">Обновления</h2><div class="setlist">
+                <div class="setrow"><div><strong data-i18n="set.autoupd">Устанавливать обновления автоматически</strong><small data-i18n="set.autoupd.d">Ночью или при следующем запуске, без перезапуска браузера</small></div><label class="switch"><input type="checkbox" checked aria-label="Автообновление"><span class="switch__track"></span></label></div>
+                <div class="setrow"><div><strong>VELIQ 1.0.0</strong><small>Проверено сегодня в 14:30</small></div><button class="btn btn--ghost btn--sm" data-i18n="set.check">Проверить обновления</button></div>
+              </div></div>
+              <div class="setgroup"><h2 data-i18n="set.club">Компьютерный клуб</h2><div class="setlist">
+                <div class="setrow"><div><strong data-i18n="set.club.mode">Режим клуба</strong><small data-i18n="set.club.d">Простой экран для гостя, настройки под паролем, оптимизация при входе</small></div><button class="btn btn--sm" data-modal-open="club"><svg class="i i--sm"><use href="#i-club"/></svg><span data-i18n="set.club.on">Включить</span></button></div>
+              </div></div>
+            </div>
+          </section>
+
+          <!-- ============ О ПРОГРАММЕ ============ -->
+          <section class="screen" data-screen="about" aria-label="О программе">
+            <div class="screen__head"><div><h1 data-i18n="nav.about">О программе</h1></div></div>
+            <div class="about">
+              <img src="assets/img/app-icon.svg" alt="">
+              <div>
+                <img data-wm src="assets/img/veliq-wordmark-dark.svg" alt="VELIQ" style="height:64px;width:auto;margin:-14px -7px 6px">
+                <p class="muted" style="margin:0 0 18px">Оптимальный маршрут для каждого соединения.</p>
+                <dl class="kv" style="margin-bottom:20px">
+                  <dt>Версия</dt><dd>1.0.0 (сборка f51ec66)</dd>
+                  <dt>Служба</dt><dd>1.0.0, запущена</dd>
+                  <dt>Серверы</dt><dd>veliq-hel-01, Хельсинки; veliq-swe-01, Швеция</dd>
+                  <dt>Устройство</dt><dd>зарегистрировано</dd>
+                </dl>
+                <div class="toolbar"><button class="btn btn--sm">Проверить обновления</button><button class="btn btn--sm btn--ghost"><svg class="i i--sm"><use href="#i-external"/></svg>Сайт и помощь</button><button class="btn btn--sm btn--quiet">Лицензии</button></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ РЕЖИМ КЛУБА ============ -->
+          <section class="screen" data-screen="club" aria-label="Режим клуба">
+            <div class="club">
+              <div class="club__main">
+                <div class="club__state">
+                  <h1 data-club-title>Работает</h1>
+                  <p data-club-sub>Маршруты построены: заблокированное открывается, игры идут по самому быстрому пути.</p>
+                  <ul class="club__list">
+                    <li><span>Сервер</span><span data-club-server>Хельсинки, 38 мс</span></li>
+                    <li><span>Игры</span><span>самый быстрый путь</span></li>
+                    <li><span>Если что-то не открывается</span><span>позовите администратора</span></li>
+                  </ul>
+                </div>
+                <div class="home__center"><button class="go" type="button" data-go data-state="on" aria-pressed="true"><span class="go__label"><span data-go-label>Работает</span><small data-go-sub>Хельсинки, 38 мс</small></span></button></div>
+              </div>
+              <div class="club__foot">
+                <span>VELIQ 1.0.0, режим клуба. Включается сам после перезагрузки.</span>
+                <button class="btn btn--quiet btn--sm" data-modal-open="admin"><svg class="i i--sm"><use href="#i-lock"/></svg>Для администратора</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- модальные окна внутри окна программы -->
+      <div class="modal-backdrop" data-modal="add" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-add-t">
+          <h2 id="m-add-t">Добавить сайт или приложение</h2>
+          <p>VELIQ подберёт маршрут для сайта или программы. Можно закрепить путь вручную.</p>
+          <div style="display:grid;gap:12px;margin-bottom:20px">
+            <label class="field"><span>Адрес сайта или файл программы</span><input class="input" placeholder="например, example.com или C:\Games\game.exe"></label>
+            <div class="seg" role="group" aria-label="Маршрут"><button aria-pressed="true">Авто</button><button aria-pressed="false">Через VELIQ</button><button aria-pressed="false">Обычный путь</button></div>
+          </div>
+          <div class="modal__actions"><button class="btn btn--ghost" data-modal-close>Отмена</button><button class="btn" data-modal-close>Добавить</button></div>
+        </div>
+      </div>
+      <div class="modal-backdrop" data-modal="club" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-club-t">
+          <h2 id="m-club-t">Включить режим клуба?</h2>
+          <p>Гость увидит только состояние и кнопку. Настройки откроются по паролю. VELIQ будет оптимизировать сам после каждой перезагрузки.</p>
+          <div style="display:grid;gap:12px;margin-bottom:20px">
+            <label class="field"><span>Пароль администратора</span><input class="input" type="password" value="........"></label>
+            <label class="field"><span>Название ПК для отчётов</span><input class="input" value="ПК 14"></label>
+          </div>
+          <div class="modal__actions"><button class="btn btn--ghost" data-modal-close>Отмена</button><button class="btn" data-modal-close data-go-club>Включить режим клуба</button></div>
+        </div>
+      </div>
+      <div class="modal-backdrop" data-modal="admin" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="m-admin-t">
+          <h2 id="m-admin-t">Вход для администратора</h2>
+          <p>Введите пароль, чтобы открыть настройки VELIQ на этом компьютере.</p>
+          <label class="field" style="margin-bottom:20px"><span>Пароль</span><input class="input" type="password" placeholder="Пароль администратора"></label>
+          <div class="modal__actions"><button class="btn btn--ghost" data-modal-close>Отмена</button><button class="btn" data-modal-close data-leave-club>Открыть настройки</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ Панель задач Windows: трей ============ -->
+    <div class="taskbar" data-taskbar>
+      <span class="other" aria-hidden="true"></span><span class="other" aria-hidden="true"></span>
+      <button class="tray-btn" data-tray aria-haspopup="dialog" aria-expanded="false" aria-label="VELIQ: выключено" title="VELIQ: выключено"><img data-tray-img src="assets/img/tray/tray-off-dark.svg" alt=""></button>
+      <span class="clock">14:32<br>20.10.2026</span>
+    </div>
+
+    <div class="flyout" data-flyout role="dialog" aria-label="VELIQ">
+      <div class="flyout__top"><img data-wm src="assets/img/veliq-wordmark-dark.svg" alt="VELIQ"><span class="status status--off" data-fly-status><i class="status__mark"></i><span>Выключено</span></span></div>
+      <div class="flyout__go">
+        <div><strong data-fly-title>Выключено</strong><small data-fly-sub>Интернет работает как без VELIQ</small></div>
+        <label class="switch"><input type="checkbox" data-fly-switch aria-label="Оптимизация"><span class="switch__track"></span></label>
+      </div>
+      <div class="flyout__stats"><div>Сервер<b data-fly-server>—</b></div><div>Пинг<b data-fly-ping>—</b></div><div>Сегодня<b data-fly-traffic>—</b></div></div>
+      <div class="flyout__foot"><button class="btn btn--ghost btn--sm" data-fly-open>Открыть VELIQ</button><button class="btn btn--quiet btn--sm" data-fly-close>Скрыть</button></div>
+    </div>
+
+    <div class="ctxmenu" data-ctx role="menu" aria-label="Меню VELIQ">
+      <button role="menuitem" data-fly-open><svg class="i i--sm"><use href="#i-home"/></svg>Открыть VELIQ</button>
+      <button role="menuitem" data-ctx-toggle><svg class="i i--sm"><use href="#i-power"/></svg><span data-ctx-toggle-label>Оптимизировать</span></button>
+      <hr>
+      <button role="menuitem"><svg class="i i--sm"><use href="#i-server"/></svg>Сервер<span class="k">Авто</span></button>
+      <button role="menuitem"><svg class="i i--sm"><use href="#i-diagnostics"/></svg>Диагностика</button>
+      <hr>
+      <button role="menuitem" data-ctx-close><svg class="i i--sm"><use href="#i-close"/></svg>Выйти из VELIQ</button>
+    </div>
+
+    <div class="toasts" data-toasts aria-live="polite"></div>
+  </main>
+</div>
+
+<script src="assets/charts.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

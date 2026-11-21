@@ -1,0 +1,101 @@
+name: Chrome policy native
+on:
+  push:
+    paths:
+      - '.github/workflows/chrome-native.yml'
+      - 'apps/desktop/Chrome*.cs'
+      - 'core/browserproxy/**'
+      - 'internal/browserfixture/**'
+      - 'platform/windows/browser*'
+      - 'platform/windows/tcp_capture_windows.go'
+      - 'platform/windows/*owner*'
+      - 'platform/windows/socket*'
+      - 'platform/windows/capture*'
+      - 'services/client-service/browser*'
+      - 'services/client-service/activation*'
+      - 'services/client-service/account*'
+      - 'services/client-service/subscription*'
+      - 'services/client-service/controller.go'
+      - 'services/client-service/ipc_handlers.go'
+  pull_request:
+    paths:
+      - '.github/workflows/chrome-native.yml'
+      - 'apps/desktop/Chrome*.cs'
+      - 'core/browserproxy/**'
+      - 'internal/browserfixture/**'
+      - 'platform/windows/browser*'
+      - 'platform/windows/tcp_capture_windows.go'
+      - 'platform/windows/*owner*'
+      - 'platform/windows/socket*'
+      - 'platform/windows/capture*'
+      - 'services/client-service/browser*'
+      - 'services/client-service/activation*'
+      - 'services/client-service/account*'
+      - 'services/client-service/subscription*'
+      - 'services/client-service/controller.go'
+      - 'services/client-service/ipc_handlers.go'
+permissions:
+  contents: read
+jobs:
+  chrome-policy:
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Native delegation lifecycle and ingress proof race regressions
+        shell: pwsh
+        run: |
+          go test -race -v -count=1 -timeout 90s ./platform/windows -run '^TestPlanned(FullClose|CloseDoesNot)'
+          if ($LASTEXITCODE) { throw "Native delegation lifecycle regression failed: $LASTEXITCODE" }
+          go test -race -p 1 -v -count=1 -timeout 90s ./core/browserproxy ./services/client-service -run '^TestNativeOnly|^TestBrowserReservationCollision|^TestBrowserKnownGroups|^TestBrowserGroup|^TestBrowserCachedGroup|^TestSilentDirectOrigin|^TestFirstByte|^TestBrowserFirstByte'
+          if ($LASTEXITCODE) { throw "Native ingress/local reservation regression failed: $LASTEXITCODE" }
+      - name: Event-ordered native route proof, including real DIRECT fault injection
+        shell: pwsh
+        run: |
+          go test -race -v -count=50 -timeout 90s ./services/client-service -run '^TestNativeRouteProof'
+          if ($LASTEXITCODE) { throw "Native route proof regression failed: $LASTEXITCODE" }
+      - name: ECH DNS hints and cert-verified Telegram alternate IP regression
+        shell: pwsh
+        run: |
+          go test -race -p 1 -count=1 ./platform/windows ./services/client-service -run '^TestNativeDNS|^TestNativeOpaque|^TestOpaqueTelegram|^TestHintedOrigin|^TestDNSCache|^TestECHOuter'
+          if ($LASTEXITCODE) { throw "ECH/origin regression failed: $LASTEXITCODE" }
+      - run: ./tools/windows/fetch-windivert.ps1
+        shell: pwsh
+      - name: Read-only initialization of Windows network providers
+        run: ./tests/windows-tools/network-provider-warmup.ps1
+        shell: powershell
+      - name: Actual Chrome policy, owner/SID, ECH, native DIRECT+, outage and restart
+        shell: pwsh
+        run: |
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          go test -c -o .e2e/browser-recovery-acceptance.exe ./services/client-service/cmd/service
+          if ($LASTEXITCODE) { throw "Recovery helper build failed" }
+          $env:NEEXITLAG_TEST_BROWSER_RECOVERY=(Resolve-Path .e2e/browser-recovery-acceptance.exe).Path
+          go test -v -count=1 -timeout 120s ./platform/windows -run '^(TestNativeBrowserDriverHandshake|TestChromeSitesNativeAcceptance|TestBrowserAliasCleanupBeforeFirstCapturedSYN)$' 2>&1 | Tee-Object chrome-native.log
+          if ($LASTEXITCODE) { throw "Native Chrome regression failed: $LASTEXITCODE" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: chrome-native-evidence
+          path: chrome-native.log
+
+  browser-native-driver:
+    runs-on: windows-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Fetch pinned signed WinDivert (disposable VM only)
+        shell: pwsh
+        run: ./tools/windows/fetch-windivert.ps1
+      - name: Actual driver Chrome and Edge hot attach without PAC
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:NEEXITLAG_TEST_NATIVE_BROWSER_DRIVER='1'
+          go test -v -count=3 -timeout 180s ./services/client-service -run '^TestWindowsNativeBrowserDriverHotAttach$'
+          if ($LASTEXITCODE) { throw "Actual driver/browser hot-attach failed: $LASTEXITCODE" }

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VELIQ — макет установщика</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/components.css">
+  <link rel="stylesheet" href="app.css">
+  <style>
+    body { display: grid; place-items: center; min-height: 100vh; padding: 24px; gap: 16px; align-content: center; }
+    .back { font-size: 13px; color: var(--c-ink-600); }
+    .opts { display: grid; gap: 10px; margin-top: 8px; font-size: 13px; }
+    .opts .switch { font-size: 14px; }
+    .path { display: flex; gap: 8px; margin-top: 4px; }
+    .path .input { flex: 1; height: 36px; font-size: 13px; }
+    @media (max-width: 680px) { .inst { width: 100%; grid-template-columns: 1fr; height: auto; } .inst__side { display: none; } }
+  </style>
+</head>
+<body>
+<script src="assets/icons.js"></script>
+<a class="back" href="index.html">← к макетам программы</a>
+<div class="inst" role="dialog" aria-label="Установка VELIQ">
+  <div class="inst__side">
+    <img class="wm" src="assets/img/veliq-wordmark-dark.svg" alt="VELIQ">
+    <ol class="inst__steps" data-steps>
+      <li aria-current="step">Начало</li>
+      <li>Параметры</li>
+      <li>Установка</li>
+      <li>Готово</li>
+    </ol>
+    <small>Версия 1.0.0</small>
+  </div>
+  <div class="inst__main">
+    <div>
+      <section class="inst-step is-active" data-step="0">
+        <h1>Установка VELIQ</h1>
+        <p>VELIQ строит оптимальный маршрут для каждого соединения: заблокированное открывается, игры получают самый быстрый путь.</p>
+        <p>Windows один раз попросит права администратора — для службы, которая строит маршруты.</p>
+        <label class="switch" style="margin-top:6px"><input type="checkbox" checked data-accept><span class="switch__track"></span><span style="font-size:13px">Принимаю <a href="../website/terms.html">условия использования</a></span></label>
+      </section>
+      <section class="inst-step" data-step="1">
+        <h1>Параметры</h1>
+        <p>Можно оставить как есть — так подходит большинству.</p>
+        <div class="field"><span style="font-size:13px;color:var(--text-muted)">Папка</span>
+          <div class="path"><input class="input" value="C:\Program Files\VELIQ" aria-label="Папка установки"><button class="btn btn--ghost btn--sm">Обзор</button></div></div>
+        <div class="opts">
+          <label class="switch"><input type="checkbox" checked><span class="switch__track"></span>Запускать вместе с Windows</label>
+          <label class="switch"><input type="checkbox" checked><span class="switch__track"></span>Ярлык на рабочем столе</label>
+          <label class="switch"><input type="checkbox"><span class="switch__track"></span>Режим клуба (для компьютерных клубов)</label>
+        </div>
+      </section>
+      <section class="inst-step" data-step="2">
+        <h1 data-inst-title>Устанавливаем</h1>
+        <p data-inst-sub>Копируем файлы. Браузер закрывать не нужно.</p>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span data-bar></span></div>
+        <p class="faint" style="font-size:12px" data-inst-detail>Подготовка…</p>
+      </section>
+      <section class="inst-step" data-step="3">
+        <h1>Готово</h1>
+        <p>VELIQ установлен. Откройте программу и нажмите «Оптимизировать».</p>
+        <label class="switch"><input type="checkbox" checked><span class="switch__track"></span>Запустить VELIQ</label>
+      </section>
+      <section class="inst-step" data-step="err">
+        <div class="banner" role="alert"><svg class="i"><use href="#i-error"/></svg><div><strong>Не удалось установить службу</strong><p>Windows не дала прав администратора. Запустите установку ещё раз и нажмите «Да» в окне Windows.</p></div></div>
+      </section>
+    </div>
+    <div class="inst__foot">
+      <button class="btn btn--quiet btn--sm" data-cancel>Отмена</button>
+      <button class="btn btn--ghost btn--sm" data-back hidden>Назад</button>
+      <button class="btn btn--sm" data-next>Установить</button>
+    </div>
+  </div>
+</div>
+<p class="back" style="margin:0">Макет: <button class="btn btn--quiet btn--sm" data-show-error>показать ошибку</button></p>
+<script>
+(function () {
+  var step = 0, steps = ['0', '1', '2', '3'];
+  var next = document.querySelector('[data-next]'), back = document.querySelector('[data-back]');
+  function show(id) {
+    document.querySelectorAll('.inst-step').forEach(function (s) { s.classList.toggle('is-active', s.getAttribute('data-step') === String(id)); });
+    var idx = steps.indexOf(String(id));
+    document.querySelectorAll('[data-steps] li').forEach(function (li, i) {
+      li.classList.toggle('done', i < idx); if (i === idx) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+    });
+    back.hidden = !(id === 1);
+    next.hidden = id === 2;
+    next.textContent = id === 0 ? 'Установить' : id === 1 ? 'Установить' : id === 3 ? 'Готово' : id === 'err' ? 'Повторить' : 'Далее';
+  }
+  function install() {
+    var p = 0, bar = document.querySelector('[data-bar]'), det = document.querySelector('[data-inst-detail]');
+    var msgs = ['Копируем файлы', 'Устанавливаем службу', 'Регистрируем устройство', 'Подключаем браузеры'];
+    var t = setInterval(function () {
+      p += 4; bar.style.width = p + '%'; bar.parentNode.setAttribute('aria-valuenow', p);
+      det.textContent = msgs[Math.min(3, Math.floor(p / 25))] + '…';
+      if (p >= 100) { clearInterval(t); step = 3; show(3); }
+    }, 90);
+  }
+  next.addEventListener('click', function () {
+    if (step === 'err') { step = 2; show(2); install(); return; }
+    if (step === 0) { step = 1; show(1); return; }
+    if (step === 1) { step = 2; show(2); install(); return; }
+    if (step === 3) { location.href = 'index.html#home/off//'; }
+  });
+  back.addEventListener('click', function () { step = 0; show(0); });
+  document.querySelector('[data-show-error]').addEventListener('click', function () { step = 'err'; show('err'); });
+  document.querySelector('[data-cancel]').addEventListener('click', function () { step = 0; show(0); });
+  show(0);
+})();
+</script>
+</body>
+</html>

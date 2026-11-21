@@ -1,0 +1,75 @@
+name: VELIQ Setup build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['installer/**', '.github/workflows/installer.yml']
+permissions:
+  contents: read
+jobs:
+  setup:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Build tests and pinned components
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & .\tools\windows\build-e2e.ps1
+          & .\tools\windows\build-desktop.ps1
+          if (!(Test-Path '.e2e\windivert')) { & .\tools\windows\fetch-windivert.ps1 }
+          & dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+          if($LASTEXITCODE){throw 'DESKTOP_TEST_FAILED'}
+          & python -m unittest discover -s tests/installer -v
+          if($LASTEXITCODE){throw 'INSTALLER_CONTRACT_FAILED'}
+          & .\tests\windows-tools\installer-package-checks.ps1
+      - name: Install pinned official build compiler only on disposable runner
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $ProgressPreference='SilentlyContinue'
+          $download=Join-Path $env:RUNNER_TEMP 'innosetup-6.4.3.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe' -OutFile $download
+          $signature=Get-AuthenticodeSignature -LiteralPath $download
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Jordan Russell|O=Pyrsys B\.V\.') { throw 'INNO_INSTALLER_SIGNATURE_INVALID' }
+          $compilerHome=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3'
+          $process=Start-Process -FilePath $download -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$compilerHome+'"')) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'INNO_INSTALL_FAILED' }
+          $compiler=Join-Path $compilerHome 'ISCC.exe'
+          if (!(Test-Path -LiteralPath $compiler)) { throw 'INNO_COMPILER_MISSING' }
+          [IO.File]::AppendAllText($env:GITHUB_ENV,('INNO_COMPILER='+$compiler+[Environment]::NewLine),[Text.UTF8Encoding]::new($false))
+      - name: Compile non-distributable fixture when public trust is not configured
+        if: ${{ vars.VELIQ_PUBLIC_CA_PEM == '' }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item bin/public-trust -ItemType Directory -Force|Out-Null
+          $key=Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N')+'.key')
+          try {
+            & openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj /CN=VELIQ-CI-ONLY -keyout $key -out bin/public-trust/ca.pem
+            if($LASTEXITCODE){throw 'FIXTURE_CA_FAILED'}
+            & .\installer\build.ps1 -PublicTrustDirectory .\bin\public-trust -ControlPlaneUrl https://127.0.0.1:1 -ProbeTarget 127.0.0.1:1 -Fixture -Compiler $env:INNO_COMPILER
+          } finally {Remove-Item -LiteralPath $key -Force -ErrorAction SilentlyContinue}
+      - name: Package using owner-provided PUBLIC trust
+        if: ${{ vars.VELIQ_PUBLIC_CA_PEM != '' }}
+        shell: powershell
+        env:
+          PUBLIC_CA: ${{ vars.VELIQ_PUBLIC_CA_PEM }}
+          CP_URL: ${{ vars.VELIQ_CONTROL_PLANE_URL }}
+          PROBE: ${{ vars.VELIQ_PROBE_TARGET }}
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item bin/public-trust -ItemType Directory -Force|Out-Null
+          [IO.File]::WriteAllText((Join-Path $PWD 'bin/public-trust/ca.pem'),$env:PUBLIC_CA,[Text.UTF8Encoding]::new($false))
+          & .\installer\build.ps1 -PublicTrustDirectory .\bin\public-trust -ControlPlaneUrl $env:CP_URL -ProbeTarget $env:PROBE -Compiler $env:INNO_COMPILER
+      - uses: actions/upload-artifact@v4
+        if: ${{ vars.VELIQ_PUBLIC_CA_PEM != '' }}
+        with:
+          name: VELIQ-Setup
+          path: bin/installer/output/*
+          retention-days: 3
+          if-no-files-found: error

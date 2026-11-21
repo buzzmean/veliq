@@ -1,0 +1,37 @@
+work/
+bin/
+*.exe
+*.test
+.lab/
+
+apps/desktop/bin/
+apps/desktop/obj/
+
+tests/desktop-bindings/bin/
+tests/desktop-bindings/obj/
+
+.dev/
+
+*.dll
+*.sys
+
+.e2e/
+
+__pycache__/
+
+**/obj/
+TestResults/
+
+# Native WPF regression host build products
+tests/desktop-native/bin/
+
+/dist/
+
+# Owner diagnostics are private output, never release inputs or source changes.
+diag-result*.txt
+cs-diag*.txt
+observe-result*.txt
+observe-result*.json
+observe-result*.csv
+observe-result*.zip
+observe-result*.log

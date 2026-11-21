@@ -1,0 +1,32 @@
+[Unit]
+Description=VELIQ authenticated QUIC relay
+After=network-online.target neexitlag-control-plane.service
+Wants=network-online.target
+[Service]
+User=neexitlag-relay
+Group=neexitlag-relay
+EnvironmentFile=-/etc/neexitlag/public/relay.env
+EnvironmentFile=-/etc/neexitlag/relay/relay.env
+ExecStart=/opt/neexitlag/bin/relay-start
+StateDirectory=neexitlag
+StateDirectoryMode=0700
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=neexitlag-relay
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=1000
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+@font-face { font-family: "Onest"; src: url("../../design/fonts/Onest-var.woff2") format("woff2"); font-weight: 100 900; }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: "Onest", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+.canvas { position: relative; overflow: hidden; }
+.ink { background: #0A0A0B; color: #fff; }
+.paper { background: #fff; color: #0A0A0B; }
+.mark { display: block; }
+.slitline { position: relative; display: block; width: fit-content; line-height: .94;
+  -webkit-mask: linear-gradient(#000 0 0) top / 100% .62em no-repeat, linear-gradient(#000 0 0) bottom / 100% calc(100% - .675em) no-repeat; }
+.slitwrap { position: relative; width: fit-content; }
+.slitwrap .bar { position: absolute; left: calc(100% + .14em); width: 2000px; top: .618em; height: .057em; background: #F0502A; }
+.muted { color: #B5B9BF; }
+.paper .muted { color: #474C55; }
+.route { position: absolute; display: grid; gap: 18px; font-size: 22px; font-weight: 560; }
+.route div { display: grid; grid-template-columns: 200px 200px 150px; align-items: center; gap: 18px; }
+.route i { height: 3px; background: #F0502A; display: block; }
+.route i.d { height: 0; background: none; border-top: 3px dashed #474C55; }
+.route span:last-child { color: #8E939C; font-variant-numeric: tabular-nums; }

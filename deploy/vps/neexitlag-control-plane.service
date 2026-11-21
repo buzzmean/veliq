@@ -1,0 +1,18 @@
+[Unit]
+Description=VELIQ E2E control plane
+After=network-online.target postgresql.service
+Requires=postgresql.service
+[Service]
+User=neexitlag-control
+Group=neexitlag-control
+EnvironmentFile=/etc/neexitlag/control/control-plane.env
+EnvironmentFile=/etc/neexitlag/public/relay.env
+ExecStart=/opt/neexitlag/bin/control-plane -listen :8443 -tls-cert /etc/neexitlag/control/server.pem -tls-key /etc/neexitlag/control/server.key -signing-key /etc/neexitlag/control/signing.key -key-id vps-1 -ca /etc/neexitlag/control/ca.pem -ca-key /etc/neexitlag/control/ca.key -admin-token-file /etc/neexitlag/control/admin.token -database-password-file /etc/neexitlag/control/database.password -seed-relay-id VPS-01 -seed-relay-address ${VPS_PUBLIC_IP}:4433 -seed-heartbeat-token-file /etc/neexitlag/control/heartbeat.token
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+[Install]
+WantedBy=multi-user.target

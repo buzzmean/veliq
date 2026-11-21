@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <!-- VELIQ icons. Сетка 24, линия 1.75, торцы прямые, углы острые — как у букв V, E, L, I в логотипе.
+       Скругления только там, где форма сама круглая (как контур Q). Использование:
+       <svg class="i"><use href="sprite.svg#i-power"/></svg> -->
+  <defs>
+    <style>.s{fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:butt;stroke-linejoin:miter}</style>
+  </defs>
+  <symbol id="i-power" viewBox="0 0 24 24"><path class="s" d="M12 3v9"/><path class="s" d="M6.6 6.4a8 8 0 1 0 10.8 0"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path class="s" d="M4 10.5 12 4l8 6.5V20h-5.5v-6h-5v6H4z"/></symbol>
+  <symbol id="i-services" viewBox="0 0 24 24"><path class="s" d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4z"/><path class="s" d="M16.5 13v7M13 16.5h7"/></symbol>
+  <symbol id="i-games" viewBox="0 0 24 24"><path class="s" d="M7.5 7h9a4.5 4.5 0 0 1 4.4 5.4l-.9 4.6a2 2 0 0 1-3.5.9L14.6 16H9.4l-1.9 1.9a2 2 0 0 1-3.5-.9l-.9-4.6A4.5 4.5 0 0 1 7.5 7z"/><path class="s" d="M8 10v4M6 12h4"/><path class="s" d="M15 11h.01M17 13h.01" stroke-width="2.4"/></symbol>
+  <symbol id="i-diagnostics" viewBox="0 0 24 24"><path class="s" d="M2 12h4l2.5-6 4 12 3-9 2 3H22"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path class="s" d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><path class="s" d="M13 4v4h4V4zM7 10v4h4v-4zM15 16v4h4v-4z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle class="s" cx="12" cy="12" r="9"/><path class="s" d="M12 10.5V17M12 7v1.6"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><path class="s" d="M4 4h16v6H4zM4 14h16v6H4z"/><path class="s" d="M7 7h2M7 17h2M15 7h2.5"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle class="s" cx="12" cy="12" r="9"/><path class="s" d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></symbol>
+  <symbol id="i-route" viewBox="0 0 24 24"><path class="s" d="M3 18h5l8-12h5"/><path class="s" d="M3 6h5l2 3M14 15l2 3h5"/></symbol>
+  <symbol id="i-ping" viewBox="0 0 24 24"><path class="s" d="M4 20v-4M9 20v-8M14 20V8M19 20V4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path class="s" d="M12 3v12M6.5 9.5 12 15l5.5-5.5M4 20h16"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path class="s" d="m4.5 12.5 5 5 10-11"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path class="s" d="m6 6 12 12M18 6 6 18"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path class="s" d="M12 3 2.5 20h19z"/><path class="s" d="M12 9.5v5M12 16.5v1.8"/></symbol>
+  <symbol id="i-error" viewBox="0 0 24 24"><circle class="s" cx="12" cy="12" r="9"/><path class="s" d="m8.8 8.8 6.4 6.4M15.2 8.8l-6.4 6.4"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><circle class="s" cx="12" cy="12" r="9"/><path class="s" d="m7.8 12.3 3 3 5.4-6"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path class="s" d="M20 12a8 8 0 1 1-2.4-5.7"/><path class="s" d="M20 4v5h-5"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24"><path class="s" d="m9 5 7 7-7 7"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path class="s" d="m5 9 7 7 7-7"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path class="s" d="M12 20V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path class="s" d="M12 4v15M6 13l6 6 6-6"/></symbol>
+  <symbol id="i-club" viewBox="0 0 24 24"><path class="s" d="M3 4h8v6H3zM13 4h8v6h-8zM3 14h8v6H3zM13 14h8v6h-8z"/><path class="s" d="M7 10v2M17 10v2M7 20v0M17 20v0"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><path class="s" d="M5 11h14v10H5z"/><path class="s" d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path class="s" d="M14 4h6v6M20 4l-9 9"/><path class="s" d="M18 14v6H4V6h6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><path class="s" d="M8 8h12v12H8z"/><path class="s" d="M16 8V4H4v12h4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle class="s" cx="10.5" cy="10.5" r="6.5"/><path class="s" d="m15.5 15.5 5 5"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle class="s" cx="12" cy="12" r="4"/><path class="s" d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path class="s" d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path class="s" d="M3 7h18M3 12h18M3 17h12"/></symbol>
+  <symbol id="i-minimize" viewBox="0 0 24 24"><path class="s" d="M6 12h12"/></symbol>
+  <symbol id="i-maximize" viewBox="0 0 24 24"><path class="s" d="M6 6h12v12H6z"/></symbol>
+  <symbol id="i-tray" viewBox="0 0 24 24"><path class="s" d="M3 14h5l1.5 3h5L16 14h5v6H3zM3 14l3-9h12l3 9"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path class="s" d="M13 2 5 13.5h6L10 22l8-11.5h-6z"/></symbol>
+  <symbol id="i-snow" viewBox="0 0 24 24"><path class="s" d="M12 2v20M3.3 7l17.4 10M3.3 17l17.4-10"/><path class="s" d="m9 4 3 2.5L15 4M9 20l3-2.5 3 2.5"/></symbol>
+  <symbol id="i-logs" viewBox="0 0 24 24"><path class="s" d="M5 3h10l4 4v14H5z"/><path class="s" d="M8.5 11h7M8.5 14.5h7M8.5 18h4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path class="s" d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-language" viewBox="0 0 24 24"><path class="s" d="M3 5h10M8 3v2M5 5c.8 3.5 3.3 6.3 6.5 7.6M11 5c-.8 3.6-3.4 6.6-7 8"/><path class="s" d="m12.5 21 4-10 4 10M14 17.5h5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path class="s" d="M12 3 4 6v6c0 4.6 3.4 8 8 9 4.6-1 8-4.4 8-9V6z"/></symbol>
+</svg>

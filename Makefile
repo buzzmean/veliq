@@ -1,0 +1,9 @@
+.PHONY: build test verify lab
+build:
+	go build ./...
+test:
+	go test -race ./...
+verify: build test
+	go vet ./...
+lab:
+	go run ./tools/lab

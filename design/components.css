@@ -1,0 +1,266 @@
+/* VELIQ components — общие для сайта, макетов программы и гайда.
+   Требует tokens.css. Источник: design/components.css (копируется build-tokens.py). */
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  line-height: var(--lh-normal);
+  font-feature-settings: "tnum" 0, "ss01" 0;
+  -webkit-font-smoothing: antialiased;
+}
+img, svg { display: block; max-width: 100%; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: inherit; text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+a:hover { text-decoration-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-xs); }
+[hidden] { display: none !important; }
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.i { width: 20px; height: 20px; flex: none; }
+.i--sm { width: 16px; height: 16px; }
+.i--lg { width: 24px; height: 24px; }
+
+/* ---------- Срез (фирменный приём) ----------
+   Прорезь на 66% высоты строки, как в логотипе. Применять к одному крупному объекту на экране. */
+.slit {
+  /* Прорезь задаётся в процентах высоты строки, а не в em: так она остаётся на месте при любом
+     масштабе (зум страницы, размер шрифта в системе, встроенный просмотр в приложениях).
+     Расчёт для line-height 0.94: прорезь от 0.62em до 0.675em сверху. */
+  --slit-top: 65.96%;
+  --slit-bottom: 71.81%;
+  display: block;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0 var(--slit-top), transparent var(--slit-top) var(--slit-bottom), #000 var(--slit-bottom));
+          mask-image: linear-gradient(to bottom, #000 0 var(--slit-top), transparent var(--slit-top) var(--slit-bottom), #000 var(--slit-bottom));
+}
+.slit-line { position: relative; display: block; width: fit-content; }
+/* Сигнальная полоса выходит из конца слова и уходит к краю — как маршрут. Не перечёркивает слово. */
+.slit-line > .slit-bar {
+  position: absolute; left: calc(100% + 0.14em); width: 100vw;
+  top: 65.8%;
+  height: 6.05%;
+  background: var(--accent);
+  transform-origin: left center;
+}
+
+/* ---------- Кнопки ---------- */
+.btn {
+  --h: 44px;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  height: var(--h); padding: 0 calc(var(--h) * 0.42);
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  background: var(--control); color: var(--on-control);
+  font-weight: var(--fw-semibold); font-size: var(--fs-md); letter-spacing: var(--ls-wide);
+  text-decoration: none; cursor: pointer; white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-out), border-color var(--dur-fast), transform var(--dur-fast);
+}
+.btn:hover { background: var(--control-hover); }
+.btn:active { transform: translateY(1px); }
+.btn[disabled], .btn[aria-disabled="true"] { opacity: .4; cursor: not-allowed; transform: none; }
+.btn--ghost { background: transparent; color: var(--text); border-color: var(--line-strong); }
+.btn--ghost:hover { background: var(--bg-sunken); border-color: var(--text-faint); }
+.btn--quiet { background: transparent; color: var(--text); padding: 0 var(--sp-3); }
+.btn--quiet:hover { background: var(--bg-sunken); }
+.btn--danger { background: transparent; color: var(--danger); border-color: currentColor; }
+.btn--danger:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.btn--sm { --h: 34px; font-size: var(--fs-sm); }
+.btn--lg { --h: 56px; font-size: var(--fs-lg); border-radius: var(--r-md); }
+.btn--icon { padding: 0; width: var(--h); }
+
+/* ---------- Переключатель ---------- */
+.switch { display: inline-flex; align-items: center; gap: var(--sp-3); cursor: pointer; user-select: none; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch__track {
+  position: relative; width: 44px; height: 26px; flex: none;
+  border-radius: var(--r-pill); background: var(--line-strong);
+  transition: background var(--dur-base) var(--ease-out);
+}
+.switch__track::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+  border-radius: 50%; background: var(--bg-raised);
+  background-image: linear-gradient(transparent 62%, transparent 62% 70%, transparent 70%);
+  box-shadow: 0 1px 2px rgba(0,0,0,.25);
+  transition: transform var(--dur-base) var(--ease-out), background-image var(--dur-base);
+}
+.switch input:checked + .switch__track { background: var(--control); }
+.switch input:checked + .switch__track::after {
+  transform: translateX(18px);
+  background-color: var(--bg);
+  background-image: linear-gradient(transparent 62%, var(--accent) 62% 72%, transparent 72%);
+}
+.switch input:focus-visible + .switch__track { outline: 2px solid var(--focus); outline-offset: 2px; }
+.switch input:disabled + .switch__track { opacity: .4; }
+
+/* ---------- Сегменты ---------- */
+.seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--r-sm); background: var(--bg-sunken); border: 1px solid var(--line); }
+.seg button {
+  border: 0; background: transparent; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--text-muted);
+}
+.seg button[aria-pressed="true"] { background: var(--bg-raised); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.12), inset 0 0 0 1px var(--line); }
+
+/* ---------- Поля ---------- */
+.field { display: grid; gap: 6px; }
+.field > span { font-size: var(--fs-sm); color: var(--text-muted); }
+.input, .select {
+  height: 42px; padding: 0 12px; border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong); background: var(--bg-raised); color: var(--text);
+}
+.input:hover, .select:hover { border-color: var(--text-faint); }
+.input:focus-visible, .select:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; border-color: transparent; }
+
+/* ---------- Карточка ---------- */
+.card { background: var(--bg-raised); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-5); }
+.card--sunken { background: var(--bg-sunken); }
+
+/* ---------- Статус ----------
+   off — пустой квадрат, connecting — бегущий срез, on — сигнальная полоса, error — крест. Цвет никогда не единственный признак. */
+.status { display: inline-flex; align-items: center; gap: 8px; font-weight: var(--fw-medium); font-size: var(--fs-sm); }
+.status__mark { position: relative; width: 14px; height: 14px; flex: none; border-radius: 4px; border: 1.75px solid currentColor; overflow: hidden; }
+.status--off { color: var(--text-faint); }
+.status--on { color: var(--text); }
+.status--on .status__mark { border-color: var(--text); }
+.status--on .status__mark::after { content: ""; position: absolute; left: 0; right: 0; top: 62%; height: 2.5px; background: var(--accent); }
+.status--connecting { color: var(--text); }
+.status--connecting .status__mark::after {
+  content: ""; position: absolute; top: 62%; height: 2.5px; width: 60%; background: var(--accent);
+  animation: slit-run 900ms var(--ease-route) infinite;
+}
+.status--error { color: var(--danger); }
+.status--error .status__mark { border-radius: 50%; }
+.status--error .status__mark::before, .status--error .status__mark::after {
+  content: ""; position: absolute; left: 50%; top: 50%; width: 8px; height: 1.75px; background: currentColor;
+  transform: translate(-50%,-50%) rotate(45deg);
+}
+.status--error .status__mark::after { transform: translate(-50%,-50%) rotate(-45deg); }
+.status--warn { color: var(--warn); }
+.status--warn .status__mark { transform: rotate(45deg) scale(.8); }
+@keyframes slit-run { from { transform: translateX(-110%); } to { transform: translateX(180%); } }
+
+/* ---------- Метки ---------- */
+.tag {
+  display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px;
+  border-radius: 6px; font-size: var(--fs-xs); font-weight: var(--fw-semibold);
+  background: var(--bg-sunken); color: var(--text-muted); border: 1px solid var(--line);
+}
+.tag--relay { color: var(--text); border-color: var(--text); background: transparent; }
+.tag--relay::before { content: ""; width: 10px; height: 2px; background: var(--accent); }
+.tag--direct { color: var(--text-muted); }
+.tag--direct::before { content: ""; width: 10px; height: 0; border-top: 1.5px dashed currentColor; }
+.tag--ok { color: var(--ok); border-color: currentColor; background: transparent; }
+.tag--warn { color: var(--warn); border-color: currentColor; background: transparent; }
+.tag--danger { color: var(--danger); border-color: currentColor; background: transparent; }
+
+/* ---------- Таблица ---------- */
+.table { width: 100%; border-collapse: collapse; font-size: var(--fs-sm); }
+.table th { text-align: left; font-weight: var(--fw-medium); color: var(--text-faint); padding: 8px 12px; border-bottom: 1px solid var(--line-strong); white-space: nowrap; }
+.table td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.table td.num, .table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.table tbody tr:hover td { background: var(--bg-sunken); }
+
+/* ---------- Модальное окно ---------- */
+.modal-backdrop[hidden] { display: none; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(10,10,11,.55); display: grid; place-items: center; padding: var(--sp-4); z-index: 50; }
+.modal {
+  width: min(460px, 100%); background: var(--bg-raised); color: var(--text);
+  border-radius: var(--r-lg); padding: var(--sp-6); box-shadow: var(--shadow-current); border: 1px solid var(--line);
+}
+.modal h2 { margin: 0 0 var(--sp-2); font-size: var(--fs-xl); letter-spacing: var(--ls-heading); }
+.modal p { margin: 0 0 var(--sp-5); color: var(--text-muted); }
+.modal__actions { display: flex; gap: var(--sp-2); justify-content: flex-end; flex-wrap: wrap; }
+
+/* ---------- Уведомление ---------- */
+.toast {
+  display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start;
+  width: min(380px, 100%); padding: 14px 14px 14px 16px; border-radius: var(--r-md);
+  background: var(--bg-inverse); color: var(--text-inverse); box-shadow: var(--shadow-current);
+  font-size: var(--fs-sm);
+}
+.toast strong { display: block; font-weight: var(--fw-semibold); margin-bottom: 2px; }
+.toast p { margin: 0; opacity: .78; }
+.toast .btn--quiet { color: inherit; height: 28px; padding: 0 6px; }
+.toast__icon { width: 22px; height: 22px; margin-top: 1px; }
+.toast--ok .toast__icon { color: var(--c-ok-400); }
+.toast--error .toast__icon { color: var(--c-danger-400); }
+.toast--info .toast__icon { color: var(--c-signal-500); }
+
+/* ---------- Полоса трафика ---------- */
+.meter { height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.meter > span { display: block; height: 100%; background: var(--text); }
+.meter--relay > span { background: var(--accent); }
+
+/* ---------- График пинга ---------- */
+.ping-chart { width: 100%; height: auto; overflow: visible; }
+.ping-chart .grid line { stroke: var(--line); stroke-width: 1; }
+.ping-chart .axis text { fill: var(--text-faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.ping-chart .series { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ping-chart .series--direct { stroke: var(--data-direct); stroke-dasharray: 4 4; }
+.ping-chart .series--hel { stroke: var(--data-hel); }
+.ping-chart .series--swe { stroke: var(--data-swe); }
+.ping-chart .end-label { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--fs-sm); color: var(--text-muted); margin: 0; padding: 0; list-style: none; }
+.legend li { display: inline-flex; align-items: center; gap: 8px; }
+.legend i { width: 18px; height: 0; border-top: 2px solid; }
+.legend .direct { border-top: 2px dashed var(--data-direct); }
+.legend .hel { border-color: var(--data-hel); }
+.legend .swe { border-color: var(--data-swe); }
+
+/* ---------- Большая кнопка (сайт и программа). Форма — контур Q: радиус 36%, срез на 66%. ---------- */
+.go {
+  --size: clamp(200px, 26vw, 260px);
+  position: relative; display: grid; place-items: center; width: var(--size); aspect-ratio: 1; margin: 0 auto;
+  border-radius: var(--r-q); border: 2px solid var(--c-ink-700); background: var(--c-ink-900); color: var(--c-white);
+  cursor: pointer; overflow: hidden; transition: border-color var(--dur-base), background var(--dur-base), transform var(--dur-fast);
+  font-weight: var(--fw-bold); font-size: clamp(17px, 1.6vw, 20px); letter-spacing: var(--ls-heading);
+}
+.go:hover { border-color: var(--c-ink-500); }
+.go:active { transform: scale(.985); }
+.go__label { position: relative; z-index: 1; display: grid; gap: 6px; justify-items: center; text-align: center; padding: 0 16px; }
+.go__label small { font-weight: var(--fw-medium); font-size: 13px; color: var(--c-ink-400); letter-spacing: 0; }
+.go::after { /* срез */
+  content: ""; position: absolute; left: 0; right: 0; top: 66%; height: 6%; background: var(--c-ink-950);
+}
+.go::before { /* сигнальная полоса в срезе */
+  content: ""; position: absolute; z-index: 2; left: 0; right: 0; top: 66%; height: 6%; background: var(--c-signal-500);
+  transform: scaleX(0); transform-origin: left; transition: transform var(--dur-slow) var(--ease-route);
+}
+.go[data-state="connecting"]::before { transform: scaleX(.35); animation: go-run 1100ms var(--ease-route) infinite; }
+.go[data-state="on"] { border-color: var(--c-white); background: var(--c-ink-950); }
+.go[data-state="on"]::before { transform: scaleX(1); }
+.go[data-state="error"] { border-color: var(--c-danger-400); }
+@keyframes go-run { 0% { transform: translateX(-100%) scaleX(.35); } 100% { transform: translateX(100%) scaleX(.35); } }
+@media (prefers-reduced-motion: reduce) { .go[data-state="connecting"]::before { animation: none; transform: scaleX(.5); } }
+
+
+/* ---------- Маршрутная схема ---------- */
+.route { display: grid; gap: 2px; margin-top: var(--sp-6); font-size: var(--fs-sm); }
+.route__row { display: grid; grid-template-columns: 112px 1fr 92px; align-items: center; gap: 12px; padding: 7px 0; }
+.route__name { color: var(--text); font-weight: var(--fw-medium); }
+.route__via { color: var(--text-faint); text-align: right; font-variant-numeric: tabular-nums; }
+.route__line { height: 2px; background: var(--line-strong); position: relative; overflow: hidden; }
+.route__line::after { content: ""; position: absolute; inset: 0; background: var(--c-signal-500); transform: scaleX(0); transform-origin: left; transition: transform var(--dur-route) var(--ease-route); }
+.route__row--direct .route__line { background: none; border-top: 2px dashed var(--line-strong); height: 0; }
+.route__row--direct .route__line::after { display: none; }
+.route__row:nth-child(2) .route__line::after { transition-delay: 90ms; }
+.route__row:nth-child(3) .route__line::after { transition-delay: 180ms; }
+.route__row:nth-child(4) .route__line::after { transition-delay: 270ms; }
+
+/* ---------- Пары «название — значение» ---------- */
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; margin: 0; font-size: var(--fs-sm); }
+.kv dt { color: var(--text-faint); }
+.kv dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
+
+/* ---------- Монограммы сервисов (вместо чужих логотипов) ---------- */
+.mono {
+  width: 32px; height: 32px; border-radius: 9px; flex: none;
+  display: grid; place-items: center; font-weight: var(--fw-bold); font-size: 14px;
+  background: var(--bg-sunken); border: 1px solid var(--line); color: var(--text);
+}
+
+/* ---------- Подсказка «как это читать» ---------- */
+.kbd { display: inline-block; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--line-strong); border-bottom-width: 2px; font-size: .86em; }

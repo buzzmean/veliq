@@ -1,0 +1,248 @@
+name: Verify
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: neexitlag
+          POSTGRES_DB: neexitlag
+          POSTGRES_PASSWORD: ci-only-test-password
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U neexitlag -d neexitlag"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      NEEXITLAG_TEST_DATABASE_URL: postgres://neexitlag:ci-only-test-password@127.0.0.1:5432/neexitlag?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - run: python3 -m unittest discover -s tests/deployment -v
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+      - run: go build ./...
+      - run: go test -race -timeout 120s ./...
+      - run: go vet ./...
+      - name: Approved brand source and UI compatibility
+        run: python3 -m unittest discover -s tests/branding -v
+      - run: go test ./core/localstrategy -run '^$' -fuzz FuzzHelloRecordReassembly -fuzztime=10000x -fuzzminimizetime=1000x -timeout=90s -parallel=2
+      - run: go test ./core/localstrategy -run '^$' -fuzz FuzzTCPHelloSegments -fuzztime=1000x -fuzzminimizetime=1000x -timeout=90s -parallel=2
+      - run: go test ./core/localstrategy -run '^$' -bench . -benchmem -count=3 | tee direct-plus-benchmarks.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: direct-plus-core-benchmarks
+          path: direct-plus-benchmarks.txt
+      - run: go run ./tools/lab
+      - run: go build ./...
+        env: {GOOS: windows, GOARCH: amd64, CGO_ENABLED: '0'}
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: '& ./tests/windows-tools/resource-checkout-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/resource-checkout-checks.ps1'
+        shell: pwsh
+      - run: ./tests/windows-tools/vps-upgrade-tests.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/vps-upgrade-tests.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/fresh-pc-checks.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/fresh-pc-checks.ps1
+        shell: pwsh
+      # Fast real PS5.1/7 filesystem/shortcut/upgrade checks before long builds.
+      - run: ./tests/windows-tools/desktop-upgrade-checks.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/desktop-upgrade-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/profile-routing-checks.ps1
+        shell: powershell
+      - run: '& ./tests/windows-tools/browser-startup-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/browser-startup-checks.ps1'
+        shell: pwsh
+      - run: '& ./tests/windows-tools/browser-disable-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/browser-disable-checks.ps1'
+        shell: pwsh
+      - run: ./tests/windows-tools/browser-path-checks.ps1
+        shell: powershell
+      - run: '& ./tests/windows-tools/relay-status-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/relay-status-checks.ps1'
+        shell: pwsh
+      - run: '& ./tests/windows-tools/traffic-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/traffic-checks.ps1'
+        shell: pwsh
+      - run: '& ./tests/windows-tools/local-catalog-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/local-catalog-checks.ps1'
+        shell: pwsh
+      - run: '& ./tests/windows-tools/owner-preflight-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/local-probe-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/local-probe-checks.ps1'
+        shell: pwsh
+      - run: '& ./tests/windows-tools/youtube-local-checks.ps1'
+        shell: pwsh
+      - run: '& ./tests/windows-tools/youtube-local-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/youtube-decisions-collector-checks.ps1'
+        shell: pwsh
+      - run: '& ./tests/windows-tools/youtube-decisions-collector-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/video-relay-observer-checks.ps1'
+        shell: pwsh
+      - run: '& ./tests/windows-tools/video-relay-observer-checks.ps1'
+        shell: powershell
+      - run: ./tests/windows-tools/native-firewall-checks.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/native-firewall-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/browser-path-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/profile-routing-checks.ps1
+        shell: pwsh
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Compile every service filter with pinned WinDivert DLL (no driver access)
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force|Out-Null
+          & go test ./platform/windows -run '^TestServiceWinDivertFilterInventory$'
+          if($LASTEXITCODE){throw 'FILTER_INVENTORY_FAILED'}
+          & go test -c -o bin/filter-tests.exe ./platform/windows
+          if($LASTEXITCODE){throw 'FILTER_TEST_BUILD_FAILED'}
+          & ./tools/windows/test-windivert-filters.ps1 -TestExecutable (Join-Path $PWD 'bin/filter-tests.exe')
+          & ./tests/windows-tools/windivert-filter-checks.ps1
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - run: dotnet run --project tests/desktop-native/NeExitLag.Desktop.NativeTests.csproj --configuration Release
+        timeout-minutes: 3
+        env: {NEEXITLAG_TEST_CHROME_POLICY: '1'}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-native-ui-evidence
+          path: bin/native-ui-tests/
+      - run: go build ./...
+      # Each load fixture already creates 160/256/320 simultaneous connections.
+      # Separate test binaries must not compete for the same Windows socket/
+      # ephemeral-port resources and turn independent fixtures into one load.
+      - run: go test -p 1 ./core/... ./internal/browserfixture ./platform/windows ./services/client-service ./tests/integration
+      - name: Native Windows capture lifecycle race regressions
+        run: go test -race -v -timeout 90s ./platform/windows -run 'TestUDPForwardNative|TestTCPNativeAdmissionBurst|TestTCPNativeQueuedSetupCancellation|TestTCPNativeInitialWriteReleasesAdmission|TestTCPAdmission|TestTCPNativePipe|TestUDPAdmission|TestUDPIdleBoundary|TestTCPDropAndFailureEvidence|TestTCPCopyFailureClassification|TestWorkerRejection|TestHotAttach|TestNativeHotAttach'
+        timeout-minutes: 4
+      - name: Repeated native Windows authenticated TCP bursts
+        run: |
+          go test -v -count 3 -timeout 120s ./tests/integration -run '^TestPoolTCPBurstContinuity$'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -race -v -count 3 -timeout 120s ./tests/integration -run '^TestPoolTCPBurstContinuity$'
+        timeout-minutes: 4
+      - run: dotnet build --nologo
+      - run: dotnet test --nologo
+      - run: ./tests/windows-tools/build-desktop-ps51.ps1
+        shell: powershell
+      - run: ./tools/windows/build-desktop.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/desktop-smoke.ps1
+        shell: pwsh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VELIQ-win-x64
+          path: bin/release/
+      # Existing artifact consumers retain a compatible download name.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NeExitLag-win-x64
+          path: bin/release/
+      - run: ./tools/windows/parse-scripts.ps1
+        shell: pwsh
+      - run: ./tools/windows/build-e2e.ps1
+        shell: pwsh
+      - name: Accelerated authenticated lease acceptance (60 second isolated lease)
+        run: ./tools/windows/acceptance-lease-renewal.ps1 -LeaseSeconds 60
+        shell: powershell
+        timeout-minutes: 9
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lease-renewal-windows-evidence
+          path: bin/lease-acceptance/
+      - run: ./tests/windows-tools/direct-plus-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/direct-plus-checks.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/strategy-v2-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/strategy-v2-checks.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/strategy-v2-browser-correlation.ps1
+        shell: pwsh
+        timeout-minutes: 2
+      - run: ./tests/windows-tools/strategy-v2-browser-correlation.ps1
+        shell: powershell
+        timeout-minutes: 2
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-correlation-failure
+          path: bin/browser-correlation/
+      - run: ./tests/windows-tools/chrome-sites-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/chrome-sites-checks.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/tcp-web-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/tcp-web-checks.ps1
+        shell: powershell
+      - name: Passive observer metadata fixtures (no observation)
+        shell: powershell
+        run: ./tests/windows-tools/exitlag-observation-checks.ps1
+      - run: if (!(Test-Path '.e2e/windivert')) { & ./tools/windows/fetch-windivert.ps1 }
+        shell: pwsh
+      - name: Read-only initialization of Windows network providers
+        run: ./tests/windows-tools/network-provider-warmup.ps1
+        shell: powershell
+      - run: |
+          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:NEEXITLAG_TEST_BROWSER_RECOVERY=(Resolve-Path bin/windows-e2e/browser-recovery-acceptance.exe).Path
+          go test -race -timeout 30s -v ./platform/windows -run '^TestNativeBoundDial|^TestNativeChromeStaleAssociation'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -timeout 90s -v ./platform/windows -run TestNativeCaptureHandlesStartStop
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -timeout 120s -v ./platform/windows -run '^TestChromeSitesNativeAcceptance$'
+        shell: pwsh
+      - run: ./tests/windows-tools/acceptance-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/reinstall-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/acceptance-checks.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/reinstall-checks.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/simultaneous-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/simultaneous-checks.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/hot-attach-checks.ps1
+        shell: pwsh
+      - run: ./tests/windows-tools/hot-attach-checks.ps1
+        shell: powershell
+      - run: ./tests/windows-tools/ipc-smoke.ps1
+        shell: pwsh
+      - run: go test ./tools/windows-test-client ./internal/e2eprobe ./tools/vps-provision ./tools/route-test ./tools/tcp-test-client ./internal/webprobe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-real-e2e-tools
+          path: bin/windows-e2e/
+      # These are unit/build checks, not live WinDivert or public-Internet acceptance.

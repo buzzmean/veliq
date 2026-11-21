@@ -1,0 +1,15 @@
+[Unit]
+Description=VELIQ authenticated remote UDP acceptance target
+After=network-online.target
+[Service]
+User=neexitlag-echo
+Group=neexitlag-echo
+ExecStart=/opt/neexitlag/bin/remote-echo -listen :40000 -tcp-listen :40000 -metrics 127.0.0.1:9092 -token-file /etc/neexitlag/echo/echo.token
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+[Install]
+WantedBy=multi-user.target

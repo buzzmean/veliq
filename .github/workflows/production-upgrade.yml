@@ -1,0 +1,77 @@
+name: Isolated production upgrade
+on:
+  push:
+    paths: &deployment-paths
+      - '.github/workflows/production-upgrade.yml'
+      - 'core/**'
+      - 'internal/**'
+      - 'services/**'
+      - 'platform/**'
+      - 'tools/fresh-pc/**'
+      - 'tools/vps-provision/**'
+      - 'tools/route-test/**'
+      - 'tools/remote-echo/**'
+      - 'tools/enroll/**'
+      - 'tools/codes/**'
+      - 'deploy/vps/**'
+      - 'tests/deployment/**'
+      - 'go.mod'
+      - 'go.sum'
+  pull_request:
+    paths: *deployment-paths
+  workflow_dispatch:
+concurrency:
+  group: isolated-upgrade-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  disposable-systemd-postgres:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        ca-layout: [legacy, fresh-credential]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Build exact clean candidate, never contact VPS
+        run: |
+          mkdir -p dist/relay/bin dist/relay/deploy/vps
+          for tool in relay control-plane; do go build -trimpath -o dist/relay/bin/$tool ./services/$tool/cmd/$tool; done
+          for tool in remote-echo enroll fresh-pc codes; do go build -trimpath -o dist/relay/bin/$tool ./tools/$tool; done
+          go build -trimpath -o dist/relay/bin/neexitlag-route-test-linux-amd64 ./tools/route-test
+          cp deploy/vps/production-upgrade.py dist/relay/deploy/vps/
+          python3 deploy/vps/upgrade-manifest.py dist/relay "$(git rev-parse HEAD)"
+      - name: Generate loopback test identity only
+        env:
+          NEEXITLAG_ISOLATED_UPGRADE_BUNDLE: /var/tmp/neexitlag-ci-bundle
+        run: go test ./tools/vps-provision -run '^TestIsolatedUpgradeBundleExport$' -count=1
+      - name: Dependencies in disposable runner only
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql postgresql-client
+      - name: Real local systemd transaction and rollback
+        env:
+          NEEXITLAG_ISOLATED_UPGRADE: github-disposable-runner
+          NEEXITLAG_ISOLATED_CA_LAYOUT: ${{ matrix.ca-layout }}
+        run: sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,NEEXITLAG_ISOLATED_UPGRADE,NEEXITLAG_ISOLATED_CA_LAYOUT bash tests/deployment/isolated-upgrade.sh
+      - name: Sanitized failure diagnostics only
+        if: failure()
+        run: |
+          sudo python3 - <<'PY'
+          import json, pathlib
+          for name in ['preflight.json','apply.json','injected-failure.json']:
+              p=pathlib.Path('/var/tmp/neexitlag-upgrade-private')/name
+              if p.exists():
+                  try:
+                      d=json.loads(p.read_text()); print(name, {k:d[k] for k in ['error','phase','pass','commit'] if k in d})
+                  except ValueError: print(name, 'No complete public JSON')
+          PY
+          sudo stat -c '%a %u %g %n' /opt /opt/neexitlag /opt/neexitlag/bin /etc/systemd/system /var/backups /var/lib
+          sudo systemctl show neexitlag-relay neexitlag-control-plane neexitlag-upgrade-recover -p ActiveState -p SubState -p Result -p ExecMainStatus || true
+          sudo find /var/backups/neexitlag-upgrades -name state.json -exec python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print({k:d.get(k) for k in ["id","commit","phase","backup_complete"]})' {} \; || true

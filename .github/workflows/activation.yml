@@ -1,0 +1,73 @@
+name: Activation and leaf renewal
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/activation.yml'
+      - 'core/enrollment/**'
+      - 'services/control-plane/**'
+      - 'services/client-service/**'
+      - 'platform/windows/enrollment*'
+      - 'apps/desktop*/Activation.cs'
+      - 'tests/desktop/ActivationTests.cs'
+      - 'deploy/vps/**'
+      - 'tests/deployment/**'
+      - 'tests/windows-tools/activation-deploy-checks.ps1'
+      - 'tools/codes/**'
+      - 'tools/fresh-pc/**'
+      - 'tools/windows/*activation*'
+      - 'tools/windows/*watchdog*'
+      - 'tests/windows-tools/browser-policy-watchdog-checks.ps1'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  enrollment-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: neexitlag
+          POSTGRES_DB: neexitlag
+          POSTGRES_PASSWORD: ci-only-test-password
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U neexitlag -d neexitlag"
+          --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      NEEXITLAG_TEST_DATABASE_URL: postgres://neexitlag:ci-only-test-password@127.0.0.1:5432/neexitlag?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - run: go test -race -p 1 ./core/enrollment ./core/browserproxy ./services/control-plane ./services/client-service ./services/client-service/cmd/service ./tools/fresh-pc ./tools/codes
+      - run: go vet ./...
+      - run: go build ./...
+      - run: python3 -m unittest discover -s tests/deployment -v
+  activation-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - uses: actions/setup-dotnet@v4
+        with: {dotnet-version: '8.0.x'}
+      - name: Native protected ACL and activation lifecycle contracts
+        run: go test -p 1 ./platform/windows ./services/client-service ./services/client-service/cmd/service -run Activation -count=1
+      - name: Native fresh-helper journal contracts
+        run: go test ./tools/fresh-pc -run '^TestUpgradeCapabilityAndJournalContracts$' -count=1
+      - run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+      - run: dotnet build apps/desktop/Neexitlag.Desktop.csproj --nologo
+      - name: Parse production activation scripts with Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($p in @('tools/windows/install.ps1','tools/windows/stage-club-activation.ps1','tools/windows/update-activation-vps.ps1','tools/windows/activation-ssh.ps1','tools/windows/verify-activation-vps.ps1')) {
+            $tokens=$null;$errors=$null
+            [void][Management.Automation.Language.Parser]::ParseFile((Join-Path $PWD $p),[ref]$tokens,[ref]$errors)
+            if($errors.Count){throw ($errors.Message -join ';')}
+          }
+      - name: Native redirected SSH transport fixture (no network)
+        shell: powershell
+        run: ./tests/windows-tools/activation-deploy-checks.ps1

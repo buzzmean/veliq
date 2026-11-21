@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -45 438 200" role="img" aria-label="VELIQ">
+  <defs>
+    <mask id="slit" maskUnits="userSpaceOnUse" x="-20" y="-60" width="480" height="240">
+      <rect x="-20" y="-60" width="480" height="240" fill="#fff"/>
+      <rect x="-20" y="66" width="480" height="6" fill="#000"/>
+    </mask>
+  </defs>
+  <g fill="#FFFFFF" mask="url(#slit)">
+    <path d="M0 0H22L52 70L82 0H104L63 100H41Z"/>
+    <path transform="translate(116 0)" d="M0 0H66V18H18V41H58V59H18V82H66V100H0Z"/>
+    <path transform="translate(198 0)" d="M0 0H18V82H62V100H0Z"/>
+    <rect x="276" y="0" width="18" height="100"/>
+    <path fill-rule="evenodd" d="M348 0H376A36 36 0 0 1 412 36V64A36 36 0 0 1 376 100H348A36 36 0 0 1 312 64V36A36 36 0 0 1 348 0Z M352 18H372A22 22 0 0 1 394 40V60A22 22 0 0 1 372 82H352A22 22 0 0 1 330 60V40A22 22 0 0 1 352 18Z"/>
+    <rect x="44" y="-9" width="28" height="18" transform="translate(362 50) rotate(45)"/>
+  </g>
+  <rect fill="#F0502A" x="312" y="66" width="100" height="6"/>
+</svg>

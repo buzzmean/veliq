@@ -1,0 +1,662 @@
+<?xml version='1.0' encoding='utf-8'?>
+<root>
+ <data name="GameUdpEnable" xml:space="preserve"><value>Игровой UDP: включить</value></data>
+ <data name="GameUdpTitle" xml:space="preserve"><value>Игровой UDP-обход</value></data>
+ <data name="GameUdpHint" xml:space="preserve"><value>Только выбранная игра и новые IPv4 UDP-потоки ≥1024. PUBG включён по умолчанию. PUBG начинает с локальной приманки. Vanguard/FACEIT ограничивают только применимые игровые профили; совместимость ещё проверяется.</value></data>
+  <data name="RelayWarningTitle" xml:space="preserve">
+    <value>Направить приложение через релей?</value>
+  </data>
+  <data name="RelayWarningMessage" xml:space="preserve">
+    <value>Трафик приложения «{0}» пойдёт через выбранный VPS. Для игровых серверов и других сервисов без блокировок это может увеличить пинг. Для Steam и игр рекомендуется DIRECT. Продолжить?</value>
+  </data>
+  <data name="Home" xml:space="preserve">
+    <value>Главная</value>
+  </data>
+  <data name="Applications" xml:space="preserve">
+    <value>Приложения</value>
+  </data>
+  <data name="Routes" xml:space="preserve">
+    <value>Маршруты</value>
+  </data>
+  <data name="Statistics" xml:space="preserve">
+    <value>Статистика</value>
+  </data>
+  <data name="Diagnostics" xml:space="preserve">
+    <value>Диагностика</value>
+  </data>
+  <data name="Settings" xml:space="preserve">
+    <value>Настройки</value>
+  </data>
+  <data name="AppSubtitle" xml:space="preserve">
+    <value>Оптимальный маршрут для каждого соединения</value>
+  </data>
+  <data name="Connected" xml:space="preserve">
+    <value>Подключено</value>
+  </data>
+  <data name="Connecting" xml:space="preserve">
+    <value>Подключение к службе…</value>
+  </data>
+  <data name="NoData" xml:space="preserve">
+    <value>Нет данных</value>
+  </data>
+  <data name="Direct" xml:space="preserve">
+    <value>Напрямую</value>
+  </data>
+  <data name="OptimizationOn" xml:space="preserve">
+    <value>Работает</value>
+  </data>
+  <data name="OptimizationOff" xml:space="preserve">
+    <value>Выключено</value>
+  </data>
+  <data name="EnableOptimization" xml:space="preserve">
+    <value>Оптимизировать</value>
+  </data>
+  <data name="DisableOptimization" xml:space="preserve">
+    <value>Выключить</value>
+  </data>
+  <data name="CurrentRoute" xml:space="preserve">
+    <value>Текущий маршрут</value>
+  </data>
+  <data name="Primary" xml:space="preserve">
+    <value>Основной</value>
+  </data>
+  <data name="Backup" xml:space="preserve">
+    <value>Резервный</value>
+  </data>
+  <data name="Unavailable" xml:space="preserve">
+    <value>Недоступен</value>
+  </data>
+  <data name="Available" xml:space="preserve">
+    <value>Доступен</value>
+  </data>
+  <data name="ActiveApps" xml:space="preserve">
+    <value>Активные приложения</value>
+  </data>
+  <data name="DirectLatency" xml:space="preserve">
+    <value>Задержка напрямую</value>
+  </data>
+  <data name="RelayLatency" xml:space="preserve">
+    <value>Задержка через сервер</value>
+  </data>
+  <data name="Latency" xml:space="preserve">
+    <value>Задержка</value>
+  </data>
+  <data name="Jitter" xml:space="preserve">
+    <value>Джиттер</value>
+  </data>
+  <data name="PacketLoss" xml:space="preserve">
+    <value>Потери пакетов</value>
+  </data>
+  <data name="Received" xml:space="preserve">
+    <value>Принято</value>
+  </data>
+  <data name="Sent" xml:space="preserve">
+    <value>Отправлено</value>
+  </data>
+  <data name="Traffic" xml:space="preserve">
+    <value>Трафик</value>
+  </data>
+  <data name="Auto" xml:space="preserve">
+    <value>Авто</value>
+  </data>
+  <data name="ViaServer" xml:space="preserve">
+    <value>Через сервер</value>
+  </data>
+  <data name="Block" xml:space="preserve">
+    <value>Блокировать</value>
+  </data>
+  <data name="AddApplication" xml:space="preserve">
+    <value>Добавить приложение</value>
+  </data>
+  <data name="RemoveApplication" xml:space="preserve">
+    <value>Удалить приложение</value>
+  </data>
+  <data name="Apply" xml:space="preserve">
+    <value>Применить</value>
+  </data>
+  <data name="Executable" xml:space="preserve">
+    <value>Путь к приложению</value>
+  </data>
+  <data name="Application" xml:space="preserve">
+    <value>Приложение</value>
+  </data>
+  <data name="Mode" xml:space="preserve">
+    <value>Режим</value>
+  </data>
+  <data name="Relay" xml:space="preserve">
+    <value>Сервер</value>
+  </data>
+  <data name="ProcessStatus" xml:space="preserve">
+    <value>Состояние процесса</value>
+  </data>
+  <data name="Active" xml:space="preserve">
+    <value>Активен</value>
+  </data>
+  <data name="NotRunning" xml:space="preserve">
+    <value>Не запущен</value>
+  </data>
+  <data name="Unknown" xml:space="preserve">
+    <value>Нет данных</value>
+  </data>
+  <data name="ChooseExecutable" xml:space="preserve">
+    <value>Выберите приложение</value>
+  </data>
+  <data name="ExecutableFilter" xml:space="preserve">
+    <value>Приложения Windows (*.exe)|*.exe</value>
+  </data>
+  <data name="ChooseRelay" xml:space="preserve">
+    <value>Выберите доступный сервер</value>
+  </data>
+  <data name="SelectApplication" xml:space="preserve">
+    <value>Выберите приложение в списке</value>
+  </data>
+  <data name="BlockUnsupported" xml:space="preserve">
+    <value>Этот режим недоступен: служба не поддерживает полную блокировку UDP и TCP.</value>
+  </data>
+  <data name="NoRelay" xml:space="preserve">
+    <value>Нет доступных серверов. Дождитесь подключения и измерений.</value>
+  </data>
+  <data name="InvalidExecutable" xml:space="preserve">
+    <value>Выберите существующий файл с расширением .exe.</value>
+  </data>
+  <data name="DefaultProfile" xml:space="preserve">
+    <value>Можно удалить только пользовательское приложение.</value>
+  </data>
+  <data name="ProfileSaved" xml:space="preserve">
+    <value>Режим сохранён. Изменение применяется к новым соединениям.</value>
+  </data>
+  <data name="RouteStatus" xml:space="preserve">
+    <value>Состояние</value>
+  </data>
+  <data name="Score" xml:space="preserve">
+    <value>Оценка</value>
+  </data>
+  <data name="RouteRole" xml:space="preserve">
+    <value>Назначение</value>
+  </data>
+  <data name="RoutesHint" xml:space="preserve">
+    <value>Маршруты и оценки поступают из службы. Сервер без успешного измерения недоступен для ручного выбора.</value>
+  </data>
+  <data name="LatencyHistory" xml:space="preserve">
+    <value>История измерений</value>
+  </data>
+  <data name="RecentMeasurements" xml:space="preserve">
+    <value>Последние измерения</value>
+  </data>
+  <data name="Time" xml:space="preserve">
+    <value>Время</value>
+  </data>
+  <data name="RouteChanges" xml:space="preserve">
+    <value>Переключения маршрута</value>
+  </data>
+  <data name="NoChanges" xml:space="preserve">
+    <value>Переключений пока нет</value>
+  </data>
+  <data name="RunDiagnostics" xml:space="preserve">
+    <value>Запустить диагностику</value>
+  </data>
+  <data name="Check" xml:space="preserve">
+    <value>Проверка</value>
+  </data>
+  <data name="Result" xml:space="preserve">
+    <value>Результат</value>
+  </data>
+  <data name="Details" xml:space="preserve">
+    <value>Описание</value>
+  </data>
+  <data name="Working" xml:space="preserve">
+    <value>Работает</value>
+  </data>
+  <data name="Error" xml:space="preserve">
+    <value>Ошибка</value>
+  </data>
+  <data name="NotConfigured" xml:space="preserve">
+    <value>Не настроено</value>
+  </data>
+  <data name="NotAvailable" xml:space="preserve">
+    <value>Недоступно</value>
+  </data>
+  <data name="ServiceName" xml:space="preserve">
+    <value>Служба Windows</value>
+  </data>
+  <data name="ControlPlane" xml:space="preserve">
+    <value>Управляющий сервер</value>
+  </data>
+  <data name="DriverName" xml:space="preserve">
+    <value>Драйвер WinDivert</value>
+  </data>
+  <data name="DirectCheck" xml:space="preserve">
+    <value>Прямое соединение</value>
+  </data>
+  <data name="RelayCheck" xml:space="preserve">
+    <value>Соединение через сервер</value>
+  </data>
+  <data name="LatencyCheck" xml:space="preserve">
+    <value>Задержка и потери</value>
+  </data>
+  <data name="ServiceWorking" xml:space="preserve">
+    <value>Соединение со службой установлено.</value>
+  </data>
+  <data name="ServiceMissing" xml:space="preserve">
+    <value>Служба VELIQ не установлена</value>
+  </data>
+  <data name="ServiceStopped" xml:space="preserve">
+    <value>Служба VELIQ остановлена</value>
+  </data>
+  <data name="ServiceIncompatible" xml:space="preserve">
+    <value>Несовместимая версия службы</value>
+  </data>
+  <data name="ServiceUnavailable" xml:space="preserve">
+    <value>Не удалось подключиться к службе</value>
+  </data>
+  <data name="ServiceDenied" xml:space="preserve">
+    <value>Нет доступа к службе. Обратитесь к пользователю, который установил её.</value>
+  </data>
+  <data name="Retry" xml:space="preserve">
+    <value>Повторить подключение</value>
+  </data>
+  <data name="CommandRejected" xml:space="preserve">
+    <value>Служба отклонила команду. Проверьте выбранный режим и доступность сервера.</value>
+  </data>
+  <data name="UnexpectedError" xml:space="preserve">
+    <value>Не удалось выполнить действие. Повторите попытку.</value>
+  </data>
+  <data name="DriverReady" xml:space="preserve">
+    <value>Драйвер готов к перехвату пакетов.</value>
+  </data>
+  <data name="DriverIdle" xml:space="preserve">
+    <value>Перехват выключен. Включите оптимизацию.</value>
+  </data>
+  <data name="DriverFailure" xml:space="preserve">
+    <value>Драйвер не запущен. Проверьте установку и целостность WinDivert.</value>
+  </data>
+  <data name="CaptureUnsupported" xml:space="preserve">
+    <value>Этот вид перехвата не поддерживается установленным драйвером.</value>
+  </data>
+  <data name="DiagnosticHealthy" xml:space="preserve">
+    <value>Проверка соединения выполнена успешно.</value>
+  </data>
+  <data name="DiagnosticUnavailable" xml:space="preserve">
+    <value>Ответ не получен. Проверьте соединение и настройки службы.</value>
+  </data>
+  <data name="DiagnosticUnconfigured" xml:space="preserve">
+    <value>Цель проверки не настроена в службе.</value>
+  </data>
+  <data name="DiagnosticDns" xml:space="preserve">
+    <value>Разрешение имени управляющего сервера.</value>
+  </data>
+  <data name="DiagnosticMtu" xml:space="preserve">
+    <value>Проверка ответа на пакет размером 1100 байт; это не определение MTU всего интернет-маршрута.</value>
+  </data>
+  <data name="AutoStart" xml:space="preserve">
+    <value>Автозапуск с Windows</value>
+  </data>
+  <data name="AutoOptimization" xml:space="preserve">
+    <value>Автоматическая оптимизация</value>
+  </data>
+  <data name="FailureBehavior" xml:space="preserve">
+    <value>При сбое сервера</value>
+  </data>
+  <data name="StartMinimized" xml:space="preserve">
+    <value>Запуск свёрнутым</value>
+  </data>
+  <data name="MinimizeToTray" xml:space="preserve">
+    <value>Сворачивать в трей</value>
+  </data>
+  <data name="UpdateChannel" xml:space="preserve">
+    <value>Канал обновлений</value>
+  </data>
+  <data name="Stable" xml:space="preserve">
+    <value>Стабильный</value>
+  </data>
+  <data name="Preview" xml:space="preserve">
+    <value>Предварительный</value>
+  </data>
+  <data name="SaveSettings" xml:space="preserve">
+    <value>Сохранить настройки</value>
+  </data>
+  <data name="SettingsSaved" xml:space="preserve">
+    <value>Настройки сохранены</value>
+  </data>
+  <data name="SettingsFailed" xml:space="preserve">
+    <value>Не удалось сохранить настройки. Проверьте доступ к службе и к настройкам Windows.</value>
+  </data>
+  <data name="UpdatesHint" xml:space="preserve">
+    <value>Автоматическая установка обновлений пока недоступна.</value>
+  </data>
+  <data name="OpenApp" xml:space="preserve">
+    <value>Открыть VELIQ</value>
+  </data>
+  <data name="TrayEnable" xml:space="preserve">
+    <value>Оптимизировать</value>
+  </data>
+  <data name="TrayDisable" xml:space="preserve">
+    <value>Выключить</value>
+  </data>
+  <data name="Exit" xml:space="preserve">
+    <value>Выйти из VELIQ</value>
+  </data>
+  <data name="TrayHint" xml:space="preserve">
+    <value>VELIQ работает в области уведомлений</value>
+  </data>
+  <data name="NoActiveApps" xml:space="preserve">
+    <value>Нет активных приложений</value>
+  </data>
+  <data name="CaptureHint" xml:space="preserve">
+    <value>Служба направляет выбранные IPv4 UDP/TCP потоки. Неподдерживаемый IPv6 отображается отдельно.</value>
+  </data>
+  <data name="MeasurementsHint" xml:space="preserve">
+    <value>Задержка измеряется до настроенной контрольной точки, а не до игрового сервера.</value>
+  </data>
+  <data name="RouteScopeHint" xml:space="preserve">
+    <value>Маршрут автооптимизации. Фактический маршрут каждого приложения показан в разделе «Сервисы».</value>
+  </data>
+  <data name="ClearMeasurements" xml:space="preserve">
+    <value>Нет свежих измерений</value>
+  </data>
+  <data name="SettingsScope" xml:space="preserve">
+    <value>Настройки окна сохраняются для текущего пользователя. Сетевые настройки применяет служба.</value>
+  </data>
+  <data name="Millisecond" xml:space="preserve">
+    <value>мс</value>
+  </data>
+  <data name="Byte" xml:space="preserve">
+    <value>Б</value>
+  </data>
+  <data name="Kilobyte" xml:space="preserve">
+    <value>КБ</value>
+  </data>
+  <data name="Megabyte" xml:space="preserve">
+    <value>МБ</value>
+  </data>
+  <data name="Gigabyte" xml:space="preserve">
+    <value>ГБ</value>
+  </data>
+  <data name="MixedRoutes" xml:space="preserve">
+    <value>Несколько маршрутов</value>
+  </data>
+  <data name="DiagnosticsPending" xml:space="preserve">
+    <value>Диагностика ещё не запускалась</value>
+  </data>
+  <data name="ApplicationSelectionHint" xml:space="preserve">
+    <value>Выберите приложение, режим и сервер, затем нажмите «Применить».</value>
+  </data>
+  <data name="DeleteConfirm" xml:space="preserve">
+    <value>Удалить выбранное приложение из списка?</value>
+  </data>
+  <data name="ConfirmTitle" xml:space="preserve">
+    <value>VELIQ</value>
+  </data>
+  <data name="ProcessUnavailable" xml:space="preserve">
+    <value>Не удалось получить список процессов</value>
+  </data>
+  <data name="StaleMeasurements" xml:space="preserve">
+    <value>Измерения устарели</value>
+  </data>
+  <data name="ServiceHint" xml:space="preserve">
+    <value>Интерфейс работает без прав администратора. Установку и запуск службы выполняет администратор.</value>
+  </data>
+  <data name="Freshness" xml:space="preserve">
+    <value>Измерения обновляются автоматически</value>
+  </data>
+  <data name="Cancel">
+    <value>Отмена</value>
+  </data>
+  <data name="Ok">
+    <value>Понятно</value>
+  </data>
+  <data name="Remove">
+    <value>Удалить</value>
+  </data>
+  <data name="AlreadyAdded">
+    <value>Это приложение уже добавлено. Выберите его в списке.</value>
+  </data>
+  <data name="LocalSettingsSaved">
+    <value>Настройки окна сохранены. Сетевые настройки не изменены: нет связи со службой.</value>
+  </data>
+  <data name="BurstLoss">
+    <value>Серия потерь</value>
+  </data>
+  <data name="Stability">
+    <value>Стабильность</value>
+  </data>
+  <data name="Samples">
+    <value>Количество измерений</value>
+  </data>
+  <data name="MedianPing">
+    <value>Медианная задержка</value>
+  </data>
+  <data name="P95Ping">
+    <value>Задержка p95</value>
+  </data>
+  <data name="CaptureQueueDrops">
+    <value>Потери локальной очереди</value>
+  </data>
+  <data name="WorkerDrops">
+    <value>Потери при перегрузке обработчиков</value>
+  </data>
+  <data name="TransportDrops">
+    <value>Потери очереди транспорта</value>
+  </data>
+  <data name="DecodeDrops">
+    <value>Ошибки декодирования</value>
+  </data>
+  <data name="UnknownFlowDrops">
+    <value>Неизвестные потоки</value>
+  </data>
+  <data name="SocketDrops">
+    <value>Ошибки отправки</value>
+  </data>
+  <data name="ReinjectDrops">
+    <value>Ошибки возврата пакетов</value>
+  </data>
+  <data name="KernelDrops">
+    <value>Потери очереди драйвера</value>
+  </data>
+  <data name="CaptureErrors">
+    <value>Ошибки чтения перехвата</value>
+  </data>
+  <data name="PolicyDrops">
+    <value>Блокировка по правилу</value>
+  </data>
+  <data name="CaptureDrops">
+    <value>Потери обработки</value>
+  </data>
+  <data name="Packets">
+    <value>пакетов</value>
+  </data>
+  <data name="Events">
+    <value>событий</value>
+  </data>
+  <data name="FractionUnknown">
+    <value>доля неизвестна</value>
+  </data>
+  <data name="RemoteDrops">
+    <value>Потери на сервере</value>
+  </data>
+  <data name="RemoteDropsHint">
+    <value>Счётчики сервера доступны в его диагностике. Клиент не знает их значения.</value>
+  </data>
+  <data name="QualityScope">
+    <value>Качество контрольных проб за последние 60 секунд; это не оценка потерь игрового протокола.</value>
+  </data>
+<data name="IPv6Unsupported" xml:space="preserve"><value>Транспорт IPv6 не поддерживается</value></data>
+<data name="IPv6Blocked" xml:space="preserve"><value>IPv6 заблокирован для выбранного приложения</value></data>
+<data name="TcpInterception" xml:space="preserve"><value>Перехват TCP</value></data>
+<data name="UdpInterception" xml:space="preserve"><value>Перехват UDP</value></data>
+<data name="IPv4Label" xml:space="preserve"><value>Трафик IPv4</value></data>
+<data name="IPv6Label" xml:space="preserve"><value>Трафик IPv6</value></data>
+<data name="HttpsRelay" xml:space="preserve"><value>HTTPS через relay</value></data>
+<data name="QuicRelay" xml:space="preserve"><value>QUIC через relay</value></data>
+<data name="BrowserDns" xml:space="preserve"><value>DNS приложения</value></data>
+<data name="BrowserDnsHint" xml:space="preserve"><value>Системный DNS не перенаправляется. Запросы DNS Client могут принадлежать svchost; DNS браузера и DoH нужно проверять отдельно.</value></data>
+<data name="WebNotMeasured" xml:space="preserve"><value>Нет доказательства протокола. Наличие TCP/UDP flow не доказывает HTTPS или QUIC. Запустите отдельный web acceptance.</value></data>
+<data name="IPv6GuardHint" xml:space="preserve"><value>Новые распознанные IPv6 потоки выбранных RELAY-приложений блокируются на сетевом уровне. Существующие TCP, неизвестные PID и неподдерживаемые пакеты остаются DIRECT; внешняя Windows проверка не выполнена.</value></data>
+<data name="InterceptionHint" xml:space="preserve"><value>Состояние backend; успешное внешнее соединение подтверждается отдельным acceptance.</value></data>
+<data name="UdpTraffic" xml:space="preserve"><value>Трафик UDP</value></data>
+<data name="TcpTraffic" xml:space="preserve"><value>Трафик TCP</value></data>
+  <data name="DirectPlus" xml:space="preserve"><value>Напрямую+</value></data>
+  <data name="LocalStrategies" xml:space="preserve"><value>Локальные стратегии</value></data>
+  <data name="LocalDetails" xml:space="preserve"><value>Стратегия / target / протокол / байты</value></data>
+  <data name="LocalWarning" xml:space="preserve"><value>Экспериментально. Только явные приложения и targets. Работа на вашей сети ещё требует теста. DIRECT следует текущей маршрутизации Windows и может идти через VPN. Экономия VPS без RELAY baseline не измерена.</value></data>
+  <data name="LocalEnabled" xml:space="preserve"><value>Включить Напрямую+</value></data>
+  <data name="AutoStrategy" xml:space="preserve"><value>Auto Strategy: использовать проверенный вариант в режиме «Авто»</value></data>
+  <data name="LocalLoad" xml:space="preserve"><value>Загрузить</value></data>
+  <data name="LocalSave" xml:space="preserve"><value>Сохранить</value></data>
+  <data name="LocalAdd" xml:space="preserve"><value>Добавить / заменить правило</value></data>
+  <data name="LocalRemove" xml:space="preserve"><value>Удалить правило</value></data>
+  <data name="LocalTest" xml:space="preserve"><value>Запустить контролируемый тест</value></data>
+  <data name="LocalApp" xml:space="preserve"><value>Полный путь к exe (для tester: tcp-selected.exe)</value></data>
+  <data name="LocalDomains" xml:space="preserve"><value>Домены: exact или *.example.org, через запятую</value></data>
+  <data name="LocalIPs" xml:space="preserve"><value>IP / CIDR, через запятую</value></data>
+  <data name="LocalExcludeDomains" xml:space="preserve"><value>Исключить домены</value></data>
+  <data name="LocalExcludeIPs" xml:space="preserve"><value>Исключить IP / CIDR</value></data>
+  <data name="LocalPorts" xml:space="preserve"><value>Порты, через запятую</value></data>
+  <data name="LocalURL" xml:space="preserve"><value>Контролируемый target: HTTP/HTTPS URL или IPv4:port для UDP</value></data>
+  <data name="LocalToken" xml:space="preserve"><value>Файл endpoint token (не IPC token)</value></data>
+  <data name="LocalCA" xml:space="preserve"><value>Файл CA endpoint, если нужен (TLS проверяется)</value></data>
+  <data name="LocalCounters" xml:space="preserve"><value>Осмотрено {0}, изменено {1}, дополнительных пакетов {2}, flows {3}, DIRECT+ {4}. Экономия VPS: не измерена.</value></data>
+  <data name="LocalSelect" xml:space="preserve"><value>Выберите приложение/правило; настройте явный target.</value></data>
+  <data name="LocalTestScript" xml:space="preserve"><value>Выберите tools/windows/strategy-tester.ps1 из текущего checkout</value></data>
+  <data name="LocalSaved" xml:space="preserve"><value>Стратегии сохранены. Старые TCP connections не меняют маршрут.</value></data>
+  <data name="LocalAutoHint" xml:space="preserve"><value>«Авто» использует только свежий tester cache этого exe/target. Результат tcp-selected.exe не переносится на Chrome/игру.</value></data>
+<data name="Enabled" xml:space="preserve"><value>Включено</value></data>
+<data name="LocalTcp1" xml:space="preserve"><value>TCP: разделить после 1 байта</value></data>
+<data name="LocalTcp5" xml:space="preserve"><value>TCP: разделить после 5 байтов</value></data>
+<data name="LocalUdp24" xml:space="preserve"><value>UDP: фрагментация IPv4 (эксперимент)</value></data>
+<data name="LocalNetwork" xml:space="preserve"><value>Сетевые адаптеры (наблюдение службы)</value></data>
+<data name="LocalVPN" xml:space="preserve"><value>Сторонний VPN / Happ</value></data>
+<data name="LocalConflict" xml:space="preserve"><value>Конфликт WinDivert / античит</value></data>
+<data name="LocalRoutes" xml:space="preserve"><value>Маршруты Windows / исключение к VPS</value></data>
+<data name="LocalDNS" xml:space="preserve"><value>Системный DNS / Secure DNS</value></data>
+<data name="LocalProxy" xml:space="preserve"><value>Системный WinHTTP proxy (контекст службы)</value></data>
+<data name="LocalVPNUnknown" xml:space="preserve"><value>Публичный выход не измерен. DIRECT может использовать VPN; физический ISP не предполагается.</value></data>
+<data name="LocalConflictUnknown" xml:space="preserve"><value>Известный конфликт не найден. Проверка модулей может быть неполной; это не гарантия совместимости.</value></data>
+<data name="LocalDNSUnknown" xml:space="preserve"><value>Наличие DoH-конфигурации не доказывает доступность. Browser DoH и его публичный выход не измерены.</value></data>
+<data name="LocalLoadFirst" xml:space="preserve"><value>Сначала загрузите текущие стратегии, чтобы сохранить существующие правила.</value></data>
+<data name="LocalTcpCustom" xml:space="preserve"><value>TCP: настраиваемая сегментация</value></data>
+<data name="LocalSplitPosition" xml:space="preserve"><value>Позиция для настраиваемой TCP-стратегии (1–512)</value></data>
+  <data name="RunningApplicationsHint" xml:space="preserve"><value>Выберите запущенное приложение. Несколько процессов одного приложения показаны одной строкой. Приложение будет добавлено по полному пути к exe.</value></data>
+  <data name="RefreshProcesses" xml:space="preserve"><value>Обновить</value></data>
+  <data name="SearchApplications" xml:space="preserve"><value>Поиск по названию, exe, пути или PID</value></data>
+  <data name="ProcessIdentifiers" xml:space="preserve"><value>PID процессов</value></data>
+  <data name="ChooseFileManually" xml:space="preserve"><value>Выбрать файл вручную</value></data>
+  <data name="Add" xml:space="preserve"><value>Добавить</value></data>
+  <data name="RunningProcessCount" xml:space="preserve"><value>Процессов: {0}</value></data>
+  <data name="RunningLoading" xml:space="preserve"><value>Загрузка запущенных приложений…</value></data>
+  <data name="RunningEmpty" xml:space="preserve"><value>Приложения не найдены. Обновите список, измените поиск или выберите файл вручную.</value></data>
+  <data name="RunningTruncated" xml:space="preserve"><value>Список ограничен. Некоторые приложения или процессы не показаны; можно выбрать файл вручную.</value></data>
+  <data name="QuicFallback" xml:space="preserve"><value>HTTP/3/QUIC → TCP fallback (для приложения)</value></data>
+  <data name="ApplyPreset" xml:space="preserve"><value>Применить пресет DIRECT+</value></data>
+  <data name="DiscordPreset" xml:space="preserve"><value>Discord — пресет v2</value></data>
+  <data name="YouTubePreset" xml:space="preserve"><value>YouTube — пресет v2</value></data>
+  <data name="PresetHint" xml:space="preserve"><value>Выберите приложение в разделе «Приложения», затем примените Discord или YouTube. Цепочки и явный TTL видны в таблице Advanced. QUIC fallback действует только на новые IPv4 UDP/443 этого приложения, до 3 секунд / 8 пакетов. Voice UDP не блокируется.</value></data>
+  <data name="PresetNeedsPath" xml:space="preserve"><value>Сначала добавьте приложение по полному пути к exe.</value></data>
+  <data name="ChainAdvancedReadOnly" xml:space="preserve"><value>Цепочки пресета показаны в Advanced. Для настройки используйте local.set; этот редактор одиночных механизмов не перезаписывает цепочки.</value></data>
+  <data name="LocalModified" xml:space="preserve"><value>Изменённые пакеты</value></data>
+  <data name="RelayTraffic" xml:space="preserve"><value>Трафик relay</value></data>
+  <data name="LocalTestV2" xml:space="preserve"><value>Тестер v2 — реальное приложение / HTTPS</value></data>
+  <data name="ApplyVariant" xml:space="preserve"><value>Применить выделенный вариант к приложению (MANUAL DIRECT+)</value></data>
+  <data name="PresetVersionLabel" xml:space="preserve"><value>Пресет / версия / вариант</value></data>
+  <data name="AutoOptimize" xml:space="preserve"><value>AUTO · Оптимизировать</value></data>
+  <data name="AdvancedDiagnostics" xml:space="preserve"><value>Расширенные настройки / диагностика</value></data>
+  <data name="AutoToolsMissing" xml:space="preserve"><value>Установите tools/windows из того же service/scripts artifact.</value></data>
+  <data name="AutoStartFailed" xml:space="preserve"><value>Не удалось запустить проверку маршрута.</value></data>
+  <data name="AutoProbeFailed" xml:space="preserve"><value>Проверка маршрута не завершена. Диагностика сохранена:</value></data>
+  <data name="AutoChecking" xml:space="preserve"><value>Проверка маршрута…</value></data>
+  <data name="AutoConfigured" xml:space="preserve"><value>AUTO настроен. VELIQ автоматически обновит сетевые соединения выбранного приложения.</value></data>
+  <data name="ProtectedFlowBlocked" xml:space="preserve"><value>Защищённый маршрут недоступен</value></data>
+  <data name="ProtectedRoute" xml:space="preserve"><value>Защищённый маршрут</value></data>
+  <data name="HybridRoute" xml:space="preserve"><value>Прямой и защищённый маршрут</value></data>
+  <data name="AppliedDirectOptimization" xml:space="preserve"><value>Прямой маршрут с оптимизацией</value></data>
+  <data name="DirectConnection" xml:space="preserve"><value>Прямое соединение</value></data>
+  <data name="PartialRouteEvidence" xml:space="preserve"><value>Неполные данные:</value></data>
+  <data name="InheritFallback" xml:space="preserve"><value>Резерв: общая политика</value></data>
+  <data name="RequiredRelayFallback" xml:space="preserve"><value>Relay обязателен, без прямого fallback</value></data>
+  <data name="HotAttachReconnecting" xml:space="preserve"><value>Переподключаем выбранные приложения…</value></data>
+  <data name="HotAttachIncomplete" xml:space="preserve"><value>Не все соединения обновлены — откройте диагностику</value></data>
+  <data name="HotAttachNetworkHint" xml:space="preserve"><value>Обновлены TCP / ожидают обновления. Восстановление приложения проверяется его реальным трафиком.</value></data>
+  <data name="ChromeSites" xml:space="preserve"><value>Chrome: AUTO по сайтам</value></data>
+  <data name="ChromeSitesHint" xml:space="preserve"><value>Chrome с локальным PAC: маршрут закреплён за доменом. Origin-probe не подтверждает загрузку авторизованной страницы.</value></data>
+  <data name="BrowsersNotCovered" xml:space="preserve"><value>Автоматически маршрутизируется только Chrome. Эти установленные браузеры не охвачены и работают напрямую:</value></data>
+  <data name="ChromeAutoSetupFailed" xml:space="preserve"><value>Не удалось автоматически настроить Chrome, остальная оптимизация включается:</value></data>
+  <data name="SelectChromeAuto" xml:space="preserve"><value>Выберите Chrome по полному пути и включите AUTO.</value></data>
+  <data name="ChromeSitesRestart" xml:space="preserve"><value>Политика VELIQ применяется без закрытия браузера. До подтверждения запросом: ожидается подхват policy; при отсутствии подхвата маршрут применится при следующем запуске браузера.</value></data>
+  <data name="ChromeSitesStillRunning" xml:space="preserve"><value>Политика VELIQ применяется без закрытия браузера. До подтверждения запросом: ожидается подхват policy; при отсутствии подхвата маршрут применится при следующем запуске браузера.</value></data>
+  <data name="ChromeSitesLaunched" xml:space="preserve"><value>Политика VELIQ применяется без закрытия браузера. До подтверждения запросом: ожидается подхват policy; при отсутствии подхвата маршрут применится при следующем запуске браузера.</value></data>
+  <data name="DomainLabel" xml:space="preserve"><value>Домен</value></data>
+  <data name="ReasonLabel" xml:space="preserve"><value>Причина</value></data>
+  <data name="ChromeProxyManaged" xml:space="preserve"><value>В Chrome уже настроен другой или управляемый proxy. VELIQ не будет его перезаписывать.</value></data>
+  <data name="DisableChromeSites" xml:space="preserve"><value>Отключить PAC Chrome</value></data>
+  <data name="ChromeSitesRemoved" xml:space="preserve"><value>Политика VELIQ применяется без закрытия браузера. До подтверждения запросом: ожидается подхват policy; при отсутствии подхвата маршрут применится при следующем запуске браузера.</value></data>
+  <data name="ChromeRoutesByDomain" xml:space="preserve"><value>Маршруты по сайтам</value></data>
+  <data name="ChromeActivationFailed" xml:space="preserve"><value>Chrome AUTO не активирован: проверка транспорта, policy или профиля не завершилась. Обычные сайты восстановлены; защита OpenAI сохранена. Проверьте browser.status и журнал службы.</value></data>
+  <data name="ChromeRollbackFailed" xml:space="preserve"><value>Chrome AUTO не активирован. Защитный PAC сохранён, но восстановление профиля не подтверждено. Проверьте доступность службы.</value></data>
+  <data name="ChromeGuardFailed" xml:space="preserve"><value>Не удалось установить защитный Chrome PAC. Активация отменена; маршруты не изменены. Проверьте управление Chrome policy.</value></data>
+  <data name="ChromeAutomaticDisabled" xml:space="preserve"><value>Для Chrome AUTO включите автоматическую маршрутизацию в настройках. Активация отменена; защитный PAC сохранён.</value></data>
+  <data name="ChromeRecoveryActive" xml:space="preserve"><value>Chrome: резервный DIRECT для обычных сайтов. Защищённые сайты ожидают восстановления службы.</value></data>
+  <data name="ChromeRecoveryUnavailable" xml:space="preserve"><value>Резервный транспорт Chrome не готов. Основной маршрут не изменён; проверьте обновление service/GUI и diagnostics.</value></data>
+  <data name="EdgeSites" xml:space="preserve"><value>Сайты Edge AUTO</value></data>
+  <data name="DisableEdgeSites" xml:space="preserve"><value>Отключить PAC Edge</value></data>
+  <data name="EdgeDomainLabel" xml:space="preserve"><value>Домен Edge</value></data>
+  <data name="TransportOutcome" xml:space="preserve"><value>Результат транспорта</value></data>
+  <data name="ActivationStatusChecking" xml:space="preserve"><value>Код активации: проверяем</value></data>
+  <data name="ChangeActivationCode" xml:space="preserve"><value>Сменить</value></data>
+  <data name="RenewSubscription" xml:space="preserve"><value>Продлить</value></data>
+  <data name="SubscriptionEnded" xml:space="preserve"><value>Подписка закончилась</value></data>
+  <data name="SubscriptionEndedLead" xml:space="preserve"><value>Интернет работает как без VELIQ. Продлите подписку в личном кабинете — VELIQ включится сам.</value></data>
+  <data name="SubscriptionRecheck" xml:space="preserve"><value>Я уже оплатил — проверить</value></data>
+  <data name="EnterActivationCode" xml:space="preserve"><value>Введите код активации</value></data>
+  <data name="ActivateCode" xml:space="preserve"><value>Активировать</value></data>
+  <data name="Games" xml:space="preserve"><value>Игры</value></data>
+  <data name="GameCatalogHint" xml:space="preserve"><value>Нажмите на игру, чтобы выбрать маршрут. Полоса в значке значит, что у игры свой маршрут.</value></data>
+  <data name="GameCatalogSearch" xml:space="preserve"><value>Поиск игры</value></data>
+  <data name="GameCatalogApply" xml:space="preserve"><value>Применить</value></data>
+  <data name="GameCatalogRepair" xml:space="preserve"><value>Исправить лаунчер</value></data>
+  <data name="NavServices" xml:space="preserve"><value>Сервисы</value></data>
+  <data name="NavAbout" xml:space="preserve"><value>О программе</value></data>
+  <data name="ServicesLead" xml:space="preserve"><value>Приложения и сайты, для которых VELIQ строит маршрут. Остальные соединения VELIQ ведёт по самому быстрому пути сам.</value></data>
+  <data name="DiagRecheck" xml:space="preserve"><value>Проверить снова</value></data>
+  <data name="SupportReport" xml:space="preserve"><value>Сохранить отчёт для поддержки</value></data>
+  <data name="SetSupport" xml:space="preserve"><value>Поддержка</value></data>
+  <data name="ShowTechnical" xml:space="preserve"><value>Технические детали</value></data>
+  <data name="DiagnosticsLead" xml:space="preserve"><value>Проверка, что VELIQ работает как надо.</value></data>
+  <data name="AboutLead" xml:space="preserve"><value>Оптимальный маршрут для каждого соединения.</value></data>
+  <data name="DiagChecksTab" xml:space="preserve"><value>Проверка</value></data>
+  <data name="SetActivation" xml:space="preserve"><value>Активация</value></data>
+  <data name="SetStart" xml:space="preserve"><value>Запуск</value></data>
+  <data name="SetNetwork" xml:space="preserve"><value>Сеть</value></data>
+  <data name="SetUpdates" xml:space="preserve"><value>Обновления</value></data>
+  <data name="AboutVersion" xml:space="preserve"><value>Версия</value></data>
+  <data name="AboutFont" xml:space="preserve"><value>Шрифт Onest распространяется по лицензии SIL Open Font License 1.1.</value></data>
+  <data name="ActivationLead" xml:space="preserve"><value>Код выдаётся после заявки для клуба или отдельно для игрока.</value></data>
+  <data name="TrayDiagnostics" xml:space="preserve"><value>Диагностика</value></data>
+  <data name="MetricRoute" xml:space="preserve"><value>Маршрут</value></data>
+  <data name="NowViaVeliq" xml:space="preserve"><value>Сейчас через VELIQ</value></data>
+  <data name="AboutService" xml:space="preserve"><value>Служба</value></data>
+  <data name="HomeOffLead" xml:space="preserve"><value>Нажмите кнопку, и VELIQ построит оптимальный маршрут для каждого соединения.</value></data>
+  <data name="HomeConnectingLead" xml:space="preserve"><value>Замеряем пути и подключаем браузер. Обычно это занимает пару секунд.</value></data>
+  <data name="HomeOnLead" xml:space="preserve"><value>Маршруты построены: заблокированное открывается, игры идут по самому быстрому пути.</value></data>
+  <data name="HomeErrorLead" xml:space="preserve"><value>Пока ошибка не исправлена, интернет работает как без VELIQ.</value></data>
+  <data name="GoSubOff" xml:space="preserve"><value>выключено</value></data>
+  <data name="GoSubConnecting" xml:space="preserve"><value>строим маршруты</value></data>
+  <data name="GoSubOn" xml:space="preserve"><value>новые соединения</value></data>
+  <data name="GoSubError" xml:space="preserve"><value>нет связи со службой</value></data>
+  <data name="MetricServer" xml:space="preserve"><value>Сервер</value></data>
+  <data name="ServerAuto" xml:space="preserve"><value>Выбран автоматически</value></data>
+  <data name="ServerPending" xml:space="preserve"><value>Выбирается автоматически</value></data>
+  <data name="AccountHeading" xml:space="preserve"><value>Аккаунт</value></data>
+  <data name="AccountCabinet" xml:space="preserve"><value>Личный кабинет</value></data>
+  <data name="AccountTitle" xml:space="preserve"><value>Войти в VELIQ</value></data>
+  <data name="AccountLead" xml:space="preserve"><value>Войдите или зарегистрируйтесь в браузере.</value></data>
+  <data name="AccountSignIn" xml:space="preserve"><value>Войти или зарегистрироваться</value></data>
+  <data name="AccountLegacyCode" xml:space="preserve"><value>Ранее выданный код</value></data>
+  <data name="AccountLabel" xml:space="preserve"><value>Аккаунт VELIQ</value></data>
+  <data name="EmergencyAction" xml:space="preserve"><value>Аварийное отключение…</value></data>
+  <data name="EmergencyHint" xml:space="preserve"><value>Отключить VELIQ по отдельному паролю без перезагрузки</value></data>
+  <data name="EmergencyPasswordHeading" xml:space="preserve"><value>Пароль аварийного отключения</value></data>
+  <data name="EmergencyPasswordHelp" xml:space="preserve"><value>Отдельный пароль VELIQ работает без интернета. Задайте его при настройке этой установки.</value></data>
+  <data name="EmergencyPasswordSetup" xml:space="preserve"><value>Настроить пароль отключения…</value></data>
+  <data name="AutomaticApplicationsTitle" xml:space="preserve"><value>Приложения определяются автоматически</value></data>
+  <data name="AutomaticApplicationsHint" xml:space="preserve"><value>Включите VELIQ — добавлять приложения и сайты вручную не требуется. В режиме AUTO маршрут подбирается при сетевом сбое. Заданные ранее правила сохраняются; изменить их можно в расширенных настройках.</value></data>
+</root>
