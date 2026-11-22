@@ -32,6 +32,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -61,7 +62,12 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	files.Directory = dir
-	f, err := browserfixture.New()
+	const localHost = "native-dpi.example"
+	// Native wire evidence here uses an authorized fixture-specific rule on a
+	// dynamically allocated loopback port. Production YouTube requires the
+	// separate public IPv4 HTTPS/443 policy.
+	domains := append(slices.Clone(browserfixture.Domains), localHost)
+	f, err := browserfixture.New(domains...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,6 +157,7 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 	}
 	selected := ""
 	for i := range entries {
+		entries[i].Domains = []string{localHost}
 		entries[i].Ports = []uint16{f.Port()}
 		if strings.HasSuffix(entries[i].ID, "-disorder") && !strings.HasSuffix(entries[i].ID, "-fake8-disorder") {
 			selected = entries[i].ID
@@ -160,6 +167,8 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := profiles.Profile{ID: "native-chrome-sites", Name: "Chrome isolated acceptance", Executables: []string{chrome}, Mode: profiles.DirectPlus, LocalStrategyID: selected, Custom: true}
+	p.Rules = []flowpolicy.Rule{{ID: "fixture-local", Protocol: "tcp", Domains: []string{localHost}, Ports: []flowpolicy.PortRange{{First: f.Port(), Last: f.Port()}},
+		Action: flowpolicy.DirectPlus, Strategy: selected, Fallback: flowpolicy.FailBlock}}
 	put := func() {
 		raw, _ := json.Marshal(p)
 		if _, e := c.Handle(ctx, "profile.set", raw); e != nil {
@@ -293,11 +302,16 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 	args = clean
 
 	rules := []string{}
-	for _, host := range browserfixture.Domains {
+	for _, host := range domains {
 		rules = append(rules, "MAP "+host+" 127.0.0.1")
 	}
 	args = append(args, "--host-resolver-rules="+strings.Join(rules, ", "))
-	f.ExpectedFailures = map[int][]string{3: {"chatgpt.com", "www.youtube.com", "blocked.example", "web.telegram.org"}}
+	f.ExpectedFailures = map[int][]string{
+		1: {"www.youtube.com"},
+		2: {"www.youtube.com"},
+		3: {"chatgpt.com", "www.youtube.com", localHost, "blocked.example", "web.telegram.org"},
+		4: {"www.youtube.com"},
+	}
 	// Actual policy, normal sandbox, a disposable health profile. Commit AUTO
 	// before starting/restoring the real multi-origin Chrome process.
 	if err := browserfixture.RunPolicyHealthProbe(ctx, chrome, healthURL, t.TempDir()); err != nil {
@@ -539,14 +553,14 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 	})
 	if err != nil {
 		view, _ := c.Handle(ctx, "browser.status", nil)
-		captured, _ := backend.DiagnosticsScoped(wp.EvidenceQuery{Destination: f.Destination().String(), Domain: "www.youtube.com"})
+		captured, _ := backend.DiagnosticsScoped(wp.EvidenceQuery{Destination: f.Destination().String(), Domain: localHost})
 		captureRaw, _ := json.Marshal(captured)
 		native, _ := c.Handle(ctx, "browser.native.status", nil)
 		nativeRaw, _ := json.Marshal(native)
 		traceMu.Lock()
 		traceRaw, _ := json.Marshal(trace)
 		traceMu.Unlock()
-		t.Fatal("controlled Chrome HTTP(S) failed", err, out, view, "native status", string(nativeRaw), "native packet trace", string(traceRaw), "YouTube capture", string(captureRaw))
+		t.Fatal("controlled Chrome HTTP(S) failed", err, out, view, "native status", string(nativeRaw), "native packet trace", string(traceRaw), "local fixture capture", string(captureRaw))
 	}
 	// Wait for actual Chrome sockets to close so forwarded byte counters are final.
 	var snap browserproxy.Snapshot
@@ -614,10 +628,14 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 			}
 			found[r.Domain] = true
 		case "www.youtube.com":
+			if r.Sent != 0 || r.Received != 0 {
+				t.Fatal("YouTube used an upstream outside its approved HTTPS scope", r)
+			}
+		case localHost:
 			if r.Plan.Policy.Action != flowpolicy.DirectPlus || !r.DirectPlusApplied || r.Sent == 0 || r.Received == 0 {
 				proof, _ := backend.DiagnosticsScoped(wp.EvidenceQuery{Destination: f.Destination().String()})
 				rawProof, _ := json.Marshal(proof)
-				t.Fatal("YouTube local route missing", r, string(rawProof))
+				t.Fatal("scoped native local route missing", r, string(rawProof))
 			}
 			found[r.Domain] = true
 		case "ordinary.example", "vk.com", "music.yandex.ru", "langame.ru", "www.twitch.tv":
@@ -627,7 +645,7 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 			found[r.Domain] = true
 		}
 	}
-	if len(found) != len(browserfixture.Domains) {
+	if len(found) != len(domains)-1 {
 		t.Fatal("missing CONNECT origins; possible HTTP/2 pooling", found)
 	}
 	evidence, err := backend.DiagnosticsScoped(wp.EvidenceQuery{Destination: f.Destination().String()})
@@ -639,7 +657,7 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 	}
 	applied := false
 	for _, flow := range evidence.Flows {
-		if flow.Domain == "www.youtube.com" && flow.Counters.DirectPlus > 0 && flow.Counters.DirectPlusBytes > 0 && flow.Counters.RelayedBytes == 0 {
+		if flow.Domain == localHost && flow.Counters.DirectPlus > 0 && flow.Counters.DirectPlusBytes > 0 && flow.Counters.RelayedBytes == 0 {
 			applied = true
 		}
 		if protected := flow.Domain == "chatgpt.com"; protected && flow.Counters.DirectBytes > 0 {
@@ -652,7 +670,7 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 	if server.Metrics.TCPConnections.Load() < 2 || server.Metrics.RXBytes.Load() == 0 {
 		t.Fatal("real authenticated relay not used")
 	}
-	t.Log("PASS: same Chrome simultaneous controlled HTTPS+HTTP2: protected RELAY_REQUIRED, YouTube native disorder with modified packets, ordinary DIRECT, blocked unknown -> real relay; no production VPS touched")
+	t.Log("PASS: same Chrome simultaneous controlled HTTPS+HTTP2: protected RELAY_REQUIRED, scoped native disorder with modified packets, ordinary DIRECT, blocked unknown -> real relay; no production VPS touched")
 }
 
 // Loopback's jumbo MSS can emit a complete modern Chrome ClientHello in one

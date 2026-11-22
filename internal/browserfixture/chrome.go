@@ -251,7 +251,7 @@ func (f *Fixture) RunChrome(ctx context.Context, chrome string, args []string, t
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	for _, host := range Domains {
+	for _, host := range f.domains {
 		var expectedSuccess bool
 		for stage := 1; stage <= len(transitions)+1; stage++ {
 			if !slices.Contains(f.ExpectedFailures[stage], host) {
