@@ -2,6 +2,7 @@ package gameudp
 
 import (
 	"net/netip"
+	"slices"
 	"time"
 )
 
@@ -13,12 +14,18 @@ const (
 )
 
 // SetCS2STUNEndpoint configures one endpoint for local-only runs of this engine.
-// Existing flows retain their route and cannot start a new first flight.
 func (e *Engine) SetCS2STUNEndpoint(endpoint netip.AddrPort) {
+	e.SetCS2STUNScope(endpoint, nil)
+}
+
+// SetCS2STUNScope configures a fixed endpoint or server ports for an exact CS2
+// executable. Existing flows cannot start a new first flight.
+func (e *Engine) SetCS2STUNScope(endpoint netip.AddrPort, ports []uint16) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if e.stunEndpoint != endpoint {
+	if e.stunEndpoint != endpoint || !slices.Equal(e.stunPorts, ports) {
 		e.stunEndpoint = endpoint
+		e.stunPorts = slices.Clone(ports)
 		e.generation++
 	}
 }
@@ -30,14 +37,21 @@ func (e *Engine) openSTUNFlow(k Key, now time.Time) (*Flow, error) {
 		Source: k.Source.String(), Destination: k.Destination.String(), Started: now,
 		State: "PROBATION", Reason: "SUSTAINED_REPLY_NOT_OBSERVED",
 	}
+	selection := ""
+	switch {
+	case k.Destination == e.stunEndpoint:
+		selection = "CS2_STUN_ENDPOINT"
+	case slices.Contains(e.stunPorts, k.Destination.Port()):
+		selection = "CS2_STUN_SERVER_PORT"
+	}
 	var payload []byte
-	if k.Destination == e.stunEndpoint {
+	if selection != "" {
 		var err error
 		payload, err = STUNPayload()
 		if err != nil {
 			return nil, err
 		}
-		state.Selection = "CS2_STUN_ENDPOINT"
+		state.Selection = selection
 		state.Stage = Local
 		state.Variant = Variant{ID: "stun-binding-ttl8-k6-n2-d4", Repeats: cs2STUNRepeats, Cutoff: cs2STUNInitialCutoff, Size: len(payload), First: payload[0]}
 		state.FakeTTL = cs2STUNFakeTTL

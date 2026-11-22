@@ -41,6 +41,7 @@ type gameRuntime struct {
 	error           string
 	quality         gameudp.TargetQuality
 	cs2STUNEndpoint netip.AddrPort
+	cs2STUNPorts    []uint16
 	cs2STUNInvalid  bool
 }
 type gameDiskEntry struct {
@@ -72,7 +73,7 @@ type GameProfileStatus struct {
 }
 
 func (c *Controller) loadGames() {
-	c.loadCS2STUNEndpoint()
+	c.loadCS2STUNScope()
 	raw, err := os.ReadFile(filepath.Join(filepath.Dir(c.customPath), "game-udp.json"))
 	if os.IsNotExist(err) {
 		return

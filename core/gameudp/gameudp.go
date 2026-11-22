@@ -9,6 +9,7 @@ import (
 	"github.com/buzzmean/neexitlag/core/routing"
 	"io"
 	"net/netip"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -160,6 +161,7 @@ type Learning struct {
 }
 type Snapshot struct {
 	CS2STUNEndpoint string     `json:"cs2_stun_endpoint,omitempty"`
+	CS2STUNPorts    []uint16   `json:"cs2_stun_ports,omitempty"`
 	LocalOnly       bool       `json:"local_only"`
 	InitialPolicy   string     `json:"initial_policy"`
 	Enabled         bool       `json:"enabled"`
@@ -178,6 +180,7 @@ type Engine struct {
 	startLocal                 bool
 	endpointScoped             bool
 	stunEndpoint               netip.AddrPort
+	stunPorts                  []uint16
 	shared                     *Budget
 	application                string
 	network                    string
@@ -272,7 +275,7 @@ func (e *Engine) OpenWithQuality(k Key, now time.Time, measuredRelay string) (*F
 	if len(e.flows) >= MaxFlows {
 		return nil, errors.New("GAME_UDP_FLOW_CAPACITY")
 	}
-	if e.localOnly && e.stunEndpoint.IsValid() {
+	if e.localOnly && (e.stunEndpoint.IsValid() || len(e.stunPorts) > 0) {
 		return e.openSTUNFlow(k, now)
 	}
 	cache := e.learning[e.trialKey(k)]
@@ -655,6 +658,10 @@ func (e *Engine) Snapshot() Snapshot {
 	if e.localOnly && e.stunEndpoint.IsValid() {
 		out.CS2STUNEndpoint = e.stunEndpoint.String()
 		out.InitialPolicy = "CS2_STUN_ENDPOINT"
+	}
+	if e.localOnly && len(e.stunPorts) > 0 {
+		out.CS2STUNPorts = slices.Clone(e.stunPorts)
+		out.InitialPolicy = "CS2_STUN_SERVER_PORT"
 	}
 	for _, f := range e.flows {
 		out.Flows = append(out.Flows, f.e)

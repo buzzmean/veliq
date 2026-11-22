@@ -55,3 +55,38 @@ func TestCS2STUNLocksSelectionToEndpointAndLocalOnly(t *testing.T) {
 		t.Fatal("the scoped primer must not teach other flows")
 	}
 }
+
+func TestCS2STUNServerPortMatchesMultipleAddresses(t *testing.T) {
+	e := NewLadder(&Budget{})
+	e.Configure(app, true)
+	e.SetReason("")
+	e.SetLocalOnly(true)
+	e.SetCS2STUNScope(netip.AddrPort{}, []uint16{27015})
+	at := time.Unix(1000, 0)
+	key := Key{Network: strings.Repeat("a", 64), Application: app, PID: 77, Birth: 100,
+		Source: netip.MustParseAddrPort("192.0.2.1:50000")}
+	for _, tc := range []struct {
+		address   string
+		stage     string
+		selection string
+		repeats   int
+	}{
+		{"203.0.113.10:27015", Local, "CS2_STUN_SERVER_PORT", cs2STUNRepeats},
+		{"198.51.100.20:27015", Local, "CS2_STUN_SERVER_PORT", cs2STUNRepeats},
+		{"203.0.113.10:27016", Direct, "CS2_STUN_OTHER_ENDPOINT_DIRECT", 0},
+	} {
+		key.Destination = netip.MustParseAddrPort(tc.address)
+		flow, err := e.OpenWithQuality(key, at, "test-relay")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ev := e.Evidence(flow)
+		if ev.Stage != tc.stage || ev.Selection != tc.selection {
+			t.Fatalf("destination %s: got %s / %s", tc.address, ev.Stage, ev.Selection)
+		}
+		payload, repeats := e.PlanDatagram(flow, []byte{0xff, 0xff, 0xff, 0xff, 0x71}, at)
+		if repeats != tc.repeats || repeats > 0 && !IsSTUNBinding(payload) {
+			t.Fatalf("destination %s: got %d STUN datagrams", tc.address, repeats)
+		}
+	}
+}
