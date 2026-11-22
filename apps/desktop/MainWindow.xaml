@@ -61,7 +61,6 @@
        <StackPanel>
         <TextBlock Text="{ui:Tr NowViaVeliq}" Style="{StaticResource Caption}"/>
         <TextBlock Text="{Binding ActiveApps}" TextWrapping="Wrap" FontWeight="Medium" Margin="0,6,0,0"/>
-        <TextBlock Text="{Binding BrowserReadinessText}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,0" Visibility="{Binding Optimizing, Converter={StaticResource BoolToVisible}}"/>
        </StackPanel>
       </Border>
       <Button Style="{StaticResource GoButton}" Click="ToggleOptimize" IsEnabled="{Binding CanControl}" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,20" AutomationProperties.Name="{Binding OptimizeLabel}">
