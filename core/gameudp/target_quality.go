@@ -10,24 +10,20 @@ import (
 )
 
 const (
-	targetQualityWindow         = 45 * time.Second
-	targetQualityRounds         = 4
-	targetQualitySamples        = 20
-	targetQualityMinimumRTTGain = 2 * time.Millisecond
+	targetQualityWindow  = 45 * time.Second
+	targetQualityRounds  = 4
+	targetQualitySamples = 20
 )
 
-const TargetQualityRelayReason = "RELAY_IMPROVES_RTT_AND_LOSS"
+const TargetQualityRelayReason = "RELAY_LOWEST_MEASURED_LOSS"
 
 type TargetSample struct {
 	Route      string        `json:"route"`
 	Samples    int           `json:"samples"`
 	RTT        time.Duration `json:"rtt_ns"`
+	RTTP95     time.Duration `json:"rtt_p95_ns"`
 	Loss       float64       `json:"loss"`
 	ObservedAt time.Time     `json:"observed_at"`
-	roundRTT   [targetQualityRounds]time.Duration
-	roundLoss  [targetQualityRounds]int
-	roundSent  [targetQualityRounds]int
-	roundAt    [targetQualityRounds]time.Time
 }
 
 type TargetQualityStatus struct {
@@ -54,8 +50,15 @@ type TargetQuality struct {
 func (q *TargetQuality) HasTarget(network string, target netip.AddrPort) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	direct := q.routes[optimizer.Direct]
-	return network != "" && direct.network == network && direct.endpoint == target
+	if network == "" || !target.IsValid() {
+		return false
+	}
+	for _, series := range q.routes {
+		if series.network == network && series.endpoint == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (q *TargetQuality) Observe(m optimizer.RouteMeasurement) {
@@ -94,107 +97,85 @@ func (q *TargetQuality) Observe(m optimizer.RouteMeasurement) {
 	q.routes[m.RouteID] = series
 }
 
-func targetSample(series targetSeries, route, network, address string, endpoint netip.AddrPort, now time.Time) (TargetSample, bool) {
-	if series.network != network || series.address != address || series.endpoint != endpoint || len(series.rounds) < targetQualityRounds {
+func targetSample(series targetSeries, route string, now time.Time) (TargetSample, bool) {
+	if len(series.rounds) < targetQualityRounds {
 		return TargetSample{}, false
 	}
 	var delays []time.Duration
 	var sent, missed int
 	out := TargetSample{Route: route, ObservedAt: series.rounds[len(series.rounds)-1].ObservedAt}
-	for i, round := range series.rounds {
+	for _, round := range series.rounds {
 		if round.ObservedAt.After(now) || now.Sub(round.ObservedAt) > targetQualityWindow ||
 			round.TransportError != "" || len(round.Probes) == 0 {
 			return TargetSample{}, false
 		}
-		out.roundAt[i] = round.ObservedAt
-		var roundDelays []time.Duration
+		before := len(delays)
 		for _, probe := range round.Probes {
 			switch {
 			case probe.Outcome == optimizer.Reply && probe.RTT > 0:
 				delays = append(delays, probe.RTT)
-				roundDelays = append(roundDelays, probe.RTT)
 			case probe.Outcome == optimizer.Timeout:
 				missed++
-				out.roundLoss[i]++
 			default:
 				return TargetSample{}, false
 			}
 			sent++
-			out.roundSent[i]++
 		}
-		if len(roundDelays) == 0 {
+		if len(delays) == before {
 			return TargetSample{}, false
 		}
-		sort.Slice(roundDelays, func(a, b int) bool { return roundDelays[a] < roundDelays[b] })
-		out.roundRTT[i] = roundDelays[len(roundDelays)/2]
 	}
 	if sent < targetQualitySamples || len(delays) < targetQualitySamples/2 {
 		return TargetSample{}, false
 	}
 	sort.Slice(delays, func(i, j int) bool { return delays[i] < delays[j] })
 	out.Samples, out.RTT, out.Loss = sent, delays[len(delays)/2], float64(missed)/float64(sent)
+	out.RTTP95 = delays[(95*len(delays)+99)/100-1]
 	return out, true
 }
 
-func sustainedImprovement(local, relay TargetSample) bool {
-	if relay.Samples != local.Samples || relay.RTT+targetQualityMinimumRTTGain > local.RTT ||
-		relay.Loss+2/float64(local.Samples) > local.Loss {
-		return false
-	}
-	both := 0
-	for i := range local.roundRTT {
-		if relay.roundAt[i].Sub(local.roundAt[i]).Abs() > 5*time.Second ||
-			relay.roundSent[i] != local.roundSent[i] || relay.roundRTT[i]+targetQualityMinimumRTTGain > local.roundRTT[i] ||
-			relay.roundLoss[i] > local.roundLoss[i] {
-			return false
-		}
-		if relay.roundLoss[i] < local.roundLoss[i] {
-			both++
-		}
-	}
-	return both >= 2
-}
-
-// Compare evaluates configured relay IDs only and ranks the approaches that
-// beat the local baseline on both dimensions. The caller still pins the
-// existing flow and uses a recommendation only for a new one.
+// Compare ranks configured relays for an exact destination, by loss and then
+// tail latency. DIRECT is diagnostic; it may have no replies. A suggestion
+// applies only to a new flow whose ladder already selected relay.
 func (q *TargetQuality) Compare(network string, target netip.AddrPort, configured map[string]string, now time.Time) TargetQualityStatus {
 	out := TargetQualityStatus{Destination: target, State: "UNKNOWN_NO_AUTHENTICATED_EXACT_TARGET"}
+	if network == "" || !target.IsValid() {
+		return out
+	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	directSeries := q.routes[optimizer.Direct]
-	if target != directSeries.endpoint || network == "" || network != directSeries.network {
-		return out
+	if directSeries.network == network && directSeries.endpoint == target {
+		out.State = "UNKNOWN_INSUFFICIENT_RELAY_SAMPLES"
+		if direct, ok := targetSample(directSeries, optimizer.Direct, now); ok {
+			out.Samples = append(out.Samples, direct)
+		}
 	}
-	out.State = "UNKNOWN_INSUFFICIENT_COMPARABLE_SAMPLES"
-	local, ok := targetSample(directSeries, optimizer.Direct, network, "", target, now)
-	if !ok {
-		return out
-	}
-	out.Samples = append(out.Samples, local)
 	ids := make([]string, 0, len(configured))
-	for id := range configured {
-		ids = append(ids, id)
+	for id, address := range configured {
+		if id != optimizer.Direct && address != "" {
+			ids = append(ids, id)
+		}
 	}
 	sort.Strings(ids)
 	best := TargetSample{}
 	for _, id := range ids {
-		row, fresh := targetSample(q.routes[id], id, network, configured[id], target, now)
-		if !fresh || row.ObservedAt.Sub(local.ObservedAt).Abs() > 10*time.Second {
+		series := q.routes[id]
+		if series.network != network || series.endpoint != target || series.address != configured[id] {
+			continue
+		}
+		out.State = "UNKNOWN_INSUFFICIENT_RELAY_SAMPLES"
+		row, fresh := targetSample(series, id, now)
+		if !fresh {
 			continue
 		}
 		out.Samples = append(out.Samples, row)
-		if !sustainedImprovement(local, row) {
-			continue
-		}
-		if best.Route == "" || row.Loss < best.Loss || row.Loss == best.Loss && row.RTT < best.RTT {
+		if best.Route == "" || row.Loss < best.Loss || row.Loss == best.Loss && row.RTTP95 < best.RTTP95 {
 			best = row
 		}
 	}
 	if best.Route != "" {
 		out.Relay, out.State = best.Route, TargetQualityRelayReason
-	} else if len(out.Samples) > 1 {
-		out.State = "KEEP_LOCAL_IMPROVEMENT_UNPROVEN"
 	}
 	return out
 }

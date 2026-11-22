@@ -76,6 +76,23 @@ func TestLadderHealthyDirectNeverUsesLocalOrRelay(t *testing.T) {
 		t.Fatal(e.Snapshot())
 	}
 }
+func TestEndpointLadderIgnoresLateFailureFromEarlierTrial(t *testing.T) {
+	e := NewLadder(nil)
+	e.SetEndpointScoped()
+	e.Configure(app, true)
+	e.SetReason("")
+	at := time.Unix(1000, 0)
+	direct := ladderFlow(t, e, at, 50000)
+	slow := ladderFlow(t, e, at, 50001)
+	failTrial(e, direct, at)
+	local := ladderFlow(t, e, at.Add(8*time.Second), 50002)
+	failTrial(e, local, at.Add(8*time.Second))
+	failTrial(e, slow, at.Add(16*time.Second))
+	next := ladderFlow(t, e, at.Add(24*time.Second), 50003)
+	if next.e.Stage != Local || next.e.Variant != Variants()[1] {
+		t.Fatal("late DIRECT failure reset the endpoint ladder", next.e)
+	}
+}
 func TestGlobalBudgetAcrossGames(t *testing.T) {
 	b := &Budget{}
 	total := 0

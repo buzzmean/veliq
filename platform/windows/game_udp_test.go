@@ -118,28 +118,62 @@ func TestGameSenderOrderCutoffAndFailedDecoyPreservesOriginal(t *testing.T) {
 	}
 }
 func TestGameBindingDoesNotRelayUntilDirectAndAllLocalTrialsFailed(t *testing.T) {
+	for _, relay := range []string{"", "measured-relay"} {
+		t.Run("qualified="+relay, func(t *testing.T) {
+			checkGameFallbackBinding(t, relay)
+		})
+	}
+}
+
+func checkGameFallbackBinding(t *testing.T, qualifiedRelay string) {
+	t.Helper()
 	e := gameudp.NewLadder(nil)
+	e.SetEndpointScoped()
 	id := ProcessIdentity{PID: 17, CreationTime: 20, Path: `C:\Games\game.exe`}
 	e.Configure(id.Path, true)
 	e.SetReason("")
 	_, tuple := gamePacket()
 	at := time.Unix(1000, 0)
 	base := Decision{GameUDP: e, GameRelayID: "VPS-01", Network: strings.Repeat("a", 64), Flow: routing.Flow{PID: id.PID, Protocol: "udp", ProcessPath: id.Path, Source: tuple.Source, Destination: tuple.Destination, PinnedPolicy: &routing.Policy{}}}
-	for trial := 0; trial < 8; trial++ {
+	if qualifiedRelay != "" {
+		base.GameQualityRelayID = qualifiedRelay
+		base.GameQualityRelayAddress = "203.0.113.10:443"
+	}
+	variants := gameudp.Variants()
+	relayTrial := len(variants) + 1
+	for trial := 0; trial <= relayTrial; trial++ {
 		tuple.Source = netip.AddrPortFrom(tuple.Source.Addr(), uint16(50000+trial))
 		d, f, err := BindGameUDP(base, id, tuple, at)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if trial < 7 && !d.Route.Direct() {
+		evidence := e.Evidence(f)
+		if trial < relayTrial && !d.Route.Direct() {
 			t.Fatal("premature relay", trial)
 		}
-		if trial == 7 {
-			if d.Route.RelayID != "VPS-01" || !d.BlockOnFailure || d.Flow.PinnedPolicy == nil || !d.Flow.PinnedPolicy.BlockOnFailure {
+		switch {
+		case trial == 0:
+			if evidence.Stage != gameudp.Direct {
+				t.Fatal("cold trial did not start DIRECT", evidence)
+			}
+		case trial < relayTrial:
+			if evidence.Stage != gameudp.Local || evidence.Variant != variants[trial-1] {
+				t.Fatal("local trial was skipped", evidence)
+			}
+		default:
+			want := base.GameRelayID
+			if qualifiedRelay != "" {
+				want = qualifiedRelay
+			}
+			p := d.Flow.PinnedPolicy
+			if d.Route.RelayID != want || !d.BlockOnFailure || p == nil || !p.BlockOnFailure {
 				t.Fatal("relay not pinned fail closed", d)
 			}
+			if p.ExactRelay != (qualifiedRelay != "") || p.RelayAddress != base.GameQualityRelayAddress {
+				t.Fatal("measured relay must use its exact address", p)
+			}
 		}
-		for n := 0; n < e.Evidence(f).Variant.Cutoff; n++ {
+		for n := 0; n < evidence.Variant.Cutoff; n++ {
 			p, k := e.Plan(f, at)
 			for j := 0; j < k; j++ {
 				e.FakeSent(f, len(p)+28, nil)
@@ -148,6 +182,13 @@ func TestGameBindingDoesNotRelayUntilDirectAndAllLocalTrialsFailed(t *testing.T)
 		for sec := 0; sec <= 7; sec++ {
 			now := at.Add(time.Duration(sec) * time.Second)
 			e.Outgoing(f, 20, now)
+			if trial == 0 && sec == 0 {
+				// Initial server replies followed by silence during loading.
+				for i := 0; i < 19; i++ {
+					now = now.Add(20 * time.Millisecond)
+					e.Reply(f, 60, now)
+				}
+			}
 			e.Tick(now)
 		}
 		at = at.Add(8 * time.Second)

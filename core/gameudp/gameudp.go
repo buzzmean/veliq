@@ -94,7 +94,7 @@ const (
 	Direct                 = "DIRECT"
 	Local                  = "LOCAL_UDP"
 	Relay                  = "RELAY"
-	MeasuredRelaySelection = "EXACT_TARGET_RELAY_IMPROVES_RTT_AND_LOSS"
+	MeasuredRelaySelection = "EXACT_TARGET_RELAY_LOWEST_MEASURED_LOSS"
 )
 
 type Evidence struct {
@@ -333,13 +333,10 @@ func (e *Engine) OpenWithQuality(k Key, now time.Time, measuredRelay string) (*F
 	if e.localOnly && stage == Relay {
 		return nil, errors.New("GAME_UDP_LOCAL_ONLY_EXHAUSTED")
 	}
-	// A transformed LOCAL path is independent evidence. The configured echo
-	// samples DIRECT and cannot authorize replacing a working LOCAL path.
-	sameEndpointLocal := e.learning[endpointKey(k.Network, k.Application, k.Destination.String())]
-	if measuredRelay != "" && e.ladder && !e.localOnly && stage == Direct &&
-		!(cache.Confirmed && cache.Stage == Local) &&
-		!(sameEndpointLocal.Confirmed && sameEndpointLocal.Stage == Local && now.Before(sameEndpointLocal.Expires)) {
-		stage, selection = Relay, MeasuredRelaySelection
+	// Measurement chooses a relay within the fallback stage. It does not
+	// advance the ladder or displace a working direct or local route.
+	if stage == Relay && measuredRelay != "" {
+		selection = MeasuredRelaySelection
 	}
 	v := Variants()[index]
 	if stage != Local {
@@ -521,9 +518,6 @@ func (e *Engine) health(f *Flow, now time.Time) {
 		f.learned = true
 		f.e.State = "SUSTAINED_REPLIES"
 		f.e.Reason = "TRANSPORT_CADENCE_CONFIRMED_NOT_MATCH_LOAD_PROOF"
-		if f.e.Selection == MeasuredRelaySelection {
-			return // The independent quality evidence expires on its own.
-		}
 		index := 0
 		for i, v := range Variants() {
 			if v.ID == f.e.Variant.ID {
@@ -561,20 +555,11 @@ func (e *Engine) health(f *Flow, now time.Time) {
 	f.failed = true
 	f.e.State = "INSUFFICIENT_REPLIES"
 	f.e.Reason = "NEXT_FLOW_ONLY_NO_REPLAY_OR_MIGRATION"
-	if f.e.Selection == MeasuredRelaySelection {
-		return
-	}
 	index := 0
 	for i, v := range Variants() {
 		if v.ID == f.e.Variant.ID {
 			index = i
 		}
-	}
-	// A successful unrelated endpoint must neither hold a broken endpoint
-	// DIRECT nor force its own healthy game traffic through relay.
-	if e.ladder && f.e.Stage == Direct {
-		delete(e.learning, endpointKey(f.key.Network, f.key.Application, f.key.Destination.String()))
-		e.revision++
 	}
 	// Parallel failures of the same candidate advance only once. A losing trial
 	// cannot overwrite a different sustained winner or drain all alternatives.
@@ -587,6 +572,15 @@ func (e *Engine) health(f *Flow, now time.Time) {
 				f.e.Reason = "FLOW_FAILED_NETWORK_WINNER_STILL_RESPONDING"
 				return
 			}
+		}
+	}
+	// Legacy app-wide ladders store a separate exact DIRECT winner. For an
+	// endpoint-scoped ladder, updating key below replaces that winner in place.
+	if e.ladder && f.e.Stage == Direct {
+		directKey := endpointKey(f.key.Network, f.key.Application, f.key.Destination.String())
+		if _, exists := e.learning[directKey]; directKey != key && exists {
+			delete(e.learning, directKey)
+			e.revision++
 		}
 	}
 	tried := old.Tried + 1
