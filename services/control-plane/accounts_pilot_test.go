@@ -182,7 +182,7 @@ func TestPilotMigration004PreservesSchema3IdentityAndCertificate(t *testing.T) {
 		}
 	}
 	var version int
-	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 10 {
+	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 11 {
 		t.Fatal("schema10 missing", err, version)
 	}
 	after, err := os.ReadFile(path)

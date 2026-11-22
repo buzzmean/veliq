@@ -260,7 +260,7 @@ func (a *API) subscriptionCreate(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 400, "SUBSCRIPTION_INVALID")
 		return
 	}
-	id, e := a.Store.CreateSubscription(r.Context(), acc, p, q.Seats)
+	id, e := a.Store.createSubscription(r.Context(), acc, p, q.Seats, a.Settings.ClubVerificationToken != "")
 	if e != nil {
 		switch e.Error() {
 		case "SUBSCRIPTION_INVALID", "SUBSCRIPTION_LIMIT":
@@ -334,6 +334,8 @@ func (a *API) storeFail(w http.ResponseWriter, e error) {
 	switch e.Error() {
 	case "SUBSCRIPTION_NOT_FOUND", "SEAT_NOT_FOUND":
 		a.fail(w, 404, e.Error())
+	case "CLUB_PAYMENT_REQUIRED", "CLUB_VERIFICATION_PENDING", "SUBSCRIPTION_EXPIRED":
+		a.fail(w, http.StatusConflict, e.Error())
 	default:
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 	}

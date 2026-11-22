@@ -51,6 +51,7 @@ func main() {
 	ca := flag.String("ca", "", "device CA PEM")
 	caKey := flag.String("ca-key", "", "device CA PKCS8 PEM")
 	adminTokenFile := flag.String("admin-token-file", "", "administrator token file")
+	clubVerificationTokenFile := flag.String("club-verification-token-file", "", "separate operator token file enabling review for new club subscriptions")
 	databasePasswordFile := flag.String("database-password-file", "", "database password file (overrides URL password)")
 	seedRelayID := flag.String("seed-relay-id", "", "development relay registry seed ID")
 	seedRelayAddress := flag.String("seed-relay-address", "", "development relay registry seed address")
@@ -107,6 +108,17 @@ func main() {
 			fail(e)
 		}
 		adminToken = strings.TrimSpace(string(b))
+	}
+	var clubVerificationToken string
+	if *clubVerificationTokenFile != "" {
+		b, e := os.ReadFile(*clubVerificationTokenFile)
+		if e != nil {
+			fail(e)
+		}
+		clubVerificationToken = strings.TrimSpace(string(b))
+		if clubVerificationToken == "" {
+			fail(fmt.Errorf("club verification token file is empty"))
+		}
 	}
 	store, e := controlplane.Open(ctx, databaseURL)
 	if e != nil {
@@ -203,7 +215,7 @@ func main() {
 		fail(fmt.Errorf("account origin must look like https://host"))
 	}
 	api, e := controlplane.New(store, controlplane.Settings{LocalCatalogFile: *localCatalogFile, LocalLearningFile: *localLearningFile, RelayTrafficFile: *relayTrafficFile, EnrollmentProbeToken: enrollProbeToken, AdminToken: adminToken, KeyID: *kid, SigningKey: key, CA: cert, CAKey: cak, ServerCertificate: serverLeaf,
-		AccountOrigin: *accountOrigin, Mailer: mailer, Plans: plans, Payments: payments, EnforceSubscription: *enforce, PersonalTrials: *personalTrials})
+		AccountOrigin: *accountOrigin, Mailer: mailer, Plans: plans, Payments: payments, EnforceSubscription: *enforce, PersonalTrials: *personalTrials, ClubVerificationToken: clubVerificationToken})
 	if e != nil {
 		fail(e)
 	}

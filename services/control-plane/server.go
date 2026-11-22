@@ -42,12 +42,13 @@ type Settings struct {
 	ServerCertificate    *x509.Certificate
 	// Accounts and subscriptions. The cabinet API stays off until AccountOrigin
 	// is set; subscription periods are only enforced with EnforceSubscription.
-	AccountOrigin       string
-	Mailer              Mailer
-	Plans               []Plan
-	Payments            PaymentProvider
-	EnforceSubscription bool
-	PersonalTrials      bool
+	AccountOrigin         string
+	Mailer                Mailer
+	Plans                 []Plan
+	Payments              PaymentProvider
+	EnforceSubscription   bool
+	PersonalTrials        bool
+	ClubVerificationToken string
 }
 type API struct {
 	relayTrafficMu                            sync.Mutex
@@ -68,6 +69,9 @@ type API struct {
 func New(s *Store, c Settings) (*API, error) {
 	if len(c.AdminToken) < 24 || len(c.SigningKey) != ed25519.PrivateKeySize || c.KeyID == "" || c.CA == nil || c.CAKey == nil {
 		return nil, errors.New("admin token, signing key and device CA required")
+	}
+	if c.ClubVerificationToken != "" && (len(c.ClubVerificationToken) < 32 || c.ClubVerificationToken == c.AdminToken || c.ClubVerificationToken == c.EnrollmentProbeToken || strings.ContainsAny(c.ClubVerificationToken, " \t\r\n")) {
+		return nil, errors.New("distinct club verification token of at least 32 characters required")
 	}
 	return &API{Store: s, Settings: c, limit: newLimiter(time.Now()), enrollIP: newEnrollmentLimiter(time.Now()), enrollCode: newEnrollmentLimiter(time.Now()), loginIP: newLoginLimiter(time.Now()), loginDeliveries: make(chan struct{}, 2)}, nil
 }
@@ -157,6 +161,9 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("GET /api/v1/admin/subscriptions/cutoff", a.adminSubscriptions)
 	m.HandleFunc("POST /api/v1/admin/subscriptions/payments", a.adminSubscriptions)
 	m.HandleFunc("POST /api/v1/admin/promotions/reconcile", a.reconcilePromotion)
+	m.HandleFunc("GET /api/v1/club-verifications", a.clubVerificationQueue)
+	m.HandleFunc("POST /api/v1/club-verifications/{id}/notified", a.clubVerificationNotified)
+	m.HandleFunc("POST /api/v1/club-verifications/{id}/approve", a.clubVerificationApprove)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		defer func() { a.LatencyNS.Add(uint64(time.Since(start))) }()

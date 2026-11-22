@@ -34,18 +34,19 @@ type Account struct {
 	Email string `json:"email"`
 }
 type Subscription struct {
-	Lifetime   bool       `json:"lifetime"`
-	CanConnect bool       `json:"can_connect"`
-	ID         string     `json:"id"`
-	PlanID     string     `json:"plan_id"`
-	Kind       string     `json:"kind"`
-	Seats      int        `json:"seats"`
-	PaidUntil  *time.Time `json:"paid_until"`
-	TrialUntil *time.Time `json:"trial_until,omitempty"`
-	AutoRenew  bool       `json:"auto_renew"`
-	Active     bool       `json:"active"`
-	Used       int        `json:"used_seats"`
-	Devices    []SeatInfo `json:"devices"`
+	Lifetime         bool       `json:"lifetime"`
+	CanConnect       bool       `json:"can_connect"`
+	ID               string     `json:"id"`
+	PlanID           string     `json:"plan_id"`
+	Kind             string     `json:"kind"`
+	Seats            int        `json:"seats"`
+	PaidUntil        *time.Time `json:"paid_until"`
+	TrialUntil       *time.Time `json:"trial_until,omitempty"`
+	AutoRenew        bool       `json:"auto_renew"`
+	Active           bool       `json:"active"`
+	Used             int        `json:"used_seats"`
+	Devices          []SeatInfo `json:"devices"`
+	ClubVerification string     `json:"club_verification,omitempty"`
 }
 type SeatInfo struct {
 	Name     string     `json:"name"`
@@ -235,6 +236,10 @@ func (s *Store) EndSession(ctx context.Context, token string) error {
 // CreateSubscription reuses a single existing personal subscription or adds an unpaid one with its activation code row.
 // The code value itself is issued separately (IssueSubscriptionCode).
 func (s *Store) CreateSubscription(ctx context.Context, account Account, p Plan, seats int) (string, error) {
+	return s.createSubscription(ctx, account, p, seats, false)
+}
+
+func (s *Store) createSubscription(ctx context.Context, account Account, p Plan, seats int, requireClubVerification bool) (string, error) {
 	if seats < 1 || seats > p.MaxSeats {
 		return "", errors.New("SUBSCRIPTION_INVALID")
 	}
@@ -256,6 +261,11 @@ func (s *Store) CreateSubscription(ctx context.Context, account Account, p Plan,
 	id, e := subscriptionForAccountTx(ctx, tx, account, p, seats)
 	if e != nil {
 		return "", e
+	}
+	if requireClubVerification && p.Kind == "club" {
+		if _, e = tx.Exec(ctx, "INSERT INTO club_verifications(subscription_id) VALUES($1)", id); e != nil {
+			return "", e
+		}
 	}
 	return id, tx.Commit(ctx)
 }
@@ -331,7 +341,18 @@ func (s *Store) IssueSubscriptionCode(ctx context.Context, account Account, subs
 		return "", e
 	}
 	defer tx.Rollback(ctx)
-	if _, e = tx.Exec(ctx, "SELECT id FROM accounts WHERE id=$1 FOR NO KEY UPDATE", account.ID); e != nil {
+	var owner, id string
+	if e = tx.QueryRow(ctx, "SELECT id FROM accounts WHERE id=$1 AND NOT disabled FOR NO KEY UPDATE", account.ID).Scan(&owner); errors.Is(e, pgx.ErrNoRows) {
+		return "", errors.New("SUBSCRIPTION_NOT_FOUND")
+	} else if e != nil {
+		return "", e
+	}
+	if e = tx.QueryRow(ctx, "SELECT id FROM subscriptions WHERE id=$1 AND account_id=$2", subscription, owner).Scan(&id); errors.Is(e, pgx.ErrNoRows) {
+		return "", errors.New("SUBSCRIPTION_NOT_FOUND")
+	} else if e != nil {
+		return "", e
+	}
+	if _, e = checkClubVerification(ctx, tx, id); e != nil {
 		return "", e
 	}
 	// Trial access is attached through the signed-in client. Raw activation
@@ -413,20 +434,25 @@ func (s *Store) SetAutoRenew(ctx context.Context, account Account, subscription 
 }
 
 func (s *Store) AccountSubscriptions(ctx context.Context, account Account, now time.Time) ([]Subscription, error) {
-	rows, e := s.DB.Query(ctx, "SELECT id,plan_id,kind,seats,paid_until,auto_renew,lifetime,trial_until FROM subscriptions WHERE account_id=$1 ORDER BY created_at", account.ID)
+	rows, e := s.DB.Query(ctx, `SELECT s.id,s.plan_id,s.kind,s.seats,s.paid_until,s.auto_renew,s.lifetime,s.trial_until,coalesce(v.state,'')
+		FROM subscriptions s LEFT JOIN club_verification_status v ON v.subscription_id=s.id
+		WHERE s.account_id=$1 ORDER BY s.created_at`, account.ID)
 	if e != nil {
 		return nil, e
 	}
 	out := []Subscription{}
 	for rows.Next() {
 		var sub Subscription
-		if e = rows.Scan(&sub.ID, &sub.PlanID, &sub.Kind, &sub.Seats, &sub.PaidUntil, &sub.AutoRenew, &sub.Lifetime, &sub.TrialUntil); e != nil {
+		if e = rows.Scan(&sub.ID, &sub.PlanID, &sub.Kind, &sub.Seats, &sub.PaidUntil, &sub.AutoRenew, &sub.Lifetime, &sub.TrialUntil, &sub.ClubVerification); e != nil {
 			rows.Close()
 			return nil, e
 		}
 		trialActive := sub.TrialUntil != nil && now.Before(*sub.TrialUntil)
 		sub.Active = sub.Lifetime || (sub.PaidUntil != nil && now.Before(*sub.PaidUntil)) || trialActive
 		sub.CanConnect = sub.Active || (sub.PaidUntil != nil && now.Before(sub.PaidUntil.Add(SubscriptionGrace)))
+		if sub.ClubVerification != "" {
+			sub.CanConnect = sub.ClubVerification == "verified"
+		}
 		sub.Devices = []SeatInfo{}
 		out = append(out, sub)
 	}

@@ -103,6 +103,9 @@ func accountSubscriptionTx(ctx context.Context, tx pgx.Tx, account, subscription
 	if disabled || revoked || (!lifetime && !expires.After(time.Now())) {
 		return out, errors.New("ACCOUNT_SUBSCRIPTION_REQUIRED")
 	}
+	if _, e = checkClubVerification(ctx, tx, subscription); e != nil {
+		return out, e
+	}
 	now := time.Now()
 	trialActive := trial != nil && now.Before(*trial)
 	paidActive := paid != nil && now.Before(paid.Add(SubscriptionGrace))
@@ -307,7 +310,7 @@ func (a *API) deviceTrust() map[string]string {
 func (a *API) deviceLinkFailure(w http.ResponseWriter, e error) {
 	code, status := "ACCOUNT_LINK_UNAVAILABLE", 503
 	switch e.Error() {
-	case "ACCOUNT_LINK_INVALID", "ACCOUNT_LINK_EXPIRED", "ACCOUNT_SUBSCRIPTION_REQUIRED", "ACCOUNT_DEVICE_ALREADY_OWNED", "ACCOUNT_IMAGE_REVOKED", "SUBSCRIPTION_EXPIRED", "ACTIVATION_LIMIT", "MACHINE_DISABLED", "ACTIVATION_IDENTITY_CONFLICT":
+	case "ACCOUNT_LINK_INVALID", "ACCOUNT_LINK_EXPIRED", "ACCOUNT_SUBSCRIPTION_REQUIRED", "ACCOUNT_DEVICE_ALREADY_OWNED", "ACCOUNT_IMAGE_REVOKED", "SUBSCRIPTION_EXPIRED", "ACTIVATION_LIMIT", "MACHINE_DISABLED", "ACTIVATION_IDENTITY_CONFLICT", "CLUB_PAYMENT_REQUIRED", "CLUB_VERIFICATION_PENDING":
 		code = e.Error()
 		status = 403
 	case "ACTIVATION_RATE_LIMIT":

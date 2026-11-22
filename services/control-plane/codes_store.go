@@ -102,7 +102,13 @@ func (s *Store) EnrollCode(ctx context.Context, hash []byte, machine string, d D
 	var limit int
 	var revoked bool
 	var expires time.Time
-	e = tx.QueryRow(ctx, "SELECT id,seat_limit,revoked,expires_at FROM activation_codes WHERE code_hash=$1 FOR UPDATE", hash).Scan(&id, &limit, &revoked, &expires)
+	var subscription *string
+	// A schema-3 fixture exercises the pre-subscription enrollment contract.
+	// The optional reference becomes relevant once club verification is installed.
+	e = tx.QueryRow(ctx, `SELECT c.id,c.seat_limit,c.revoked,c.expires_at,
+		CASE WHEN EXISTS(SELECT 1 FROM schema_migrations WHERE version=11)
+		THEN to_jsonb(c)->>'subscription_id' END
+		FROM activation_codes c WHERE c.code_hash=$1 FOR UPDATE`, hash).Scan(&id, &limit, &revoked, &expires, &subscription)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return errors.New("ACTIVATION_INVALID")
 	}
@@ -115,8 +121,26 @@ func (s *Store) EnrollCode(ctx context.Context, hash []byte, machine string, d D
 	if !time.Now().Before(expires) {
 		return errors.New("ACTIVATION_EXPIRED")
 	}
+	var clubVerified bool
+	if subscription != nil {
+		clubVerified, e = checkClubVerification(ctx, tx, *subscription)
+		if e != nil {
+			return e
+		}
+	}
 	if e = enrollSlotTx(ctx, tx, id, limit, machine, d, kid, key, public, ""); e != nil {
 		return e
+	}
+	if clubVerified {
+		result, bindErr := tx.Exec(ctx, `INSERT INTO account_device_bindings(device_id,subscription_id) VALUES($1,$2)
+			ON CONFLICT(device_id) DO UPDATE SET subscription_id=excluded.subscription_id
+			WHERE account_device_bindings.subscription_id=excluded.subscription_id`, d.ID, *subscription)
+		if bindErr != nil {
+			return bindErr
+		}
+		if result.RowsAffected() != 1 {
+			return errors.New("ACTIVATION_IDENTITY_CONFLICT")
+		}
 	}
 	return tx.Commit(ctx)
 }

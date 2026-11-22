@@ -47,6 +47,8 @@
     ACCOUNT_DEVICE_ALREADY_OWNED: 'Компьютер привязан к другому аккаунту. Сначала освободите его в прежнем кабинете.',
     ACCOUNT_IMAGE_LIMIT: 'Достигнут лимит активных клубных образов. Отзовите ненужный образ.',
     SUBSCRIPTION_EXPIRED: 'Сначала продлите подписку.',
+    CLUB_PAYMENT_REQUIRED: 'Дождитесь подтверждения оплаты. Затем клубную подписку проверит оператор.',
+    CLUB_VERIFICATION_PENDING: 'Оплата подтверждена. Клубная подписка ожидает проверки.',
     ACTIVATION_LIMIT: 'Нет свободного места. Освободите компьютер или увеличьте число мест.',
     SEAT_NOT_FOUND: 'Этот компьютер уже освобождён.'
   };
@@ -260,7 +262,30 @@
     pay.addEventListener('click',function(){showPaymentConfirmation(false);});
     if (!s.lifetime) actions.appendChild(pay);
     card.appendChild(actions);
-    card.appendChild(el('p', 'muted acc-small', 'Чтобы подключить компьютер, откройте VELIQ на нём и нажмите «Войти или зарегистрироваться». Копировать код активации не нужно.'));
+    if (s.club_verification === 'verified') {
+      var requestCode = el('button', 'btn btn--sm', 'Получить код активации');
+      requestCode.type = 'button';
+      var issuedCode = el('p', 'acc-small');
+      issuedCode.setAttribute('role', 'status');
+      requestCode.addEventListener('click', function () {
+        if (issuedCode.textContent && !confirm('Выпустить новый код? Уже подключённые ПК сохранят доступ.')) return;
+        busy(requestCode, true);
+        say(err, '');
+        call('POST', '/subscriptions/' + s.id + '/code').then(function (result) {
+          issuedCode.textContent = 'Код для ' + s.seats + ' ПК: ' + result.code;
+        }).catch(function (x) { say(err, message(x.message)); }).then(function () { busy(requestCode, false); });
+      });
+      actions.appendChild(requestCode);
+      card.appendChild(issuedCode);
+    } else if (s.club_verification) {
+      var reviewNotice = s.club_verification === 'pending' ? MESSAGES.CLUB_VERIFICATION_PENDING :
+        s.club_verification === 'expired' ? MESSAGES.SUBSCRIPTION_EXPIRED : MESSAGES.CLUB_PAYMENT_REQUIRED;
+      var review = el('p', 'muted acc-small', reviewNotice);
+      review.setAttribute('role', 'status');
+      card.appendChild(review);
+    } else {
+      card.appendChild(el('p', 'muted acc-small', 'Чтобы подключить компьютер, откройте VELIQ на нём и нажмите «Войти или зарегистрироваться». Копировать код активации не нужно.'));
+    }
     if (!paymentsOn && !s.lifetime) card.appendChild(el('p', 'muted acc-small', 'Онлайн-оплата пока не подключена. Для подключения или продления обратитесь в поддержку.'));
     if (paymentsOn && autoRenewAvailable && !s.lifetime) {
       var auto = el('label', 'acc-auto'); var box = el('input'); box.type = 'checkbox'; box.checked = s.auto_renew;
