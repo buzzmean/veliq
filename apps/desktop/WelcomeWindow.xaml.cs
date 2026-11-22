@@ -21,6 +21,7 @@ public partial class WelcomeWindow : Window
     string email = "";
     DateTime resendAfter;
     bool refreshing, busy, codeSelected, transitioned, initial = true, registration, forceSignIn, nativeApproved;
+    bool trackingCodeActivation;
     WelcomeAccess access = new("CHECKING", "Проверяем подключение", "Подождите немного…", false);
     public WelcomeWindow(Action connected) : this(new WindowsServiceClient(), connected, true) { }
     internal WelcomeWindow(IServiceClient service, Action connected, bool shutdownOnClose,
@@ -100,7 +101,18 @@ public partial class WelcomeWindow : Window
             Lead.Text = account.Status.Linked ? account.Status.Summary : "Этот компьютер уже подключён по коду.";
             Feedback.Text = "";
         }
-        else if (codeSelected) { Heading.Text = "Подключение к клубу"; Lead.Text = "Введите код, который выдал администратор."; }
+        else if (codeSelected)
+        {
+            Heading.Text = "Подключение к клубу";
+            Lead.Text = "Введите код, который выдал администратор.";
+            if (trackingCodeActivation && !busy)
+            {
+                var status = activation.Status;
+                Feedback.Text = status.Error.Length == 0 && access.State is ("UNAVAILABLE" or "ERROR" or "EXPIRED" or "BLOCKED")
+                    ? access.Message
+                    : status.Message;
+            }
+        }
         else switch (stage)
         {
             case SignInStage.Email:
@@ -247,7 +259,18 @@ public partial class WelcomeWindow : Window
         if (busy || refreshing) return;
         string code = ConnectionCode.Password.Trim(); ConnectionCode.Clear();
         if (code.Length == 0) { Feedback.Text = "Введите код администратора."; return; }
-        await RunAsync(async () => { try { await activation.ActivateAsync(code, lifetime.Token); Feedback.Text = activation.Status.Message; } finally { code = ""; } });
+        trackingCodeActivation = false;
+        await RunAsync(async () =>
+        {
+            try
+            {
+                await activation.ActivateAsync(code, lifetime.Token);
+                var status = activation.Status;
+                trackingCodeActivation = status.State == "ACTIVATING" && status.Error.Length == 0;
+                Feedback.Text = status.Message;
+            }
+            finally { code = ""; }
+        });
     }
     async void Retry(object sender, RoutedEventArgs e) { Feedback.Text = ""; await RefreshAsync(true); }
     async void Continue(object sender, RoutedEventArgs e) { await RefreshAsync(); if (Ready && !busy && !refreshing) Enter(); }
