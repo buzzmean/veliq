@@ -86,7 +86,7 @@ func TestSubscriptionNetworkFailureIsNotExpiry(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		c.runSubscription(ctx, &subscriptionFixture{err: errors.New("control plane request failed")})
+		c.runSubscription(ctx, &subscriptionFixture{err: errors.New("control plane request failed")}, nil)
 		close(done)
 	}()
 	c.subscriptionRecheck()

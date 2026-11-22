@@ -152,6 +152,23 @@ func readActivationRecord(path string) (activationRecord, error) {
 	}
 	return r, nil
 }
+// Called only after a successful subscription response for this device identity.
+func (c *Controller) rememberPaidTrial(m Manifest, requestID string) bool {
+	c.activation.mu.Lock()
+	defer c.activation.mu.Unlock()
+	path := activationFile(m)
+	record, err := readActivationRecord(path)
+	if err != nil {
+		return false
+	}
+	if record.RequestID != requestID || record.Account.TrialUntil == nil {
+		return true
+	}
+	record.Account.TrialUntil = nil
+	raw, err := json.Marshal(record)
+	return err == nil && protectedActivationWrite(path, raw) == nil
+}
+
 func pendingActivationFile(m Manifest) string { return activationFile(m) + ".pending" }
 func readActivation(m Manifest) (activationRecord, error) {
 	if _, e := os.Stat(pendingActivationFile(m)); e == nil {
