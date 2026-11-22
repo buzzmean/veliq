@@ -23,7 +23,7 @@ func paymentTerms() []PaymentTerm {
 // QuotePayment uses integer kopecks; the plan price is for one seat / 30 days.
 // Legacy plans of a different duration must not silently acquire new semantics.
 func (p Plan) QuotePayment(seats, months int) (int64, PaymentTerm, error) {
-	if !p.valid() || p.PeriodDays != 30 || p.PricePerSeatRub == 0 || seats < 1 || seats > p.MaxSeats || (p.Kind == "player" && seats != 1) {
+	if !p.valid() || p.PeriodDays != 30 || p.PricePerSeatRub == 0 || !p.supportsSeats(seats) {
 		return 0, PaymentTerm{}, errors.New("PRICE_NOT_SET")
 	}
 	for _, term := range paymentTermsFor(p.Kind) {

@@ -100,7 +100,7 @@ func (a *API) personalTrialPlan() (Plan, bool) {
 	}
 	var selected Plan
 	for _, p := range a.Settings.Plans {
-		if p.Kind != "player" || p.MaxSeats != 1 {
+		if p.Kind != "player" || !p.supportsSeats(1) {
 			continue
 		}
 		if selected.ID != "" {

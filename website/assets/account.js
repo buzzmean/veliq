@@ -49,6 +49,7 @@
     SUBSCRIPTION_EXPIRED: 'Сначала продлите подписку.',
     CLUB_PAYMENT_REQUIRED: 'Дождитесь подтверждения оплаты. Затем клубную подписку проверит оператор.',
     CLUB_VERIFICATION_PENDING: 'Оплата подтверждена. Клубная подписка ожидает проверки.',
+    PERSONAL_SEAT_CHANGE_NOT_AVAILABLE: 'Число ПК в существующей подписке можно уточнить в поддержке.',
     ACTIVATION_LIMIT: 'Нет свободного места. Освободите компьютер или увеличьте число мест.',
     SEAT_NOT_FOUND: 'Этот компьютер уже освобождён.'
   };
@@ -139,8 +140,32 @@
       var seats = null;
       if (p.max_seats > 1) {
         var label = el('label', 'field'); label.appendChild(el('span', null, 'Сколько компьютеров'));
-        seats = el('input', 'input'); seats.type = 'number'; seats.min = 1; seats.max = p.max_seats; seats.value = 10; seats.required = true;
+        if (p.kind === 'player') {
+          seats = el('select', 'input');
+          for (var count = 1; count <= Math.min(p.max_seats, 3); count++) {
+            var option = el('option', null, count + ' ПК');
+            option.value = count;
+            seats.appendChild(option);
+          }
+        } else {
+          seats = el('input', 'input');
+          seats.type = 'number';
+          seats.min = 1;
+          seats.max = p.max_seats;
+          seats.value = Math.min(10, p.max_seats);
+          seats.required = true;
+        }
         label.appendChild(seats); card.appendChild(label);
+        if (p.kind === 'player' && publicPrice) {
+          var total = el('p', 'muted');
+          total.setAttribute('aria-live', 'polite');
+          function showTotal() {
+            total.textContent = 'За 30 дней: ' + rub(publicPrice * Number(seats.value));
+          }
+          seats.addEventListener('change', showTotal);
+          showTotal();
+          card.appendChild(total);
+        }
       }
       var btn = el('button', 'btn', 'Оформить'); btn.type = 'submit'; card.appendChild(btn);
       var err = el('p', 'acc-error'); err.hidden = true; card.appendChild(err);
@@ -162,7 +187,7 @@
     var openOrders=(state.orders||[]).filter(function(o){return o.quote.subscription_id===s.id && o.status!=='succeeded';});
     openOrders.forEach(function(o){var box=el('div','acc-small');box.appendChild(el('p',null,'Заказ '+o.id+' · '+o.quote.seats+' ПК · '+o.quote.days+' дней · '+rub(o.quote.amount_kopecks/100)+'. Условия зафиксированы.'));box.appendChild(el('p',null,'Статус: '+(o.status==='canceled'?'отменён провайдером, но позднее подтверждение ещё возможно':'ожидает подтверждения')+'. Резерв не освобождён. Новый заказ может быть недоступен до проверки.'));if(o.redirect&&o.status==='pending'){var resume=el('a','btn btn--sm','Продолжить оплату этого заказа');resume.href=o.redirect;box.appendChild(resume);}card.appendChild(box);});
     var head = el('div', 'acc-sub__head');
-    head.appendChild(el('h3', 'h3', p.title + (s.kind === 'club' ? ' · ' + s.seats + ' ПК' : '')));
+    head.appendChild(el('h3', 'h3', p.title + (s.kind === 'club' || s.seats > 1 ? ' · ' + s.seats + ' ПК' : '')));
     var remaining=s.paid_until?new Date(s.paid_until).getTime()-Date.now():NaN;
     if(!s.lifetime&&remaining>0&&remaining<=7*86400000){var notice=el('p','acc-error','Подписка заканчивается '+date(s.paid_until)+'. Продлите доступ, чтобы продолжить пользоваться VELIQ.');notice.setAttribute('role','status');card.appendChild(notice);}
     var status = 'Не оплачена';

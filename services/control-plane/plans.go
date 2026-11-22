@@ -21,6 +21,14 @@ type Plan struct {
 
 var planID = regexp.MustCompile(`^[a-z0-9-]{1,40}$`)
 
+func (p Plan) supportsSeats(seats int) bool {
+	limit := p.MaxSeats
+	if p.Kind == "player" {
+		limit = min(limit, 3)
+	}
+	return seats >= 1 && seats <= limit
+}
+
 func (p Plan) valid() bool {
 	return planID.MatchString(p.ID) && (p.Kind == "player" || p.Kind == "club") && p.Title != "" && len(p.Title) <= 64 &&
 		p.PricePerSeatRub >= 0 && p.PricePerSeatRub <= 1_000_000 && p.PeriodDays >= 1 && p.PeriodDays <= 400 && p.MaxSeats >= 1 && p.MaxSeats <= 10000

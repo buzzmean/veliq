@@ -265,7 +265,7 @@ func (a *API) subscriptionCreate(w http.ResponseWriter, r *http.Request) {
 		switch e.Error() {
 		case "SUBSCRIPTION_INVALID", "SUBSCRIPTION_LIMIT":
 			a.fail(w, 400, e.Error())
-		case "PERSONAL_SUBSCRIPTION_CONFLICT":
+		case "PERSONAL_SUBSCRIPTION_CONFLICT", "PERSONAL_SEAT_CHANGE_NOT_AVAILABLE":
 			a.fail(w, http.StatusConflict, e.Error())
 		default:
 			a.fail(w, 503, "ACCOUNT_UNAVAILABLE")

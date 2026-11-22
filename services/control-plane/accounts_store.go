@@ -240,7 +240,7 @@ func (s *Store) CreateSubscription(ctx context.Context, account Account, p Plan,
 }
 
 func (s *Store) createSubscription(ctx context.Context, account Account, p Plan, seats int, requireClubVerification bool) (string, error) {
-	if seats < 1 || seats > p.MaxSeats {
+	if !p.supportsSeats(seats) {
 		return "", errors.New("SUBSCRIPTION_INVALID")
 	}
 	// The count must get a fresh snapshot after waiting for the account lock,
@@ -272,13 +272,14 @@ func (s *Store) createSubscription(ctx context.Context, account Account, p Plan,
 
 // The caller holds the account lock.
 func subscriptionForAccountTx(ctx context.Context, tx pgx.Tx, account Account, p Plan, seats int) (string, error) {
-	var total, personalCount int
+	var total, personalCount, personalSeats int
 	var personalID string
 	if e := tx.QueryRow(ctx, `
 SELECT count(*), count(*) FILTER (WHERE kind='player'),
-       coalesce(min(id) FILTER (WHERE kind='player'), '')
+       coalesce(min(id) FILTER (WHERE kind='player'), ''),
+       coalesce(min(seats) FILTER (WHERE kind='player'), 0)
 FROM subscriptions
-WHERE account_id=$1`, account.ID).Scan(&total, &personalCount, &personalID); e != nil {
+WHERE account_id=$1`, account.ID).Scan(&total, &personalCount, &personalID, &personalSeats); e != nil {
 		return "", e
 	}
 	if p.Kind == "player" {
@@ -286,6 +287,9 @@ WHERE account_id=$1`, account.ID).Scan(&total, &personalCount, &personalID); e !
 			return "", errors.New("PERSONAL_SUBSCRIPTION_CONFLICT")
 		}
 		if personalCount == 1 {
+			if personalSeats != seats {
+				return "", errors.New("PERSONAL_SEAT_CHANGE_NOT_AVAILABLE")
+			}
 			return personalID, nil
 		}
 	}
