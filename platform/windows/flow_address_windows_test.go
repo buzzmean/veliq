@@ -76,3 +76,50 @@ func TestNativeFlowIPv4LateEventDoesNotRearm(t *testing.T) {
 		t.Fatal("late FLOW rearmed an already observed UDP flow")
 	}
 }
+
+func TestNativeFlowDualStackRequiresTwoMappedUDPEndpoints(t *testing.T) {
+	id := nativeGameIdentity(t)
+	_, tuple := gamePacket()
+	for _, tc := range []struct {
+		name                 string
+		nativeSrc, nativeDst bool
+		protocol             byte
+		want                 bool
+	}{
+		{name: "mapped-udp", protocol: 17, want: true},
+		{name: "native-source", nativeSrc: true, protocol: 17},
+		{name: "native-destination", nativeDst: true, protocol: 17},
+		{name: "native-pair", nativeSrc: true, nativeDst: true, protocol: 17},
+		{name: "mapped-tcp", protocol: 6},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			b, _ := captureFixture(t)
+			a := nativeGameFlowAddress(id.PID, 9)
+			a[10] |= 0x10
+			d := a[16:]
+			d[56] = tc.protocol
+			if tc.nativeSrc {
+				binary.LittleEndian.PutUint32(d[32:36], 0x20010db8)
+			}
+			if tc.nativeDst {
+				binary.LittleEndian.PutUint32(d[48:52], 0x20010db8)
+			}
+			b.trackFlow(a)
+			if len(b.associations.items) != 0 && !tc.want {
+				t.Fatal("unexpected association from non-IPv4 UDP metadata")
+			}
+			association, ok := b.associations.Get(tuple, id)
+			if ok != tc.want || ok && association.Endpoint != 9 {
+				t.Fatalf("association=%+v, matched=%v, want=%v", association, ok, tc.want)
+			}
+			if eligible := b.associations.MarkGameFirstFlight(tuple, id); eligible != tc.want {
+				t.Fatalf("first-flight eligibility: got=%v, want=%v", eligible, tc.want)
+			}
+			a[9] = 2
+			b.trackFlow(a)
+			if _, ok := b.associations.Get(tuple, id); ok {
+				t.Fatal("mapped FLOW_DELETED retained a closed association")
+			}
+		})
+	}
+}

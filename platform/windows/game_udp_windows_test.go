@@ -58,9 +58,10 @@ func nativeGameIdentity(t *testing.T) ProcessIdentity {
 func TestNativeGameUDPFirstFlightAndUnselectedProcess(t *testing.T) {
 	id := nativeGameIdentity(t)
 	for _, tc := range []struct {
-		selected bool
-		endpoint uint64
-	}{{false, 1}, {true, 1}, {true, 0}} {
+		selected  bool
+		endpoint  uint64
+		dualStack bool
+	}{{false, 1, false}, {true, 1, false}, {true, 0, false}, {true, 1, true}} {
 		selected := tc.selected
 		b, _ := captureFixture(t)
 		b.gameGuard.ready = true
@@ -68,7 +69,11 @@ func TestNativeGameUDPFirstFlightAndUnselectedProcess(t *testing.T) {
 		e.Configure(id.Path, true)
 		e.SetReason("")
 		p, _ := gamePacket()
-		b.trackFlow(nativeGameFlowAddress(id.PID, tc.endpoint))
+		flowAddress := nativeGameFlowAddress(id.PID, tc.endpoint)
+		if tc.dualStack {
+			flowAddress[10] |= 0x10
+		}
+		b.trackFlow(flowAddress)
 		fake, original := 0, 0
 		b.packetWriter = func(q []byte, _ [80]byte) error {
 			if bytes.Equal(p, q) {
@@ -93,7 +98,7 @@ func TestNativeGameUDPFirstFlightAndUnselectedProcess(t *testing.T) {
 			want = 24
 		}
 		if fake != want || original != 4 {
-			t.Fatal(fake, original, selected)
+			t.Fatalf("capture sends fake=%d and original=%d for %+v, want %d and 4", fake, original, tc, want)
 		}
 		raw, err := json.Marshal(b.evidence.Snapshot(id.PID))
 		if err != nil || len(raw) == 0 {

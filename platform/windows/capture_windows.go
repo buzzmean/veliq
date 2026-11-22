@@ -313,22 +313,23 @@ func (b *WinDivertBackend) track() {
 
 // trackFlow shares the native FLOW event path with ABI and lifetime regressions.
 func (b *WinDivertBackend) trackFlow(address [80]byte) {
-	if address[10]&0x10 != 0 {
-		return
-	}
+	ipv6 := address[10]&0x10 != 0
 	data := address[16:]
 	pid := binary.LittleEndian.Uint32(data[16:20])
 	proto := "udp"
-	if data[56] == 6 {
+	if data[56] == 6 && !ipv6 {
 		proto = "tcp"
 	} else if data[56] != 17 {
 		return
 	}
-	src, dst := [4]byte{}, [4]byte{}
-	// WinDivert stores IPv4 in word 0 of each host-order address array.
-	binary.BigEndian.PutUint32(src[:], binary.LittleEndian.Uint32(data[20:24]))
-	binary.BigEndian.PutUint32(dst[:], binary.LittleEndian.Uint32(data[36:40]))
-	tuple := Tuple{proto, netip.AddrPortFrom(netip.AddrFrom4(src), binary.LittleEndian.Uint16(data[52:54])), netip.AddrPortFrom(netip.AddrFrom4(dst), binary.LittleEndian.Uint16(data[54:56]))}
+	// A dual-stack UDP socket can report its IPv4 flow at the IPv6 ALE layer.
+	// Only a pair of mapped endpoints can describe this backend's IPv4 packet.
+	src := decodeDivertAddress(data[20:36], ipv6)
+	dst := decodeDivertAddress(data[36:52], ipv6)
+	if !src.Is4() || !dst.Is4() {
+		return
+	}
+	tuple := Tuple{proto, netip.AddrPortFrom(src, binary.LittleEndian.Uint16(data[52:54])), netip.AddrPortFrom(dst, binary.LittleEndian.Uint16(data[54:56]))}
 	endpoint := binary.LittleEndian.Uint64(data[:8])
 	event := address[9]
 	if event == 2 {
