@@ -38,6 +38,7 @@ import (
 var Domains = []string{"chatgpt.com", "www.youtube.com", "ordinary.example", "blocked.example", "vk.com", "music.yandex.ru", "langame.ru", "www.twitch.tv", "web.telegram.org"}
 
 type Fixture struct {
+	domains                 []string
 	PoisonTelegramDNS       atomic.Bool
 	PoisonedDNSAnswers      atomic.Uint64
 	AlternativeDNSQueries   atomic.Uint64
@@ -60,8 +61,11 @@ type Fixture struct {
 	Protocols               map[string]int
 }
 
-func New() (*Fixture, error) {
-	f := &Fixture{Seen: map[string]int{}, Protocols: map[string]int{}}
+func New(domains ...string) (*Fixture, error) {
+	if len(domains) == 0 {
+		domains = Domains
+	}
+	f := &Fixture{domains: append([]string(nil), domains...), Seen: map[string]int{}, Protocols: map[string]int{}}
 	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	pub := &key.PublicKey
 	now := time.Now()
@@ -71,7 +75,7 @@ func New() (*Fixture, error) {
 		return nil, e
 	}
 	ca, _ := x509.ParseCertificate(rootDER)
-	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: append(append([]string(nil), Domains...), "youtube.com", "rr1---sn-test.googlevideo.com", "play.google.com", "vk.ru", "i.ytimg.com", "yt3.ggpht.com"), IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)}, Subject: pkix.Name{CommonName: "controlled acceptance target"}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour)}
+	leaf := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: append(append([]string(nil), f.domains...), "youtube.com", "rr1---sn-test.googlevideo.com", "play.google.com", "vk.ru", "i.ytimg.com", "yt3.ggpht.com"), IPAddresses: []net.IP{net.IPv4(127, 0, 0, 1)}, Subject: pkix.Name{CommonName: "controlled acceptance target"}, KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour)}
 	der, e := x509.CreateCertificate(rand.Reader, leaf, ca, pub, key)
 	if e != nil {
 		return nil, e
@@ -210,7 +214,8 @@ func (f *Fixture) serve(w http.ResponseWriter, r *http.Request) {
 		if string(expected) == "null" {
 			expected = []byte("[]")
 		}
-		fmt.Fprintf(w, `<!doctype html><title>PENDING</title><body><script>const expectedFailures=%s;Promise.all(%s.map(async h=>{let value;try{const r=await fetch('https://'+h+':%d/check?stage=%s',{cache:'no-store'});if(r.status!==200)throw Error('HTTP '+r.status);value=await r.text();}catch(e){if(expectedFailures.includes(h))return;throw e;}if(expectedFailures.includes(h))throw Error('UNEXPECTED PROTECTED SUCCESS '+h);if(value!==%q)throw Error('wrong nonce');})).then(()=>{document.title='NEEXITLAG_PASS_%s';document.body.textContent='CONTROLLED_HTTPS_OK';}).catch(e=>{document.title='NEEXITLAG_FAIL';document.body.textContent=String(e);});</script>`, expected, string(domainJSON()), f.Port(), stage, f.Nonce, f.Nonce+"_"+stage)
+		domains, _ := json.Marshal(f.domains)
+		fmt.Fprintf(w, `<!doctype html><title>PENDING</title><body><script>const expectedFailures=%s;Promise.all(%s.map(async h=>{let value;try{const r=await fetch('https://'+h+':%d/check?stage=%s',{cache:'no-store'});if(r.status!==200)throw Error('HTTP '+r.status);value=await r.text();}catch(e){if(expectedFailures.includes(h))return;throw e;}if(expectedFailures.includes(h))throw Error('UNEXPECTED PROTECTED SUCCESS '+h);if(value!==%q)throw Error('wrong nonce');})).then(()=>{document.title='NEEXITLAG_PASS_%s';document.body.textContent='CONTROLLED_HTTPS_OK';}).catch(e=>{document.title='NEEXITLAG_FAIL';document.body.textContent=String(e);});</script>`, expected, domains, f.Port(), stage, f.Nonce, f.Nonce+"_"+stage)
 		return
 	}
 	if r.URL.Path != "/" && r.URL.Path != "/check" {
@@ -219,8 +224,6 @@ func (f *Fixture) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprint(w, f.Nonce)
 }
-func domainJSON() []byte { b, _ := json.Marshal(Domains); return b }
-
 func (f *Fixture) dns() {
 	data := make([]byte, 2048)
 	for {

@@ -31,12 +31,18 @@ type SubscriptionView struct {
 type subscriptionSuspendContext struct{}
 
 type subscriptionRuntime struct {
-	mu        sync.Mutex
-	view      SubscriptionView
-	suspended atomic.Bool
-	resume    bool
-	once      sync.Once
-	wake      chan struct{}
+	mu         sync.Mutex
+	view       SubscriptionView
+	suspended  atomic.Bool
+	trialUntil atomic.Pointer[time.Time]
+	resume     bool
+	once       sync.Once
+	wake       chan struct{}
+}
+
+func (s *subscriptionRuntime) trialExpired(now time.Time) bool {
+	deadline := s.trialUntil.Load()
+	return deadline != nil && !now.Before(*deadline)
 }
 
 func (s *subscriptionRuntime) wakeChannel() chan struct{} {
@@ -74,20 +80,33 @@ type subscriptionSource interface {
 	SubscriptionStatus(context.Context) (controlclient.SubscriptionStatus, error)
 }
 
-func (c *Controller) runSubscription(ctx context.Context, cp subscriptionSource) {
+func (c *Controller) runSubscription(ctx context.Context, cp subscriptionSource, rememberPaid func() bool) {
 	wake := c.subscription.wakeChannel()
 	for {
-		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		now := time.Now()
+		c.expireTrial(now)
+		checkTimeout := 10 * time.Second
+		if deadline := c.subscription.trialUntil.Load(); deadline != nil && deadline.After(now) {
+			checkTimeout = min(checkTimeout, deadline.Sub(now))
+		}
+		checkCtx, cancel := context.WithTimeout(ctx, checkTimeout)
 		st, err := cp.SubscriptionStatus(checkCtx)
 		cancel()
+		now = time.Now()
 		next := subscriptionCheckInterval
 		if err == nil {
-			c.applySubscription(st, time.Now())
+			c.applySubscription(st, now)
+			paid := st.Managed && st.Enforced && st.Active && (st.PaidUntil != nil || st.GraceUntil == nil)
+			if paid && rememberPaid != nil && rememberPaid() {
+				rememberPaid = nil
+			}
 		} else if !errors.Is(err, controlclient.ErrNotSupported) {
 			next = subscriptionRetryInterval
 		}
-		if c.subscription.suspended.Load() {
+		if c.expireTrial(now) || c.subscription.suspended.Load() {
 			next = subscriptionRetryInterval
+		} else if deadline := c.subscription.trialUntil.Load(); deadline != nil {
+			next = min(next, deadline.Sub(now))
 		}
 		timer := time.NewTimer(next)
 		select {
@@ -101,9 +120,25 @@ func (c *Controller) runSubscription(ctx context.Context, cp subscriptionSource)
 	}
 }
 
+func (c *Controller) expireTrial(now time.Time) bool {
+	deadline := c.subscription.trialUntil.Load()
+	if deadline == nil || now.Before(*deadline) {
+		return false
+	}
+	if !c.subscription.suspended.Load() {
+		c.applySubscription(controlclient.SubscriptionStatus{Managed: true, Enforced: true, GraceUntil: deadline}, now)
+	}
+	return true
+}
+
 func (c *Controller) applySubscription(st controlclient.SubscriptionStatus, now time.Time) {
+	var trialUntil *time.Time
+	if st.Managed && st.Enforced && st.PaidUntil == nil {
+		trialUntil = st.GraceUntil
+	}
+	c.subscription.trialUntil.Store(trialUntil)
 	view := SubscriptionView{State: "ACTIVE", PaidUntil: st.PaidUntil, GraceUntil: st.GraceUntil, CheckedAt: &now}
-	expired := st.Enforced && !st.Active
+	expired := (st.Enforced && !st.Active) || c.subscription.trialExpired(now)
 	switch {
 	case !st.Managed:
 		view.State = "UNMANAGED"

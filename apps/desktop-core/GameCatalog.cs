@@ -10,7 +10,7 @@ public sealed record GameNetworkReference(string Id, string Name, string[] TcpPo
 public sealed record GameCatalogData(int Version, GameDefinition[] Games, GameNetworkReference[]? NetworkInformation = null);
 public static class GameCatalog
 {
-    public const string BundledSha256 = "53B349B99631C9F139EBCACC5A03E37AFC18FD52542B51C9F4038CC433849861";
+    public const string BundledSha256 = "6308B6AE5700357EF86EF26073FD98D1661C719BEB11BF4CA43E5D303A5D7729";
     // No unsigned imports/network updates. Catalog trust follows the installed
     // assembly. A public update envelope requires an owner-pinned signing key.
     public static GameCatalogData Bundled() {

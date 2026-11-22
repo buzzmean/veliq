@@ -295,7 +295,6 @@ func (b *WinDivertBackend) stopLocked() error {
 func (b *WinDivertBackend) track() {
 	defer b.wg.Done()
 	d := b.proc()
-	discovery := b.cache
 	var address [80]byte
 	for {
 		ok, _, e := d.recv.Call(b.flow, 0, 0, 0, uintptr(unsafe.Pointer(&address[0])))
@@ -308,44 +307,50 @@ func (b *WinDivertBackend) track() {
 		if b.ctx.Err() != nil {
 			return
 		}
-		if address[10]&0x10 != 0 {
-			continue
+		b.trackFlow(address)
+	}
+}
+
+// trackFlow shares the native FLOW event path with ABI and lifetime regressions.
+func (b *WinDivertBackend) trackFlow(address [80]byte) {
+	if address[10]&0x10 != 0 {
+		return
+	}
+	data := address[16:]
+	pid := binary.LittleEndian.Uint32(data[16:20])
+	proto := "udp"
+	if data[56] == 6 {
+		proto = "tcp"
+	} else if data[56] != 17 {
+		return
+	}
+	src, dst := [4]byte{}, [4]byte{}
+	// WinDivert stores IPv4 in word 0 of each host-order address array.
+	binary.BigEndian.PutUint32(src[:], binary.LittleEndian.Uint32(data[20:24]))
+	binary.BigEndian.PutUint32(dst[:], binary.LittleEndian.Uint32(data[36:40]))
+	tuple := Tuple{proto, netip.AddrPortFrom(netip.AddrFrom4(src), binary.LittleEndian.Uint16(data[52:54])), netip.AddrPortFrom(netip.AddrFrom4(dst), binary.LittleEndian.Uint16(data[54:56]))}
+	endpoint := binary.LittleEndian.Uint64(data[:8])
+	event := address[9]
+	if event == 2 {
+		b.associations.Delete(tuple, endpoint)
+		b.mu.Lock()
+		if f := b.flows[tuple]; f != nil && f.endpoint == endpoint {
+			f.once.Do(func() { close(f.done) })
+			delete(b.flows, tuple)
 		}
-		data := address[16:]
-		pid := binary.LittleEndian.Uint32(data[16:20])
-		proto := "udp"
-		if data[56] == 6 {
-			proto = "tcp"
-		} else if data[56] != 17 {
-			continue
+		b.mu.Unlock()
+		return
+	}
+	identity, e := b.cache.Lookup(pid)
+	if e == nil {
+		b.associations.Put(Association{identity, tuple, endpoint})
+		// FLOW can arrive after the first packet/owner fallback. Consume proof for
+		// an already-observed tuple instead of rearming it after packet-cache expiry.
+		b.mu.Lock()
+		if b.flows[tuple] != nil {
+			b.associations.MarkGameFirstFlight(tuple, identity)
 		}
-		src, dst := [4]byte{}, [4]byte{}
-		binary.BigEndian.PutUint32(src[:], binary.LittleEndian.Uint32(data[32:36]))
-		binary.BigEndian.PutUint32(dst[:], binary.LittleEndian.Uint32(data[48:52]))
-		tuple := Tuple{proto, netip.AddrPortFrom(netip.AddrFrom4(src), binary.LittleEndian.Uint16(data[52:54])), netip.AddrPortFrom(netip.AddrFrom4(dst), binary.LittleEndian.Uint16(data[54:56]))}
-		endpoint := binary.LittleEndian.Uint64(data[:8])
-		event := address[9]
-		if event == 2 {
-			b.associations.Delete(tuple, endpoint)
-			b.mu.Lock()
-			if f := b.flows[tuple]; f != nil && f.endpoint == endpoint {
-				f.once.Do(func() { close(f.done) })
-				delete(b.flows, tuple)
-			}
-			b.mu.Unlock()
-			continue
-		}
-		identity, e := discovery.Lookup(pid)
-		if e == nil {
-			b.associations.Put(Association{identity, tuple, endpoint})
-			// FLOW can arrive after the first packet/owner fallback. Consume proof for
-			// an already-observed tuple instead of rearming it after packet-cache expiry.
-			b.mu.Lock()
-			if b.flows[tuple] != nil {
-				b.associations.MarkGameFirstFlight(tuple, identity)
-			}
-			b.mu.Unlock()
-		}
+		b.mu.Unlock()
 	}
 }
 

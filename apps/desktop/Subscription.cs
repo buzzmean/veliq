@@ -5,6 +5,7 @@ public partial class MainWindow {
   var subscription=model.SubscriptionClient();await subscription.RefreshAsync(recheck,lifetime.Token);
   var status=subscription.Status;
   SubscriptionSummary.Text=status.Summary;SubscriptionHint.Text=status.Hint;
+  SubscriptionRenewButton.Visibility = status.CanRenew ? Visibility.Visible : Visibility.Collapsed;
   SubscriptionRow.Visibility=status.Known?Visibility.Visible:Visibility.Collapsed;
   SubscriptionPanel.Visibility=status.Expired&&ActivationPanel.Visibility!=Visibility.Visible?Visibility.Visible:Visibility.Collapsed;
  }

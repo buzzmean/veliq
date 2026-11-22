@@ -68,3 +68,43 @@ function Update-VeliqClubTaskPaths {
  $new=$old.Replace('\VELIQ Setup\','\VELIQ\').Replace('\ProgramData\neexitlag','\ProgramData\VELIQ')
  if($new -cne $old){$action.Arguments=$new;Set-ScheduledTask -TaskName 'VELIQ Club Boot' -Action $action | Out-Null}
 }
+
+function Get-VeliqGuiTrayRunCommand([string]$Command,[string]$Gui,[string[]]$PreviousGui=@()) {
+ foreach($path in (@($Gui)+$PreviousGui)){
+  if(!$path){continue}
+  $escaped=[regex]::Escape($path)
+  $pattern='^(?:"'+$escaped+'"|'+$escaped+')(?<arguments>\s+.*)?$'
+  $match=[regex]::Match($Command.Trim(),$pattern,[Text.RegularExpressions.RegexOptions]::IgnoreCase)
+  if($match.Success){
+   $existingArguments=$match.Groups['arguments'].Value
+   if($existingArguments -match '^\s*(?:(?<club>--club)(?:\s+|$))?(?:--tray)?\s*$'){
+    $clubArgument=if($Matches['club']){' --club'}else{''}
+    return '"'+$Gui+'"'+$clubArgument+' --tray'
+   }
+   # Preserve deliberate command-line options when a legacy executable moves.
+   if($path -ieq $Gui){return $Command}
+   return '"'+$Gui+'"'+$existingArguments
+  }
+ }
+}
+
+# Match only owned entries. Updating VELIQ in place preserves its Windows
+# startup approval and a missing entry stays missing.
+function Update-VeliqGuiAutostart([string]$RunKey,[string]$Gui,[string[]]$PreviousGui=@(),[switch]$PromoteLegacy) {
+ $values=Get-ItemProperty -LiteralPath $RunKey -ErrorAction SilentlyContinue
+ if(!$values){return}
+ $current=$values.PSObject.Properties['VELIQ']
+ $legacy=$values.PSObject.Properties['NeExitLag']
+ $tray=if($current){Get-VeliqGuiTrayRunCommand ([string]$current.Value) $Gui $PreviousGui}
+ if($tray -and $tray -cne [string]$current.Value){
+  Set-ItemProperty -LiteralPath $RunKey -Name VELIQ -Value $tray
+ }
+ $legacyTray=if($legacy){Get-VeliqGuiTrayRunCommand ([string]$legacy.Value) $Gui $PreviousGui}
+ if(!$legacyTray){return}
+ if($PromoteLegacy -and (!$current -or $tray)){
+  if(!$current){Set-ItemProperty -LiteralPath $RunKey -Name VELIQ -Value $legacyTray}
+  Remove-ItemProperty -LiteralPath $RunKey -Name NeExitLag
+ }elseif($legacyTray -cne [string]$legacy.Value){
+  Set-ItemProperty -LiteralPath $RunKey -Name NeExitLag -Value $legacyTray
+ }
+}

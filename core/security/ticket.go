@@ -12,12 +12,13 @@ import (
 )
 
 type Ticket struct {
-	ID        string    `json:"id"`
-	DeviceID  string    `json:"device_id"`
-	DeviceKey string    `json:"device_key"`
-	RelayID   string    `json:"relay_id"`
-	IssuedAt  time.Time `json:"issued_at"`
-	ExpiresAt time.Time `json:"expires_at"`
+	ID         string     `json:"id"`
+	DeviceID   string     `json:"device_id"`
+	DeviceKey  string     `json:"device_key"`
+	RelayID    string     `json:"relay_id"`
+	IssuedAt   time.Time  `json:"issued_at"`
+	ExpiresAt  time.Time  `json:"expires_at"`
+	TrialUntil *time.Time `json:"trial_until,omitempty"`
 }
 
 // TicketVerifier locks are split by purpose: mu guards keys and the revocation set
@@ -78,6 +79,9 @@ func (v *TicketVerifier) AcceptForDevice(raw []byte, peer ed25519.PublicKey, dev
 	}
 	if (device != "" && t.DeviceID != device) || t.ID == "" || len(t.ID) > 128 || t.DeviceID == "" || t.RelayID != v.Audience || t.DeviceKey != Fingerprint(peer) || !t.ExpiresAt.After(now) || t.IssuedAt.After(now.Add(30*time.Second)) || t.ExpiresAt.Sub(t.IssuedAt) > 5*time.Minute || !t.ExpiresAt.After(t.IssuedAt) || v.Revoked(t.DeviceID) {
 		return t, errors.New("invalid, revoked or expired relay ticket")
+	}
+	if t.TrialUntil != nil && (t.ExpiresAt.After(*t.TrialUntil) || t.TrialUntil.Sub(t.IssuedAt) > 24*time.Hour) {
+		return t, errors.New("invalid trial ticket deadline")
 	}
 	v.useMu.Lock()
 	defer v.useMu.Unlock()

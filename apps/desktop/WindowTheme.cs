@@ -28,6 +28,13 @@ static class WindowTheme
 static class TrayIcons
 {
     public static string State(DesktopViewModel model) => model.Busy ? "connecting" : model.Optimizing ? "on" : !model.Available && model.Error.Length > 0 ? "error" : "off";
+    public static System.Drawing.Icon LoadApplicationIcon()
+    {
+        using var stream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/VELIQ;component/Assets/VELIQ.ico"))!.Stream;
+        using var icon = new System.Drawing.Icon(stream);
+        return (System.Drawing.Icon)icon.Clone();
+    }
+
     public static System.Drawing.Icon Load(string state)
     {
         var theme = LightTaskbar() ? "light" : "dark";

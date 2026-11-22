@@ -21,6 +21,7 @@ public partial class WelcomeWindow : Window
     string email = "";
     DateTime resendAfter;
     bool refreshing, busy, codeSelected, transitioned, initial = true, registration, forceSignIn, nativeApproved;
+    bool trackingCodeActivation;
     WelcomeAccess access = new("CHECKING", "Проверяем подключение", "Подождите немного…", false);
     public WelcomeWindow(Action connected) : this(new WindowsServiceClient(), connected, true) { }
     internal WelcomeWindow(IServiceClient service, Action connected, bool shutdownOnClose,
@@ -83,6 +84,8 @@ public partial class WelcomeWindow : Window
         EmailSubmit.IsEnabled = VerifySubmit.IsEnabled = ProfileSubmit.IsEnabled = ActivateButton.IsEnabled = available;
         PersonalTab.IsEnabled = CodeTab.IsEnabled = RegisterButton.IsEnabled = AuthBack.IsEnabled = !busy;
         ReloadAccountButton.IsEnabled = available && native is not null;
+        OpenTrialButton.Visibility = Visible(nativeAccount?.Kind == "player" && !string.IsNullOrEmpty(nativeAccount.TrialCode));
+        OpenTrialButton.IsEnabled = available && account.Status.VerificationUri is not null;
         ApproveButton.IsEnabled = available && nativeAccount?.Kind == "player" && SubscriptionChoices.Items.Count > 0;
         ContinueButton.IsEnabled = ready && available;
         RetryButton.IsEnabled = available;
@@ -98,7 +101,18 @@ public partial class WelcomeWindow : Window
             Lead.Text = account.Status.Linked ? account.Status.Summary : "Этот компьютер уже подключён по коду.";
             Feedback.Text = "";
         }
-        else if (codeSelected) { Heading.Text = "Подключение к клубу"; Lead.Text = "Введите код, который выдал администратор."; }
+        else if (codeSelected)
+        {
+            Heading.Text = "Подключение к клубу";
+            Lead.Text = "Введите код, который выдал администратор.";
+            if (trackingCodeActivation && !busy)
+            {
+                var status = activation.Status;
+                Feedback.Text = status.Error.Length == 0 && access.State is ("UNAVAILABLE" or "ERROR" or "EXPIRED" or "BLOCKED")
+                    ? access.Message
+                    : status.Message;
+            }
+        }
         else switch (stage)
         {
             case SignInStage.Email:
@@ -185,6 +199,8 @@ public partial class WelcomeWindow : Window
         SubscriptionChoices.Visibility = Visible(choices.Count > 0);
         SubscriptionNotice.Text = snapshot.Kind == "club" ? "Это аккаунт клуба. Для клубного компьютера используйте код администратора." :
             choices.Count == 0 ? "Аккаунт подтверждён. Действующая личная подписка пока не найдена." : "";
+        if (snapshot.Kind == "player" && choices.Count == 0 && !string.IsNullOrEmpty(snapshot.TrialCode))
+            SubscriptionNotice.Text = "Активируйте пробный день в кабинете, затем обновите подписки.";
         SubscriptionNotice.Visibility = Visible(SubscriptionNotice.Text.Length > 0);
         DeviceName.Text = "";
         if (snapshot.Kind == "player")
@@ -198,6 +214,15 @@ public partial class WelcomeWindow : Window
     {
         if (native is null) return;
         await RunAsync(async () => await ShowAccountAsync(await native.CreatePersonalProfileAsync(ProfileName.Text, lifetime.Token)));
+    }
+    async void OpenTrial(object sender, RoutedEventArgs e)
+    {
+        if (account.Status.VerificationUri is not { } verification) return;
+        await RunAsync(() => {
+            var cabinet = new Uri(verification, "/account");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(cabinet.AbsoluteUri) { UseShellExecute = true });
+            return Task.CompletedTask;
+        });
     }
     async void ReloadAccount(object sender, RoutedEventArgs e)
     {
@@ -234,7 +259,18 @@ public partial class WelcomeWindow : Window
         if (busy || refreshing) return;
         string code = ConnectionCode.Password.Trim(); ConnectionCode.Clear();
         if (code.Length == 0) { Feedback.Text = "Введите код администратора."; return; }
-        await RunAsync(async () => { try { await activation.ActivateAsync(code, lifetime.Token); Feedback.Text = activation.Status.Message; } finally { code = ""; } });
+        trackingCodeActivation = false;
+        await RunAsync(async () =>
+        {
+            try
+            {
+                await activation.ActivateAsync(code, lifetime.Token);
+                var status = activation.Status;
+                trackingCodeActivation = status.State == "ACTIVATING" && status.Error.Length == 0;
+                Feedback.Text = status.Message;
+            }
+            finally { code = ""; }
+        });
     }
     async void Retry(object sender, RoutedEventArgs e) { Feedback.Text = ""; await RefreshAsync(true); }
     async void Continue(object sender, RoutedEventArgs e) { await RefreshAsync(); if (Ready && !busy && !refreshing) Enter(); }

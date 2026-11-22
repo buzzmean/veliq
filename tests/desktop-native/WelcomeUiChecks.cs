@@ -13,14 +13,17 @@ internal static class WelcomeUiChecks
     sealed class Fixture : IServiceClient
     {
         internal string State="CODE_REQUIRED";
-        internal bool Started, Linked;
+        internal string ActivationError="";
+        internal bool Started, Linked, AcceptCode;
         internal List<string> Methods=[];
         public Task<T> Call<T>(string method,object? payload=null,CancellationToken cancellationToken=default)
         {
             Methods.Add(method);
             if(method=="account.link.start")Started=true;
+            if (method == "activation.set" && AcceptCode) State = "ACTIVATING";
             object value=method switch {
-                "activation.status" => new ActivationView{State=State,HasIdentity=State=="ACTIVATED",CapturePermitted=true},
+                "activation.status" => new ActivationView{State=State,Error=ActivationError,HasIdentity=State=="ACTIVATED",CapturePermitted=true},
+                "activation.set" when AcceptCode => new ActivationView{State=State},
                 "activation.set" => new ActivationView{State="ACTIVATION_ERROR",Error="ACTIVATION_INVALID"},
                 "account.status" or "account.link.start" => new AccountConnectionView{
                     State=Linked?"LINKED":Started?"WAITING_FOR_BROWSER":"NOT_LINKED", Kind=Linked?"player":"",
@@ -123,6 +126,27 @@ internal static class WelcomeUiChecks
         Screenshot(window,"welcome-code");
         window.CodeInput.Password="fixture-invalid-code";Click(window,"ActivateButton");
         if(window.CodeInput.SecurePassword.Length!=0||entered||!fixture.Methods.Contains("activation.set"))throw new Exception("Code failure leaked input or granted access");
+        var feedback = (System.Windows.Controls.TextBlock)window.FindName("Feedback");
+        if (feedback.Text != new ActivationView { Error = "ACTIVATION_INVALID" }.Message)
+            throw new Exception("The immediate code rejection was lost after refresh");
+        fixture.AcceptCode = true;
+        window.CodeInput.Password = "fixture-pending-code";
+        Click(window, "ActivateButton");
+        if (feedback.Text != new ActivationView { State = "ACTIVATING" }.Message || entered)
+            throw new Exception("The accepted club code must wait for confirmation");
+        fixture.State = "ACTIVATION_ERROR";
+        fixture.ActivationError = "CLUB_ENROLLMENT_CLOSED";
+        window.RefreshAsync().GetAwaiter().GetResult();
+        Pump();
+        if (feedback.Text != new ActivationView { Error = fixture.ActivationError }.Message || entered)
+            throw new Exception("The late service error must replace the activation progress");
+        Panel(window, "RetryButton");
+        fixture.AcceptCode = false;
+        window.CodeInput.Password = "fixture-invalid-code";
+        Click(window, "ActivateButton");
+        if (feedback.Text != new ActivationView { Error = "ACTIVATION_INVALID" }.Message)
+            throw new Exception("An earlier service error hid the new immediate code rejection");
+        fixture.ActivationError = "";
         fixture.State="ACTIVATED";window.RefreshAsync().GetAwaiter().GetResult();Pump();
         Panel(window,"ReadyPanel");Click(window,"ContinueButton");
         if(!entered||window.IsVisible)throw new Exception("Legacy code connection not recognized");

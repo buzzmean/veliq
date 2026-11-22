@@ -38,6 +38,7 @@
      <ComboBox x:Name="SubscriptionChoices" DisplayMemberPath="Label" MinHeight="44" Margin="0,0,0,16" AutomationProperties.Name="Подписка"/>
      <TextBlock x:Name="SubscriptionNotice" Style="{StaticResource Small}" Margin="0,0,0,16"/>
      <Button x:Name="ApproveButton" Content="Подключить этот компьютер" Click="ApproveAccount" Style="{StaticResource Primary}" MinHeight="46" Margin="0"/>
+     <Button x:Name="OpenTrialButton" Content="Пробный день в кабинете" Click="OpenTrial" Style="{StaticResource Quiet}" Margin="0,12,0,0" Visibility="Collapsed"/>
      <Button x:Name="ReloadAccountButton" Content="Обновить подписки" Click="ReloadAccount" Style="{StaticResource Quiet}" Margin="0,12,0,0"/>
     </StackPanel>
     <StackPanel x:Name="ConnectingPanel" Visibility="Collapsed">

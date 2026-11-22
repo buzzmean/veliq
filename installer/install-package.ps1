@@ -83,11 +83,6 @@ try{
   $step='GUI_INSTALL'
   if(!(Test-Path -LiteralPath $gui)){throw 'INSTALL_GUI_MISSING'}
   Remove-VeliqLegacyUserGui
-  if($legacyGui){
-   # Retarget an enabled autostart that pointed at the old per-user copy.
-   $run='HKCU:\Software\Microsoft\Windows\CurrentVersion\Run';$v=Get-ItemProperty -LiteralPath $run -ErrorAction SilentlyContinue
-   foreach($name in 'NeExitLag','VELIQ'){if($v -and $v.PSObject.Properties[$name] -and ([string]$v.$name) -like ('"'+(Split-Path $legacyGui -Parent)+'*')){$rest=([string]$v.$name) -replace '^"[^"]*"','';Remove-ItemProperty -LiteralPath $run -Name $name;Set-ItemProperty -LiteralPath $run -Name VELIQ -Value ('"'+$gui+'"'+$rest)}}
-  }
   if($ClubImage){$step='CLUB_IMAGE_SEAL';& (Join-Path $scripts 'configure-club-image.ps1') -InstallDirectory $installed -ClubCodeFile $ClubCodeFile}
   elseif($ClubCodeFile -ne ''){$step='CLUB_STAGE';& (Join-Path $scripts 'stage-club-activation.ps1') -ProtectedCodeFile $ClubCodeFile -InstallDirectory $installed}
   $step='VERIFY';$state=Get-Service VELIQ;if(($ClubImage -and $ClubCodeFile -and $state.Status -ne 'Stopped') -or ((!$ClubImage -or !$ClubCodeFile) -and $state.Status -ne 'Running')){throw 'INSTALL_SERVICE_NOT_RUNNING'}
@@ -111,6 +106,15 @@ try{
  }
  $reboot=Get-VeliqInstallRebootState $root
  Assert-VeliqNoPendingReboot $reboot
+ if(!$Remove -and !$ClubImage){
+  $step='GUI_AUTOSTART'
+  $runKey=if($Update){'Registry::HKEY_USERS\'+$owner+'\Software\Microsoft\Windows\CurrentVersion\Run'}
+          else{'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'}
+  $previousGui=@()
+  if($legacyGui){$previousGui=@($legacyGui,(Join-Path (Split-Path $legacyGui -Parent) 'NeExitLag.exe'))}
+  Update-VeliqGuiAutostart -RunKey $runKey -Gui $gui -PreviousGui $previousGui -PromoteLegacy:(!$Update)
+  $step='VERIFY'
+ }
  $hashes=$null;if(!$Remove){$hashes=$installedHashes}
  New-VeliqInstallResult 'PASS' $step $reboot -Hashes $hashes|ConvertTo-Json -Depth 4|Set-Content -LiteralPath $success -Encoding UTF8
  Copy-Item -LiteralPath $success -Destination $result -Force

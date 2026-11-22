@@ -40,9 +40,20 @@ public sealed class NativeSubscription
     public bool CanConnect { get; set; }
     public bool Lifetime { get; set; }
     public DateTimeOffset? PaidUntil { get; set; }
+    public DateTimeOffset? TrialUntil { get; set; }
     public List<NativeAccountDevice> Devices { get; set; } = [];
     public string Label => (Kind == "club" ? "Клубная подписка" : "Личная подписка") + $" · подключено ПК: {UsedSeats}";
-    public string AccessLabel => Lifetime ? "Бессрочно" : PaidUntil is {} date ? "Оплачено до " + date.ToLocalTime().ToString("dd.MM.yyyy") : "Нет оплаченного периода";
+    public string AccessLabel
+    {
+        get
+        {
+            if (Lifetime) return "Бессрочно";
+            if (PaidUntil is { } paid) return "Оплачено до " + paid.ToLocalTime().ToString("dd.MM.yyyy");
+            if (TrialUntil is { } trial)
+                return CanConnect ? "Пробный доступ до " + trial.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "Пробный доступ завершён";
+            return "Нет оплаченного периода";
+        }
+    }
     public string SeatsLabel => Kind == "club" ? $"Компьютеры: {UsedSeats} из {Seats}" : $"Подключено компьютеров: {UsedSeats}";
     public string ConnectionLabel => CanConnect ? "Подключение новых компьютеров доступно" : "Подключение новых компьютеров недоступно — проверьте подписку или обратитесь в поддержку";
 }
@@ -69,6 +80,7 @@ public sealed class NativeAccountSnapshot
     public List<NativeSubscription> Subscriptions { get; set; } = [];
     public List<NativeAccountPayment> Payments { get; set; } = [];
     public bool PaymentsEnabled { get; set; }
+    public string? TrialCode { get; set; }
     public string RoleLabel => Kind == "club" ? "Клуб" : Kind == "player" ? "Пользователь" : "Завершите регистрацию";
 }
 public interface INativeCabinetClient : INativeAccountClient

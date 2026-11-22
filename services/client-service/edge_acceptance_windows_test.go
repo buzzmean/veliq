@@ -221,7 +221,14 @@ func TestEdgeActualPolicyHTTPSOutageRestart(t *testing.T) {
 		}
 		return nil
 	}
-	fixture.ExpectedFailures = map[int][]string{2: {"chatgpt.com", "www.youtube.com", "blocked.example"}}
+	// This fixture uses a loopback origin on a dynamically allocated TLS port.
+	// Recognized YouTube is restricted to public IPv4 HTTPS/443 and must
+	// fail closed here, including while the Edge listener is unavailable.
+	fixture.ExpectedFailures = map[int][]string{
+		1: {"www.youtube.com"},
+		2: {"chatgpt.com", "www.youtube.com", "blocked.example"},
+		3: {"www.youtube.com"},
+	}
 	var records []browserproxy.Record
 	output, err := fixture.RunChrome(ctx, edge, args, func() error {
 		before := c.browser.edge.server.Snapshot()
@@ -254,6 +261,9 @@ func TestEdgeActualPolicyHTTPSOutageRestart(t *testing.T) {
 	records = append(records, after.Records...)
 	seen := map[string]bool{}
 	for _, record := range records {
+		if record.Domain == "www.youtube.com" && (record.Sent != 0 || record.Received != 0) {
+			t.Fatal("YouTube used an upstream outside its approved HTTPS scope", record)
+		}
 		if record.Sent == 0 || record.Received == 0 {
 			continue
 		}
@@ -269,7 +279,7 @@ func TestEdgeActualPolicyHTTPSOutageRestart(t *testing.T) {
 		}
 	}
 	for _, host := range browserfixture.Domains {
-		if !seen[host] {
+		if host != "www.youtube.com" && !seen[host] {
 			t.Fatal("missing actual HTTP(S) evidence", host)
 		}
 	}
@@ -282,5 +292,5 @@ func TestEdgeActualPolicyHTTPSOutageRestart(t *testing.T) {
 	if c.browser.server != nil || c.browser.expectedPAC != "" {
 		t.Fatal("Edge created/modified Chrome runtime")
 	}
-	t.Log("real Edge policy: nine simultaneous fixture sites, HTTPS+HTTP/2, mTLS relay, protected no-DIRECT, ordinary recovery and service restart; production Internet and native Edge DIRECT+ not claimed")
+	t.Log("real Edge policy: eight successful fixture sites and a blocked YouTube fixture port, HTTPS+HTTP/2, mTLS relay, protected no-DIRECT, ordinary recovery and service restart")
 }

@@ -221,7 +221,9 @@ func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, pl
 	if scoped := c.youtubeLocalBetaOriginScope(q); scoped != plan.YouTubeLocalGeneration {
 		return nil, errYouTubeLocalScopeChanged
 	}
-	if plan.YouTubeLocalGeneration != 0 && (plan.Policy.Action == flowpolicy.Relay || plan.Policy.Action == flowpolicy.RelayRequired || plan.Policy.RelayID != "") {
+	youtubeLocalOnly := plan.YouTubeLocalGeneration != 0 || current.enabled && c.BrowserOwnerSID != "" &&
+		c.youtubeLocalBeta.active.Load() != nil && browserAuto(current.profile) && youtubeLocalBetaOrigin(q.Host)
+	if youtubeLocalOnly && (plan.Policy.Action == flowpolicy.Relay || plan.Policy.Action == flowpolicy.RelayRequired || plan.Policy.RelayID != "") {
 		c.youtubeLocalBetaOutcome(plan.YouTubeLocalGeneration, "DPI_LOCAL_RELAY_FORBIDDEN")
 		return nil, errors.New("YOUTUBE_LOCAL_RELAY_FORBIDDEN")
 	}

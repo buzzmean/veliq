@@ -9,7 +9,7 @@ public partial class MainWindow
     bool loadingYouTubeLocal, savingYouTubeLocal;
     YouTubeLocalState? youtubeLocalState;
 
-    sealed record YouTubeLocalState(bool Manageable, bool Enabled, bool Active, string Reason, string? LastFailure);
+    sealed record YouTubeLocalState(bool Manageable, bool Enabled, bool Active, string Reason, string? LastFailure, bool Automatic = false);
 
     async Task RefreshYouTubeLocalAsync()
     {
@@ -34,7 +34,7 @@ public partial class MainWindow
 
     async void ToggleYouTubeLocal(object sender, RoutedEventArgs e)
     {
-        if (savingYouTubeLocal || youtubeLocalState is not { Manageable: true } previous)
+        if (savingYouTubeLocal || youtubeLocalState is not { Manageable: true, Automatic: false } previous)
             return;
         savingYouTubeLocal = true;
         YouTubeLocalToggle.IsEnabled = false;
@@ -56,6 +56,12 @@ public partial class MainWindow
     void ApplyYouTubeLocalState(YouTubeLocalState state)
     {
         youtubeLocalState = state;
+        if (state.Automatic)
+        {
+            YouTubeLocalToggle.IsEnabled = false;
+            YouTubeLocalPanel.Visibility = Visibility.Collapsed;
+            return;
+        }
         YouTubeLocalPanel.Visibility = Visibility.Visible;
         YouTubeLocalToggle.IsEnabled = state.Manageable;
         YouTubeLocalToggle.IsChecked = state.Enabled;

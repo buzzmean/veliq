@@ -119,6 +119,12 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	if e = c.stopRemoteLocked(ctx); e != nil {
 		return e
 	}
+	record, _ := readActivationRecord(activationFile(m))
+	c.subscription.trialUntil.Store(record.Account.TrialUntil)
+	var rememberPaid func() bool
+	if record.Account.TrialUntil != nil {
+		rememberPaid = func() bool { return c.rememberPaidTrial(m, record.RequestID) }
+	}
 	remoteCtx, stopRemote := context.WithCancel(c.ctx)
 	c.remoteCancel = stopRemote
 	done := make(chan struct{})
@@ -132,7 +138,7 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	c.wg.Add(1)
 	go func() { defer c.wg.Done(); defer workers.Done(); c.runRemoteTraffic(remoteCtx, cp, keys) }()
 	c.wg.Add(1)
-	go func() { defer c.wg.Done(); defer workers.Done(); c.runSubscription(remoteCtx, cp) }()
+	go func() { defer c.wg.Done(); defer workers.Done(); c.runSubscription(remoteCtx, cp, rememberPaid) }()
 	if m.StateDirectory != "" && c.updater.Load() == nil {
 		u := newUpdater(keys, filepath.Dir(m.StateDirectory), nil)
 		u.launch = func(path string) error { return launchUpdateSetupObserved(path, u.installExited) }
