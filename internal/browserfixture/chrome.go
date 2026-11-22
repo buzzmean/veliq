@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -251,8 +252,18 @@ func (f *Fixture) RunChrome(ctx context.Context, chrome string, args []string, t
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, host := range Domains {
+		var expectedSuccess bool
+		for stage := 1; stage <= len(transitions)+1; stage++ {
+			if !slices.Contains(f.ExpectedFailures[stage], host) {
+				expectedSuccess = true
+				break
+			}
+		}
+		if !expectedSuccess {
+			continue
+		}
 		if f.Seen[host] == 0 {
-			return title, errors.New("controlled target saw no request for an origin")
+			return title, fmt.Errorf("controlled target saw no request for %s", host)
 		}
 		if f.Protocols[host] != 2 {
 			return title, fmt.Errorf("controlled Chrome origin %s did not negotiate HTTP/2", host)
