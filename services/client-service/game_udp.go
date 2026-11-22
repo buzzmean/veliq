@@ -185,6 +185,13 @@ func (c *Controller) registerGame(preset gameudp.Preset, path string) {
 	defer c.games.mu.Unlock()
 	p, ok := c.Profiles.Match(wp.ProcessIdentity{PID: 1, CreationTime: 1, Path: path})
 	if !ok {
+		// Discovery can find a different executable on an upgraded installation.
+		// Retain an existing profile and its exact path binding.
+		for _, existing := range c.Profiles.List() {
+			if existing.ID == preset.ID {
+				return
+			}
+		}
 		p = profiles.Profile{ID: preset.ID, Name: preset.Name, Executables: []string{path}, Mode: profiles.Direct, AppPreset: "game-udp-" + preset.ID}
 		if err := c.Profiles.Upsert(p); err != nil {
 			c.games.error = "GAME_PROFILE_REGISTER_FAILED"

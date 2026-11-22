@@ -59,6 +59,51 @@ func TestGameDefaultPUBGAndOtherOptInScope(t *testing.T) {
 		}
 	}
 }
+
+func TestApexDX12DiscoveryCreatesProfileAndRespectsExistingBinding(t *testing.T) {
+	preset := gameudp.Preset{ID: "apex", Name: "Apex Legends"}
+	const dx12 = `C:\Steam\steamapps\common\Apex Legends\r5apex_dx12.exe`
+	const legacy = `C:\Steam\steamapps\common\Apex Legends\r5apex.exe`
+	c := New(context.Background())
+	defer c.Close()
+	c.registerGame(preset, dx12)
+	if g := c.games.items["apex"]; g == nil || g.Path != dx12 || g.Enabled {
+		t.Fatalf("expected an inactive DX12 profile, got %+v", g)
+	}
+
+	existing := New(context.Background())
+	defer existing.Close()
+	existing.registerGame(preset, legacy)
+	existing.registerGame(preset, dx12)
+	p, ok := existing.Profiles.Match(wp.ProcessIdentity{PID: 1, CreationTime: 1, Path: legacy})
+	if !ok || p.ID != "apex" || existing.games.items["apex"].Path != legacy {
+		t.Fatal("discovery overwrote an existing Apex executable binding")
+	}
+}
+
+func TestApexLocalFirstRequiresTheLocalOnlyGameProfile(t *testing.T) {
+	c := New(context.Background())
+	defer c.Close()
+	for _, tc := range []struct {
+		profileID string
+		exe       string
+		localOnly bool
+		want      string
+	}{
+		{"apex", "r5apex_dx12.exe", true, "LOCAL_FIRST_UNCONFIRMED_ENDPOINT"},
+		{"apex", "r5apex.exe", true, "LOCAL_FIRST_UNCONFIRMED_ENDPOINT"},
+		{"apex", "r5apex_dx12.exe", false, "DIRECT_FIRST"},
+		{"other", "r5apex_dx12.exe", true, "DIRECT_FIRST"},
+		{"apex", "other.exe", true, "DIRECT_FIRST"},
+	} {
+		e := c.newGameLadder(tc.profileID, `D:\Steam\Example\`+tc.exe)
+		e.SetLocalOnly(tc.localOnly)
+		if got := e.Snapshot().InitialPolicy; got != tc.want {
+			t.Fatalf("%+v: got %s", tc, got)
+		}
+	}
+}
+
 func TestGameOptOutPersistsAndRediscoveryDoesNotEnable(t *testing.T) {
 	c, id := gameController(t)
 	c.customPath = filepath.Join(t.TempDir(), "profiles.json")

@@ -14,6 +14,34 @@ func localLadder() *Engine {
 	e.SetReason("")
 	return e
 }
+
+func TestLocalPreferenceStartsOnlyOnNewLocalOnlyFlows(t *testing.T) {
+	e := NewLadder(&Budget{})
+	e.Configure(app, true)
+	e.SetReason("")
+	e.PreferLocalWithoutRelay()
+	at := time.Unix(1000, 0)
+	ordinary := ladderFlow(t, e, at, 50000)
+	if e.Evidence(ordinary).Stage != Direct {
+		t.Fatal("ordinary UDP did not start DIRECT")
+	}
+	e.SetLocalOnly(true)
+	key := ordinary.key
+	key.Source = netip.AddrPortFrom(key.Source.Addr(), 50001)
+	local, err := e.OpenWithQuality(key, at, "test-relay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev := e.Evidence(local); ev.Stage != Local || ev.Variant != Variants()[0] {
+		t.Fatal("local trial missed first variant", ev)
+	}
+	if _, repeats := e.Plan(local, at); repeats != 12 {
+		t.Fatalf("first datagram: got %d copies", repeats)
+	}
+	if _, repeats := e.Plan(ordinary, at); repeats != 0 || e.Evidence(ordinary).Stage != Direct {
+		t.Fatal("existing DIRECT flow changed")
+	}
+}
 func TestPUBGLocalFirstColdFlowK12N2WithoutDirectProbation(t *testing.T) {
 	e := localLadder()
 	at := time.Unix(1000, 0)

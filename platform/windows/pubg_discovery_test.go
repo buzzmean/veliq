@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/buzzmean/neexitlag/core/gameudp"
 )
 
 func TestPUBGDiscoveryRequiresSteamManifestAndExactExe(t *testing.T) {
@@ -23,6 +25,42 @@ func TestPUBGDiscoveryRequiresSteamManifestAndExactExe(t *testing.T) {
 	os.WriteFile(filepath.Join(root, "steamapps", "appmanifest_578080.acf"), []byte(`"installdir" ".."`), 0600)
 	if got := FindPUBG([]string{root}); got.Path != "" {
 		t.Fatal("traversal trusted", got)
+	}
+}
+
+func TestApexDiscoveryFindsDX12AndRetainsLegacySupport(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "steamapps", "common", "Apex Legends")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	preset := gameudp.Preset{ID: "apex", SteamID: "1172470"}
+	dx12 := filepath.Join(dir, "r5apex_dx12.exe")
+	legacy := filepath.Join(dir, "r5apex.exe")
+	if err := os.WriteFile(dx12, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := FindSteamGame([]string{root}, preset); got.Path != "" {
+		t.Fatal("unverified Apex install trusted", got)
+	}
+	manifest := filepath.Join(root, "steamapps", "appmanifest_1172470.acf")
+	if err := os.WriteFile(manifest, []byte(`"appid" "1172470" "installdir" "Apex Legends"`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := FindSteamGame([]string{root}, preset); got.Path != dx12 {
+		t.Fatal("DX12 executable not discovered", got)
+	}
+	if err := os.WriteFile(legacy, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := FindSteamGame([]string{root}, preset); got.Path != dx12 {
+		t.Fatal("DX12 executable should be preferred when both exist", got)
+	}
+	if err := os.Remove(dx12); err != nil {
+		t.Fatal(err)
+	}
+	if got := FindSteamGame([]string{root}, preset); got.Path != legacy {
+		t.Fatal("legacy Apex executable not discovered", got)
 	}
 }
 func TestPUBGDiscoveryUsesAdditionalSteamLibrary(t *testing.T) {

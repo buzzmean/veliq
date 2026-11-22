@@ -178,6 +178,7 @@ type Engine struct {
 	ladder                     bool
 	localOnly                  bool
 	startLocal                 bool
+	localWithoutRelay          bool
 	endpointScoped             bool
 	stunEndpoint               netip.AddrPort
 	stunPorts                  []uint16
@@ -220,6 +221,18 @@ func (e *Engine) SetStartLocal(enabled bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.startLocal = enabled
+}
+
+// PreferLocalWithoutRelay starts new flows with a bounded local trial when
+// the caller chooses local-only routing. Confirmed DIRECT still takes priority.
+func (e *Engine) PreferLocalWithoutRelay() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.localWithoutRelay = true
+}
+
+func (e *Engine) startsLocal() bool {
+	return e.startLocal || e.localOnly && e.localWithoutRelay
 }
 
 // SetLocalOnly restricts future flows to DIRECT/local trials. Existing routes
@@ -279,13 +292,14 @@ func (e *Engine) OpenWithQuality(k Key, now time.Time, measuredRelay string) (*F
 		return e.openSTUNFlow(k, now)
 	}
 	cache := e.learning[e.trialKey(k)]
+	startLocal := e.startsLocal()
 	// Results from another route policy cannot grant relay or carry exhaustion
 	// across a policy switch. Confirmed DIRECT endpoints remain safe to reuse.
 	if cache.LocalOnly != e.localOnly {
 		cache = Learning{}
 	}
 	// Legacy application-wide DIRECT results are not proof of this endpoint.
-	if e.ladder && e.startLocal && cache.Stage == Direct {
+	if e.ladder && startLocal && cache.Stage == Direct {
 		cache = Learning{}
 	}
 	if e.ladder {
@@ -296,7 +310,7 @@ func (e *Engine) OpenWithQuality(k Key, now time.Time, measuredRelay string) (*F
 	index := 0
 	stage := Local
 	selection := "LOCAL_FIRST_UNCONFIRMED_ENDPOINT"
-	if e.ladder && !e.startLocal {
+	if e.ladder && !startLocal {
 		stage = Direct
 		selection = "DEFAULT_DIRECT_TRIAL"
 	}
@@ -500,7 +514,7 @@ func (e *Engine) health(f *Flow, now time.Time) {
 	if old.LocalOnly != e.localOnly {
 		old = Learning{}
 	}
-	if e.ladder && e.startLocal && old.Stage == Direct {
+	if e.ladder && e.startsLocal() && old.Stage == Direct {
 		old = Learning{}
 	}
 	if sustained && !f.learned {
@@ -651,7 +665,7 @@ func (e *Engine) Snapshot() Snapshot {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	initialPolicy := "LOCAL_FIRST_UNCONFIRMED_ENDPOINT"
-	if e.ladder && !e.startLocal {
+	if e.ladder && !e.startsLocal() {
 		initialPolicy = "DIRECT_FIRST"
 	}
 	out := Snapshot{LocalOnly: e.localOnly, InitialPolicy: initialPolicy, Enabled: e.enabled, Application: e.application, Generation: e.generation, Reason: e.reason, Flows: []Evidence{}, Learning: []Learning{}, Lost: e.lost}

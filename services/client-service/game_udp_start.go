@@ -15,8 +15,12 @@ import (
 func (c *Controller) newGameLadder(profileID, executable string) *gameudp.Engine {
 	e := gameudp.NewLadder(c.games.budget)
 	e.SetEndpointScoped()
-	if profileID == "cs2" && path.Base(gameudp.Canonical(executable)) == "cs2.exe" {
+	exe := path.Base(gameudp.Canonical(executable))
+	if profileID == "cs2" && exe == "cs2.exe" {
 		e.SetCS2STUNScope(c.games.cs2STUNEndpoint, c.games.cs2STUNPorts)
+	}
+	if profileID == "apex" && (exe == "r5apex_dx12.exe" || exe == "r5apex.exe") {
+		e.PreferLocalWithoutRelay()
 	}
 	return e
 }
