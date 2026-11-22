@@ -31,6 +31,13 @@ internal static partial class Program
         }
     }
     static void Pass(string label) => Console.WriteLine("PASS " + label);
+    sealed class FixtureApp : App
+    {
+        // WPF queues Startup when Application is constructed. Keep production
+        // startup out of the dispatcher turns used by these window fixtures.
+        protected override void OnStartup(StartupEventArgs e) { }
+    }
+
     sealed class AbsentService : IServiceClient
     {
         public Task<T> Call<T>(string method, object? payload = null, CancellationToken cancellationToken = default)
@@ -43,6 +50,28 @@ internal static partial class Program
             => throw new ServiceException(Reject ? ServiceFailure.Rejected : ServiceFailure.NotInstalled);
     }
     static MainWindow Window(LocalPreferences p) => new(p, false, false, settings, new AbsentService());
+    static void TrayAutostart(App app)
+    {
+        Require(App.StartsInTray(["--tray"]) && App.StartsInTray(["--CLUB"]), "Automatic startup arguments");
+        Require(!App.StartsInTray([]) && !App.StartsInTray(["--fresh-pc-setup", "report.json"]), "Manual startup arguments");
+        app.ShowStartupTray();
+        try
+        {
+            Pump();
+            Require(app.StartupTrayVisible, "Automatic startup must expose a tray icon");
+            Require(app.MainWindow is null && app.Windows.Count == 0,
+                "Automatic startup must not create a WPF window");
+        }
+        finally { app.DisposeStartupTray(); }
+        Require(!app.StartupTrayVisible, "Startup icon cleanup");
+
+        var window = new MainWindow(new() { StartMinimized = true }, false, false, settings,
+            new AbsentService(), applyStartMinimized: false);
+        window.Show(); Pump();
+        Require(window.IsVisible && window.WindowState == WindowState.Normal, "Opening from the startup tray must show the full window");
+        window.Exit(); Pump();
+        Pass("Autostart tray, CLI compatibility, explicit Open and icon cleanup");
+    }
     static void Key(ComboBox box, System.Windows.Input.Key key)
     {
         box.RaiseEvent(new System.Windows.Input.KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(box)!, 0, key) { RoutedEvent = Keyboard.KeyDownEvent });
@@ -348,9 +377,16 @@ internal static partial class Program
             }
             finally { fixtureApp.Shutdown(); }
         }
-        var app = new App(); app.InitializeComponent(); app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        try {
-            WelcomeUiChecks.Run(); CabinetUiChecks.Run(); EmergencyUiChecks.Run(); FreshPCSetupChecks.Run(); ChromeProxyValue(); ChromeRecoveryGuard(); ChromePolicyRecoveryLifecycle(); Picker(); StrategiesNull(); Lifecycle(); Dropdowns(); BrowserAndPrompt(); ManualUpdateButton(); Pass("native WPF desktop regression suite"); return 0;
+        var app = new FixtureApp { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = new Uri("/VELIQ;component/Assets/Theme.xaml", UriKind.Relative) });
+        try
+        {
+            TrayAutostart(app);
+            WelcomeUiChecks.Run(); CabinetUiChecks.Run(); EmergencyUiChecks.Run(); FreshPCSetupChecks.Run();
+            ChromeProxyValue(); ChromeRecoveryGuard(); ChromePolicyRecoveryLifecycle(); Picker(); StrategiesNull(); Lifecycle(); Dropdowns();
+            BrowserAndPrompt(); ManualUpdateButton();
+            Pass("native WPF desktop regression suite");
+            return 0;
         }
         catch (Exception e) { Console.Error.WriteLine(e); File.WriteAllText(Path.Combine(Output, "failure.txt"), e.ToString()); return 1; }
         finally { foreach (System.Windows.Window w in app.Windows.Cast<System.Windows.Window>().ToArray()) { if (w is MainWindow m) m.Exit(); else w.Close(); } app.Shutdown(); File.Delete(settings); }

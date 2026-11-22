@@ -71,9 +71,15 @@ func FindSteamGame(roots []string, preset gameudp.Preset) PUBGInstallation {
 		}
 		parts := append([]string{library, "steamapps", "common", name}, preset.Relative...)
 		path := filepath.Join(parts...)
-		file, err := os.Lstat(path)
-		if err == nil && file.Mode().IsRegular() && file.Mode()&os.ModeSymlink == 0 {
-			return PUBGInstallation{Path: path, Reason: "STEAM_APP_" + preset.SteamID + "_VERIFIED_PATH"}
+		candidates := []string{path}
+		if preset.AlternateExecutable != "" {
+			candidates = append(candidates, filepath.Join(filepath.Dir(path), preset.AlternateExecutable))
+		}
+		for _, candidate := range candidates {
+			file, err := os.Lstat(candidate)
+			if err == nil && file.Mode().IsRegular() && file.Mode()&os.ModeSymlink == 0 {
+				return PUBGInstallation{Path: candidate, Reason: "STEAM_APP_" + preset.SteamID + "_VERIFIED_PATH"}
+			}
 		}
 	}
 	return PUBGInstallation{Reason: "GAME_NOT_INSTALLED"}

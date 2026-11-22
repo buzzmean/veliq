@@ -93,7 +93,8 @@
       "name": "Apex Legends",
       "icon": "APE",
       "executables": [
-        "r5apex.exe"
+        "r5apex.exe",
+        "r5apex_dx12.exe"
       ],
       "launcher": "Steam / EA",
       "antiCheat": "EAC",

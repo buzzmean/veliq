@@ -37,10 +37,11 @@ type DeviceLinkRequest struct {
 	Signature     string          `json:"signature,omitempty"`
 }
 type AccountBinding struct {
-	Kind         string `json:"kind"`
-	Name         string `json:"name"`
-	Email        string `json:"email,omitempty"`
-	Subscription string `json:"subscription_id"`
+	Kind         string     `json:"kind"`
+	Name         string     `json:"name"`
+	Email        string     `json:"email,omitempty"`
+	Subscription string     `json:"subscription_id"`
+	TrialUntil   *time.Time `json:"trial_until,omitempty"`
 }
 type DeviceLinkStatus struct {
 	State           string         `json:"state"`

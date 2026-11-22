@@ -24,8 +24,8 @@ import (
 
 // These names never resolve publicly in this fixture. One ephemeral certificate
 // deliberately authorizes different policy classes at the same IP and port.
-const ReuseLocalHost = "www.youtube.com"
-const ReuseSiblingHost = "youtube.com"
+const ReuseLocalHost = "local-origin.example"
+const ReuseSiblingHost = "sibling-origin.example"
 const ReuseRequiredHost = "chatgpt.com"
 const ReuseFreshRequiredHost = "api.openai.com"
 

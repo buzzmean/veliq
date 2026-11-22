@@ -83,6 +83,8 @@ public partial class WelcomeWindow : Window
         EmailSubmit.IsEnabled = VerifySubmit.IsEnabled = ProfileSubmit.IsEnabled = ActivateButton.IsEnabled = available;
         PersonalTab.IsEnabled = CodeTab.IsEnabled = RegisterButton.IsEnabled = AuthBack.IsEnabled = !busy;
         ReloadAccountButton.IsEnabled = available && native is not null;
+        OpenTrialButton.Visibility = Visible(nativeAccount?.Kind == "player" && !string.IsNullOrEmpty(nativeAccount.TrialCode));
+        OpenTrialButton.IsEnabled = available && account.Status.VerificationUri is not null;
         ApproveButton.IsEnabled = available && nativeAccount?.Kind == "player" && SubscriptionChoices.Items.Count > 0;
         ContinueButton.IsEnabled = ready && available;
         RetryButton.IsEnabled = available;
@@ -185,6 +187,8 @@ public partial class WelcomeWindow : Window
         SubscriptionChoices.Visibility = Visible(choices.Count > 0);
         SubscriptionNotice.Text = snapshot.Kind == "club" ? "Это аккаунт клуба. Для клубного компьютера используйте код администратора." :
             choices.Count == 0 ? "Аккаунт подтверждён. Действующая личная подписка пока не найдена." : "";
+        if (snapshot.Kind == "player" && choices.Count == 0 && !string.IsNullOrEmpty(snapshot.TrialCode))
+            SubscriptionNotice.Text = "Активируйте пробный день в кабинете, затем обновите подписки.";
         SubscriptionNotice.Visibility = Visible(SubscriptionNotice.Text.Length > 0);
         DeviceName.Text = "";
         if (snapshot.Kind == "player")
@@ -198,6 +202,15 @@ public partial class WelcomeWindow : Window
     {
         if (native is null) return;
         await RunAsync(async () => await ShowAccountAsync(await native.CreatePersonalProfileAsync(ProfileName.Text, lifetime.Token)));
+    }
+    async void OpenTrial(object sender, RoutedEventArgs e)
+    {
+        if (account.Status.VerificationUri is not { } verification) return;
+        await RunAsync(() => {
+            var cabinet = new Uri(verification, "/account");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(cabinet.AbsoluteUri) { UseShellExecute = true });
+            return Task.CompletedTask;
+        });
     }
     async void ReloadAccount(object sender, RoutedEventArgs e)
     {

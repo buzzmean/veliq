@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using Neexitlag.Desktop;
@@ -5,8 +6,52 @@ using Button = System.Windows.Controls.Button;
 
 internal static partial class Program
 {
+    sealed class YouTubeSettingsService : IServiceClient
+    {
+        public bool Automatic { get; set; }
+        public int Writes { get; private set; }
+
+        public Task<T> Call<T>(string method, object? payload = null, CancellationToken cancellationToken = default)
+        {
+            if (method == "browser.youtube.local.set")
+                Writes++;
+            else if (method != "browser.youtube.local.status")
+                throw new ServiceException(ServiceFailure.Rejected, method);
+            string json = Automatic
+                ? """{"automatic":true,"manageable":false,"enabled":true,"active":true,"reason":"READY"}"""
+                : """{"manageable":true,"enabled":false,"active":false,"reason":"OFF"}""";
+            return Task.FromResult(JsonSerializer.Deserialize<T>(json, WireJson.Options)!);
+        }
+    }
+
+    static void YouTubeSettingsCompatibility()
+    {
+        var fixture = new YouTubeSettingsService();
+        var window = new MainWindow(new() { MinimizeToTray = false }, false, false, settings, fixture);
+        window.Show();
+        try
+        {
+            ((DesktopViewModel)window.DataContext).Apply(new() { Connected = true });
+            var panel = (Border)window.FindName("YouTubeLocalPanel");
+            var toggle = (System.Windows.Controls.CheckBox)window.FindName("YouTubeLocalToggle");
+            window.ShowPage("Settings");
+            Require(panel.Visibility == Visibility.Visible && toggle.IsEnabled, "Legacy YouTube can no longer be managed");
+            fixture.Automatic = true;
+            window.ShowPage("Settings");
+            Require(panel.Visibility == Visibility.Collapsed && !toggle.IsEnabled, "Automatic YouTube still presents a manual toggle");
+            toggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Require(fixture.Writes == 0, "Automatic YouTube still sent a preference write");
+            fixture.Automatic = false;
+            window.ShowPage("Settings");
+            Require(panel.Visibility == Visibility.Visible && toggle.IsEnabled, "Legacy YouTube setting did not return after rollback");
+        }
+        finally { window.Close(); Pump(); }
+        Pass("YouTube switch follows automatic service capability and legacy rollback");
+    }
+
     static void BrowserAndPrompt()
     {
+        YouTubeSettingsCompatibility();
         {
             var window = Window(new() { MinimizeToTray = false });
             window.Show();

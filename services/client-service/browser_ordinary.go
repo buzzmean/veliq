@@ -94,8 +94,13 @@ func (c *Controller) openOrdinaryAddressesWithFallback(ctx context.Context, cur 
 	}
 	open = c.automaticScopedOpen(cur, open)
 	candidates := []netip.AddrPort{}
+	selectedAt := time.Now()
+	addressFailed := func(a netip.AddrPort) bool {
+		key := c.directTimeoutKey(cur, q, browserproxy.RetargetOrigin(p, a))
+		return c.browser.directTimeouts.AddressFailed(key, selectedAt)
+	}
 	add := func(a netip.AddrPort) {
-		if len(candidates) >= 2 || !a.IsValid() || !a.Addr().Is4() || !browserproxy.PublicDNSAddress(a.Addr()) || a.Port() != q.Port {
+		if !a.IsValid() || !a.Addr().Is4() || !browserproxy.PublicDNSAddress(a.Addr()) || a.Port() != q.Port {
 			return
 		}
 		for _, old := range candidates {
@@ -104,6 +109,16 @@ func (c *Controller) openOrdinaryAddressesWithFallback(ctx context.Context, cur 
 			}
 		}
 		if rule, explicit := flowpolicy.Evaluate(cur.profile.Rules, flowpolicy.Input{Protocol: "tcp", Destination: a, Domain: q.Host, Network: cur.network}); explicit && rule.Action != flowpolicy.Direct {
+			return
+		}
+		if len(candidates) == 2 {
+			// Keep the first destination and the two-attempt budget. A fresh
+			// DNS peer outside its /24 is useful after a prefix-level failure.
+			prefix := netip.PrefixFrom(candidates[0].Addr(), 24)
+			distinctPrefix := prefix.Contains(candidates[1].Addr()) && !prefix.Contains(a.Addr())
+			if (distinctPrefix || addressFailed(candidates[1])) && !addressFailed(a) {
+				candidates[1] = a
+			}
 			return
 		}
 		candidates = append(candidates, a)

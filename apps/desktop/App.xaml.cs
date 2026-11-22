@@ -2,10 +2,13 @@ using System.Globalization;
 using System.IO.Pipes;
 using System.Security.Principal;
 using System.Windows;
+using Forms = System.Windows.Forms;
 namespace Neexitlag.Desktop;
 public partial class App : System.Windows.Application
 {
     Mutex? instance; bool ownsMutex; readonly CancellationTokenSource lifetime = new(); string activationPipe = "";
+    Forms.NotifyIcon? startupTray;
+    System.Drawing.Icon? startupIcon;
     protected override async void OnStartup(StartupEventArgs e)
     {
         CultureInfo.DefaultThreadCurrentCulture = Text.Russian;
@@ -23,39 +26,80 @@ public partial class App : System.Windows.Application
             }
             return;
         }
+        var startInTray = StartsInTray(e.Args);
         var sid = (WindowsIdentity.GetCurrent().User?.Value ?? Environment.UserName) + "-" + System.Diagnostics.Process.GetCurrentProcess().SessionId;
         activationPipe = "NeExitLag-activate-" + sid;
         instance = new Mutex(true, "Local\\NeExitLag-" + sid, out ownsMutex);
         if (!ownsMutex)
         {
-            try
+            if (!startInTray)
             {
-                using var pipe = new NamedPipeClientStream(".", activationPipe, PipeDirection.Out, PipeOptions.Asynchronous);
-                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                await pipe.ConnectAsync(deadline.Token);
-                await pipe.WriteAsync(new byte[] { 1 }, deadline.Token);
+                try
+                {
+                    using var pipe = new NamedPipeClientStream(".", activationPipe, PipeDirection.Out, PipeOptions.Asynchronous);
+                    using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                    await pipe.ConnectAsync(deadline.Token);
+                    await pipe.WriteAsync(new byte[] { 1 }, deadline.Token);
+                }
+                catch { }
             }
-            catch { }
             Shutdown();
             return;
         }
         LocalPreferences.MigrateLegacyUserData();
         if (ClubWindow.IsClubInstallation())
-        {
             MainWindow = new ClubWindow(); // Starts in tray, no end-user prompts.
-            _ = ListenForActivation(lifetime.Token);
-            return;
-        }
-        var freshReport = FreshPCSetupArguments(e.Args);
+        else if (startInTray)
+            ShowStartupTray();
+        else
+            ShowWelcome(FreshPCSetupArguments(e.Args));
+        _ = ListenForActivation(lifetime.Token);
+    }
+
+    // Older club images already use --club in their Run value.
+    internal static bool StartsInTray(string[] args) =>
+        args.Contains(LocalPreferences.TrayArgument, StringComparer.OrdinalIgnoreCase) ||
+        args.Contains("--club", StringComparer.OrdinalIgnoreCase);
+
+    void ShowWelcome(string? freshReport, bool openedFromTray = false)
+    {
         var welcome = new WelcomeWindow(() => {
-            var window = freshReport is null ? new MainWindow() : new MainWindow(LocalPreferences.Load(), false, true);
+            var window = new MainWindow(LocalPreferences.Load(), background: freshReport is null,
+                shutdownOnClose: true, applyStartMinimized: !openedFromTray);
             MainWindow = window;
             window.Show();
             if (freshReport is not null) _ = window.RunFreshPCSetupAsync(freshReport);
         });
         MainWindow = welcome;
         welcome.Show();
-        _ = ListenForActivation(lifetime.Token);
+    }
+
+    internal bool StartupTrayVisible => startupTray?.Visible == true;
+
+    internal void ShowStartupTray()
+    {
+        startupIcon = TrayIcons.LoadApplicationIcon();
+        var menu = new Forms.ContextMenuStrip();
+        menu.Items.Add(Text.Get("OpenApp"), null, (_, _) => Dispatcher.Invoke(ShowCurrentWindow));
+        menu.Items.Add(Text.Get("Exit"), null, (_, _) => Dispatcher.Invoke(() => Shutdown()));
+        TrayMenuRenderer.Apply(menu);
+        startupTray = new Forms.NotifyIcon { Icon = startupIcon, Text = "VELIQ", ContextMenuStrip = menu };
+        startupTray.MouseClick += (_, args) =>
+        {
+            if (args.Button == Forms.MouseButtons.Left) Dispatcher.Invoke(ShowCurrentWindow);
+        };
+        startupTray.Visible = true;
+    }
+
+    internal void DisposeStartupTray()
+    {
+        if (startupTray is null) return;
+        startupTray.Visible = false;
+        startupTray.ContextMenuStrip?.Dispose();
+        startupTray.Dispose();
+        startupTray = null;
+        startupIcon?.Dispose();
+        startupIcon = null;
     }
     async Task ListenForActivation(CancellationToken ct)
     {
@@ -77,10 +121,29 @@ public partial class App : System.Windows.Application
             catch (IOException) { await Task.Delay(200, ct).ConfigureAwait(false); }
         }
     }
-    void ShowCurrentWindow(){if(MainWindow is ClubWindow club)club.ShowFromTray();else if(MainWindow is MainWindow main)main.ShowFromTray();else if(MainWindow is WelcomeWindow welcome)welcome.ShowFromTray();}
-    void ExitCurrentWindow(){if(MainWindow is ClubWindow club)club.Exit();else if(MainWindow is MainWindow main)main.Exit();else if(MainWindow is WelcomeWindow welcome)welcome.Exit();}
+    void ShowCurrentWindow()
+    {
+        if (startupTray is not null)
+        {
+            DisposeStartupTray();
+            ShowWelcome(null, openedFromTray: true);
+        }
+        else if (MainWindow is ClubWindow club) club.ShowFromTray();
+        else if (MainWindow is MainWindow main) main.ShowFromTray();
+        else if (MainWindow is WelcomeWindow welcome) welcome.ShowFromTray();
+    }
+
+    void ExitCurrentWindow()
+    {
+        if (startupTray is not null) Shutdown();
+        else if (MainWindow is ClubWindow club) club.Exit();
+        else if (MainWindow is MainWindow main) main.Exit();
+        else if (MainWindow is WelcomeWindow welcome) welcome.Exit();
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
+        DisposeStartupTray();
         lifetime.Cancel();
         if (ownsMutex)
             instance?.ReleaseMutex();

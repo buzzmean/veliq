@@ -22,9 +22,8 @@ import (
 func browserAutoLocalFixture(t *testing.T) (*Controller, profilesResult, browserproxy.Request, browserproxy.Plan) {
 	t.Helper()
 	c, cur, q, p := newYouTubeLocalBetaRouteFixture(t)
-	if _, err := c.handleYouTubeLocalBeta("browser.youtube.local.set", []byte(`{"enabled":false}`)); err != nil {
-		t.Fatal(err)
-	}
+	// Exercise the fallback ladder used by other browser origins in isolation.
+	c.youtubeLocalBeta.setGeneration(false)
 	c.mu.Lock()
 	c.enabled, c.settings.Automatic = true, true
 	c.mu.Unlock()
@@ -34,7 +33,7 @@ func browserAutoLocalFixture(t *testing.T) (*Controller, profilesResult, browser
 	q.Host = "rr4---sn-oj5hn5-55.googlevideo.com"
 	p.Destination = netip.MustParseAddrPort("74.125.8.4:443")
 	if c.youtubeLocalBetaStatus().Enabled || c.youtubeLocalBetaOriginScope(q) != 0 {
-		t.Fatal("ordinary AUTO must have the optional mode OFF")
+		t.Fatal("test fixture unexpectedly selected YouTube-specific policy")
 	}
 	if got, err := c.browserProfile(q.Owner); err != nil || !got.enabled {
 		t.Fatal("real Windows Chrome owner did not enter AUTO", err)

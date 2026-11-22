@@ -4,10 +4,12 @@ public sealed class SubscriptionView {
  public string State {get;set;}="UNKNOWN"; public DateTimeOffset? PaidUntil {get;set;} public DateTimeOffset? GraceUntil {get;set;}
  public bool Expired=>State=="EXPIRED";
  public bool Known=>State is "ACTIVE" or "EXPIRED";
- /// Строка в Настройках: только дата или «закончилась», без технических подробностей.
+ public bool CanRenew => Expired || (State == "ACTIVE" && PaidUntil.HasValue);
+ /// В настройках показывается состояние доступа и подтверждённая дата, если она есть.
  public string Summary=>State switch {
   "EXPIRED"=>"Подписка закончилась",
   "ACTIVE" when PaidUntil is {} d=>"Подписка до "+d.ToLocalTime().ToString("dd.MM.yyyy"),
+  "ACTIVE"=>"Доступ активен",
   _=>""
  };
  public string Hint=>State switch {

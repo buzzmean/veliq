@@ -46,6 +46,11 @@ func TestCDNColdOwnerProcess(t *testing.T) {
 
 func cdnColdOwner(t *testing.T) wp.ProcessIdentity {
 	t.Helper()
+	return cdnColdOwnerExecutable(t, "chrome.exe")
+}
+
+func cdnColdOwnerExecutable(t *testing.T, exe string) wp.ProcessIdentity {
+	t.Helper()
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +59,7 @@ func cdnColdOwner(t *testing.T) wp.ProcessIdentity {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "chrome.exe")
+	path := filepath.Join(t.TempDir(), exe)
 	if err := os.WriteFile(path, raw, 0700); err != nil {
 		t.Fatal(err)
 	}

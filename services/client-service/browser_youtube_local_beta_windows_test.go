@@ -39,7 +39,7 @@ func newYouTubeLocalBetaRouteFixture(t *testing.T) (*Controller, profilesResult,
 		t.Fatal(err)
 	}
 	c.Backend = &youtubeTransformFixture{nativeBackendFixture{hotBackendFixture: hotBackendFixture{ready: true}}}
-	c.youtubeLocalBeta.setGeneration(true)
+	c.enabled = true
 	q.Owner = browserproxy.Owner{PID: id.PID, Birth: id.CreationTime, Exe: id.Path, Profile: cur.profile.ID}
 	q.Ingress = "PAC_CONNECT"
 	p.YouTubeLocalGeneration = c.youtubeLocalBetaOriginScope(q)
@@ -55,7 +55,9 @@ func TestYouTubeLocalBetaRouteTriesAlternateAfterSilenceAndReusesIt(t *testing.T
 	c, cur, q, p := newYouTubeLocalBetaRouteFixture(t)
 	server, roots := youtubeTLSHTTPFixture(t, q.Host)
 	primary := youtubeLegacyOrder[0]
-	c.browser.youtube.confirmed(youtubeScope(cur, q), "LOCAL", primary, time.Now())
+	scope := youtubeScope(cur, q)
+	c.browser.youtube.confirmed(scope, "LOCAL", primary, time.Now())
+	c.browser.youtube.noteEndpointFailure(scope, youTubeLocalDirectCandidate, cdnEndpoint{q.Host, p.Destination.String()}, "ORIGIN_SILENT", time.Now())
 	var opens, forbidden atomic.Int32
 	open := func(ctx context.Context, request browserproxy.Request, plan browserproxy.Plan) (net.Conn, error) {
 		if request.Host != q.Host || plan.Destination != p.Destination || plan.Policy.Action != flowpolicy.DirectPlus ||
@@ -186,11 +188,11 @@ func TestYouTubeLocalBetaPreservesBlocksAndHasBoundedNoRelayFailure(t *testing.T
 	}
 	_, blocked, err := c.openBrowserPlan(context.Background(), cur, q, p, open)
 	if err == nil || blocked.Policy.Reason != "DPI_LOCAL_NO_WORKING_STRATEGY" ||
-		len(actions) != youTubeLocalBetaAttempts || actions[len(actions)-1] != flowpolicy.Direct ||
+		len(actions) != youTubeLocalBetaAttempts || actions[0] != flowpolicy.Direct ||
 		c.youtubeLocalBetaStatus().LastFailure != "DPI_LOCAL_NO_WORKING_STRATEGY" {
 		t.Fatalf("bounded failure or local direct fallback missing: %+v actions=%+v err=%v", blocked, actions, err)
 	}
-	for _, action := range actions[:len(actions)-1] {
+	for _, action := range actions[1:] {
 		if action != flowpolicy.DirectPlus {
 			t.Fatalf("no candidate switch: %v", actions)
 		}
@@ -216,6 +218,7 @@ func TestYouTubeLocalBetaPreservesBlocksAndHasBoundedNoRelayFailure(t *testing.T
 
 func TestYouTubeLocalBetaPlainDirectWorksWhenLocalTransformsCannotOpen(t *testing.T) {
 	c, cur, q, p := newYouTubeLocalBetaRouteFixture(t)
+	c.Backend = nil // The local strategy guard cannot authorize transforms.
 	server, roots := youtubeTLSHTTPFixture(t, q.Host)
 	opens := 0
 	open := func(ctx context.Context, _ browserproxy.Request, plan browserproxy.Plan) (net.Conn, error) {
@@ -253,7 +256,7 @@ func TestYouTubeLocalBetaPlainDirectWorksWhenLocalTransformsCannotOpen(t *testin
 		}
 	}
 	events := c.browser.youtube.cdnDecisionSnapshot().Events
-	if opens != youTubeLocalBetaAttempts+1 || events[len(events)-2].Reason != "LEARNED_DIRECT" {
+	if opens != 2 || events[len(events)-2].Reason != "LEARNED_DIRECT" {
 		t.Fatalf("working plain direct not reused: opens=%d events=%+v", opens, events)
 	}
 	if status := c.youtubeLocalBetaStatus(); status.LocalCDNRX != 0 {

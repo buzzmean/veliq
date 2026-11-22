@@ -3,6 +3,8 @@ package clientservice
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/buzzmean/neexitlag/core/enrollment"
 	wp "github.com/buzzmean/neexitlag/platform/windows"
 )
@@ -12,7 +14,7 @@ import (
 // before any WinDivert handle or browser policy is activated.
 // An ended subscription blocks the same way until the next successful payment.
 func (c *Controller) activationNetworkAllowed() bool {
-	return !c.emergencyStopped.Load() && !c.activation.networkBlocked.Load() && !c.subscription.suspended.Load()
+	return !c.emergencyStopped.Load() && !c.activation.networkBlocked.Load() && !c.subscription.suspended.Load() && !c.subscription.trialExpired(time.Now())
 }
 func (c *Controller) activationHardware(ctx context.Context, salt []byte) (string, error) {
 	c.activation.mu.Lock()

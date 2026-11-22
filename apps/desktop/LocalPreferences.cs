@@ -3,6 +3,7 @@ using Microsoft.Win32;
 namespace Neexitlag.Desktop;
 public sealed class LocalPreferences
 {
+    internal const string TrayArgument = "--tray";
     public bool StartMinimized
     {
         get; set;
@@ -39,11 +40,12 @@ public sealed class LocalPreferences
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         key.DeleteValue(LegacyRunValue, false);
         if (enabled && Environment.ProcessPath is string path)
-            key.SetValue("VELIQ", '"' + path + '"');
+            key.SetValue("VELIQ", AutoStartCommand(path));
         else
             key.DeleteValue("VELIQ", false);
     }
     const string LegacyRunValue = "NeExitLag";
+    static string AutoStartCommand(string path) => '"' + path + "\" " + TrayArgument;
 
     // Pre-rebrand builds kept per-user state in %LOCALAPPDATA%\NeExitLag and the
     // autostart value under that name. Move both once; never overwrite new state.
@@ -57,10 +59,18 @@ public sealed class LocalPreferences
             if (Directory.Exists(legacy) && !Directory.Exists(current))
                 Directory.Move(legacy, current);
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
-            if (key?.GetValue(LegacyRunValue) != null && Environment.ProcessPath is string path)
+            if (key is not null && Environment.ProcessPath is string path)
             {
-                key.SetValue("VELIQ", '"' + path + '"');
-                key.DeleteValue(LegacyRunValue, false);
+                var currentCommand = key.GetValue("VELIQ");
+                if (key.GetValue(LegacyRunValue) != null)
+                {
+                    if (currentCommand is null) key.SetValue("VELIQ", AutoStartCommand(path));
+                    key.DeleteValue(LegacyRunValue, false);
+                }
+                if (currentCommand is string command &&
+                    (string.Equals(command.Trim(), '"' + path + '"', StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(command.Trim(), path, StringComparison.OrdinalIgnoreCase)))
+                    key.SetValue("VELIQ", AutoStartCommand(path));
             }
         }
         catch (Exception) { }

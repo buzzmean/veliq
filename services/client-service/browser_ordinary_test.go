@@ -47,7 +47,10 @@ func TestOrdinarySilentTLSUsesOtherDNSBeforeRelayAndReportsActualRoute(t *testin
 	q.Host = "akashi.vk-portal.net"
 	p.Policy = flowpolicy.Result{Action: flowpolicy.RelayRequired, Source: "direct_timeout_cache", Fallback: flowpolicy.Required}
 	second := netip.MustParseAddrPort("87.240.137.208:443")
-	p.DirectCandidates = []netip.AddrPort{p.Destination, second, netip.MustParseAddrPort("93.186.225.194:443")}
+	neighborIP := p.Destination.Addr().As4()
+	neighborIP[3] ^= 1
+	samePrefix := netip.AddrPortFrom(netip.AddrFrom4(neighborIP), q.Port)
+	p.DirectCandidates = []netip.AddrPort{p.Destination, samePrefix, second, netip.MustParseAddrPort("93.186.225.194:443")}
 	server, roots := youtubeTLSHTTPFixture(t, q.Host, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, "ordinary direct works") }))
 	var opens atomic.Int32
 	raw, _, err := c.openBrowserPlan(context.Background(), cur, q, p, func(ctx context.Context, _ browserproxy.Request, actual browserproxy.Plan) (net.Conn, error) {
@@ -61,7 +64,7 @@ func TestOrdinarySilentTLSUsesOtherDNSBeforeRelayAndReportsActualRoute(t *testin
 			return a, nil
 		}
 		if actual.Destination != second {
-			t.Error("third address attempted")
+			t.Error("did not choose the distinct DNS prefix for the second attempt")
 		}
 		return (&net.Dialer{}).DialContext(ctx, "tcp", server.Listener.Addr().String())
 	})

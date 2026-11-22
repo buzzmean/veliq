@@ -71,14 +71,11 @@ func (c *Controller) planYouTubeLocalBeta(ctx context.Context, cur profilesResul
 		p.Policy = youtubeLocalBetaBlock(reason)
 		return p, errors.New(reason)
 	}
-	if !cur.enabled || cur.routingDisabled || !c.nativeBackendReady() {
-		return deny("DPI_LOCAL_CHROME_CAPTURE_NOT_READY")
+	if !cur.enabled || cur.routingDisabled {
+		return deny("DPI_LOCAL_BROWSER_AUTO_REQUIRED")
 	}
 	if !youtubeLocalBetaAuthority(q) || q.Port != 443 || !q.Secure {
 		return deny("DPI_LOCAL_CONNECT_AUTHORITY_REQUIRED")
-	}
-	if !c.youtubeLocalAllowed(cur.network) {
-		return deny("DPI_LOCAL_NETWORK_GUARD")
 	}
 	if policy := c.browserOriginPolicy(q.Host); policy.Protected || policy.Kind == "RELAY" {
 		return deny("DPI_LOCAL_ORIGIN_POLICY_BLOCKED")
@@ -97,7 +94,9 @@ func (c *Controller) planYouTubeLocalBeta(ctx context.Context, cur profilesResul
 	if err != nil {
 		return deny("DPI_LOCAL_DNS_FAILED")
 	}
-	if !c.youtubeLocalBetaCurrent(generation) || !c.youtubeLocalAllowed(cur.network) {
+	fresh, err := c.browserProfile(q.Owner)
+	if err != nil || fresh.network != cur.network || !fresh.enabled || c.policyRevision(fresh.profile) != c.policyRevision(cur.profile) ||
+		c.youtubeLocalBetaOriginScope(q) != generation {
 		return deny(errYouTubeLocalScopeChanged.Error())
 	}
 	for _, address := range addresses {
@@ -119,10 +118,10 @@ type youtubeLocalCandidate struct {
 }
 
 func (r *youtubeRuntime) youtubeLocalBetaCandidatesLocked(key, ordinary youtubeKey, endpoint cdnEndpoint, baseline bool, now time.Time) []youtubeLocalCandidate {
-	return r.youtubeLocalCandidatesLocked(key, ordinary, endpoint, baseline, "last", now)
+	return r.youtubeLocalCandidatesLocked(key, ordinary, endpoint, baseline, "first", now)
 }
 
-// Caller holds r.mu. A separate key keeps the optional mode's learnings
+// Caller holds r.mu. A separate key keeps the local-only policy's learnings
 // independent; ordinary AUTO uses one key for both arguments.
 func (r *youtubeRuntime) youtubeLocalCandidatesLocked(key, ordinary youtubeKey, endpoint cdnEndpoint, baseline bool, directOrder string, now time.Time) []youtubeLocalCandidate {
 	candidates := make([]youtubeLocalCandidate, 0, youTubeLocalBetaAttempts)
@@ -222,12 +221,14 @@ func (c *Controller) openYouTubeLocalBeta(ctx context.Context, cur profilesResul
 	if !p.Enabled || !youtubeLocalBetaAuthority(q) || !q.Secure || q.Port != 443 || !endpoint.valid() {
 		return deny("DPI_LOCAL_CONNECT_AUTHORITY_REQUIRED")
 	}
-	if cur.network != p.Network || !cur.enabled || cur.routingDisabled || !c.youtubeLocalAllowed(cur.network) {
+	if cur.network != p.Network || !cur.enabled || cur.routingDisabled {
 		return deny("DPI_LOCAL_NETWORK_GUARD")
 	}
 	revision := c.policyRevision(cur.profile)
 	scopeCurrent := func() bool {
-		return c.youtubeLocalBetaCurrent(gen) && c.youtubeLocalAllowed(cur.network)
+		fresh, err := c.browserProfile(q.Owner)
+		return err == nil && fresh.enabled && !fresh.routingDisabled && fresh.network == cur.network &&
+			c.policyRevision(fresh.profile) == revision && c.youtubeLocalBetaOriginScope(q) == gen
 	}
 	if !scopeCurrent() {
 		return deny(errYouTubeLocalScopeChanged.Error())
@@ -281,10 +282,14 @@ func (c *Controller) openYouTubeLocalBeta(ctx context.Context, cur profilesResul
 	var attempt func(context.Context, int) (net.Conn, browserproxy.Plan, error)
 	attempt = func(work context.Context, index int) (net.Conn, browserproxy.Plan, error) {
 		for ; index < len(candidates); index++ {
-			if work.Err() != nil || !scopeCurrent() || c.policyRevision(cur.profile) != revision {
+			if work.Err() != nil || !scopeCurrent() {
 				return deny(errYouTubeLocalScopeChanged.Error())
 			}
 			candidate := candidates[index]
+			direct := candidate.id == youTubeLocalDirectCandidate
+			if !direct && (!c.nativeBackendReady() || !c.youtubeLocalAllowed(cur.network)) {
+				continue
+			}
 			r.mu.Lock()
 			blocked := r.endpointBlockedLocked(key, candidate.id, endpoint, time.Now()) || r.endpointBlockedLocked(ordinary, candidate.id, endpoint, time.Now())
 			r.mu.Unlock()
@@ -292,7 +297,7 @@ func (c *Controller) openYouTubeLocalBeta(ctx context.Context, cur profilesResul
 				continue
 			}
 			var release func()
-			if !strings.HasPrefix(candidate.reason, "LEARNED_") && candidate.reason != "RECENT_LOCAL_PROOF" {
+			if !direct && !strings.HasPrefix(candidate.reason, "LEARNED_") && candidate.reason != "RECENT_LOCAL_PROOF" {
 				select {
 				case c.browser.youtubeLocalBetaProbes <- struct{}{}:
 					release = func() { <-c.browser.youtubeLocalBetaProbes }
@@ -302,7 +307,7 @@ func (c *Controller) openYouTubeLocalBeta(ctx context.Context, cur profilesResul
 			}
 			actual, stage := p, "DIRECT"
 			actual.Policy = flowpolicy.Result{Action: flowpolicy.Direct, Fallback: flowpolicy.FailBlock, Source: youTubeLocalBetaSource, Reason: candidate.reason}
-			if candidate.id != youTubeLocalDirectCandidate {
+			if !direct {
 				id, _ := c.youtubeEngine(cur, q, actual, candidate.id)
 				if id == "" {
 					if release != nil {
@@ -324,14 +329,14 @@ func (c *Controller) openYouTubeLocalBeta(ctx context.Context, cur profilesResul
 			openCtx, stop := context.WithTimeout(work, 550*time.Millisecond)
 			conn, err := open(openCtx, q, actual)
 			stop()
-			if err != nil || conn == nil || !scopeCurrent() || c.policyRevision(cur.profile) != revision {
+			if err != nil || conn == nil || !scopeCurrent() {
 				if conn != nil {
 					conn.Close()
 				}
 				if release != nil {
 					release()
 				}
-				if !scopeCurrent() || c.policyRevision(cur.profile) != revision {
+				if !scopeCurrent() {
 					return deny(errYouTubeLocalScopeChanged.Error())
 				}
 				event.Phase, event.Reason = "OPEN_FAILED", "DPI_LOCAL_OPEN_FAILED"
