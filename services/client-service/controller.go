@@ -161,6 +161,7 @@ func New(ctx context.Context) *Controller {
 	ctx, cancel := context.WithCancel(ctx)
 	c := &Controller{traffic: traffic.NewClient(), catalog: newClientCatalog(), relayPrimary: newRelayPrimary(), browser: newBrowserRuntime(), relayPools: map[string]*transport.Pool{}, AutoLearned: flowpolicy.NewLearning(), groupBindings: map[uint32]groupBinding{}, autoJobs: map[string]autoLease{}, discovery: windowsplatform.NewDiscovery(), Local: localstrategy.New(), Learned: localstrategy.NewCache(1024), Engine: routing.New(4096), Selector: optimizer.New(optimizer.DefaultParameters()), Measurements: measurement.New(measurement.Defaults()), Profiles: profiles.New(profiles.Defaults()), recentApps: make(map[string]time.Time), localProfiles: make(map[string]profiles.Profile), acceptanceRelays: make(map[string]acceptanceRelaySource), transportDrops: make(map[string]func() map[string]telemetry.Metric), settings: Settings{Automatic: true, Failover: "DIRECT", UpdateChannel: "stable"}, ctx: ctx, cancel: cancel}
 	c.games.items = map[string]*gameEntry{}
+	c.youtubeLocalBeta.setGeneration(true)
 	c.games.budget = &gameudp.Budget{}
 	c.selfExecutable, _ = os.Executable()
 	c.Local.Guard = func(m localstrategy.Metadata) bool {
@@ -300,7 +301,6 @@ func (c *Controller) closeResources() {
 }
 func (c *Controller) SetCustomPath(path string) error {
 	c.customPath = path
-	c.loadYouTubeLocalBetaPreference()
 	c.loadGames()
 	if err := c.loadAutoLearning(); err != nil {
 		return err
