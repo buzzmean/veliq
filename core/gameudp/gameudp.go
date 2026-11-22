@@ -97,6 +97,7 @@ const (
 )
 
 type Evidence struct {
+	FakeTTL       uint8     `json:"fake_ttl,omitempty"`
 	Selection     string    `json:"selection_reason"`
 	Sequence      uint64    `json:"update_seq"`
 	Stage         string    `json:"stage"`
@@ -135,6 +136,8 @@ type Flow struct {
 	e           Evidence
 	payload     []byte
 	ordinal     int
+	dataOrdinal int
+	stunOnly    bool
 	generation  uint64
 	bucketFirst int64
 	bucketLast  int64
@@ -156,16 +159,17 @@ type Learning struct {
 	Expires     time.Time `json:"expires"`
 }
 type Snapshot struct {
-	LocalOnly     bool       `json:"local_only"`
-	InitialPolicy string     `json:"initial_policy"`
-	Enabled       bool       `json:"enabled"`
-	Application   string     `json:"application"`
-	Generation    uint64     `json:"generation"`
-	Reason        string     `json:"reason"`
-	Flows         []Evidence `json:"flows"`
-	Learning      []Learning `json:"learning"`
-	Truncated     bool       `json:"truncated"`
-	Lost          uint64     `json:"lost"`
+	CS2STUNEndpoint string     `json:"cs2_stun_endpoint,omitempty"`
+	LocalOnly       bool       `json:"local_only"`
+	InitialPolicy   string     `json:"initial_policy"`
+	Enabled         bool       `json:"enabled"`
+	Application     string     `json:"application"`
+	Generation      uint64     `json:"generation"`
+	Reason          string     `json:"reason"`
+	Flows           []Evidence `json:"flows"`
+	Learning        []Learning `json:"learning"`
+	Truncated       bool       `json:"truncated"`
+	Lost            uint64     `json:"lost"`
 }
 type Engine struct {
 	mu                         sync.Mutex
@@ -173,6 +177,7 @@ type Engine struct {
 	localOnly                  bool
 	startLocal                 bool
 	endpointScoped             bool
+	stunEndpoint               netip.AddrPort
 	shared                     *Budget
 	application                string
 	network                    string
@@ -267,6 +272,9 @@ func (e *Engine) OpenWithQuality(k Key, now time.Time, measuredRelay string) (*F
 	if len(e.flows) >= MaxFlows {
 		return nil, errors.New("GAME_UDP_FLOW_CAPACITY")
 	}
+	if e.localOnly && e.stunEndpoint.IsValid() {
+		return e.openSTUNFlow(k, now)
+	}
 	cache := e.learning[e.trialKey(k)]
 	// Results from another route policy cannot grant relay or carry exhaustion
 	// across a policy switch. Confirmed DIRECT endpoints remain safe to reuse.
@@ -337,6 +345,11 @@ func (e *Engine) OpenWithQuality(k Key, now time.Time, measuredRelay string) (*F
 // Plan advances the input cutoff even if a decoy fails. Existing flows never
 // restart their first flight after settings/learning/network changes.
 func (e *Engine) Plan(f *Flow, now time.Time) ([]byte, int) {
+	return e.PlanDatagram(f, nil, now)
+}
+
+// PlanDatagram inspects the framing bit of CS2 data without retaining the datagram.
+func (e *Engine) PlanDatagram(f *Flow, datagram []byte, now time.Time) ([]byte, int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if f == nil || f.engine != e {
@@ -345,7 +358,15 @@ func (e *Engine) Plan(f *Flow, now time.Time) ([]byte, int) {
 	f.last = now
 	f.e.Sequence++
 	f.ordinal++
-	if f.e.Stage != Local || !e.enabled || e.reason != "" || f.generation != e.generation || f.ordinal > f.e.Variant.Cutoff {
+	if f.e.Stage != Local || !e.enabled || e.reason != "" || f.generation != e.generation {
+		return nil, 0
+	}
+	withinCutoff := f.ordinal <= f.e.Variant.Cutoff
+	if f.stunOnly && isCS2Data(datagram) {
+		f.dataOrdinal++
+		withinCutoff = withinCutoff || f.dataOrdinal <= cs2STUNDataCutoff
+	}
+	if !withinCutoff {
 		return nil, 0
 	}
 	k := f.e.Variant.Repeats
@@ -459,6 +480,16 @@ func (e *Engine) health(f *Flow, now time.Time) {
 	f.e.Sequence++
 	if f.e.Stage == Local && (f.e.Fakes < uint64(f.e.Variant.Repeats*f.e.Variant.Cutoff) || f.e.FakeErrors > 0 || f.e.RateLimited > 0) {
 		f.e.State = "LOCAL_PRIMING_INCOMPLETE"
+		return
+	}
+	if f.stunOnly {
+		if sustained {
+			f.e.State = "SUSTAINED_REPLIES"
+			f.e.Reason = "TRANSPORT_CADENCE_CONFIRMED_NOT_MATCH_LOAD_PROOF"
+		} else if now.Sub(f.e.Started) >= Probation {
+			f.e.State = "INSUFFICIENT_REPLIES"
+			f.e.Reason = "EXPLICIT_PRIMER_NO_AUTOMATIC_ADVANCE_OR_RELAY"
+		}
 		return
 	}
 	key := e.trialKey(f.key)
@@ -621,6 +652,10 @@ func (e *Engine) Snapshot() Snapshot {
 		initialPolicy = "DIRECT_FIRST"
 	}
 	out := Snapshot{LocalOnly: e.localOnly, InitialPolicy: initialPolicy, Enabled: e.enabled, Application: e.application, Generation: e.generation, Reason: e.reason, Flows: []Evidence{}, Learning: []Learning{}, Lost: e.lost}
+	if e.localOnly && e.stunEndpoint.IsValid() {
+		out.CS2STUNEndpoint = e.stunEndpoint.String()
+		out.InitialPolicy = "CS2_STUN_ENDPOINT"
+	}
 	for _, f := range e.flows {
 		out.Flows = append(out.Flows, f.e)
 	}

@@ -35,11 +35,13 @@ type gameEntry struct {
 	persisted uint64
 }
 type gameRuntime struct {
-	mu      sync.Mutex
-	items   map[string]*gameEntry
-	budget  *gameudp.Budget
-	error   string
-	quality gameudp.TargetQuality
+	mu              sync.Mutex
+	items           map[string]*gameEntry
+	budget          *gameudp.Budget
+	error           string
+	quality         gameudp.TargetQuality
+	cs2STUNEndpoint netip.AddrPort
+	cs2STUNInvalid  bool
 }
 type gameDiskEntry struct {
 	LocalOnly bool               `json:"local_only,omitempty"`
@@ -70,6 +72,7 @@ type GameProfileStatus struct {
 }
 
 func (c *Controller) loadGames() {
+	c.loadCS2STUNEndpoint()
 	raw, err := os.ReadFile(filepath.Join(filepath.Dir(c.customPath), "game-udp.json"))
 	if os.IsNotExist(err) {
 		return
@@ -84,7 +87,7 @@ func (c *Controller) loadGames() {
 			c.games.error = "GAME_UDP_CONFIG_INVALID"
 			return
 		}
-		e := c.newGameLadder(d.Path)
+		e := c.newGameLadder(d.ProfileID, d.Path)
 		e.SetLocalOnly(d.LocalOnly)
 		e.Configure(d.Path, d.Enabled)
 		// Keep the explicit route restriction even when cached evidence is
@@ -202,7 +205,7 @@ func (c *Controller) registerGame(preset gameudp.Preset, path string) {
 		if len(c.games.items) >= maxGameProfiles {
 			return
 		}
-		g = &gameEntry{ProfileID: p.ID, Path: path, Enabled: preset.DefaultEnabled, Engine: c.newGameLadder(path)}
+		g = &gameEntry{ProfileID: p.ID, Path: path, Enabled: preset.DefaultEnabled, Engine: c.newGameLadder(p.ID, path)}
 		c.games.items[p.ID] = g
 		g.Engine.Configure(path, g.Enabled)
 	}
@@ -263,6 +266,9 @@ func (c *Controller) updateGamesGate() {
 		}
 		if c.games.error != "" {
 			r = c.games.error
+		}
+		if r == "" && g.ProfileID == "cs2" && c.games.cs2STUNInvalid {
+			r = "CS2_STUN_CONFIG_INVALID"
 		}
 		if !g.Enabled {
 			r = "DISABLED_BY_USER"
@@ -513,7 +519,7 @@ func (c *Controller) handleGameUDP(_ context.Context, method string, raw json.Ra
 			c.games.mu.Unlock()
 			return nil, errors.New("GAME_UDP_EXACT_EXECUTABLE_REQUIRED_OR_CAPACITY")
 		}
-		g = &gameEntry{ProfileID: p.ID, Name: p.Name, Path: p.Executables[0], Engine: c.newGameLadder(p.Executables[0]), AntiCheat: "runtime compatibility unverified"}
+		g = &gameEntry{ProfileID: p.ID, Name: p.Name, Path: p.Executables[0], Engine: c.newGameLadder(p.ID, p.Executables[0]), AntiCheat: "runtime compatibility unverified"}
 		g.Engine.Configure(g.Path, false)
 		c.games.items[p.ID] = g
 	}

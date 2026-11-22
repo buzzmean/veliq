@@ -217,7 +217,7 @@ func TestGameColdDirectFirstAfterDiscoveryCustomEnableAndReload(t *testing.T) {
 	if err != nil || fresh.games.items["pubg"].Engine.Evidence(flow).Stage != gameudp.Direct {
 		t.Fatal("first reloaded packet is not direct", err)
 	}
-	other := c.newGameLadder(`D:\Games\Other\game.exe`)
+	other := c.newGameLadder("other", `D:\Games\Other\game.exe`)
 	if other.Snapshot().InitialPolicy != "DIRECT_FIRST" {
 		t.Fatal("other game default changed")
 	}

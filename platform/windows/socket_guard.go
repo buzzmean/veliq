@@ -23,7 +23,7 @@ func DecodeSocketEvent(a [80]byte) (uint32, Tuple, error) {
 	decode := func(b []byte) netip.Addr {
 		if a[10]&16 == 0 {
 			var ip [4]byte
-			binary.BigEndian.PutUint32(ip[:], binary.LittleEndian.Uint32(b[12:16]))
+			binary.BigEndian.PutUint32(ip[:], binary.LittleEndian.Uint32(b[0:4]))
 			return netip.AddrFrom4(ip)
 		}
 		var ip [16]byte
