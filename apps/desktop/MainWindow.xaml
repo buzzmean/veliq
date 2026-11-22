@@ -252,10 +252,16 @@
      <TextBlock Text="{ui:Tr AccountHeading}" Style="{StaticResource GroupTitle}"/>
      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><DockPanel Margin="16,12">
       <Button DockPanel.Dock="Right" Content="{ui:Tr AccountCabinet}" Click="OpenAccountCabinet" Margin="12,0,0,0" VerticalAlignment="Center"/>
-      <StackPanel VerticalAlignment="Center"><TextBlock x:Name="AccountSummary" Text="{ui:Tr AccountLabel}" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="AccountHint" Style="{StaticResource Small}" Margin="0,2,0,0" TextWrapping="Wrap"/><TextBlock x:Name="ActivationSummary" Visibility="Collapsed"/><TextBlock x:Name="ActivationCertificates" Style="{StaticResource Small}" Margin="0,2,0,0"/></StackPanel>
+      <StackPanel VerticalAlignment="Center">
+       <TextBlock x:Name="AccountSummary" Text="{ui:Tr AccountLabel}" FontWeight="Medium" TextWrapping="Wrap"/>
+       <TextBlock x:Name="AccountHint" Style="{StaticResource Small}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+       <TextBlock x:Name="ActivationSummary" Visibility="Collapsed"/>
+       <TextBlock x:Name="ActivationCertificates" Style="{StaticResource Small}" Margin="0,2,0,0"
+                  Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
+      </StackPanel>
      </DockPanel></Border>
      <Border x:Name="SubscriptionRow" Style="{StaticResource PanelBox}" Margin="0,-6,0,18" Visibility="Collapsed"><DockPanel Margin="16,12">
-      <Button DockPanel.Dock="Right" Content="{ui:Tr RenewSubscription}" Click="RenewSubscription" Margin="12,0,0,0" VerticalAlignment="Center"/>
+      <Button x:Name="SubscriptionRenewButton" DockPanel.Dock="Right" Content="{ui:Tr RenewSubscription}" Click="RenewSubscription" Margin="12,0,0,0" VerticalAlignment="Center"/>
       <StackPanel VerticalAlignment="Center"><TextBlock x:Name="SubscriptionSummary" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="SubscriptionHint" Style="{StaticResource Small}" Margin="0,2,0,0" TextWrapping="Wrap"/></StackPanel>
      </DockPanel></Border>
      <TextBlock Text="{ui:Tr SetStart}" Style="{StaticResource GroupTitle}"/>
