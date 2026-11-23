@@ -528,6 +528,16 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 	}
 	if f != nil && f.retired {
 		b.mu.Unlock()
+		// A retired tuple can outlive its socket owner. Recheck Windows before
+		// allowing a LanGame datagram through an old policy quarantine.
+		if known && IsLanGameServiceProcess(identity) {
+			if pid, lookupErr := resolveUDPOwner(tuple.Source); lookupErr == nil && pid == identity.PID {
+				if err := b.inject(d, packet, address); err != nil {
+					b.fail(err)
+				}
+				return
+			}
+		}
 		b.Drops.Add(1)
 		b.evidence.RecordDrop(identity, tuple, "HOT_ATTACH_PENDING", false)
 		return

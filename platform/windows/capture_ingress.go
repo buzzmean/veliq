@@ -52,7 +52,6 @@ type captureIngress struct {
 
 const captureUDPFilter = "outbound and ip and udp and (!loopback or udp.DstPort == 53) and !impostor"
 const captureSocketFilter = "(tcp and event == CONNECT) or (ipv6 and (event == CONNECT or (udp and event == BIND)))"
-const captureIPv6Filter = "ipv6 and (tcp or udp) and !loopback and !impostor"
 
 func browserProcess(id ProcessIdentity) bool {
 	n := strings.ToLower(path.Base(strings.ReplaceAll(id.Path, `\`, "/")))

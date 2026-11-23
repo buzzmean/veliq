@@ -6,7 +6,7 @@ foreach($relative in @('tools/windows/test-windivert-filters.ps1','tools/windows
  if($errors.Count){throw ($errors|Out-String)}
 }
 $gate=Get-Content -Raw (Join-Path $root 'tools/windows/test-windivert-filters.ps1')
-foreach($name in @('TestServiceFiltersCompileWithActualWinDivert','TestWinDivertCompilerRejectsLegacyGroupedNot','TestWinDivertCompilerReportsComplexityLimits','TestPrivateISCSIExcludedByActualWinDivertFilterEvaluator','NEEXITLAG_REQUIRE_FILTER_COMPILER','WINDIVERT_FILTER_PROOF_MISSING','WINDIVERT_FILTER_WINDOWS_RUNTIME_REQUIRED')){
+foreach($name in @('TestServiceFiltersCompileWithActualWinDivert','TestWinDivertCompilerRejectsLegacyGroupedNot','TestWinDivertCompilerReportsComplexityLimits','TestPrivateISCSIExcludedByActualWinDivertFilterEvaluator','TestClubInfrastructureWithActualWinDivertFilterEvaluator','NEEXITLAG_REQUIRE_FILTER_COMPILER','WINDIVERT_FILTER_PROOF_MISSING','WINDIVERT_FILTER_WINDOWS_RUNTIME_REQUIRED')){
  if(!$gate.Contains($name)){throw ('Required DLL proof missing: '+$name)}
 }
 if($gate -match 'Start-Service|Stop-Service|Invoke-ServiceIPC|WinDivertOpen|\bssh\b|\bscp\b'){throw 'Compiler gate must not change service/network/VPS state'}

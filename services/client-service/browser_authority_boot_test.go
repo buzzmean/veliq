@@ -2,12 +2,28 @@ package clientservice
 
 import (
 	"context"
+	"github.com/buzzmean/neexitlag/core/flowpolicy"
 	"github.com/buzzmean/neexitlag/core/profiles"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestLanGameProxyPreservesRelayFloors(t *testing.T) {
+	c := New(context.Background())
+	defer c.Close()
+	for _, host := range []string{"club-server", "192.168.1.14", "club.example", "openai.com.other.example"} {
+		if p := c.lanGameProxyPolicy(host); p.Action != flowpolicy.Direct || p.Fallback != flowpolicy.FailOpen {
+			t.Errorf("ordinary club destination %q: %+v", host, p)
+		}
+	}
+	for _, host := range []string{"api.openai.com", "telegram.org"} {
+		if p := c.lanGameProxyPolicy(host); p.Action != flowpolicy.Block || p.Fallback != flowpolicy.FailBlock {
+			t.Errorf("direct passthrough allowed for %q: %+v", host, p)
+		}
+	}
+}
 
 func TestOwnedAuthorityBootRestoresListenerWithoutDiscardingGuard(t *testing.T) {
 	c := New(context.Background())

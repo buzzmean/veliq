@@ -16,7 +16,7 @@ $oldDriver=$env:NEEXITLAG_TEST_DRIVER_DIR;$oldRequired=$env:NEEXITLAG_REQUIRE_FI
 try{
  $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path -LiteralPath $DriverDirectory).Path
  $env:NEEXITLAG_REQUIRE_FILTER_COMPILER='1'
- $required=@('TestServiceFiltersCompileWithActualWinDivert','TestWinDivertCompilerRejectsLegacyGroupedNot','TestWinDivertCompilerReportsComplexityLimits','TestPrivateISCSIExcludedByActualWinDivertFilterEvaluator')
+ $required=@('TestServiceFiltersCompileWithActualWinDivert','TestWinDivertCompilerRejectsLegacyGroupedNot','TestWinDivertCompilerReportsComplexityLimits','TestPrivateISCSIExcludedByActualWinDivertFilterEvaluator','TestClubInfrastructureWithActualWinDivertFilterEvaluator')
  $pattern='^(' + ($required -join '|') + ')$'
  # PS5.1 parses bare -test.run as -test followed by .run. Native dotted
  # flags MUST be quoted; keep values separate (regex has no spaces).
@@ -27,5 +27,5 @@ try{
  $text=$lines -join "`n"
  if($text -match '(?m)^\s*--- SKIP:'){throw 'WINDIVERT_FILTER_PROOF_SKIPPED; compiler tests cannot skip'}
  foreach($name in $required){if($text -notmatch ('(?m)^--- PASS: '+[regex]::Escape($name)+'\s')){throw ('WINDIVERT_FILTER_PROOF_MISSING '+$name+'; skipped/missing tests are not proof')}}
- Write-Host 'WINDIVERT_FILTERS_PASS version=2.2.2; all service layers, TCP ports/fixtures and private iSCSI semantics verified; driver_opened=false'
+ Write-Host 'WINDIVERT_FILTERS_PASS version=2.2.2; all service layers, TCP ports/fixtures and private MQTT and iSCSI exclusions verified; driver_opened=false'
 }finally{$env:NEEXITLAG_TEST_DRIVER_DIR=$oldDriver;$env:NEEXITLAG_REQUIRE_FILTER_COMPILER=$oldRequired}

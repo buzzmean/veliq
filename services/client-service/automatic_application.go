@@ -56,7 +56,12 @@ func automaticApplication(p profiles.Profile) bool {
 }
 
 func (c *Controller) automaticProfile(id wp.ProcessIdentity) (profiles.Profile, bool) {
-	if p, ok := c.matchApplication(id); ok {
+	// A club management connection must not enter DIRECT learning: a failed
+	// probe would otherwise move its next reconnect through a relay.
+	if c.isLanGameProcess(id) {
+		return profiles.Profile{}, false
+	}
+	if p, ok := c.matchEligibleApplication(id); ok {
 		return p, true
 	}
 	return discoveredApplication(id)

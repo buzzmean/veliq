@@ -84,6 +84,13 @@ type groupBinding struct {
 }
 
 func (c *Controller) matchApplication(id wp.ProcessIdentity) (profiles.Profile, bool) {
+	if c.isLanGameProcess(id) {
+		return profiles.Profile{}, false
+	}
+	return c.matchEligibleApplication(id)
+}
+
+func (c *Controller) matchEligibleApplication(id wp.ProcessIdentity) (profiles.Profile, bool) {
 	direct, hasDirect := c.Profiles.Match(id)
 	possible := false
 	for _, p := range c.Profiles.List() {

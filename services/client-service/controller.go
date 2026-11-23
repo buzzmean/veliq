@@ -106,6 +106,7 @@ type Controller struct {
 	remoteMu         sync.Mutex
 	remoteCancel     context.CancelFunc
 	selfExecutable   string
+	isLanGameProcess func(windowsplatform.ProcessIdentity) bool
 	BrowserOwnerSID  string // Existing installation owner; restrict the loopback endpoint to this user.
 	// In-process fixture injection only; production uses the system resolver/roots.
 	BrowserRecoveryExecutable string                 // In-process fixture only; production authenticates its own installed binary.
@@ -163,6 +164,7 @@ func New(ctx context.Context) *Controller {
 	c.games.items = map[string]*gameEntry{}
 	c.games.budget = &gameudp.Budget{}
 	c.selfExecutable, _ = os.Executable()
+	c.isLanGameProcess = windowsplatform.IsLanGameServiceProcess
 	c.Local.Guard = func(m localstrategy.Metadata) bool {
 		if c.autoCandidateQuarantined(m) {
 			return false
@@ -386,7 +388,7 @@ func (c *Controller) Classify(identity windowsplatform.ProcessIdentity, t window
 	enabled := c.enabled
 	c.mu.Unlock()
 	decision := windowsplatform.Decision{Route: routing.Route{}}
-	if windowsplatform.IsPrivateISCSI(t) {
+	if windowsplatform.IsPrivateClubInfrastructure(t) {
 		return decision
 	}
 	if !enabled || c.selfExecutable != "" && strings.EqualFold(identity.Path, c.selfExecutable) {
@@ -401,12 +403,9 @@ func (c *Controller) Classify(identity windowsplatform.ProcessIdentity, t window
 	if d, ok := c.classifyGameUDP(identity, t); ok {
 		return d
 	}
-	profile, ok := c.matchApplication(identity)
+	profile, ok := c.automaticProfile(identity)
 	if !ok {
-		profile, ok = discoveredApplication(identity)
-		if !ok {
-			return decision
-		}
+		return decision
 	}
 	// Owner-authorized availability contract: no opaque native browser capture
 	// while its PAC lane is suspended. Desktop apps and games retain their policy.
