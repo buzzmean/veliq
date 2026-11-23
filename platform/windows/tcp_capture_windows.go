@@ -281,6 +281,8 @@ func (t *tcpRedirect) processPacket(p []byte, a [80]byte, classify Classifier) {
 				t.b.evidence.RecordLocalTCPPacket(e.identity, e.tuple, p, false)
 			}
 			err = e.localBuffer.Push(e.decision, &e.localState, e.identity, e.tuple, p, func(q []byte) error { return t.send(q, a) }, t.b.evidence, time.Now())
+		} else if mode == "hot_attach" && lanGameOwnsTCP(e.identity, tuple) {
+			err = t.send(p, a)
 		} else if mode == "hot_attach" {
 			t.b.hotBlocked()
 			t.b.Drops.Add(1)

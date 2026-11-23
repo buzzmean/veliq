@@ -34,13 +34,25 @@ func (t *tcpRedirect) quarantineNative(id ProcessIdentity, tuple Tuple, d Decisi
 	t.b.evidence.RecordDrop(id, tuple, "HOT_ATTACH_PENDING", false)
 	t.resetFromPacket(p, a)
 }
+
+// Revalidate the socket owner before releasing an old quarantine. Process
+// identity alone cannot distinguish reuse of the same local/remote tuple.
+func lanGameOwnsTCP(id ProcessIdentity, tuple Tuple) bool {
+	if !IsLanGameServiceProcess(id) {
+		return false
+	}
+	pid, err := resolveTCPOwner(tuple)
+	return err == nil && pid == id.PID
+}
+
 func (t *tcpRedirect) blockNativeInbound(tuple Tuple, classify Classifier) bool {
 	t.state.mu.Lock()
 	e := t.state.entries[tuple]
 	if e != nil {
 		if e.mode == "hot_attach" {
+			id := e.identity
 			t.state.mu.Unlock()
-			return true
+			return !lanGameOwnsTCP(id, tuple)
 		}
 		// DIRECT+ native sockets must continue receiving ordinary replies. A stale
 		// DIRECT mapping under a new required policy cannot retain that permission.

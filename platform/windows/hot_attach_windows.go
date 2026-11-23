@@ -44,6 +44,9 @@ func queryOwnedTCP() ([]ownedTCPRow, error) {
 // Revalidate both owner and process birth immediately before exact-tuple deletion.
 // Windows has no PID argument for SetTcpEntry; never delete from a cached row alone.
 func resetOwnedTCP(row ownedTCPRow, id ProcessIdentity) error {
+	if IsPrivateClubInfrastructure(row.Tuple) || IsLanGameServiceProcess(id) {
+		return errors.New("HOT_ATTACH infrastructure connection excluded")
+	}
 	if id.PID == 0 || id.PID == uint32(os.Getpid()) || !IsCurrent(id) {
 		return errors.New("HOT_ATTACH stale/self identity")
 	}
@@ -78,7 +81,7 @@ func (b *WinDivertBackend) snapshotHotTargets() {
 	identities := map[uint32]ProcessIdentity{}
 	if err == nil {
 		for _, row := range rows {
-			if row.State < 5 || row.PID == 0 || row.PID == uint32(os.Getpid()) || (row.Tuple.Destination.Addr().IsLoopback() || row.Tuple.Source.Addr() == row.Tuple.Destination.Addr()) {
+			if row.State < 5 || row.PID == 0 || row.PID == uint32(os.Getpid()) || IsPrivateClubInfrastructure(row.Tuple) || (row.Tuple.Destination.Addr().IsLoopback() || row.Tuple.Source.Addr() == row.Tuple.Destination.Addr()) {
 				continue
 			}
 			id, ok := identities[row.PID]
@@ -384,6 +387,9 @@ func sameHotOwner(a, b ProcessIdentity) bool {
 // One short policy lease per target; table enumeration and waits do not retain a
 // global reader across the entire sweep when another profile wants to publish.
 func (b *WinDivertBackend) reconcileHotTarget(target hotAttachTarget, row ownedTCPRow, epoch uint64) (considered, waiting, reset bool, err error) {
+	if IsPrivateClubInfrastructure(row.Tuple) || IsLanGameServiceProcess(target.identity) {
+		return
+	}
 	b.policyMu.RLock()
 	defer b.policyMu.RUnlock()
 	state := b.hot.snapshot()

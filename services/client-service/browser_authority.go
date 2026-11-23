@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -75,10 +76,24 @@ func (c *Controller) authorityBrowser(q browserproxy.Request) bool {
 	p, ok := c.matchApplication(browserIdentity(q))
 	return ok && (browserAuto(p) || riotAuto(p))
 }
+
+func (c *Controller) lanGameProxyPolicy(host string) flowpolicy.Result {
+	origin := c.browserOriginPolicy(host)
+	if origin.Protected || origin.Kind == "RELAY" {
+		return flowpolicy.Result{Action: flowpolicy.Block, Fallback: flowpolicy.FailBlock, Source: "langame_passthrough", Reason: "protected authority cannot use DIRECT"}
+	}
+	return flowpolicy.Result{Action: flowpolicy.Direct, Fallback: flowpolicy.FailOpen, Source: "langame_passthrough", Reason: "club control connection uses the OS route"}
+}
+
 func (c *Controller) authorityPlan(ctx context.Context, q browserproxy.Request) (browserproxy.Plan, error) {
 	id, err := c.authorityCurrent(q)
 	if err != nil {
 		return browserproxy.Plan{}, err
+	}
+	if c.isLanGameProcess(id) {
+		// An owner-wide Windows proxy can receive the real service's requests.
+		// Keep the browser stall/replay watcher off this application.
+		return browserproxy.Plan{Policy: c.lanGameProxyPolicy(q.Host)}, nil
 	}
 	if c.authorityBrowser(q) {
 		if c.authorityGuardPending() {
@@ -139,6 +154,14 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 	id, err := c.authorityCurrent(q)
 	if err != nil {
 		return nil, err
+	}
+	if c.isLanGameProcess(id) {
+		policy := c.lanGameProxyPolicy(q.Host)
+		if policy.Action != flowpolicy.Direct || plan.Policy != policy {
+			return nil, errors.New("OWNER_PROXY_APPLICATION_BLOCKED")
+		}
+		address := net.JoinHostPort(q.Host, strconv.Itoa(int(q.Port)))
+		return (&net.Dialer{}).DialContext(ctx, "tcp", address)
 	}
 	if c.authorityBrowser(q) {
 		if plan.Policy.Source == "owner_authority_boot_guard" {
