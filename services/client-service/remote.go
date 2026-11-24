@@ -91,6 +91,7 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	if e != nil {
 		return e
 	}
+	if d := c.diagnostics.Load(); d != nil { d.cp.Store(cp) }
 	target, e := netip.ParseAddrPort(m.ProbeTarget)
 	if e != nil {
 		return errors.New("explicit UDP echo probe target required")

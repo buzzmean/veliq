@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/neexitlag/core/clubhealth"
 	"github.com/buzzmean/neexitlag/core/flowpolicy"
 	"github.com/buzzmean/neexitlag/core/gameudp"
 	"github.com/buzzmean/neexitlag/core/localstrategy"
@@ -88,6 +89,7 @@ type Snapshot struct {
 	ActiveAppExecutables map[string]string             `json:"active_app_executables,omitempty"`
 }
 type Controller struct {
+	diagnostics atomic.Pointer[persistentDiagnostics]
 	emergencyHandler func(context.Context, string, json.RawMessage) (any, error)
 	emergencyStopped atomic.Bool
 	emergencyClosed  atomic.Bool
@@ -630,6 +632,19 @@ func (c *Controller) Snapshot() Snapshot {
 	return snapshot
 }
 func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMessage) (result any, err error) {
+	if method == "diagnostics.status" {
+		if d := c.diagnostics.Load(); d != nil { return d.status.Load(), nil }
+		return diagnosticStatus{Storage:"NOT_CONFIGURED"}, nil
+	}
+	defer func() {
+		if err != nil {
+			if d := c.diagnostics.Load(); d != nil {
+				code, native := clubhealth.ErrorCode(err)
+				switch err.Error() {case "ACTIVATION_REQUIRED","CLUB_ADMIN_MANAGED","CAPTURE_START_FAILED","EMERGENCY_STOP_IN_PROGRESS":code=err.Error()}
+				d.note("IPC", "SERVICE_HANDLER", "observed", code, native, "")
+			}
+		}
+	}()
 	if c.emergencyStopped.Load() && !emergencyMethod(method) {
 		if method == "status" {
 			return c.Snapshot(), nil

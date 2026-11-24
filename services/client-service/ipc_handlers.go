@@ -377,6 +377,7 @@ func (c *Controller) handleOptimize(ctx context.Context, raw json.RawMessage) (a
 		if v.Enabled {
 			if !c.Backend.Status().Ready {
 				if e := c.Backend.Start(c.ctx, c.Classify); e != nil {
+					c.ObserveDiagnosticError("CAPTURE_START",e)
 					c.mu.Lock()
 					c.enabled = wasEnabled
 					c.captureStartError = "CAPTURE_START_FAILED"

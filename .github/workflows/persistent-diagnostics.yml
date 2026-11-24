@@ -1,0 +1,29 @@
+name: Persistent diagnostics isolated acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/persistent-diagnostics-20261125, feat/persistent-diagnostics-server-20261125]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Full native Windows race, vet, build
+        shell: powershell
+        run: |
+          & go test -race -p 1 -timeout 180s ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_RACE_FAILED' }
+          & go vet ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_VET_FAILED' }
+          & go build ./...
+          if ($LASTEXITCODE) { throw 'WINDOWS_BUILD_FAILED' }
+      - name: Native Event Log and durable journal regressions
+        shell: powershell
+        run: |
+          & go test -race -p 1 -count=3 -v ./core/clubhealth ./core/controlclient ./platform/windows ./services/client-service '-run' '^TestPersistent'
+          if ($LASTEXITCODE) { throw 'PERSISTENT_DIAGNOSTICS_FAILED' }

@@ -39,6 +39,7 @@ func runReady(ctx context.Context, path string, ready func()) error {
 
 	controller.BrowserOwnerSID = manifest.OwnerSID
 	controller.Backend = windowsplatform.NewWinDivert(manifest.Driver, controller.Engine)
+	controller.ConfigurePersistentDiagnostics(manifest)
 	if e = controller.SetCustomPath(manifest.StateDirectory + string(os.PathSeparator) + "profiles.json"); e != nil {
 		return e
 	}
@@ -72,10 +73,12 @@ func runReady(ctx context.Context, path string, ready func()) error {
 		return e
 	}
 	server.AfterReply=func(method string,reply ipc.Response,writeError error){
+		controller.ObserveDiagnosticError("IPC_REPLY",writeError)
 		if method=="emergency.finish" && reply.OK && writeError==nil {cancelHost()}
 	}
 	listener, e := clientservice.ListenIPC(manifest.OwnerSID)
 	if e != nil {
+		controller.ObserveDiagnosticError("IPC_LISTENER",e)
 		return e
 	}
 	defer listener.Close()

@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/buzzmean/neexitlag/core/clubhealth"
 	"github.com/buzzmean/neexitlag/core/flowpolicy"
 	"golang.org/x/net/idna"
 	"io"
@@ -88,6 +89,8 @@ type Plan struct {
 	HTTPStatus          int                `json:"http_status,omitempty"`
 }
 type Record struct {
+	ErrorCode          string `json:"error_code,omitempty"`
+	NativeCode         uint32 `json:"native_code,omitempty"`
 	planReporter       PlanReporter
 	Origin             *OriginReport `json:"origin_attempts,omitempty"`
 	originReporter     OriginReporter
@@ -142,6 +145,8 @@ type Snapshot struct {
 	Records            []Record          `json:"records"`
 }
 type Config struct {
+	// OnDiagnostic must be nonblocking. Called outside the record lock.
+	OnDiagnostic   func(Record)
 	TransportCheck func() (target, token string)
 
 	// Production enables this: TLS early/application data must never be replayed.
@@ -556,6 +561,9 @@ func (s *Server) handle(c net.Conn, acceptedAt time.Time) {
 		}
 		r.Active = false
 		r.Result = result
+		if planErr != nil {
+			r.ErrorCode, r.NativeCode = clubhealth.ErrorCode(planErr)
+		}
 		p := s.paths[r.Owner.Profile]
 		if result == "ORIGIN_PLAN_FAILED" || result == "UPSTREAM_OPEN_FAILED" {
 			p.Failed++
@@ -576,6 +584,9 @@ func (s *Server) handle(c net.Conn, acceptedAt time.Time) {
 		r.Received = rx
 		s.records[id] = r
 		s.mu.Unlock()
+		if s.cfg.OnDiagnostic != nil {
+			s.cfg.OnDiagnostic(r)
+		}
 	}
 	if planErr != nil || plan.Policy.Action == flowpolicy.Block {
 		s.reject(plan.Probe)
@@ -608,6 +619,7 @@ func (s *Server) handle(c net.Conn, acceptedAt time.Time) {
 		s.mu.Lock()
 		r := s.records[id]
 		r.OpenFailure = openFailure(e)
+		r.ErrorCode, r.NativeCode = clubhealth.ErrorCode(e)
 		r.NoReplyReason = noReplyFailure(e)
 		s.records[id] = r
 		s.mu.Unlock()
