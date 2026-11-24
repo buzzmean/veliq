@@ -182,7 +182,7 @@
     var devices = (s.devices || []).slice().sort(function(a, b) {
       return (a.name || '').localeCompare(b.name || '', 'ru', {numeric:true});
     });
-    var title = el('div', 'acc-sub__head');
+    var title = el('div', 'acc-device__head');
     title.appendChild(el('h4', null, 'Компьютеры'));
     var add = el('button', 'btn btn--sm btn--quiet', 'Добавить ПК');
     add.type = 'button'; title.appendChild(add);
@@ -347,8 +347,8 @@
           busy(confirm,true);cancel.disabled=true;
           request.expected_amount_kopecks=frozen.amount_kopecks;
           if(s.kind==='club'){request.quote_version=frozen.quote_version;request.idempotency_key=crypto.randomUUID();}
-          // Keep the same request/key on an uncertain browser response. The server
-          // returns its original order or reconciliation, never another provider POST.
+          // При неопределённом ответе сохраняем запрос и ключ: сервер вернёт
+          // прежний заказ или результат сверки без новой оплаты.
           function send(){
             call('POST','/subscriptions/'+s.id+'/pay',request).then(function(result){
               if(!result.redirect)throw new Error('PROMO_RECONCILIATION_REQUIRED');
@@ -367,7 +367,7 @@
             });
           }
           send();
-          // Subsequent clicks retain the same immutable request, including its key.
+          // Повторное нажатие использует прежний запрос и тот же ключ.
           confirm.onclick=function(e){e.stopImmediatePropagation();busy(confirm,true);send();};
         },{once:true});
         dialog.showModal();cancel.focus();
@@ -416,7 +416,7 @@
       });
       row.appendChild(check);row.appendChild(note);
     }
-    if(primary && state.subscriptions.some(function(s){return s.id===p.subscription_id;})){
+    if(state.subscriptions.some(function(s){return s.id===p.subscription_id;})){
       var select=el('button','btn btn--sm btn--quiet','Показать подписку');
       select.addEventListener('click',function(){
         state.selectedSubscription=p.subscription_id;

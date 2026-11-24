@@ -1,4 +1,4 @@
-/* VELIQ support. No message content or access credentials in browser storage. */
+/* Поддержка VELIQ. Содержимое сообщений и данные доступа не сохраняются в хранилище браузера. */
 (function () {
   'use strict';
   if (document.getElementById('veliq-support')) return;

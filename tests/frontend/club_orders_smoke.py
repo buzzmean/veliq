@@ -63,7 +63,7 @@ with sync_playwright() as pw:
   dialog.locator('[data-confirm-error]').wait_for();assert len(calls)==1
   assert calls[0]['expected_amount_kopecks']==62790 and calls[0]['quote_version']=='fixture-version' and calls[0]['months']==3
   button.click();page.wait_for_function('!document.querySelector("dialog button").disabled');assert len(calls)==2 and calls[0]['idempotency_key']==calls[1]['idempotency_key'];cases+=2
-  dialog.get_by_role('button',name='Вернуться к выбору').click();page.get_by_role('button',name='Показать подписку').click()
+  dialog.get_by_role('button',name='Вернуться к выбору').click();page.locator('[data-payments] summary').click();page.get_by_role('button',name='Показать подписку').click()
   assert page.evaluate('document.activeElement.id')=='subscription-'+('b'*32);assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth');assert not errors,errors;cases+=1
   page.close()
  browser.close()

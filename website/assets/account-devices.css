@@ -1,3 +1,4 @@
+.acc-device__head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
 .acc-device__info { display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
 .acc-devices > li[hidden], .acc-device-label[hidden], .acc-connect[hidden] { display: none; }
 .acc-device-label { width: 100%; display: flex; align-items: end; flex-wrap: wrap; gap: 10px; }

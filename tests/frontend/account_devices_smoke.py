@@ -56,6 +56,15 @@ with sync_playwright() as pw:
             page.wait_for_function("() => document.querySelector('[data-device] .acc-device__info').textContent.includes('У окна')")
             support=page.locator('[data-device]').first.get_by_role('link', name='Сообщить о проблеме')
             assert 'PC13' in support.get_attribute('data-support-draft')
+            page.locator('#veliq-support').wait_for(state='attached')
+            support.click()
+            draft=page.locator('#vs-input');draft.wait_for(state='visible')
+            assert 'PC13' in draft.input_value() and '0.3.735' in draft.input_value()
+            draft.fill('Мой незавершённый текст')
+            page.locator('.vs-close').click()
+            page.locator('#vs-panel').wait_for(state='hidden')
+            support.click()
+            assert draft.input_value()=='Мой незавершённый текст'
             assert not any('/support' in p for p,_ in calls)
             if kind=='player': assert page.locator('[data-subs] > .acc-sub').count()==1 and page.locator('.acc-subscription-history').count()==1
             assert not page.evaluate('document.documentElement.scrollWidth > innerWidth'), (kind,width)

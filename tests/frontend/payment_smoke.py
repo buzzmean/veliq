@@ -32,6 +32,13 @@ with sync_playwright() as p:
                 path = r.request.url.split('https://cabinet.test',1)[-1].split('?',1)[0]
                 if path == '/api/v1/account':
                     r.fulfill(json=data)
+                elif path.endswith('/quote'):
+                    q=r.request.post_data_json
+                    term=next(t for t in account_terms if t['months']==q['months'])
+                    amount=base*seats*q['months']*(100-term['discount'])
+                    r.fulfill(json=dict(subscription_id=sub['id'],seats=seats,months=q['months'],days=term['days'],
+                        base_amount_kopecks=base*seats*q['months']*100,amount_kopecks=amount,quote_version='fixture-quote',
+                        operation='renewal' if sub['paid_until'] else 'purchase'))
                 elif path.endswith('/pay'):
                     requests.append(r.request.post_data_json)
                     # Keep this browser in the cabinet for assertions and retry UX.
@@ -61,8 +68,14 @@ with sync_playwright() as p:
                 expected=base*seats*term['months']*(100-term['discount'])
                 assert str(term['days'])+' дней' in page.locator('.acc-sub [aria-live]').inner_text()
                 page.locator('.acc-sub').get_by_role('button',name='Оплатить',exact=True).click()
+                dialog=page.get_by_role('dialog');dialog.wait_for()
+                dialog.get_by_role('button',name='Подтвердить и перейти к оплате').click()
                 page.get_by_text('Не удалось создать оплату.',exact=False).wait_for()
-                assert requests[-1]==dict(auto_renew=False,months=term['months'],expected_amount_kopecks=expected),requests
+                sent=dict(requests[-1])
+                if kind=='club':
+                    assert sent.pop('quote_version')=='fixture-quote' and sent.pop('idempotency_key')
+                assert sent==dict(auto_renew=False,months=term['months'],expected_amount_kopecks=expected),requests
+                dialog.get_by_role('button',name='Вернуться к выбору').click()
                 cases+=1
             assert '1\xa0137,15' in page.locator('[data-payments]').inner_text()
             page.get_by_role('button',name='Проверить оплату',exact=True).click()
@@ -88,7 +101,8 @@ with sync_playwright() as p:
             sub['active']=False
             create_success['enabled']=True
             page.reload();page.locator('[data-step="cabinet"]').wait_for(state='visible')
-            page.locator('.acc-sub').get_by_role('button',name='Оплатить',exact=True).click()
+            page.locator('.acc-sub').get_by_role('button',name='Продлить',exact=True).click()
+            page.get_by_role('dialog').get_by_role('button',name='Подтвердить и перейти к оплате').click()
             page.wait_for_url(hosted_url)
             assert page.title()=='Synthetic hosted choice'
             assert 'paymentMethod' not in requests[-1] and 'payment_method' not in requests[-1]
