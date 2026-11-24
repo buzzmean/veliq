@@ -5,7 +5,7 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 // Plan is a sellable tariff. Prices live in an operator file, never in code:

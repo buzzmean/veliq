@@ -15,7 +15,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/buzzmean/neexitlag/core/freshpc"
+	"github.com/buzzmean/veliq/core/freshpc"
 )
 
 // DeviceLink is an expiring browser approval, never a human activation code.

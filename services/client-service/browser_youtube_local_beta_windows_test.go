@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 func newYouTubeLocalBetaRouteFixture(t *testing.T) (*Controller, profilesResult, browserproxy.Request, browserproxy.Plan) {

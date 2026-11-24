@@ -3,8 +3,8 @@ package clientservice
 import (
 	"context"
 	"encoding/json"
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/internal/e2eprobe"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/internal/e2eprobe"
 	"io"
 	"net"
 	"net/netip"

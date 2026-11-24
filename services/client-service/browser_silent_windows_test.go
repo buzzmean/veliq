@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )

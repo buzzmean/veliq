@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"github.com/buzzmean/neexitlag/internal/e2eprobe"
+	"github.com/buzzmean/veliq/internal/e2eprobe"
 	"net"
 	"net/netip"
 	"testing"

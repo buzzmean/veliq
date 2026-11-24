@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/veliq/core/browserproxy"
 )
 
 func TestAutomaticRelayOriginStopsStaleFirstFlightRecovery(t *testing.T) {

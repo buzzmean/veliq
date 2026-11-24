@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/buzzmean/neexitlag/core/originpolicy"
+	"github.com/buzzmean/veliq/core/originpolicy"
 )
 
 // PAC is inline: it has no fetch failure that could silently revert to DIRECT.

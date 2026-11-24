@@ -17,8 +17,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/buzzmean/neexitlag/core/gameudp"
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/gameudp"
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 func cs2FlowEvent(id ProcessIdentity, t Tuple, endpoint uint64, ipv6 bool) [80]byte {

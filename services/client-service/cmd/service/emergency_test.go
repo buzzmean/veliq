@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/emergency"
-	clientservice "github.com/buzzmean/neexitlag/services/client-service"
+	"github.com/buzzmean/veliq/core/emergency"
+	clientservice "github.com/buzzmean/veliq/services/client-service"
 )
 
 func TestEmergencyWorksBeforeControlPlaneStartupAndDoesNotOpenOtherMethods(t *testing.T) {

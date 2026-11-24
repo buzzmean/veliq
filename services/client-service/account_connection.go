@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/enrollment"
-	"github.com/buzzmean/neexitlag/core/freshpc"
-	"github.com/buzzmean/neexitlag/core/security"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/enrollment"
+	"github.com/buzzmean/veliq/core/freshpc"
+	"github.com/buzzmean/veliq/core/security"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 // Explicitly separate the owner UI from confidential polling/club credentials.

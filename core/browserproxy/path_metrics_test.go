@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 )
 
 func TestPACPathsOpenBudgetAndFirstExchange(t *testing.T) {

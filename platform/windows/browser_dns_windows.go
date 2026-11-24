@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/veliq/core/browserproxy"
 )
 
 func (b *WinDivertBackend) handleBrowserDNS(d *divertDLL, id ProcessIdentity, t Tuple, packet, payload []byte, a [80]byte, decision Decision) {

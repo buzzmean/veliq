@@ -14,9 +14,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/internal/e2eprobe"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/internal/e2eprobe"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 type clubConfiguration struct{ manifest Manifest }

@@ -3,8 +3,8 @@ package integration
 import (
 	"bytes"
 	"context"
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/tools/echo"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/tools/echo"
 	"io"
 	"net/netip"
 	"sync"

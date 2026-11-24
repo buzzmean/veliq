@@ -3,8 +3,8 @@ package clientservice
 import (
 	"context"
 	"encoding/json"
-	"github.com/buzzmean/neexitlag/core/controlclient"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/controlclient"
+	"github.com/buzzmean/veliq/core/security"
 	"os"
 	"testing"
 )

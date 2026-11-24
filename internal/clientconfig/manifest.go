@@ -4,8 +4,8 @@ package clientconfig
 
 import (
 	"errors"
-	"github.com/buzzmean/neexitlag/core/security"
-	windowsplatform "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/security"
+	windowsplatform "github.com/buzzmean/veliq/platform/windows"
 	"net"
 	"net/url"
 	"os"

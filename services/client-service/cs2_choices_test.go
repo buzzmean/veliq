@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/gameudp"
+	"github.com/buzzmean/veliq/core/gameudp"
 )
 
 func preferenceFixture() (*gameudp.Engine, gameudp.Key) {

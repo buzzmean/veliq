@@ -3,7 +3,7 @@ package routing
 import (
 	"context"
 	"errors"
-	"github.com/buzzmean/neexitlag/tools/echo"
+	"github.com/buzzmean/veliq/tools/echo"
 	"net"
 	"net/netip"
 	"testing"

@@ -4,7 +4,7 @@ package windowsplatform
 
 import (
 	"context"
-	"github.com/buzzmean/neexitlag/core/enrollment"
+	"github.com/buzzmean/veliq/core/enrollment"
 )
 
 func EnrollmentHardware(context.Context) (enrollment.Hardware, error) {

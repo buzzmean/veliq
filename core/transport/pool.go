@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/core/telemetry"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/core/telemetry"
 	"github.com/quic-go/quic-go"
 )
 

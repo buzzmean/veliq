@@ -2,7 +2,7 @@ package windowsplatform
 
 import (
 	"errors"
-	"github.com/buzzmean/neexitlag/core/transport"
+	"github.com/buzzmean/veliq/core/transport"
 	"io"
 	"net"
 )

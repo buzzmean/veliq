@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/buzzmean/neexitlag/core/controlclient"
+	"github.com/buzzmean/veliq/core/controlclient"
 	"io"
 	"net/http"
 	"net/url"

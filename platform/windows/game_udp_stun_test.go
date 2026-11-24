@@ -3,7 +3,7 @@ package windowsplatform
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/buzzmean/neexitlag/core/gameudp"
+	"github.com/buzzmean/veliq/core/gameudp"
 	"strings"
 	"testing"
 	"time"

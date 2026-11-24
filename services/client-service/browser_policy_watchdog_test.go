@@ -1,7 +1,7 @@
 package clientservice
 
 import (
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"testing"
 	"time"
 )

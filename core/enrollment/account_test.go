@@ -3,7 +3,7 @@ package enrollment
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"github.com/buzzmean/neexitlag/core/freshpc"
+	"github.com/buzzmean/veliq/core/freshpc"
 	"strings"
 	"testing"
 	"time"

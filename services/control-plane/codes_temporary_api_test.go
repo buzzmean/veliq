@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/enrollment"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/enrollment"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 func TestTemporaryCodeAdminOnlyHTTPSAndBothRateLimits(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/internal/e2eprobe"
+	"github.com/buzzmean/veliq/internal/e2eprobe"
 )
 
 func TestUpgradeProofRealProductionLeaseImmediateRenewals(t *testing.T) {

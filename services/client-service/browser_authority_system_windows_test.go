@@ -5,7 +5,7 @@ package clientservice
 import (
 	"context"
 	"encoding/json"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc/mgr"
 	"io"

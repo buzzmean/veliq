@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/deviceinfo"
+	"github.com/buzzmean/veliq/core/deviceinfo"
 )
 
 type metadataFixture struct {

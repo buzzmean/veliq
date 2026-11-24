@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/profiles"
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/core/security"
-	windowsplatform "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/profiles"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/core/security"
+	windowsplatform "github.com/buzzmean/veliq/platform/windows"
 )
 
 func (c *Controller) handleRelayDiagnostics(ctx context.Context, method string, raw json.RawMessage) (any, error) {

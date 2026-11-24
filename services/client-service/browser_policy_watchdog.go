@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/ipc"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/ipc"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 // Independent scheduled SYSTEM process: local IPC and exact journal-owned

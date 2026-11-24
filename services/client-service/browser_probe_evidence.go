@@ -2,9 +2,9 @@ package clientservice
 
 import (
 	"encoding/json"
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/localstrategy"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"net"
 	"net/netip"
 	"sort"

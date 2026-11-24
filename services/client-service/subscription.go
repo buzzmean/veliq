@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/controlclient"
+	"github.com/buzzmean/veliq/core/controlclient"
 )
 
 const (

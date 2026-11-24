@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/buzzmean/neexitlag/tools/demo"
+	"github.com/buzzmean/veliq/tools/demo"
 	"net"
 	"net/http"
 	"os"

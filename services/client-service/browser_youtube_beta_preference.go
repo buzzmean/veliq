@@ -10,9 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/security"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/security"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 const youtubeLocalBetaPreferenceFile = "browser-youtube-local-beta.json"

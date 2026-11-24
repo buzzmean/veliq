@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 // Isolates the actual signed-driver TCP handoff from Chrome policy and slow

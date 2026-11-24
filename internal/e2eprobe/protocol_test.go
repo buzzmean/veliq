@@ -3,8 +3,8 @@ package e2eprobe
 import (
 	"bytes"
 	"context"
-	"github.com/buzzmean/neexitlag/core/measurement"
-	"github.com/buzzmean/neexitlag/core/optimizer"
+	"github.com/buzzmean/veliq/core/measurement"
+	"github.com/buzzmean/veliq/core/optimizer"
 	"net"
 	"net/netip"
 	"testing"

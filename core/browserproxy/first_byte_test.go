@@ -3,7 +3,7 @@ package browserproxy
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 	"strings"
 	"testing"
 	"time"

@@ -7,8 +7,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/deviceinfo"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/deviceinfo"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 func (c *Client) SupportsDeviceMetadata(ctx context.Context) (bool, error) {

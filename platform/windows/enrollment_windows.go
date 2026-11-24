@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/enrollment"
+	"github.com/buzzmean/veliq/core/enrollment"
 	"golang.org/x/sys/windows"
 	"os/exec"
 	"syscall"

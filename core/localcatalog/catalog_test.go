@@ -3,8 +3,8 @@ package localcatalog
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/localstrategy"
+	"github.com/buzzmean/veliq/core/security"
 	"os"
 	"path/filepath"
 	"testing"

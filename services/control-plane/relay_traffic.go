@@ -2,8 +2,8 @@ package controlplane
 
 import (
 	"crypto/sha256"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/traffic"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/traffic"
 	"net/http"
 	"strings"
 	"time"

@@ -3,8 +3,8 @@ package clientservice
 import (
 	"encoding/json"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/localstrategy"
+	"github.com/buzzmean/veliq/core/security"
 	"os"
 	"path/filepath"
 	"strings"

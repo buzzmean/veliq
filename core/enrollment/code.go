@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base32"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/freshpc"
+	"github.com/buzzmean/veliq/core/freshpc"
 	"strings"
 )
 

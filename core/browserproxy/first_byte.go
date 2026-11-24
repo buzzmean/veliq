@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 )
 
 // FirstByteMetric measures encrypted transport progress, NOT HTTP/page success.
