@@ -677,7 +677,7 @@
   <data name="UpdateDownloadingHint" xml:space="preserve"><value>Скачивается обновление: {0:0}%. Установка начнётся только по нажатию.</value></data>
   <data name="UpdateReadyHint" xml:space="preserve"><value>Установить обновление · {0}. Соединения через VELIQ могут ненадолго прерваться.</value></data>
   <data name="UpdateInstallingHint" xml:space="preserve"><value>Устанавливается обновление…</value></data>
-  <data name="UpdateInstallFailedHint" xml:space="preserve"><value>Обновление не установлено. Нажмите, чтобы повторить.</value></data>
+  <data name="UpdateInstallFailedHint" xml:space="preserve"><value>Не удалось установить обновление {0}.</value></data>
   <data name="UpdateDownloadFailedHint" xml:space="preserve"><value>Не удалось скачать обновление. Нажмите, чтобы повторить.</value></data>
   <data name="UpdateActionFailedHint" xml:space="preserve"><value>Не удалось начать обновление. Проверьте подключение к VELIQ и повторите.</value></data>
 </root>

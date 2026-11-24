@@ -6,7 +6,7 @@ public sealed class ManualUpdateTests
     sealed class UpdateService : IServiceClient
     {
         public readonly FakeService Other = new();
-        public UpdateSnapshot Update = new() { State = "READY", AvailableBuild = 713, AvailableVersion = "0.3.713" };
+        public UpdateSnapshot Update = new() { State = "READY", CurrentBuild = "712", AvailableBuild = 713, AvailableVersion = "0.3.713" };
         public int Installs, Retries;
         public TaskCompletionSource<UpdateSnapshot>? Pending;
         public Task<T> Call<T>(string method, object? payload = null, CancellationToken cancellationToken = default)
@@ -40,19 +40,45 @@ public sealed class ManualUpdateTests
         var vm = new DesktopViewModel(service); await vm.RefreshAsync();
         var pending = vm.ApplyUpdateAsync(); await vm.ApplyUpdateAsync();
         Assert.Equal(1, service.Installs);
-        service.Pending.SetResult(new() { State = "INSTALL_FAILED", AvailableBuild = 713 }); await pending;
+        service.Pending.SetResult(new() { State = "INSTALL_FAILED", CurrentBuild = "712", AvailableBuild = 713 }); await pending;
         Assert.True(vm.CanUpdate);
-        vm.ApplyUpdate(new() { State = "DOWNLOAD_FAILED" }); await vm.ApplyUpdateAsync();
+        vm.ApplyUpdate(new() { State = "DOWNLOAD_FAILED", CurrentBuild = "712", AvailableBuild = 713 }); await vm.ApplyUpdateAsync();
         Assert.Equal(1, service.Retries); Assert.Equal(1, service.Installs);
     }
     [Fact]
     public async Task ProgressClubAndDisconnectedStates()
     {
         var service = new UpdateService(); var vm = new DesktopViewModel(service); await vm.RefreshAsync();
-        vm.ApplyUpdate(new() { State = "DOWNLOADING", DownloadedBytes = 50, TotalBytes = 100 });
+        vm.ApplyUpdate(new() { State = "DOWNLOADING", CurrentBuild = "712", AvailableBuild = 713, DownloadedBytes = 50, TotalBytes = 100 });
         Assert.Equal(50, vm.UpdatePercent); Assert.True(vm.UpdateDownloading); Assert.False(vm.CanUpdate);
         vm.ApplyUpdate(new() { State = "DISABLED" }); Assert.False(vm.ShowUpdate);
-        vm.ApplyUpdate(new() { State = "READY", AvailableBuild = 713 });
+        vm.ApplyUpdate(new() { State = "READY", CurrentBuild = "712", AvailableBuild = 713 });
         vm.SetUnavailable(new Exception()); Assert.False(vm.CanUpdate); Assert.False(vm.ShowUpdate);
     }
+    [Theory]
+    [InlineData("INSTALL_FAILED", "732", 732)]
+    [InlineData("INSTALL_FAILED", "732", 730)]
+    [InlineData("CHECK_FAILED", "732", 0)]
+    [InlineData("READY", "", 733)]
+    [InlineData("UP_TO_DATE", "732", 732)]
+    public void CurrentOrUnknownVersionNeverOffersInstallation(string state, string current, ulong offered)
+    {
+        var vm = new DesktopViewModel(new UpdateService());
+        vm.Apply(new Snapshot());
+        vm.ApplyUpdate(new() { State = state, CurrentBuild = current, AvailableBuild = offered });
+        Assert.False(vm.ShowUpdate);
+        Assert.False(vm.CanUpdate);
+    }
+    [Fact]
+    public async Task InstalledBuildClearsFailedOfferWithoutAnotherLaunch()
+    {
+        var service = new UpdateService();
+        var vm = new DesktopViewModel(service); await vm.RefreshAsync();
+        vm.ApplyUpdate(new() { State = "INSTALL_FAILED", CurrentBuild = "712", AvailableBuild = 713 });
+        Assert.True(vm.CanUpdate);
+        vm.ApplyUpdate(new() { State = "INSTALL_FAILED", CurrentBuild = "713", AvailableBuild = 713 });
+        await vm.ApplyUpdateAsync();
+        Assert.False(vm.ShowUpdate); Assert.Equal(0, service.Installs);
+    }
+
 }

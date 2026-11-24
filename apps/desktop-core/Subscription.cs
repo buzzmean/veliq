@@ -4,6 +4,7 @@ public sealed class SubscriptionView {
  public string State {get;set;}="UNKNOWN"; public DateTimeOffset? PaidUntil {get;set;} public DateTimeOffset? GraceUntil {get;set;}
  public bool Expired=>State=="EXPIRED";
  public bool Known=>State is "ACTIVE" or "EXPIRED";
+ public bool ShowInSettings=>Known&&Summary.Length>0;
  /// Строка в Настройках: только дата или «закончилась», без технических подробностей.
  public string Summary=>State switch {
   "EXPIRED"=>"Подписка закончилась",

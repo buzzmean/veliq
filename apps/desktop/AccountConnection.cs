@@ -5,7 +5,9 @@ public partial class MainWindow {
  async Task RefreshAccountConnectionAsync(){
   var account=model.AccountConnectionClient();await account.RefreshAsync(lifetime.Token);
   var s=account.Status;
-  AccountSummary.Text=s.Summary;AccountHint.Text=s.Message;AccountOnboardingHint.Text=s.Message;
+  var connection=SettingsConnection.Evaluate(model.ActivationClient().Status,s);
+  AccountSummary.Text=connection.Title;AccountHint.Text=connection.Hint;AccountCabinetButton.Visibility=connection.ShowCabinet?Visibility.Visible:Visibility.Collapsed;
+  AccountOnboardingHint.Text=s.Message;
   AccountTitle.Text=s.ImagePreparation?"Подключить клубный образ":"Войти в VELIQ";
   AccountLead.Text=s.ImagePreparation?"Войдите как владелец клуба. Гостям не потребуется вход после перезагрузки.":"Введите почту и код из письма в приложении.";
   AccountConnect.IsEnabled=!openingAccount&&!s.ImageReady;

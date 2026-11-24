@@ -3,7 +3,17 @@
  <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="208"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
   <Border Background="{StaticResource BgSunken}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
    <DockPanel Margin="10,14,10,14">
-    <Image DockPanel.Dock="Top" Source="{StaticResource VeliqWordmark}" Height="48" HorizontalAlignment="Left" Margin="2,-6,0,8" AutomationProperties.Name="VELIQ"/>
+    <Grid x:Name="SidebarHeader" DockPanel.Dock="Top" Height="48" Margin="0,-6,0,8">
+     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <Image Source="{StaticResource VeliqWordmark}" Height="48" MaxWidth="142" HorizontalAlignment="Left" Margin="2,0,0,0" AutomationProperties.Name="VELIQ"/>
+     <Button x:Name="InstallUpdateButton" Grid.Column="1" Width="28" Height="28" Padding="0" Margin="8,0,2,0" VerticalAlignment="Center" Click="InstallUpdate" Visibility="{Binding ShowUpdate, Converter={StaticResource BoolToVisible}}" IsEnabled="{Binding CanUpdate}" ToolTip="{Binding UpdateTooltip}" AutomationProperties.Name="{Binding UpdateTooltip}">
+      <Button.Template><ControlTemplate TargetType="Button"><Border x:Name="UpdateSurface" CornerRadius="8" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="UpdateSurface" Property="Background" Value="{StaticResource BgRaised}"/><Setter TargetName="UpdateSurface" Property="BorderBrush" Value="{StaticResource Line}"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="UpdateSurface" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="UpdateSurface" Property="Opacity" Value="0.55"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Button.Template>
+      <Grid Width="20" Height="20">
+       <Path Data="M 10,3 L 10,16 M 5,11 L 10,16 L 15,11" Stroke="{StaticResource Text}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+       <Viewbox Visibility="{Binding UpdateDownloading, Converter={StaticResource BoolToVisible}}"><Grid Width="36" Height="36"><Path Data="{Binding UpdateArc}" Stroke="{StaticResource Accent}" StrokeThickness="2"/></Grid></Viewbox>
+      </Grid>
+     </Button>
+    </Grid>
     <StackPanel x:Name="NavTop" DockPanel.Dock="Top">
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Home}" Tag="Home" Click="Navigate" ui:Nav.Icon="{StaticResource IconHome}" ui:Nav.IsCurrent="True"/>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr NavServices}" Tag="Applications" Click="Navigate" ui:Nav.Icon="{StaticResource IconServices}"/>
@@ -17,15 +27,6 @@
       <TextBlock Text="{Binding GoSub}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,0"/>
      </StackPanel>
     </Border>
-    <StackPanel DockPanel.Dock="Bottom" Margin="8,12,0,4" HorizontalAlignment="Left" Visibility="{Binding ShowUpdate, Converter={StaticResource BoolToVisible}}">
-     <Button x:Name="InstallUpdateButton" Width="36" Height="36" Padding="0" Click="InstallUpdate" IsEnabled="{Binding CanUpdate}" ToolTip="{Binding UpdateTooltip}" AutomationProperties.Name="{Binding UpdateTooltip}">
-      <Button.Template><ControlTemplate TargetType="Button"><Border CornerRadius="18" Background="{StaticResource BgSunken}" BorderBrush="{StaticResource Line}" BorderThickness="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
-      <Grid Width="36" Height="36">
-       <Path Data="M 18,10 L 18,23 M 12,17 L 18,23 L 24,17" Stroke="{StaticResource Text}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-       <Path Data="{Binding UpdateArc}" Stroke="{StaticResource Accent}" StrokeThickness="2" Visibility="{Binding UpdateDownloading, Converter={StaticResource BoolToVisible}}"/>
-      </Grid>
-     </Button>
-    </StackPanel>
     <StackPanel x:Name="NavBottom" DockPanel.Dock="Bottom">
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr NavAbout}" Tag="About" Click="Navigate" ui:Nav.Icon="{StaticResource IconInfo}"/>
     </StackPanel>
@@ -252,8 +253,8 @@
     <ScrollViewer x:Name="Settings" Visibility="Collapsed" VerticalScrollBarVisibility="Auto"><StackPanel Width="620" HorizontalAlignment="Left">
      <TextBlock Text="{ui:Tr AccountHeading}" Style="{StaticResource GroupTitle}"/>
      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><DockPanel Margin="16,12">
-      <Button DockPanel.Dock="Right" Content="{ui:Tr AccountCabinet}" Click="OpenAccountCabinet" Margin="12,0,0,0" VerticalAlignment="Center"/>
-      <StackPanel VerticalAlignment="Center"><TextBlock x:Name="AccountSummary" Text="{ui:Tr AccountLabel}" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="AccountHint" Style="{StaticResource Small}" Margin="0,2,0,0" TextWrapping="Wrap"/><TextBlock x:Name="ActivationSummary" Visibility="Collapsed"/><TextBlock x:Name="ActivationCertificates" Style="{StaticResource Small}" Margin="0,2,0,0"/></StackPanel>
+      <Button x:Name="AccountCabinetButton" DockPanel.Dock="Right" Content="{ui:Tr AccountCabinet}" Click="OpenAccountCabinet" Margin="12,0,0,0" VerticalAlignment="Center"/>
+      <StackPanel VerticalAlignment="Center"><TextBlock x:Name="AccountSummary" Text="{ui:Tr AccountLabel}" FontWeight="Medium" TextWrapping="Wrap"/><TextBlock x:Name="AccountHint" Style="{StaticResource Small}" Margin="0,2,0,0" TextWrapping="Wrap"/><TextBlock x:Name="ActivationSummary" Visibility="Collapsed"/><TextBlock x:Name="ActivationCertificates" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}" Style="{StaticResource Small}" Margin="0,2,0,0"/></StackPanel>
      </DockPanel></Border>
      <Border x:Name="SubscriptionRow" Style="{StaticResource PanelBox}" Margin="0,-6,0,18" Visibility="Collapsed"><DockPanel Margin="16,12">
       <Button DockPanel.Dock="Right" Content="{ui:Tr RenewSubscription}" Click="RenewSubscription" Margin="12,0,0,0" VerticalAlignment="Center"/>
@@ -271,14 +272,6 @@
       <ComboBox x:Name="Fallback" DockPanel.Dock="Right" IsEnabled="{Binding Available}" DisplayMemberPath="Label" SelectedValuePath="Value" MinWidth="200" Margin="0"/>
       <TextBlock Text="{ui:Tr FailureBehavior}" FontWeight="Medium" VerticalAlignment="Center"/>
      </DockPanel></Border>
-     <Border x:Name="YouTubeLocalPanel" Style="{StaticResource PanelBox}" Margin="0,0,0,18" Visibility="Collapsed">
-      <StackPanel Margin="16,12">
-       <CheckBox x:Name="YouTubeLocalToggle" Content="{ui:Tr YouTubeLocalTitle}" Click="ToggleYouTubeLocal" Margin="0"/>
-       <TextBlock Text="{ui:Tr YouTubeLocalHelp}" Style="{StaticResource Hint}" TextWrapping="Wrap" Margin="0,4,0,6"/>
-       <TextBlock x:Name="YouTubeLocalMessage" Style="{StaticResource Small}" TextWrapping="Wrap" Margin="0,6,0,0"
-                  AutomationProperties.LiveSetting="Polite"/>
-      </StackPanel>
-     </Border>
      <TextBlock Text="{ui:Tr SetUpdates}" Style="{StaticResource GroupTitle}"/>
      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,8"><DockPanel Margin="16,8">
       <ComboBox x:Name="Channel" DockPanel.Dock="Right" IsEnabled="{Binding Available}" DisplayMemberPath="Label" SelectedValuePath="Value" MinWidth="200" Margin="0"/>
