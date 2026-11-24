@@ -154,7 +154,7 @@ WinDivert v2:
 
 ```powershell
 go build -o bin/neexitlag-service.exe ./services/client-service/cmd/service
-dotnet build apps/desktop/Neexitlag.Desktop.csproj
+dotnet build apps/desktop/Veliq.Desktop.csproj
 ```
 
 Зарегистрируйте устройство командой `go run ./tools/enroll -control-plane https://YOUR-CP

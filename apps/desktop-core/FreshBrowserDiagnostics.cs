@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // Never serialize an exception message, IPC payload, PAC, URL, nonce or records.
 public sealed record FreshBrowserDiagnostic(string Browser, bool Listening, bool PolicyReady,

@@ -43,9 +43,9 @@ jobs:
           [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path tools/windows/diag-no-vpn.ps1),[ref]$tokens,[ref]$errors)
           if ($errors.Count) { throw ($errors | Out-String) }
       - name: Desktop core regressions, including unchanged Chrome behavior
-        run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+        run: dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
       - name: WPF build
-        run: dotnet build apps/desktop/Neexitlag.Desktop.csproj --nologo
+        run: dotnet build apps/desktop/Veliq.Desktop.csproj --nologo
       - name: Real Edge policy, HTTPS, authenticated relay and recovery
         shell: pwsh
         run: |

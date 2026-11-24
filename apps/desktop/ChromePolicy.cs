@@ -1,6 +1,6 @@
 using Microsoft.Win32;
 using System.Text.Json;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 // Current-user Chrome platform policy only. Never WinINET/WinHTTP/system proxy.
 internal static class ChromePolicy {
  const string Key=@"Software\Policies\Google\Chrome";

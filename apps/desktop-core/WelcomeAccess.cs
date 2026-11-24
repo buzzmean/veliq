@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // Presentation gate only. The service remains authoritative for activation,
 // subscription, club policy and every routing operation. No local "signed in" bit.

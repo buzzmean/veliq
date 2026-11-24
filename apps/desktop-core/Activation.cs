@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public sealed class ActivationHardwareView {
  public string Uuid {get;set;}=""; public string BoardSerial {get;set;}=""; public string Mac {get;set;}="";
  public string Scheme {get;set;}=""; public string Reason {get;set;}="";

@@ -2,7 +2,7 @@ using System.Globalization;
 using System.IO.Pipes;
 using System.Security.Principal;
 using System.Windows;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public partial class App : System.Windows.Application
 {
     Mutex? instance; bool ownsMutex; readonly CancellationTokenSource lifetime = new(); string activationPipe = "";

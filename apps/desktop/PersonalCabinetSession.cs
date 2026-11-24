@@ -4,7 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // Only a server-issued bearer cookie is persisted, opt-in, under the current
 // Windows user. The stored value contains no OTP, email or cached account data.

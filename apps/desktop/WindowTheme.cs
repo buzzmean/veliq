@@ -2,7 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using Microsoft.Win32;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 // Dark caption to match Assets/Theme.xaml; silently ignored on Windows builds without these DWM attributes.
 static class WindowTheme
 {

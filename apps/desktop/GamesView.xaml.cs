@@ -3,7 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public partial class GamesView:UserControl {
     public GamesView()=>InitializeComponent();
     GameCatalogViewModel? Vm=>DataContext as GameCatalogViewModel;

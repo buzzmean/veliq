@@ -1,7 +1,7 @@
 // Dev/test-only HTTP adapter. Production desktop uses only authenticated named pipes.
 using System.Text;
 using System.Text.Json;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 string? url = null, tokenPath = null;
 for (int i = 0; i < args.Length - 1; i++) { if (args[i] == "--demo-url") url = args[++i]; else if (args[i] == "--demo-token-file") tokenPath = args[++i]; }
 if (url is null || tokenPath is null) throw new ArgumentException("Dev smoke requires --demo-url and --demo-token-file");

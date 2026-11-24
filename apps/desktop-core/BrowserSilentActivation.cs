@@ -1,5 +1,5 @@
 using System.Text.Json;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public sealed class BrowserSilentActivation {
  public string[] ConfiguredProfiles {get;set;}=[];
  public string State {get;set;}="NOT_CONFIGURED";

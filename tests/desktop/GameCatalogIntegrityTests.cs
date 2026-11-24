@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
 
 namespace NeExitLag.Tests;
@@ -10,7 +10,7 @@ public sealed class GameCatalogIntegrityTests
     static byte[] BundledBytes()
     {
         using var stream = typeof(GameCatalog).Assembly.GetManifestResourceStream(
-            "Neexitlag.Desktop.Resources.GameCatalog.json");
+            "Veliq.Desktop.Resources.GameCatalog.json");
         Assert.NotNull(stream);
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);

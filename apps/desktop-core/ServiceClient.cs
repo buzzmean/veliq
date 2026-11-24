@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Pipes;
 using System.Text.Json;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public enum ServiceFailure
 {
     NotInstalled, Stopped, Unavailable, Incompatible, AccessDenied, Rejected

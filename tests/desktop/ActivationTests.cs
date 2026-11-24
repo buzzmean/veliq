@@ -1,4 +1,4 @@
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
 namespace NeExitLag.Tests;
 public sealed class ActivationTests {

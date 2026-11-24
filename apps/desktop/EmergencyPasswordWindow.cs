@@ -5,7 +5,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 internal sealed class EmergencyPasswordWindow : Window
 {

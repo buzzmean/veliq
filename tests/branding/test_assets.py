@@ -14,5 +14,5 @@ class ApprovedBrand(unittest.TestCase):
   ET.fromstring(xaml);self.assertIn('#F0502A',xaml)
  def test_user_strings_and_compatibility(self):
   for e in ET.parse(ROOT/'apps/desktop-core/Resources/Strings.resx').iter('value'):self.assertNotRegex(e.text or '',re.compile(r'neexitlag',re.I))
-  project=(ROOT/'apps/desktop/Neexitlag.Desktop.csproj').read_text();self.assertIn('<AssemblyName>VELIQ</AssemblyName>',project);self.assertIn('Assets/VELIQ.ico',project)
+  project=(ROOT/'apps/desktop/Veliq.Desktop.csproj').read_text();self.assertIn('<AssemblyName>VELIQ</AssemblyName>',project);self.assertIn('Assets/VELIQ.ico',project)
   install=(ROOT/'tools/windows/install.ps1').read_text();self.assertIn('New-Service -Name VELIQ',install)

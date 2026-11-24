@@ -173,7 +173,7 @@ Rollback: stop service, restore `$backup` to `$installed`, restore `$acl`, resta
 
 Run `go build ./...`, `go test -race -p 2 -timeout 120s ./...`, `go vet ./...`,
 `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...`, and
-`dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo`.
+`dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo`.
 Windows Verify additionally runs native Go/WPF, PS 5.1/7 acceptance fixture checks,
 WinDivert start/stop and browser instrumentation regressions. These are not a
 Discord Internet/voice latency measurement.

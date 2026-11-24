@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
 namespace NeExitLag.Tests;
 public class FlowPolicyTests

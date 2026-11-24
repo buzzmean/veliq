@@ -25,7 +25,7 @@ jobs:
       - run: python3 -m unittest discover -s tests/deployment -v
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
-      - run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+      - run: dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
       - run: go build ./...
       - run: go test -race -timeout 120s ./...
       - run: go vet ./...
@@ -132,7 +132,7 @@ jobs:
           & ./tests/windows-tools/windivert-filter-checks.ps1
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
-      - run: dotnet run --project tests/desktop-native/NeExitLag.Desktop.NativeTests.csproj --configuration Release
+      - run: dotnet run --project tests/desktop-native/Veliq.Desktop.NativeTests.csproj --configuration Release
         timeout-minutes: 3
         env: {NEEXITLAG_TEST_CHROME_POLICY: '1'}
       - uses: actions/upload-artifact@v4

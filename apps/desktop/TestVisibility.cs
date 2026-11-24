@@ -1,2 +1,2 @@
 using System.Runtime.CompilerServices;
-[assembly: InternalsVisibleTo("NeExitLag.Desktop.NativeTests")]
+[assembly: InternalsVisibleTo("Veliq.Desktop.NativeTests")]

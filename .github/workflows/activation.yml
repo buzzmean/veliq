@@ -57,8 +57,8 @@ jobs:
         run: go test -p 1 ./platform/windows ./services/client-service ./services/client-service/cmd/service -run Activation -count=1
       - name: Native fresh-helper journal contracts
         run: go test ./tools/fresh-pc -run '^TestUpgradeCapabilityAndJournalContracts$' -count=1
-      - run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
-      - run: dotnet build apps/desktop/Neexitlag.Desktop.csproj --nologo
+      - run: dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
+      - run: dotnet build apps/desktop/Veliq.Desktop.csproj --nologo
       - name: Parse production activation scripts with Windows PowerShell 5.1
         shell: powershell
         run: |

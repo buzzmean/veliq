@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // Machine activation and cabinet sign-in are independent. A code-activated PC
 // does not need a personal account, and cannot infer a subscription kind from it.

@@ -1,6 +1,6 @@
 using System.Net;
 using System.Text;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
 
 namespace NeExitLag.Tests;

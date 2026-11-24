@@ -6,7 +6,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public partial class AddApplicationWindow : Window
 {

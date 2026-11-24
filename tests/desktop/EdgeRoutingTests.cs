@@ -1,4 +1,4 @@
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using System.Text.Json;
 using Xunit;
 namespace NeExitLag.Tests;

@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public sealed class SubscriptionView {
  public const string AccountUrl="https://veliq.app/account.html";
  public string State {get;set;}="UNKNOWN"; public DateTimeOffset? PaidUntil {get;set;} public DateTimeOffset? GraceUntil {get;set;}

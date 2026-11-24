@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using NeExitLag.Tests;
 using Xunit;
 public class StablePollingTests {
