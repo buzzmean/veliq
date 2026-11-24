@@ -2,7 +2,7 @@ using Veliq.Desktop;
 using Xunit;
 public class ServiceConnectionTests {
  [Fact]public void EnabledCaptureWithoutRelayDoesNotClaimWorkingHome(){
-  var vm=new DesktopViewModel(new NeExitLag.Tests.PickerService());
+  var vm=new DesktopViewModel(new Veliq.Tests.PickerService());
   vm.Apply(new(){Connected=false,Optimizing=true,ConnectionReason="RELAY_NOT_CONNECTED"},[]);
   Assert.Contains("Нет готового",vm.OptimizationStatus);
   Assert.DoesNotContain("заблокированное открывается",vm.HomeLead);
@@ -21,7 +21,7 @@ public class ServiceConnectionTests {
 }
 public class BrowserExplicitModeTests {
  [Fact]public async Task DirectModeDoesNotAutomaticallyReenableNativeSiteRouting(){
-  var s=new NeExitLag.Tests.PickerService();var p=new Profile{Id="chrome",Mode="AUTO",Executables=["chrome.exe"],PolicyData=new(){["browser_transport"]=System.Text.Json.JsonSerializer.SerializeToElement("native")}};
+  var s=new Veliq.Tests.PickerService();var p=new Profile{Id="chrome",Mode="AUTO",Executables=["chrome.exe"],PolicyData=new(){["browser_transport"]=System.Text.Json.JsonSerializer.SerializeToElement("native")}};
   s.State.Profiles=[p];var model=new DesktopViewModel(s);await model.RefreshAsync();
   Assert.True(await model.SetProfileAsync(p,"DIRECT",null));
   var saved=(Profile)Assert.Single(s.Calls,c=>c.Method=="profile.set").Payload!;Assert.Equal("DIRECT",saved.Mode);Assert.False(model.NativeBrowserCandidate(saved));Assert.Equal("AUTO",p.Mode);

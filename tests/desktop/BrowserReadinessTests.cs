@@ -1,6 +1,6 @@
 using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class BrowserReadinessTests {
  [Fact] public async Task EmptyNativeWireSnapshotDoesNotBreakReadinessPolling(){
   var vm=new DesktopViewModel(new EmptyNativeStatusService());

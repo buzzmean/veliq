@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class BrowserSilentActivationTests {
  sealed class Service:IServiceClient {
   public readonly PickerService Inner=new();public bool Reject;

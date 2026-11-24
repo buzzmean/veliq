@@ -1,6 +1,6 @@
 using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class ActivationTests {
  [Theory][InlineData("ACTIVATION_INVALID","Неверный код")][InlineData("ACTIVATION_REVOKED","Код отозван")][InlineData("ACTIVATION_LIMIT","Достигнут лимит")][InlineData("ACTIVATION_UNAVAILABLE","Нет связи")]
  public void ErrorsAreHumanAndNeverReflectRawInput(string code,string expected){var state=new ActivationView{Error=code};Assert.Contains(expected,state.Message);Assert.DoesNotContain("серверов",state.Message);}

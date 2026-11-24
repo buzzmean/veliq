@@ -2,7 +2,7 @@ using System.Xml.Linq;
 using System.Text.RegularExpressions;
 using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class ResourceTests
 {
     static string Root()

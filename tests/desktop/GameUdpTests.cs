@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class GameUdpTests {
  [Fact]public void ActualDecoysAndRepliesRequiredForActiveMessage(){
  var p=new GameUdpProfile{Name="PUBG",Engine=new(){Enabled=true}};

@@ -1,6 +1,6 @@
 using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class HealthSummaryTests {
  sealed class Down:IServiceClient{public Task<T> Call<T>(string method,object? payload=null,CancellationToken cancellationToken=default)=>Task.FromException<T>(new ServiceException(ServiceFailure.NotInstalled));}
  [Fact]public async Task MissingServiceIsOneProblemWithAdvice(){

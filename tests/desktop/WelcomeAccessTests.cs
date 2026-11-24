@@ -1,6 +1,6 @@
 using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class WelcomeAccessTests
 {
     static ActivationView Active() => new() { State="ACTIVATED", HasIdentity=true, CapturePermitted=true };

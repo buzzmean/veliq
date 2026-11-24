@@ -3,7 +3,7 @@ using System.IO.Pipes;
 using System.Text.Json;
 using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class ClientTests
 {
     static async Task WriteFrame(Stream pipe, byte[] payload)

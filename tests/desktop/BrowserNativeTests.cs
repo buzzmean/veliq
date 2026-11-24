@@ -2,7 +2,7 @@ using System.Text.Json;
 using Veliq.Desktop;
 using Xunit;
 
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class BrowserNativeTests
 {
     sealed class NativeService : IServiceClient

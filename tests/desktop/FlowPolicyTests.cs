@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public class FlowPolicyTests
 {
  [Fact] public void NullStrategyArraysAndActionsAreSafe()

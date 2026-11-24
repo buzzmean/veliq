@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class FakeService : IServiceClient
 {
     public Snapshot State = new() { Version = "0.3.0-dev", Primary = "DIRECT", Backend = new() { Ready = true }, Routes = [new() { Id = "DIRECT", Status = "healthy", ObservedAt = DateTimeOffset.UtcNow, RttMs = 10 }, new() { Id = "VPS-01", Status = "healthy", ObservedAt = DateTimeOffset.UtcNow, RttMs = 8, Score = 3 }], Profiles = [new() { Id = "game", Name = "Игра", Executables = ["C:\\game.exe"], Mode = "AUTO" }] };

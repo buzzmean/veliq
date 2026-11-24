@@ -1,7 +1,7 @@
 using Veliq.Desktop;
 using System.Text.Json;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class BrowserAutomaticStartTests {
  sealed class Service:IServiceClient{
   public readonly FakeService Inner=new();
