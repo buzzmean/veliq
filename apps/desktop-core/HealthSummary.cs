@@ -7,7 +7,7 @@ public enum HealthLevel { Ok, Neutral, Warning, Problem }
 public sealed partial class DesktopViewModel
 {
     bool showTechnical;
-    public bool ShowTechnical { get => showTechnical; set => Set(ref showTechnical, value); }
+    public bool ShowTechnical { get => showTechnical; set { if (Set(ref showTechnical, value)) { Changed(nameof(ServiceApplications)); NotifyVisibleServices(); } } }
     string healthKey = "";
     // Polling repeats identical snapshots; notify only when the verdict really changes.
     void HealthChanged()

@@ -51,7 +51,7 @@ public partial class App : System.Windows.Application
         var freshReport = FreshPCSetupArguments(e.Args);
         var preferences = LocalPreferences.Load();
         bool automatic = freshReport is null && e.Args.Contains("--autostart", StringComparer.OrdinalIgnoreCase);
-        bool quiet = automatic && preferences.StartMinimized && preferences.MinimizeToTray;
+        bool quiet = automatic && preferences.StartMinimized;
         WelcomeWindow? welcome = null;
         welcome = new WelcomeWindow(() => {
             var window = new MainWindow(preferences, freshReport is null, true);

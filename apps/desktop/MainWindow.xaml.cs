@@ -32,7 +32,6 @@ public partial class MainWindow : Window
         };
         Launch.IsChecked = LocalPreferences.AutoStart;
         StartMinimized.IsChecked = preferences.StartMinimized;
-        MinimizeToTray.IsChecked = preferences.MinimizeToTray;
         ApplyTechnical(preferences.ShowTechnical);
         Channel.ItemsSource = new[] { new Choice("stable", Text.Get("Stable")), new Choice("preview", Text.Get("Preview")) };
         Channel.SelectedValue = "stable";
@@ -134,14 +133,15 @@ public partial class MainWindow : Window
     {
         if (closingReady) return;
         e.Cancel = true;
+        // Крестик скрывает только окно: соединения и оптимизация продолжают работать.
+        if (!exiting) { Hide(); return; }
         if (closingPending) return;
         closingPending = true;
         timer.Stop(); // Do not let polling re-prepare a lane during shutdown.
         try {
             using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             await GuiRoutingLifetime.StopAsync(() => model.DisableRoutingForExitAsync(deadline.Token));
-            if (!exiting && preferences.MinimizeToTray) Hide();
-            else {
+            {
                 // StopAsync may complete synchronously (e.g. no service). Never
                 // re-enter Window.Close while WPF is raising Closing.
                 closingReady = true;
@@ -192,7 +192,7 @@ public partial class MainWindow : Window
             Nav.SetIsCurrent(button, (string)button.Tag == page);
         PageHeader.Visibility = page == "Home" ? Visibility.Collapsed : Visibility.Visible;
         PageTitle.Text = Text.Get(page switch { "Applications" => "NavServices", "About" => "NavAbout", _ => page });
-        PageLead.Text = page switch { "Applications" => Text.Get("ServicesLead"), "Games" => Text.Get("GameCatalogHint"), "Diagnostics" => Text.Get("DiagnosticsLead"), _ => "" };
+        PageLead.Text = page switch { "Applications" => "", "Games" => Text.Get("GameCatalogHint"), "Diagnostics" => Text.Get("DiagnosticsLead"), _ => "" };
         PageLead.Visibility = PageLead.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         if(page=="Games") _=Execute(()=>games.RefreshAsync(lifetime.Token));
         foreach (string name in new[] { "Home", "Games", "Applications", "Diagnostics", "Settings", "About" })
@@ -385,7 +385,7 @@ public partial class MainWindow : Window
             }, lifetime.Token))
                 return;
             LocalPreferences.SetAutoStart(Launch.IsChecked == true);
-            SaveLocalPreferences(StartMinimized.IsChecked == true, MinimizeToTray.IsChecked == true);
+            SaveLocalPreferences(StartMinimized.IsChecked == true, preferences.MinimizeToTray);
             ShowMessage(model.Available ? "SettingsSaved" : "LocalSettingsSaved");
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
