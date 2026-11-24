@@ -64,7 +64,7 @@ public sealed partial class GameCatalogViewModel(IServiceClient client):Observab
         try {
             var profiles=await client.Call<Profile[]>("profiles",cancellationToken:ct);
             GameUdpStatus? udp=null;try{udp=await client.Call<GameUdpStatus>("gameudp.status",cancellationToken:ct);}catch(ServiceException){}
-            foreach(var g in all){g.Profile=profiles.FirstOrDefault(p=>p.Executables.Any(e=>g.Definition.Executables.Any(n=>ApplicationRow.Matches(n,e))));g.Mode=g.Profile?.Mode??g.Definition.DefaultMode;g.RelayId=g.Profile?.RelayId;var gameUdp=udp?.Profiles.FirstOrDefault(p=>p.ProfileId==g.Profile?.Id);if(gameUdp is not null){if(gameUdp.Engine.Enabled && g.Profile?.Mode is "DIRECT" or "AUTO")g.Mode=gameUdp.Engine.LocalOnly?"DIRECT_PLUS":"AUTO";}}
+            foreach(var g in all){g.Profile=profiles.FirstOrDefault(p=>p.Executables.Any(e=>g.Definition.Executables.Any(n=>ApplicationRow.Matches(n,e))));g.Mode=g.Profile?.Mode??g.Definition.DefaultMode;g.RelayId=g.Profile?.RelayId;var gameUdp=udp?.Profiles.FirstOrDefault(p=>p.ProfileId==g.Profile?.Id);if(gameUdp is not null){if(gameUdp.Engine.Enabled && g.Profile?.Mode is "DIRECT" or "AUTO")g.Mode=gameUdp.Engine.StunAuto && g.Profile?.Mode=="AUTO"?"AUTO":gameUdp.Engine.LocalOnly?"DIRECT_PLUS":"AUTO";}}
             Filter();await LoadRelaysAsync(ct);Notice="";
         }catch(Exception e){Failed?.Invoke(e,"gamecatalog.refresh");Notice="Служба VELIQ недоступна: "+FailureText(e);}finally{Busy=false;}
     }

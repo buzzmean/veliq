@@ -44,7 +44,7 @@ public sealed class GameUdpProfile
         }
     }
 }
-public sealed class GameUdpEngine { public bool LocalOnly {get;set;} public string InitialPolicy {get;set;}=""; public bool Enabled {get;set;} public GameUdpFlow[] Flows {get;set;}=[]; }
+public sealed class GameUdpEngine { public bool StunAuto {get;set;} public bool LocalOnly {get;set;} public string InitialPolicy {get;set;}=""; public bool Enabled {get;set;} public GameUdpFlow[] Flows {get;set;}=[]; }
 public sealed class GameUdpFlow {
     public DateTimeOffset LastOutgoing {get;set;} public DateTimeOffset LastReply {get;set;}
     public string SelectionReason {get;set;}="";public ulong FlowId {get;set;} public string Stage {get;set;}="";public string Destination {get;set;}="";

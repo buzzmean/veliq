@@ -194,7 +194,7 @@ func (c *Controller) registerGame(preset gameudp.Preset, path string) {
 	defer c.games.mu.Unlock()
 	p, ok := c.Profiles.Match(wp.ProcessIdentity{PID: 1, CreationTime: 1, Path: path})
 	if !ok {
-		p = profiles.Profile{ID: preset.ID, Name: preset.Name, Executables: []string{path}, Mode: profiles.Direct, AppPreset: "game-udp-" + preset.ID}
+		p = profiles.Profile{ID: preset.ID, Name: preset.Name, Executables: []string{path}, Mode: profiles.Auto, AppPreset: "game-udp-" + preset.ID}
 		if err := c.Profiles.Upsert(p); err != nil {
 			c.games.error = "GAME_PROFILE_REGISTER_FAILED"
 			return
@@ -228,6 +228,23 @@ func (c *Controller) registerGame(preset gameudp.Preset, path string) {
 	}
 }
 func (c *Controller) discoverGames() {
+	// The process list supplies an exact image for Epic/Battle.net and games
+	// without a Steam manifest. Explicit profiles, including DIRECT, win.
+	if processes, err := c.discovery.List(); err == nil {
+		for _, process := range processes {
+			if process.PID == 0 || process.CreationTime == 0 || !stunGameImage(process.Path) {
+				continue
+			}
+			image := strings.ToLower(filepath.Base(strings.ReplaceAll(process.Path, `\`, "/")))
+			for _, preset := range gameudp.Presets() {
+				if strings.EqualFold(image, preset.Executable) || preset.ID == "apex" && image == "r5apex.exe" {
+					c.registerGame(preset, process.Path)
+					break
+				}
+			}
+		}
+	}
+
 	for _, p := range c.Profiles.List() {
 		c.registerSelectedSTUNGame(p)
 	}

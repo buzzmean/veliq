@@ -62,12 +62,13 @@ public sealed class LocalOnlyCatalogTests {
  sealed class Service : IServiceClient {
   public List<(string Method,object? Payload)> Calls=[];
   public bool Reject;
+  public bool StunAuto;
   public Task<T> Call<T>(string method,object? payload=null,CancellationToken cancellationToken=default){
    Calls.Add((method,payload));
    if(method=="gameudp.set" && Reject)return Task.FromException<T>(new ServiceException(ServiceFailure.Rejected,"UNKNOWN_FIELD"));
    object result=method switch {
-    "profiles"=>new Profile[]{new(){Id="cs2",Name="CS2",Mode="DIRECT",Executables=[@"C:\Games\cs2.exe"]}},
-    "gameudp.status"=>new GameUdpStatus(),"gameudp.set"=>new GameUdpStatus(),"status"=>new Snapshot(),_=>throw new InvalidOperationException(method)
+    "profiles"=>new Profile[]{new(){Id="cs2",Name="CS2",Mode=StunAuto?"AUTO":"DIRECT",Executables=[@"C:\Games\cs2.exe"]}},
+    "gameudp.status"=>new GameUdpStatus{Profiles=StunAuto?[new(){ProfileId="cs2",Engine=new(){Enabled=true,LocalOnly=true,StunAuto=true}}]:[]},"gameudp.set"=>new GameUdpStatus(),"status"=>new Snapshot(),_=>throw new InvalidOperationException(method)
    };return Task.FromResult((T)result);
   }
  }
@@ -76,5 +77,9 @@ public sealed class LocalOnlyCatalogTests {
   var call=Assert.Single(s.Calls,c=>c.Method=="gameudp.set");Assert.True(JsonSerializer.SerializeToElement(call.Payload).GetProperty("local_only").GetBoolean());
   Assert.DoesNotContain(s.Calls,c=>c.Method=="profile.set");
   Assert.Contains(reject?"не сохранён":"без VPS",vm.Notice);
+ }
+ [Fact]public async Task AutomaticSTUNKeepsTheAutoLabel(){
+  var vm=new GameCatalogViewModel(new Service{StunAuto=true});await vm.RefreshAsync();
+  Assert.Equal("AUTO",vm.Games.Single(g=>g.Id=="cs2").Mode);
  }
 }

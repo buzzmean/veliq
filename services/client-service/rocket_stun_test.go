@@ -62,3 +62,25 @@ func TestSelectedGamesUseSTUN687WithoutRelay(t *testing.T) {
 		})
 	}
 }
+
+func TestSTUNDiscoversPriorityGamesFromRunningImages(t *testing.T) {
+	c, _, _ := cs2GameFixture(t)
+	processes := []wp.ProcessIdentity{
+		{PID: 101, CreationTime: 1, Path: `D:\Games\ROB RUN.exe`},
+		{PID: 102, CreationTime: 2, Path: `D:\Games\cod.exe`},
+		{PID: 103, CreationTime: 3, Path: `D:\Games\r5apex_dx12.exe`},
+	}
+	c.discovery = &groupDiscovery{all: processes}
+	c.discoverGames()
+	c.updateGamesGate()
+	for _, id := range processes {
+		p, ok := c.Profiles.Match(id)
+		if !ok || p.Mode != profiles.Auto {
+			t.Fatal("priority image was not registered in AUTO", id.Path)
+		}
+		d := c.Classify(id, policyTuple("udp", 27015))
+		if d.GameUDP == nil || !d.GameUDP.Snapshot().STUNAuto || d.GameRelayID != "" {
+			t.Fatal("strategy missing", d)
+		}
+	}
+}
