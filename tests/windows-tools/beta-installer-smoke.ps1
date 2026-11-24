@@ -154,7 +154,9 @@ try{
  $failureSource=Join-Path $failureStage 'failed-service.go'
  $startedMarker=Join-Path $failureStage 'failed-service-started.txt'
  $markerLiteral=$startedMarker|ConvertTo-Json -Compress
- $fakeSource='package main; import ("os"; "strconv"); func main() { _ = os.WriteFile('+$markerLiteral+', []byte(strconv.Itoa(os.Getppid())), 0600); os.Exit(42) }'
+ # Allow the pre-stop migration command so this fixture reaches its intended
+ # SCM start failure. Only the service invocation may write the parent marker.
+ $fakeSource='package main; import ("os"; "strconv"); func main() { if len(os.Args)>1 && os.Args[1]=="-remember-owner-proxy-endpoints" { return }; _ = os.WriteFile('+$markerLiteral+', []byte(strconv.Itoa(os.Getppid())), 0600); os.Exit(42) }'
  [IO.File]::WriteAllText($failureSource,$fakeSource,[Text.UTF8Encoding]::new($false))
  & go build -trimpath -o $badService $failureSource
  if($LASTEXITCODE){throw 'SERVICE_FAILURE_BINARY_BUILD_FAILED'}
