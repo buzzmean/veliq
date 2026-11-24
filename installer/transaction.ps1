@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param([ValidateSet('Prepare','Rollback','Commit')][string]$Action,
- [string]$AppDirectory,[string]$TransactionDirectory,[string]$DiagnosticFile)
+ [string]$AppDirectory,[string]$TransactionDirectory,[string]$DiagnosticFile,[string]$ErrorFile='')
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 if($PSVersionTable.PSEdition -eq 'Desktop'){
  $env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')+';'+[Environment]::GetEnvironmentVariable('PSModulePath','Machine')
@@ -235,6 +235,9 @@ try{
  exit 0
 }catch{
  $code='INSTALL_TRANSACTION_FAILED';if($_.Exception.Message -cmatch '^[A-Z][A-Z0-9_]{3,80}$'){$code=$_.Exception.Message}
+ # Only the sanitized code crosses into the wizard; exception text may contain
+ # private paths. Separate files retain the Prepare error if Rollback also fails.
+ if($ErrorFile){try{[IO.File]::WriteAllText($ErrorFile,$code,[Text.Encoding]::ASCII)}catch{}}
  Write-VeliqInstallDiagnostic 'TRANSACTION_ERROR' @{action=$Action;code=$code;exception_type=$_.Exception.GetType().FullName;line=$_.InvocationInfo.ScriptLineNumber;hresult=$_.Exception.HResult;category=[string]$_.CategoryInfo.Category}
  Write-Output $code
  if($code -eq 'INSTALL_REBOOT_REQUIRED'){exit 20}

@@ -72,7 +72,7 @@ Source: "{#StageRoot}\payload\*"; DestDir: "{app}"; Flags: ignoreversion recurse
 Source: "{#StageRoot}\payload\gui\VELIQ.exe"; DestDir: "{app}"; Flags: ignoreversion
 [Run]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""& '{app}\installer\install-package.ps1' -DiagnosticFile '{code:DiagnosticFile}' -ClubCodeFile '{code:ClubCodeFile}' {code:ClubImageArgument} {code:UpdateArgument}"""; Flags: runhidden waituntilterminated; StatusMsg: "Устанавливаем VELIQ…"; BeforeInstall: ClearInstallMarker; AfterInstall: CheckInstall
-Filename: "{app}\VELIQ.exe"; Description: "Открыть VELIQ и подключить аккаунт"; Flags: runasoriginaluser nowait postinstall skipifsilent; Check: ShowAccountSetup
+Filename: "{app}\VELIQ.exe"; Description: "{code:LaunchDescription}"; Flags: runasoriginaluser nowait postinstall skipifsilent; Check: ShowAccountSetup
 [Icons]
 Name: "{autoprograms}\VELIQ"; Filename: "{app}\VELIQ.exe"
 Name: "{autodesktop}\VELIQ"; Filename: "{app}\VELIQ.exe"; Tasks: desktopicon; Check: NotClubImage
@@ -80,6 +80,12 @@ Name: "{autodesktop}\VELIQ"; Filename: "{app}\VELIQ.exe"; Tasks: desktopicon; Ch
 var TransactionPrepared, PackageCompleted: Boolean;
     DiagnosticPath, TransactionPath: String;
     TransactionAttempt: Integer;
+    ExistingInstall, ExistingManifest: Boolean;
+    InstalledVersion, SelectedOperation: String;
+    OperationPage: TInputOptionWizardPage;
+    UpdateOption, ReinstallOption: Integer;
+
+#include "setup-mode.iss"
 
 function RunTransaction(Action: String): Integer;
 var Code: Integer; Command: String;
@@ -87,7 +93,8 @@ begin
  Result := 1;
  Command := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + ExpandConstant('{tmp}\transaction.ps1') +
   '" -Action ' + Action + ' -AppDirectory "' + ExpandConstant('{app}') + '" -TransactionDirectory "' +
-  TransactionPath + '" -DiagnosticFile "' + DiagnosticPath + '"';
+  TransactionPath + '" -DiagnosticFile "' + DiagnosticPath + '" -ErrorFile "' +
+  TransactionPath + '.' + Action + '.error"';
  if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Command, '', SW_HIDE, ewWaitUntilTerminated, Code) then Result := Code;
  Log('VELIQ transaction ' + Action + ' exit=' + IntToStr(Result));
 end;
@@ -115,6 +122,56 @@ begin
    MsgBox('Установка остановлена: параметры закрытия или перезапуска приложений запрещены. Запустите установщик обычным двойным щелчком. ПК и приложения не изменены.', mbError, MB_OK);
 end;
 
+procedure ReadVeliqInstallation;
+var Key, Name, Location, RegisteredVersion: String; Comparison: Integer;
+begin
+ InstalledVersion := '';
+ ExistingManifest := FileExists(ExpandConstant('{commonappdata}\VELIQ\service.json'));
+ ExistingInstall := ExistingManifest or FileExists(ExpandConstant('{app}\VELIQ.exe')) or
+   FileExists(ExpandConstant('{commonappdata}\VELIQ\veliq-service.exe'));
+ GetVersionNumbersString(ExpandConstant('{app}\VELIQ.exe'), InstalledVersion);
+ Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{E18D91DB-2E64-4405-A05E-AB15A4192318}_is1';
+ if RegQueryStringValue(HKLM64, Key, 'DisplayName', Name) and (Name='VELIQ') and
+    RegQueryStringValue(HKLM64, Key, 'InstallLocation', Location) and
+    (CompareText(RemoveBackslashUnlessRoot(Location), ExpandConstant('{app}'))=0) then begin
+   ExistingInstall := True;
+   if RegQueryStringValue(HKLM64, Key, 'DisplayVersion', RegisteredVersion) then begin
+     if InstalledVersion='' then InstalledVersion := RegisteredVersion
+     else if CompareVeliqVersions(RegisteredVersion, InstalledVersion, Comparison) then
+       if Comparison>0 then InstalledVersion := RegisteredVersion;
+   end;
+ end;
+end;
+
+function RequestedVeliqOperation(): String;
+begin
+ Result := Uppercase(ExpandConstant('{param:ACTION|}'));
+ if ExpandConstant('{param:UPDATE|0}')='1' then begin
+   if (Result<>'') and (Result<>'UPDATE') then Result := 'INVALID' else Result := 'UPDATE';
+ end;
+end;
+
+procedure InitializeVeliqOperation;
+var Description: String;
+begin
+ ReadVeliqInstallation;
+ SelectedOperation := ResolveVeliqOperation(ExistingInstall, InstalledVersion, '{#AppVersion}', RequestedVeliqOperation());
+ UpdateOption := -1;
+ ReinstallOption := -1;
+ if ExistingInstall then begin
+   if InstalledVersion='' then Description := 'Найдена существующая установка VELIQ.'
+   else Description := 'Установлена версия ' + InstalledVersion + '. Версия установщика: {#AppVersion}.';
+   OperationPage := CreateInputOptionPage(wpWelcome, 'VELIQ уже установлен', Description,
+     'Выберите действие. Активация, настройки и профили сохранятся.', True, False);
+   if SelectedOperation='UPDATE' then
+     UpdateOption := OperationPage.Add('Обновить до {#AppVersion}');
+   if (SelectedOperation='UPDATE') or (SelectedOperation='REINSTALL') then begin
+     ReinstallOption := OperationPage.Add('Переустановить файлы VELIQ {#AppVersion}, сохранив данные');
+     OperationPage.SelectedValueIndex := 0;
+   end else OperationPage.SubCaptionLabel.Caption := VeliqFailureMessage(SelectedOperation);
+ end;
+end;
+
 procedure LockNoRestartChoice;
 begin
  { Inno 6.4.3 imNormal reads these choices when finishing/preparing. Merely
@@ -130,12 +187,21 @@ begin
  DiagnosticPath := ExpandConstant('{commonappdata}\VELIQ-Setup\Logs\') + GetDateTimeString('yyyymmdd-hhnnss', '-', ':') + '.jsonl';
  ForceDirectories(ExtractFileDir(DiagnosticPath));
  Log('VELIQ build {#AppVersion}; diagnostics=' + DiagnosticPath);
+ InitializeVeliqOperation;
  LockNoRestartChoice;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
  LockNoRestartChoice;
+ if OperationPage<>nil then
+   if CurPageID=OperationPage.ID then
+     WizardForm.NextButton.Enabled := (UpdateOption>=0) or (ReinstallOption>=0);
+ if CurPageID=wpReady then WizardForm.NextButton.Caption := VeliqOperationCaption(SelectedOperation);
+ if (CurPageID=wpFinished) and PackageCompleted then begin
+   if SelectedOperation='UPDATE' then WizardForm.FinishedLabel.Caption := 'VELIQ обновлён до {#AppVersion}. Активация и настройки сохранены.'
+   else if SelectedOperation='REINSTALL' then WizardForm.FinishedLabel.Caption := 'VELIQ {#AppVersion} переустановлен. Активация и настройки сохранены.';
+ end;
  if (CurPageID=wpFinished) and not PackageCompleted then begin
    WizardForm.FinishedHeadingLabel.Caption := 'Установка не завершена';
    WizardForm.FinishedLabel.Caption := 'Не удалось подтвердить работу VELIQ. Диагностика: ' + DiagnosticPath;
@@ -143,6 +209,38 @@ begin
  end;
  { Never offer the user an enabled restart choice, even if Inno detected a
    late restart requirement. The pending operation itself remains untouched. }
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+ Result := False;
+ if OperationPage<>nil then
+   if PageID=OperationPage.ID then Result := WizardSilent or (RequestedVeliqOperation()<>'');
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+begin
+ Result := True;
+ if OperationPage<>nil then
+   if CurPageID=OperationPage.ID then begin
+     if (UpdateOption>=0) and (OperationPage.SelectedValueIndex=UpdateOption) then SelectedOperation := 'UPDATE'
+     else if (ReinstallOption>=0) and (OperationPage.SelectedValueIndex=ReinstallOption) then SelectedOperation := 'REINSTALL'
+     else Result := False;
+   end;
+end;
+
+function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,
+  MemoComponentsInfo, MemoGroupInfo, MemoTasksInfo: String): String;
+begin
+ Result := VeliqOperationCaption(SelectedOperation) + ' VELIQ {#AppVersion}' + NewLine;
+ if ExistingInstall then Result := Result + 'Активация, настройки и профили сохранятся.' + NewLine;
+ Result := Result + NewLine + MemoDirInfo;
+ if MemoTasksInfo<>'' then Result := Result + NewLine + NewLine + MemoTasksInfo;
+end;
+
+function LaunchDescription(Param: String): String;
+begin
+ if ExistingInstall then Result := 'Открыть VELIQ' else Result := 'Открыть VELIQ и подключить аккаунт';
 end;
 
 function DiagnosticFile(Param: String): String;
@@ -162,13 +260,35 @@ end;
 function UpdateArgument(Param: String): String;
 begin
  Result := '';
- if ExpandConstant('{param:UPDATE|0}')='1' then Result := '-Update';
+ if (ExpandConstant('{param:UPDATE|0}')='1') or
+    (ExistingManifest and ((SelectedOperation='UPDATE') or (SelectedOperation='REINSTALL'))) then Result := '-Update';
 end;
+
+function TransactionErrorCode(Action: String): String;
+var Value: AnsiString;
+begin
+ Result := 'INSTALL_TRANSACTION_FAILED';
+ if LoadStringFromFile(TransactionPath + '.' + Action + '.error', Value) then
+   if IsVeliqErrorCode(Trim(String(Value))) then Result := Trim(String(Value));
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
-var Code: Integer;
+var Code: Integer; FailureCode, Operation: String;
 begin
  Result := '';
  if TransactionPrepared then Exit;
+ if (SelectedOperation<>'INSTALL') and (SelectedOperation<>'UPDATE') and (SelectedOperation<>'REINSTALL') then begin
+   Result := VeliqFailureMessage(SelectedOperation) + #13#10 + 'Код: ' + SelectedOperation;
+   Exit;
+ end;
+ ReadVeliqInstallation;
+ Operation := ResolveVeliqOperation(ExistingInstall, InstalledVersion, '{#AppVersion}', SelectedOperation);
+ if (Operation<>'INSTALL') and (Operation<>'UPDATE') and (Operation<>'REINSTALL') then begin
+   Result := VeliqFailureMessage(Operation) + #13#10 + 'Код: ' + Operation;
+   Exit;
+ end;
+ SelectedOperation := Operation;
+ Log('VELIQ_OPERATION=' + SelectedOperation + '; installed=' + InstalledVersion + '; target={#AppVersion}');
  TransactionAttempt := TransactionAttempt + 1;
  TransactionPath := ChangeFileExt(DiagnosticPath, '.' + IntToStr(TransactionAttempt) + '.transaction');
  if Pos('''', ExpandConstant('{app}'))>0 then begin
@@ -179,13 +299,16 @@ begin
  ExtractTemporaryFile('install-safety.ps1');
  ExtractTemporaryFile('install-scope.ps1');
  Code := RunTransaction('Prepare');
- if Code=20 then
-   Result := 'Ожидающая операция Windows затрагивает VELIQ или WinDivert. Установка заблокирована; перезагрузка не выполняется.'
- else if Code<>0 then
-   Result := 'Не удалось подготовить обновление VELIQ. Файлы не заменены.';
+ if Code<>0 then begin
+   FailureCode := TransactionErrorCode('Prepare');
+   if Code=20 then FailureCode := 'INSTALL_REBOOT_REQUIRED';
+   Log('VELIQ_PREPARE_FAILED code=' + FailureCode);
+   Result := VeliqFailureMessage(FailureCode) + #13#10 + 'Файлы не заменены. Код: ' + FailureCode;
+ end;
  if Result<>'' then
  begin
-   RunTransaction('Rollback');
+   if RunTransaction('Rollback')<>0 then
+     Result := Result + #13#10 + 'Восстановление состояния: ' + TransactionErrorCode('Rollback');
    Result := Result + #13#10 + 'Диагностика: ' + DiagnosticPath + #13#10 + 'Журнал Setup: ' + ExpandConstant('{log}');
  end
  else TransactionPrepared := True;

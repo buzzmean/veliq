@@ -2,7 +2,7 @@ name: Beta candidate kit (no deployment)
 on:
   workflow_dispatch:
   push:
-    branches: [feat/game-stun687-release-20261124]
+    branches: [feat/game-stun687-release-20261124, feat/installer-modes-20261124]
   pull_request:
     paths:
       - '.github/workflows/beta-candidate.yml'
@@ -168,6 +168,7 @@ jobs:
           New-Item bin/windows-e2e -ItemType Directory -Force | Out-Null
           Copy-Item bin/beta-service-ps7/veliq-service.exe bin/windows-e2e/
           & ./tests/windows-tools/installer-session-policy-checks.ps1 -Compiler (Join-Path $compilerHome 'ISCC.exe')
+          & ./tests/windows-tools/installer-mode-checks.ps1 -Compiler (Join-Path $compilerHome 'ISCC.exe')
           & ./installer/build.ps1 -PublicTrustDirectory $trust -ControlPlaneUrl 'https://127.0.0.1:1' -ProbeTarget '127.0.0.1:1' -TCPProbeTarget '127.0.0.1:1' -Compiler (Join-Path $compilerHome 'ISCC.exe') -Output (Join-Path $PWD 'bin/beta-installer-smoke')
       - name: Actual Setup lifecycle (PowerShell 5.1)
         shell: powershell
@@ -180,6 +181,7 @@ jobs:
         shell: pwsh
         run: |
           & ./tests/windows-tools/installer-session-policy-checks.ps1 -Compiler (Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3/ISCC.exe')
+          & ./tests/windows-tools/installer-mode-checks.ps1 -Compiler (Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3/ISCC.exe')
       - name: Actual Setup lifecycle (PowerShell 7)
         shell: pwsh
         env:

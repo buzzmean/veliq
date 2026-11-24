@@ -29,6 +29,10 @@ try{
  }
  if(Test-Path -LiteralPath (Join-Path $app 'service/new.exe')){throw 'FILES_NEW_PAYLOAD_NOT_REMOVED'}
  if((Get-Content -Raw -LiteralPath $log) -notmatch 'TRANSACTION_ROLLED_BACK'){throw 'FILES_DIAGNOSTICS_MISSING'}
+ # The actual child process must preserve a safe machine-readable error code.
+ $errorFile=Join-Path $fixture 'prepare.error'
+ & $hostExe -NoProfile -File $script -Action Prepare -AppDirectory $app -TransactionDirectory $backup -DiagnosticFile $log -ErrorFile $errorFile
+ if($LASTEXITCODE -ne 1 -or [IO.File]::ReadAllText($errorFile) -cne 'INSTALL_TRANSACTION_ALREADY_PREPARED'){throw 'FILES_PREPARE_ERROR_CODE_NOT_PRESERVED'}
  Write-Output 'PASS real snapshot/restore of GUI, library and uninstall metadata; no service/task/registry/shortcut mutation'
 }finally{
  $resolved=[IO.Path]::GetFullPath($fixture)

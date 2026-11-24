@@ -18,7 +18,7 @@ function Get-OwnedServiceState([string]$Name='VELIQ'){
 }
 foreach($name in @('VELIQ','neexitlag')){if((Get-OwnedServiceState $name) -ne 'ABSENT'){throw 'EXISTING_SERVICE_PRESERVED'}}
 foreach($path in @($installed,$app,(Join-Path $env:ProgramData 'neexitlag'),(Join-Path $env:ProgramFiles 'VELIQ Setup'))){if(Test-Path -LiteralPath $path){throw 'EXISTING_INSTALLATION_PRESERVED'}}
-function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage,[switch]$AccountImage,[switch]$OmitNoRestart,[switch]$UpdateMode){
+function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage,[switch]$AccountImage,[switch]$OmitNoRestart,[switch]$UpdateMode,[string]$InstallerAction=''){
  # Inno's uninstaller delegates to _unins.tmp. Process.WaitForExit waits only
  # for the launcher; PowerShell Start-Process -Wait waits for its process tree.
  # A worker job preserves that behavior and bounds it without killing browsers.
@@ -57,22 +57,25 @@ function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0
   }
  }
  $worker=Start-Job -ScriptBlock {
-  param($Executable,$LogFile,$InvalidImage,$AccountImageMode,$UnsafeArguments,$ServiceUpdate)
+  param($Executable,$LogFile,$InvalidImage,$AccountImageMode,$UnsafeArguments,$ServiceUpdate,$Action)
   $ErrorActionPreference='Stop'
   $arguments=@('/VERYSILENT','/SUPPRESSMSGBOXES',('/LOG="'+$LogFile+'"'))
   if(!$UnsafeArguments){$arguments+='/NORESTART';$arguments+='/RESTARTEXITCODE=3010'}
   if($ServiceUpdate){$arguments+='/UPDATE=1'}
+  if($Action){$arguments+=('/ACTION='+$Action)}
   if($AccountImageMode){$arguments+='/CLUBIMAGE=1'}
   if($InvalidImage){$arguments+='/CLUBIMAGE=1';$missing=Join-Path (Split-Path $Executable -Parent) ('missing-code-'+[guid]::NewGuid().ToString('N')+'.txt');$arguments+=('/CLUBCODEFILE="'+$missing+'"')}
   $process=Start-Process -FilePath $Executable -ArgumentList $arguments -WindowStyle Hidden -Wait -PassThru
   try{[int]$process.ExitCode}finally{$process.Dispose()}
- } -ArgumentList $Path,$log,([bool]$InvalidClubImage),([bool]$AccountImage),([bool]$OmitNoRestart),([bool]$UpdateMode)
+ } -ArgumentList $Path,$log,([bool]$InvalidClubImage),([bool]$AccountImage),([bool]$OmitNoRestart),([bool]$UpdateMode),$InstallerAction
  try{
   $finished=Wait-Job -Job $worker -Timeout 180
   if(!$finished){throw ('OWNED_INSTALLER_TREE_TIMEOUT stage='+$Stage)}
   if($worker.State -ne 'Completed'){throw ('OWNED_INSTALLER_WORKER_FAILED stage='+$Stage)}
   $codes=@(Receive-Job -Job $worker -ErrorAction Stop)
   if($codes.Count -ne 1 -or $codes[0] -ne $ExpectedExit){throw ('OWNED_INSTALLER_EXIT_FAILED stage='+$Stage+' expected='+$ExpectedExit+' actual='+($codes -join ','))}
+  if($InstallerAction -and $ExpectedExit -eq 0 -and (Get-Content -Raw -LiteralPath $log) -notmatch ('VELIQ_OPERATION='+[regex]::Escape($InstallerAction)+';')){throw 'INSTALLER_SELECTED_ACTION_NOT_EXECUTED'}
+  if($Stage -like 'locked-gui*' -and (Get-Content -Raw -LiteralPath $log) -notmatch 'VELIQ_PREPARE_FAILED code=INSTALL_FILE_IN_USE_OR_NOT_WRITABLE'){throw 'INSTALLER_LOCKED_FILE_REASON_MISSING'}
   Write-Output ('BETA_INSTALLER_FINISHED stage='+$Stage)
  }finally{
   if($worker.State -in @('Running','NotStarted')){Stop-Job -Job $worker}
@@ -200,6 +203,24 @@ try{
  # Re-install the identical package exercises the real existing-service update.
  Invoke-OwnedInstaller $setup 'update'
  Assert-InstalledCandidate
+ # Explicit repair must retain the installed owner configuration and IPC token.
+ $repairHashes=@{}
+ foreach($name in @('service.json','ipc.token')){$repairHashes[$name]=(Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash}
+ Invoke-OwnedInstaller $setup 'explicit-reinstall' -InstallerAction 'REINSTALL'
+ Assert-InstalledCandidate
+ foreach($name in $repairHashes.Keys){if((Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash -cne $repairHashes[$name]){throw 'REINSTALL_EXISTING_STATE_CHANGED'}}
+ Write-Output 'BETA_REINSTALL_PASS explicit action; installed owner/config/token preserved'
+ # A newer registered version must refuse before touching service or GUI files.
+ $registration='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{E18D91DB-2E64-4405-A05E-AB15A4192318}_is1'
+ $previousVersion=(Get-ItemProperty -LiteralPath $registration).DisplayVersion
+ $beforePid=(Get-CimInstance Win32_Service -Filter "Name='VELIQ'").ProcessId
+ try{
+  Set-ItemProperty -LiteralPath $registration -Name DisplayVersion -Value '0.3.65535'
+  Invoke-OwnedInstaller $setup 'newer-installed' -ExpectedExit 7
+  if((Get-CimInstance Win32_Service -Filter "Name='VELIQ'").ProcessId -ne $beforePid){throw 'DOWNGRADE_GUARD_RESTARTED_SERVICE'}
+  Assert-InstalledCandidate
+ }finally{Set-ItemProperty -LiteralPath $registration -Name DisplayVersion -Value $previousVersion}
+ Write-Output 'BETA_DOWNGRADE_REFUSED_PASS installed files and service preserved'
  # The shipping updater launches detached as SYSTEM with UPDATE=1. Exercise
  # that exact installer context without changing Latest or contacting the CP.
  $systemTask='VELIQ-Setup-System-Fixture-'+[guid]::NewGuid().ToString('N')
