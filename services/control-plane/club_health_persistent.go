@@ -63,11 +63,9 @@ func (s *Store) RecordPersistentDiagnostics(ctx context.Context, q clubhealth.Pe
 		return err
 	}
 	var owner string
-	err = tx.QueryRow(ctx, `SELECT sub.account_id FROM account_device_bindings b
-		JOIN subscriptions sub ON sub.id=b.subscription_id
-		WHERE b.device_id=$1 AND EXISTS(SELECT 1 FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id
-		 WHERE sl.device_id=b.device_id AND NOT sl.disabled AND NOT c.revoked AND c.subscription_id=sub.id)
-		FOR SHARE OF b,sub`, q.Proof.DeviceID).Scan(&owner)
+	// Старые клубные активации имеют место подписки без account_device_bindings.
+	// Принимаем только единственного подтверждённого владельца действующих мест.
+	err = tx.QueryRow(ctx, diagnosticOwnerSQL, q.Proof.DeviceID).Scan(&owner)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return errDiagnosticOwner
 	}
@@ -136,6 +134,16 @@ func (s *Store) RecordPersistentDiagnostics(ctx context.Context, q clubhealth.Pe
 	}
 	return tx.Commit(ctx)
 }
+
+const diagnosticOwnerSQL = `WITH owners AS (
+ SELECT DISTINCT sub.account_id FROM activation_slots sl
+ JOIN activation_codes c ON c.id=sl.code_id JOIN subscriptions sub ON sub.id=c.subscription_id
+ JOIN accounts a ON a.id=sub.account_id
+ WHERE sl.device_id=$1 AND NOT sl.disabled AND NOT c.revoked AND NOT a.disabled
+), unique_owner AS (SELECT min(account_id) AS account_id FROM owners HAVING count(*)=1)
+SELECT account_id FROM unique_owner o WHERE NOT EXISTS(
+ SELECT 1 FROM account_device_bindings b JOIN subscriptions s ON s.id=b.subscription_id
+ WHERE b.device_id=$1 AND s.account_id<>o.account_id)`
 
 func pruneDiagnosticDevice(ctx context.Context, tx pgx.Tx, device string) error {
 	tag, err := tx.Exec(ctx, `DELETE FROM club_health_persistent_events WHERE device_id=$1 AND event_id IN(
@@ -218,10 +226,15 @@ func (s *Store) PersistentDiagnosticsView(ctx context.Context, owner, pc string)
 	var out json.RawMessage
 	err := s.DB.QueryRow(ctx, `WITH owned AS (
 		SELECT h.* FROM club_health_persistent_devices h JOIN devices d ON d.id=h.device_id
-		JOIN account_device_bindings b ON b.device_id=d.id JOIN subscriptions sub ON sub.id=b.subscription_id
-		WHERE h.account_id=$1 AND sub.account_id=$1 AND NOT d.revoked AND ($2='' OR h.pc=$2)
+		WHERE h.account_id=$1 AND NOT d.revoked AND ($2='' OR h.pc=$2)
 		AND EXISTS(SELECT 1 FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id
-		 WHERE sl.device_id=d.id AND NOT sl.disabled AND NOT c.revoked AND c.subscription_id=sub.id))
+		 JOIN subscriptions sub ON sub.id=c.subscription_id JOIN accounts a ON a.id=sub.account_id
+		 WHERE sl.device_id=d.id AND NOT sl.disabled AND NOT c.revoked AND NOT a.disabled AND sub.account_id=$1)
+		AND NOT EXISTS(SELECT 1 FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id
+		 JOIN subscriptions sub ON sub.id=c.subscription_id JOIN accounts a ON a.id=sub.account_id
+		 WHERE sl.device_id=d.id AND NOT sl.disabled AND NOT c.revoked AND NOT a.disabled AND sub.account_id<>$1)
+		AND NOT EXISTS(SELECT 1 FROM account_device_bindings b JOIN subscriptions sub ON sub.id=b.subscription_id
+		 WHERE b.device_id=d.id AND sub.account_id<>$1))
 		SELECT jsonb_build_object('retention_days',14,'max_events_per_device',8192,'attribution','unknown_without_independent_evidence',
 		'devices',(SELECT coalesce(jsonb_agg(v),'[]') FROM(
 		 SELECT pc,software_version,source,last_seen,discarded,
@@ -237,6 +250,14 @@ func (s *Store) PersistentDiagnosticsView(ctx context.Context, owner, pc string)
 func (s *Store) PrunePersistentDiagnostics(ctx context.Context) error {
 	_, err := s.DB.Exec(ctx, `DELETE FROM club_health_persistent_events WHERE ctid IN (
 		SELECT ctid FROM club_health_persistent_events WHERE observed_at<now()-interval '14 days' ORDER BY observed_at LIMIT 10000)`)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.Exec(ctx, `DELETE FROM club_health_persistent_devices WHERE device_id IN (
+	 SELECT h.device_id FROM club_health_persistent_devices h
+	 WHERE h.last_seen<now()-interval '14 days' AND NOT EXISTS(
+	  SELECT 1 FROM club_health_persistent_events e WHERE e.device_id=h.device_id)
+	 ORDER BY h.last_seen LIMIT 1000)`)
 	if err != nil {
 		return err
 	}

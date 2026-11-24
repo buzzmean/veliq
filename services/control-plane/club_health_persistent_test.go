@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http/httptest"
 	"strings"
@@ -235,5 +236,43 @@ func TestPersistentQuotaAndNoAckOnRolledBackStorage(t *testing.T) {
 	// The exact proof still works: the failed transaction did not consume it.
 	if err := s.RecordPersistentDiagnostics(ctx, q); err != nil {
 		t.Fatal(fmt.Errorf("rollback retained proof: %w", err))
+	}
+}
+
+func TestPersistentLegacySlotOwnerAndAmbiguousOwners(t *testing.T) {
+	_, s, _ := accountAPI(t, true)
+	ctx := context.Background()
+	owner, device, key := persistentDeviceFixture(t, s, "PC13")
+	other, otherDevice, _ := persistentDeviceFixture(t, s, "PC_OTHER")
+	if _, err := s.DB.Exec(ctx, "DELETE FROM account_device_bindings WHERE device_id=$1", device); err != nil {
+		t.Fatal(err)
+	}
+	b := persistentFixtureBatch("PC13")
+	proof, _ := security.NewProof(device, b.Audience(), key, time.Now())
+	q := clubhealth.PersistentRequest{Batch: b, Proof: proof}
+	if err := s.RecordPersistentDiagnostics(ctx, q); err != nil {
+		t.Fatal("legacy activation excluded", err)
+	}
+	view, err := s.PersistentDiagnosticsView(ctx, owner, "PC13")
+	if err != nil || !bytes.Contains(view, []byte("SCHANNEL_EVENT")) {
+		t.Fatal("legacy view", err)
+	}
+	view, err = s.PersistentDiagnosticsView(ctx, other, "PC13")
+	if err != nil || bytes.Contains(view, []byte("SCHANNEL_EVENT")) {
+		t.Fatal("legacy disclosure", err)
+	}
+	if _, err := s.DB.Exec(ctx, `INSERT INTO activation_slots(code_id,machine_hash,device_id)
+	 SELECT code_id,$2,$1 FROM activation_slots WHERE device_id=$3`, device, strings.Repeat("b", 64), otherDevice); err != nil {
+		t.Fatal(err)
+	}
+	q.Proof, _ = security.NewProof(device, b.Audience(), key, time.Now())
+	if err := s.RecordPersistentDiagnostics(ctx, q); !errors.Is(err, errDiagnosticOwner) {
+		t.Fatal("ambiguous owner accepted", err)
+	}
+	for _, account := range []string{owner, other} {
+		view, err = s.PersistentDiagnosticsView(ctx, account, "PC13")
+		if err != nil || bytes.Contains(view, []byte("SCHANNEL_EVENT")) {
+			t.Fatal("ambiguous history disclosed", err)
+		}
 	}
 }
