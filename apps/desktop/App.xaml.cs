@@ -28,6 +28,8 @@ public partial class App : System.Windows.Application
         instance = new Mutex(true, "Local\\NeExitLag-" + sid, out ownsMutex);
         if (!ownsMutex)
         {
+            // A duplicate login launch must not surface the already running UI.
+            if (e.Args.Contains("--autostart", StringComparer.OrdinalIgnoreCase)) { Shutdown(); return; }
             try
             {
                 using var pipe = new NamedPipeClientStream(".", activationPipe, PipeDirection.Out, PipeOptions.Asynchronous);

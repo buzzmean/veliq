@@ -4,9 +4,9 @@
 param([Parameter(Mandatory=$true)][string]$Compiler,[switch]$AllowLocalInertFixture)
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 if($env:GITHUB_ACTIONS -cne 'true' -and !$AllowLocalInertFixture){throw 'EXPLICIT_INERT_MODE_CHECK_REQUIRED'}
-$source=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '../../installer/setup.iss')
-$policy=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '../../installer/setup-mode.iss')
-$theme=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '../../installer/setup-theme.iss')
+$source=Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $PSScriptRoot '../../installer/setup.iss')
+$policy=Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $PSScriptRoot '../../installer/setup-mode.iss')
+$theme=Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $PSScriptRoot '../../installer/setup-theme.iss')
 function Get-ActualHandler([string]$Start,[string]$End){
  $body=[regex]::Match($source,'(?s)'+[regex]::Escape($Start)+'.*?(?='+[regex]::Escape($End)+')').Value
  if(!$body){throw ('MODE_HANDLER_NOT_FOUND '+$Start)}
