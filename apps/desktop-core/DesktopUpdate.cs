@@ -3,6 +3,7 @@ namespace Neexitlag.Desktop;
 public sealed record UpdateSnapshot
 {
     public string State { get; set; } = "";
+    public string CurrentBuild { get; set; } = "";
     public ulong AvailableBuild { get; set; }
     public string AvailableVersion { get; set; } = "";
     public long DownloadedBytes { get; set; }
@@ -14,16 +15,17 @@ public sealed partial class DesktopViewModel
     UpdateSnapshot update = new();
     bool updateAction;
     string updateMessage = "";
-    public bool ShowUpdate => update.State is "DOWNLOADING" or "READY" or "INSTALLING" or "DOWNLOAD_FAILED" or "CHECK_FAILED" or "INSTALL_FAILED";
+    bool HasNewerUpdate => ulong.TryParse(update.CurrentBuild, out var current) && current > 0 && update.AvailableBuild > current;
+    public bool ShowUpdate => HasNewerUpdate && update.State is ("DOWNLOADING" or "READY" or "INSTALLING" or "DOWNLOAD_FAILED" or "CHECK_FAILED" or "INSTALL_FAILED");
     public bool UpdateDownloading => update.State == "DOWNLOADING";
-    public bool CanUpdate => Available && !updateAction && update.State is ("READY" or "DOWNLOAD_FAILED" or "CHECK_FAILED" or "INSTALL_FAILED");
+    public bool CanUpdate => ShowUpdate && Available && !updateAction && update.State is ("READY" or "DOWNLOAD_FAILED" or "CHECK_FAILED" or "INSTALL_FAILED");
     public double UpdatePercent => update.TotalBytes > 0 ? Math.Clamp(100d * update.DownloadedBytes / update.TotalBytes, 0, 100) : 0;
     public string UpdateTooltip => updateMessage.Length > 0 ? updateMessage : update.State switch
     {
         "DOWNLOADING" => string.Format(Text.Russian, Text.Get("UpdateDownloadingHint"), UpdatePercent),
         "READY" => string.Format(Text.Russian, Text.Get("UpdateReadyHint"), update.AvailableVersion),
         "INSTALLING" => Text.Get("UpdateInstallingHint"),
-        "INSTALL_FAILED" => Text.Get("UpdateInstallFailedHint"),
+        "INSTALL_FAILED" => string.Format(Text.Russian, Text.Get("UpdateInstallFailedHint"), update.AvailableVersion),
         _ => Text.Get("UpdateDownloadFailedHint")
     };
     public string UpdateArc
@@ -38,7 +40,7 @@ public sealed partial class DesktopViewModel
     public void ApplyUpdate(UpdateSnapshot value)
     {
         if (update == value) return;
-        if (update.State != value.State) updateMessage = "";
+        if (update.State != value.State || update.CurrentBuild != value.CurrentBuild || update.AvailableBuild != value.AvailableBuild) updateMessage = "";
         update = value with { };
         UpdateChanged();
     }

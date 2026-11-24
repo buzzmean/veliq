@@ -176,8 +176,6 @@ public partial class MainWindow : Window
             LoadSettings(snapshot);
             settingsLoaded = true;
         }
-        if (Settings.Visibility == Visibility.Visible)
-            await RefreshYouTubeLocalAsync();
         }finally{refreshingWindow=false;}
     }
     void LoadSettings(Snapshot snapshot)
@@ -203,7 +201,6 @@ public partial class MainWindow : Window
         {
             if (model.Snapshot is { } snapshot)
                 LoadSettings(snapshot);
-            _ = RefreshYouTubeLocalAsync();
         }
     }
     void DiagTab(object sender, RoutedEventArgs e) => ShowDiagnosticsTab((string)((Button)sender).Tag);
