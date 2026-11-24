@@ -53,7 +53,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if _, e = tx.Exec(ctx, string(b)); e != nil {
 		return e
 	}
-	for _, name := range []string{"migrations/002_activation_codes.sql", "migrations/003_temporary_test_codes.sql", "migrations/004_accounts_subscriptions.sql", "migrations/005_account_device_links.sql", "migrations/006_lifetime_subscriptions.sql", "migrations/007_payment_review.sql", "migrations/008_promotions.sql", "migrations/009_club_promotion_orders.sql", "migrations/010_personal_trials.sql", "migrations/011_club_verification.sql"} {
+	for _, name := range []string{"migrations/002_activation_codes.sql", "migrations/003_temporary_test_codes.sql", "migrations/004_accounts_subscriptions.sql", "migrations/005_account_device_links.sql", "migrations/006_lifetime_subscriptions.sql", "migrations/007_payment_review.sql", "migrations/008_promotions.sql", "migrations/009_club_promotion_orders.sql", "migrations/010_personal_trials.sql", "migrations/011_club_verification.sql", "migrations/012_device_details.sql"} {
 		b, e := migrations.ReadFile(name)
 		if e != nil {
 			return e
@@ -129,6 +129,15 @@ func (s *Store) ConsumeProof(ctx context.Context, p security.Proof) error {
 		return e
 	}
 	defer tx.Rollback(ctx)
+	if e = consumeDeviceProof(ctx, tx, p); e != nil {
+		return e
+	}
+	return tx.Commit(ctx)
+}
+
+// consumeDeviceProof удерживает блокировку устройства до завершения операции.
+func consumeDeviceProof(ctx context.Context, tx pgx.Tx, p security.Proof) error {
+	var e error
 	var revoked bool
 	if e = tx.QueryRow(ctx, "SELECT revoked FROM devices WHERE id=$1 FOR UPDATE", p.DeviceID).Scan(&revoked); e != nil {
 		return e
@@ -145,7 +154,7 @@ func (s *Store) ConsumeProof(ctx context.Context, p security.Proof) error {
 	if _, e = tx.Exec(ctx, "UPDATE devices SET last_authenticated_at=now() WHERE id=$1", p.DeviceID); e != nil {
 		return e
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 type querier interface {

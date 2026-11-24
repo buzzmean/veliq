@@ -49,10 +49,16 @@ type Subscription struct {
 	ClubVerification string     `json:"club_verification,omitempty"`
 }
 type SeatInfo struct {
-	Name     string     `json:"name"`
-	Machine  string     `json:"machine"`
-	LastSeen *time.Time `json:"last_seen"`
+	Name       string     `json:"name"`
+	Label      string     `json:"label,omitempty"`
+	Version    string     `json:"version,omitempty"`
+	Connection string     `json:"connection_state"`
+	Machine    string     `json:"machine"`
+	LastSeen   *time.Time `json:"last_seen"`
+	Heartbeat  *time.Time `json:"heartbeat_at,omitempty"`
+	Disabled   bool       `json:"disabled,omitempty"`
 }
+
 type Payment struct {
 	ReviewRequired bool      `json:"review_required"`
 	ID             string    `json:"id"`
@@ -465,16 +471,22 @@ func (s *Store) AccountSubscriptions(ctx context.Context, account Account, now t
 		return nil, e
 	}
 	for i := range out {
-		seats, e := s.DB.Query(ctx, "SELECT sl.machine_hash,d.last_authenticated_at,d.name FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id JOIN devices d ON d.id=sl.device_id WHERE c.subscription_id=$1 AND NOT sl.disabled ORDER BY sl.updated_at LIMIT 10001", out[i].ID)
+		seats, e := s.DB.Query(ctx, `SELECT sl.machine_hash,greatest(md.observed_at,d.last_authenticated_at),coalesce(md.computer_name,d.name),
+ coalesce(md.software_version,''),md.observed_at,coalesce(lbl.label,''),d.revoked
+ FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id JOIN devices d ON d.id=sl.device_id
+ LEFT JOIN device_details md ON md.device_id=d.id
+ LEFT JOIN account_device_labels lbl ON lbl.account_id=$2 AND lbl.machine_hash=sl.machine_hash
+ WHERE c.subscription_id=$1 AND NOT sl.disabled ORDER BY sl.updated_at LIMIT 10001`, out[i].ID, account.ID)
 		if e != nil {
 			return nil, e
 		}
 		for seats.Next() {
 			var info SeatInfo
-			if e = seats.Scan(&info.Machine, &info.LastSeen, &info.Name); e != nil {
+			if e = seats.Scan(&info.Machine, &info.LastSeen, &info.Name, &info.Version, &info.Heartbeat, &info.Label, &info.Disabled); e != nil {
 				seats.Close()
 				return nil, e
 			}
+			info.Connection = deviceConnection(info.LastSeen, info.Heartbeat, info.Disabled, now)
 			// A prefix is enough to tell computers apart and to release a seat.
 			info.Machine = info.Machine[:12]
 			out[i].Devices = append(out[i].Devices, info)

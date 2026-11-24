@@ -130,7 +130,7 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	done := make(chan struct{})
 	c.remoteDone = done
 	var workers sync.WaitGroup
-	workers.Add(6)
+	workers.Add(7)
 	c.wg.Add(1)
 	go func() { defer c.wg.Done(); defer workers.Done(); c.catalog.run(remoteCtx, cp, keys, m.StateDirectory) }()
 	c.wg.Add(1)
@@ -139,6 +139,8 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	go func() { defer c.wg.Done(); defer workers.Done(); c.runRemoteTraffic(remoteCtx, cp, keys) }()
 	c.wg.Add(1)
 	go func() { defer c.wg.Done(); defer workers.Done(); c.runSubscription(remoteCtx, cp, rememberPaid) }()
+	c.wg.Add(1)
+	go func() { defer c.wg.Done(); defer workers.Done(); c.runDeviceMetadata(remoteCtx, cp) }()
 	if m.StateDirectory != "" && c.updater.Load() == nil {
 		u := newUpdater(keys, filepath.Dir(m.StateDirectory), launchUpdateSetup)
 		u.relay = c.relayHTTPClient()

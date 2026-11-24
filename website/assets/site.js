@@ -232,6 +232,6 @@
   var css = document.createElement('link');
   css.rel = 'stylesheet'; css.href = '/assets/support-chat.css?v=22e8643b8683'; document.head.appendChild(css);
   var script = document.createElement('script');
-  script.src = '/assets/support-chat.js?v=b938fe231bff'; script.defer = true;
+  script.src = '/assets/support-chat.js?v=device-draft-20261124'; script.defer = true;
   script.setAttribute('data-veliq-support', ''); document.body.appendChild(script);
 })();

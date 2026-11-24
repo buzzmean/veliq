@@ -147,6 +147,8 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("/api/v1/apps", a.apps)
 	m.HandleFunc("POST /api/v1/telemetry", a.telemetry)
 	m.HandleFunc("POST /api/v1/subscription/status", a.subscriptionStatus)
+	m.HandleFunc("GET /api/v1/device/details", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]bool{"supported": true}) })
+	m.HandleFunc("POST /api/v1/device/details", a.deviceDetails)
 	m.HandleFunc("POST /api/v1/account/login/start", a.loginStart)
 	m.HandleFunc("POST /api/v1/account/login/verify", a.loginVerify)
 	m.HandleFunc("POST /api/v1/account/logout", a.logout)

@@ -225,7 +225,7 @@ func (a *API) accountView(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		return
 	}
-	out := map[string]any{"email": acc.Email, "kind": kind, "name": name, "subscriptions": subs, "payments": pays, "club_orders": orders, "plans": a.Settings.Plans, "payment_terms": paymentTermsFor(kind), "payments_enabled": a.Settings.Payments != nil, "auto_renew_available": false, "subscription_enforced": a.Settings.EnforceSubscription}
+	out := map[string]any{"server_time": time.Now(), "email": acc.Email, "kind": kind, "name": name, "subscriptions": subs, "payments": pays, "club_orders": orders, "plans": a.Settings.Plans, "payment_terms": paymentTermsFor(kind), "payments_enabled": a.Settings.Payments != nil, "auto_renew_available": false, "subscription_enforced": a.Settings.EnforceSubscription}
 	if _, available := a.personalTrialPlan(); kind == "player" && available {
 		code, err := a.Store.trialOffer(r.Context(), acc)
 		if err != nil {
@@ -315,6 +315,19 @@ func (a *API) subscriptionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		respond(w, 200, map[string]bool{"auto_renew": q.Enabled})
+	case len(parts) == 4 && parts[1] == "devices" && parts[3] == "label":
+		var q struct {
+			Label string `json:"label"`
+		}
+		if body(r, &q) != nil || len(parts[2]) < 12 || len(parts[2]) > 64 || !validDeviceLabel(q.Label) {
+			a.fail(w, 400, "DEVICE_LABEL_INVALID")
+			return
+		}
+		if err := a.Store.SetDeviceLabel(r.Context(), acc, id, parts[2], q.Label); err != nil {
+			a.storeFail(w, err)
+			return
+		}
+		respond(w, 200, map[string]string{"status": "saved"})
 	case len(parts) == 4 && parts[1] == "devices" && parts[3] == "release":
 		if e := a.Store.ReleaseSeat(r.Context(), acc, id, parts[2], a.Settings.KeyID, a.Settings.SigningKey, a.trust()); e != nil {
 			a.storeFail(w, e)

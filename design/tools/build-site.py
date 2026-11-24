@@ -1027,6 +1027,7 @@ account_body = f"""
     </div>
   </div>
 </div></section>
+<link rel="stylesheet" href="assets/account-devices.css?v={asset_version('assets/account-devices.css')}">
 <script src="assets/account.js?v={asset_version('assets/account.js')}"></script>
 
 """

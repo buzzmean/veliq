@@ -178,16 +178,105 @@
     });
   }
 
+  function renderDevices(s, card, err) {
+    var devices = (s.devices || []).slice().sort(function(a, b) {
+      return (a.name || '').localeCompare(b.name || '', 'ru', {numeric:true});
+    });
+    var title = el('div', 'acc-sub__head');
+    title.appendChild(el('h4', null, 'Компьютеры'));
+    var add = el('button', 'btn btn--sm btn--quiet', 'Добавить ПК');
+    add.type = 'button'; title.appendChild(add);
+    var refresh = el('button', 'btn btn--sm btn--quiet', 'Обновить'); refresh.type = 'button';
+    refresh.addEventListener('click', function() { busy(refresh,true); load().finally(function(){busy(refresh,false);}); });
+    title.appendChild(refresh); card.appendChild(title);
+    card.appendChild(el('p','muted acc-small','Данные на ' + dateTime(state.serverTime)));
+    var help = el('div', 'acc-connect'); help.hidden = true;
+    help.appendChild(el('p', null, 'На новом компьютере откройте VELIQ и войдите в этот аккаунт. Подтвердите подключение в кабинете.'));
+    help.appendChild(el('a', 'acc-text-link', 'Скачать VELIQ')).href = '/download';
+    if (s.can_connect && (s.kind !== 'club' || s.club_verification === 'verified')) {
+      var issue = el('button', 'btn btn--sm', 'Сгенерировать код'); issue.type = 'button';
+      var secret = el('output', 'acc-activation-code'); secret.hidden = true;
+      var copy = el('button', 'btn btn--sm btn--quiet', 'Скопировать'); copy.type = 'button'; copy.hidden = true;
+      issue.addEventListener('click', function() {
+        if (secret.textContent && !confirm('Создать новый код? Прежний код перестанет подходить для новых подключений. Подключённые ПК сохранят доступ.')) return;
+        busy(issue, true); say(err, '');
+        call('POST', '/subscriptions/' + s.id + '/code').then(function(result) {
+          secret.textContent = result.code; secret.hidden = false; copy.hidden = false;
+          issue.textContent = 'Создать новый код';
+        }).catch(function(x) { say(err, message(x.message)); }).then(function() { busy(issue, false); });
+      });
+      copy.addEventListener('click', function() {
+        navigator.clipboard.writeText(secret.textContent).then(function() { copy.textContent = 'Скопировано'; })
+          .catch(function() { secret.focus(); say(err, 'Выделите и скопируйте код вручную.'); });
+      });
+      help.appendChild(el('p', 'muted acc-small', 'Или введите код в VELIQ на новом ПК. Новый код сохраняет доступ подключённых компьютеров. Не публикуйте его.'));
+      help.appendChild(issue); help.appendChild(secret); help.appendChild(copy);
+    }
+    add.addEventListener('click', function() { help.hidden = !help.hidden; add.setAttribute('aria-expanded', String(!help.hidden)); });
+    add.setAttribute('aria-expanded', 'false'); card.appendChild(help);
+    if (!devices.length) { card.appendChild(el('p', 'muted acc-small', 'Компьютеры пока не подключены.')); return; }
+    if (s.kind === 'club') {
+      var counts = {online:0,offline:0,unknown:0,disabled:0};
+      devices.forEach(function(d) { counts[d.connection_state || 'unknown']++; });
+      card.appendChild(el('p', 'acc-small', 'На связи: ' + counts.online + ' · Нет связи: ' + counts.offline + ' · Статус неизвестен: ' + counts.unknown));
+    }
+    var search = el('input', 'input'); search.type = 'search'; search.placeholder = 'Найти ПК по имени или месту';
+    search.setAttribute('aria-label', 'Поиск компьютера'); card.appendChild(search);
+    var list = el('ul', 'acc-devices');
+    devices.forEach(function(d) {
+      var actualName = d.name && d.name !== 'VELIQ device' ? d.name : 'Имя ПК ещё не получено';
+      var li = el('li'); li.setAttribute('data-device', d.machine);
+      var info = el('div', 'acc-device__info'); info.appendChild(el('strong', null, actualName));
+      if (d.label) info.appendChild(el('span', 'muted acc-small', d.label));
+      var connection = {online:'На связи', offline:'Нет связи', disabled:'Отключён', unknown:'Статус неизвестен'}[d.connection_state] || 'Статус неизвестен';
+      var contact=el('span', 'acc-small', connection + (d.last_seen ? ' · Последний контакт: ' + dateTime(d.last_seen) : ''));
+      if(d.connection_state==='online'){contact.setAttribute('data-contact-online','');contact.setAttribute('data-contact-until',String(performance.now()+Math.max(0,180000-(new Date(state.serverTime)-new Date(d.last_seen)))));}
+      info.appendChild(contact);
+      info.appendChild(el('span', 'muted acc-small', d.version ? 'VELIQ ' + d.version : 'Версия ещё не получена'));
+      li.appendChild(info);
+      var actions = el('div', 'acc-actions');
+      var labelButton = el('button', 'btn btn--sm btn--quiet', 'Подписать место'); labelButton.type = 'button';
+      var form = el('form', 'acc-device-label'); form.hidden = true;
+      var field = el('label', 'field'); field.appendChild(el('span', null, 'Название места'));
+      var label = el('input', 'input'); label.maxLength = 80; label.value = d.label || ''; label.placeholder = 'Например, VIP-зал · место 13';
+      field.appendChild(label); form.appendChild(field);
+      var save = el('button', 'btn btn--sm', 'Сохранить'); save.type = 'submit'; form.appendChild(save);
+      var cancel = el('button', 'btn btn--sm btn--quiet', 'Отмена'); cancel.type = 'button'; form.appendChild(cancel);
+      labelButton.addEventListener('click', function() { form.hidden = !form.hidden; if (!form.hidden) label.focus(); });
+      cancel.addEventListener('click', function() { form.hidden = true; labelButton.focus(); });
+      form.addEventListener('submit', function(e) {
+        e.preventDefault(); busy(save, true); say(err, '');
+        call('POST', '/subscriptions/' + s.id + '/devices/' + d.machine + '/label', {label:label.value.trim()}).then(load)
+          .catch(function(x) { say(err, message(x.message)); busy(save, false); });
+      });
+      actions.appendChild(labelButton);
+      var support = el('a', 'btn btn--sm btn--quiet', 'Сообщить о проблеме'); support.href = '/support#chat';
+      support.setAttribute('data-support-open', '');
+      support.setAttribute('data-support-draft', 'Проблема на компьютере ' + actualName + (d.label ? ' (' + d.label + ')' : '') + '. VELIQ: ' + (d.version || 'версия неизвестна') + '. Что произошло: ');
+      actions.appendChild(support);
+      var release = el('button', 'btn btn--sm btn--quiet', 'Освободить'); release.type = 'button';
+      release.addEventListener('click', function() {
+        if (!confirm('Освободить место ' + actualName + '? VELIQ на этом ПК перестанет работать.')) return;
+        busy(release, true);
+        call('POST', '/subscriptions/' + s.id + '/devices/' + d.machine + '/release').then(load)
+          .catch(function(x) { say(err, message(x.message)); busy(release, false); });
+      });
+      actions.appendChild(release); li.appendChild(actions); li.appendChild(form); list.appendChild(li);
+      search.addEventListener('input', function() { li.hidden = (actualName + ' ' + (d.label || '')).toLocaleLowerCase('ru').indexOf(search.value.trim().toLocaleLowerCase('ru')) < 0; });
+    });
+    card.appendChild(list);
+  }
+
   function renderSubscription(s, paymentsOn, autoRenewAvailable) {
     var p = planOf(s.plan_id) || { title: 'Подписка', kind: s.kind };
     var card = el('article', 'card acc-sub');
     card.id='subscription-'+s.id;card.tabIndex=-1;card.style.overflowWrap='anywhere';
-    card.appendChild(el('p','acc-small',(state.name || 'Мой аккаунт')+' · Подписка '+s.id));
+
     if(state.selectedSubscription===s.id){card.setAttribute('aria-label','Выбранная подписка '+s.id);card.appendChild(el('p','acc-badge','Выбрана эта подписка'));}
     var openOrders=(state.orders||[]).filter(function(o){return o.quote.subscription_id===s.id && o.status!=='succeeded';});
     openOrders.forEach(function(o){var box=el('div','acc-small');box.appendChild(el('p',null,'Заказ '+o.id+' · '+o.quote.seats+' ПК · '+o.quote.days+' дней · '+rub(o.quote.amount_kopecks/100)+'. Условия зафиксированы.'));box.appendChild(el('p',null,'Статус: '+(o.status==='canceled'?'отменён провайдером, но позднее подтверждение ещё возможно':'ожидает подтверждения')+'. Резерв не освобождён. Новый заказ может быть недоступен до проверки.'));if(o.redirect&&o.status==='pending'){var resume=el('a','btn btn--sm','Продолжить оплату этого заказа');resume.href=o.redirect;box.appendChild(resume);}card.appendChild(box);});
     var head = el('div', 'acc-sub__head');
-    head.appendChild(el('h3', 'h3', p.title + (s.kind === 'club' || s.seats > 1 ? ' · ' + s.seats + ' ПК' : '')));
+    head.appendChild(el('h3', 'h3', (s.kind === 'club' ? 'Клубная подписка' : 'Личная подписка') + (s.seats > 1 ? ' · ' + s.seats + ' ПК' : '')));
     var remaining=s.paid_until?new Date(s.paid_until).getTime()-Date.now():NaN;
     if(!s.lifetime&&remaining>0&&remaining<=7*86400000){var notice=el('p','acc-error','Подписка заканчивается '+date(s.paid_until)+'. Продлите доступ, чтобы продолжить пользоваться VELIQ.');notice.setAttribute('role','status');card.appendChild(notice);}
     var status = 'Не оплачена';
@@ -287,29 +376,8 @@
     pay.addEventListener('click',function(){showPaymentConfirmation(false);});
     if (!s.lifetime) actions.appendChild(pay);
     card.appendChild(actions);
-    if (s.club_verification === 'verified') {
-      var requestCode = el('button', 'btn btn--sm', 'Получить код активации');
-      requestCode.type = 'button';
-      var issuedCode = el('p', 'acc-small');
-      issuedCode.setAttribute('role', 'status');
-      requestCode.addEventListener('click', function () {
-        if (issuedCode.textContent && !confirm('Выпустить новый код? Уже подключённые ПК сохранят доступ.')) return;
-        busy(requestCode, true);
-        say(err, '');
-        call('POST', '/subscriptions/' + s.id + '/code').then(function (result) {
-          issuedCode.textContent = 'Код для ' + s.seats + ' ПК: ' + result.code;
-        }).catch(function (x) { say(err, message(x.message)); }).then(function () { busy(requestCode, false); });
-      });
-      actions.appendChild(requestCode);
-      card.appendChild(issuedCode);
-    } else if (s.club_verification) {
-      var reviewNotice = s.club_verification === 'pending' ? MESSAGES.CLUB_VERIFICATION_PENDING :
-        s.club_verification === 'expired' ? MESSAGES.SUBSCRIPTION_EXPIRED : MESSAGES.CLUB_PAYMENT_REQUIRED;
-      var review = el('p', 'muted acc-small', reviewNotice);
-      review.setAttribute('role', 'status');
-      card.appendChild(review);
-    } else {
-      card.appendChild(el('p', 'muted acc-small', 'Чтобы подключить компьютер, откройте VELIQ на нём и нажмите «Войти или зарегистрироваться». Копировать код активации не нужно.'));
+    if (s.club_verification && s.club_verification !== 'verified') {
+      card.appendChild(el('p', 'muted acc-small', s.club_verification === 'pending' ? MESSAGES.CLUB_VERIFICATION_PENDING : s.club_verification === 'expired' ? MESSAGES.SUBSCRIPTION_EXPIRED : MESSAGES.CLUB_PAYMENT_REQUIRED));
     }
     if (!paymentsOn && !s.lifetime) card.appendChild(el('p', 'muted acc-small', 'Онлайн-оплата пока не подключена. Для подключения или продления обратитесь в поддержку.'));
     if (paymentsOn && autoRenewAvailable && !s.lifetime) {
@@ -317,22 +385,7 @@
       box.addEventListener('change', function () { call('POST', '/subscriptions/' + s.id + '/auto-renew', { enabled: box.checked }).catch(function (x) { box.checked = !box.checked; say(err, message(x.message)); }); });
       auto.appendChild(box); auto.appendChild(el('span', null, 'Автопродление')); card.appendChild(auto);
     }
-    if (s.devices.length) {
-      var list = el('ul', 'acc-devices');
-      s.devices.forEach(function (d, i) {
-        var li = el('li');
-        li.appendChild(el('span', null, (d.name || 'Компьютер ' + (i + 1)) + (d.last_seen ? ' · был в сети ' + date(d.last_seen) : '')));
-        var rel = el('button', 'btn btn--sm btn--quiet', 'Освободить');
-        rel.addEventListener('click', function () {
-          if (!confirm('Освободить место? VELIQ на этом компьютере перестанет работать, место можно будет занять другим компьютером.')) return;
-          busy(rel, true);
-          call('POST', '/subscriptions/' + s.id + '/devices/' + d.machine + '/release').then(load)
-            .catch(function (x) { say(err, message(x.message)); busy(rel, false); });
-        });
-        li.appendChild(rel); list.appendChild(li);
-      });
-      card.appendChild(list);
-    }
+    renderDevices(s, card, err);
     card.appendChild(err);
     return card;
   }
@@ -340,11 +393,11 @@
   function renderPayment(p, primary) {
     var row = el('li');
     row.style.overflowWrap='anywhere';
-    row.appendChild(el('span', null, 'Заказ '+p.id+' · Подписка '+p.subscription_id+' · '+date(p.created_at)+' · '+rub(p.amount_kopecks/100)+' · '+p.period_days+' дней'));
+    row.appendChild(el('span', null, date(p.created_at)+' · '+rub(p.amount_kopecks/100)+' · '+p.period_days+' дней'));
     var status = p.review_required ? 'Возврат или спор · требуется проверка' :
       p.status==='succeeded' ? 'оплачено' : p.status==='pending' ? 'ожидает оплаты' : 'отменено';
     row.appendChild(el('span','muted',status));
-    if(p.provider==='platega' && (p.status!=='succeeded' || p.review_required)){
+    if(p.provider==='platega' && (p.status==='pending' || p.review_required)){
       var check=el('button','btn btn--sm btn--quiet','Проверить оплату');
       var note=el('span','muted');note.setAttribute('role','status');
       check.addEventListener('click',function(){
@@ -368,7 +421,7 @@
       select.addEventListener('click',function(){
         state.selectedSubscription=p.subscription_id;
         var target=document.getElementById('subscription-'+p.subscription_id);
-        if(target){target.scrollIntoView({block:'center'});target.focus();}
+        if(target){var history=target.closest('details');if(history)history.open=true;target.scrollIntoView({block:'center'});target.focus();}
       });
       row.appendChild(select);
     }
@@ -383,7 +436,7 @@
     var returnID=params.get('order');
     var returnedPayment=payments.find(function(p){return p.id===returnID;});
     var primary=returnedPayment ||
-      payments.find(function(p){return p.status==='pending'&&!p.review_required;}) || payments[0];
+      payments.find(function(p){return p.review_required;}) || payments.find(function(p){return p.status==='pending';});
     if(params.get('payment')==='return'){
       var knownPayment=returnID ? returnedPayment : primary;
       var notice=el('li','muted',knownPayment ? 'Вы вернулись с формы оплаты. Статус платежа указан ниже.' :
@@ -391,22 +444,33 @@
       notice.setAttribute('role','status');
       list.appendChild(notice);
     }
-    if(!primary)return;
-    list.appendChild(renderPayment(primary,true));
-    if(payments.length>1){
+    var current=payments.filter(function(p){return p.status==='pending'||p.review_required||p===returnedPayment;});
+    current.forEach(function(p){list.appendChild(renderPayment(p,true));});
+    var historyCount=payments.length-current.length;
+    if(historyCount){
       var history=el('details','acc-small');
       history.style.width='100%';
       history.open=!!previousHistory&&previousHistory.open;
-      history.appendChild(el('summary',null,'История платежей ('+(payments.length-1)+')'));
+      history.appendChild(el('summary',null,'История платежей ('+historyCount+')'));
       var older=el('ul','acc-pays');
-      payments.forEach(function(p){if(p!==primary)older.appendChild(renderPayment(p,false));});
+      payments.forEach(function(p){if(current.indexOf(p)<0)older.appendChild(renderPayment(p,false));});
       history.appendChild(older);
       var historyRow=el('li');historyRow.appendChild(history);list.appendChild(historyRow);
     }
   }
 
+  setInterval(function(){
+    root.querySelectorAll('[data-contact-online]').forEach(function(contact){
+      if(performance.now()>Number(contact.getAttribute('data-contact-until'))){
+        contact.textContent='Данные устарели · Обновите список';
+        contact.removeAttribute('data-contact-online');
+      }
+    });
+  },15000);
+
   function load() {
     return call('GET', '').then(function (data) {
+      state.serverTime=data.server_time||new Date().toISOString();
       state.name=data.name||'';state.orders=data.club_orders||[];state.plans = data.plans || []; state.terms=data.payment_terms || (!data.payments_enabled && window.veliqPricing ? (data.kind==='club'?window.veliqPricing.club_terms:window.veliqPricing.terms).map(function(t){return {months:t.months,discount:t.discount,days:t.months*30};}):[]); state.paymentsOn=!!data.payments_enabled; state.kind=data.kind || ''; state.subscriptions=data.subscriptions || []; state.enforced=!!data.subscription_enforced;
       if(!state.kind){ updateProfileFields(); show('profile'); return; }
       trialCode.textContent = state.kind === 'player' ? (data.trial_code || '') : '';
@@ -416,14 +480,30 @@
       $('[data-account-kind]').textContent = (data.kind === 'club' ? 'Клуб' : 'Пользователь') + (data.name ? ' · ' + data.name : '');
       $('#account-subscriptions-title').textContent=state.kind==='player' ? 'Личный доступ' : 'Мои подписки';
       var subs = $('[data-subs]'); subs.textContent = '';
-      (data.subscriptions || []).forEach(function (s) { subs.appendChild(renderSubscription(s, data.payments_enabled, data.auto_renew_available)); });
+      var subscriptions = (data.subscriptions || []).slice().sort(function(a,b) {
+        function rank(s) { return (s.lifetime?4:0)+(s.active?2:0)+(s.used_seats>0?1:0); }
+        return rank(b)-rank(a) || new Date(b.paid_until||0)-new Date(a.paid_until||0);
+      });
+      if (state.kind === 'club') {
+        subscriptions.forEach(function(s) { subs.appendChild(renderSubscription(s, data.payments_enabled, data.auto_renew_available)); });
+        subscriptions = [];
+      }
+      var primary = subscriptions.shift();
+      if (primary) subs.appendChild(renderSubscription(primary, data.payments_enabled, data.auto_renew_available));
+      if (subscriptions.length) {
+        var history = el('details', 'acc-subscription-history');
+        history.appendChild(el('summary', null, 'Остальные подписки (' + subscriptions.length + ')'));
+        history.appendChild(el('p', 'muted acc-small', 'Прежние права и подключённые компьютеры сохранены.'));
+        subscriptions.forEach(function(s) { history.appendChild(renderSubscription(s, data.payments_enabled, data.auto_renew_available)); });
+        subs.appendChild(history);
+      }
       $('[data-subs-empty]').hidden = (data.subscriptions || []).length > 0;
       renderPlans($('[data-plans]'));
       var params=new URLSearchParams(location.search);
       renderPayments(data.payments || [],params);
       show('cabinet'); renderLink(); renderImages();
       var selected=state.selectedSubscription || params.get('subscription');
-      if(selected && state.subscriptions.some(function(s){return s.id===selected;})){var target=document.getElementById('subscription-'+selected);if(target){target.scrollIntoView({block:'center'});target.focus();}}
+      if(selected && state.subscriptions.some(function(s){return s.id===selected;})){var target=document.getElementById('subscription-'+selected);if(target){var history=target.closest('details');if(history)history.open=true;target.scrollIntoView({block:'center'});target.focus();}}
     }).catch(function (err) {
       if (err.status === 401) { show('email'); return; }
       say($('[data-email-error]'), message(err.message)); show('email');
