@@ -112,6 +112,8 @@ func runReady(ctx context.Context, path string, ready func()) error {
 	return clientservice.ServeIPC(ctx, listener, server)
 }
 func main() {
+	rememberEndpoints := flag.Bool("remember-owner-proxy-endpoints", false, "preserve verified owner proxy endpoints before update; no network or settings changes")
+	previousLease := flag.String("previous-owner-proxy-lease", "", "optional same-installation previous lease for one compatibility listener")
 	ownerProxy := flag.Bool("owner-system-proxy", false, "owner-user WinINET worker; private stdin, no service credentials")
 	recovery := flag.Bool("chrome-recovery", false, "owner-scoped Chrome recovery transport; no service privileges or credentials")
 	recoveryPort := flag.Uint("recovery-port", 0, "persisted IPv4 loopback recovery port")
@@ -120,6 +122,23 @@ func main() {
 	cleanup := flag.Bool("cleanup-browser-policy", false, "remove only journal-owned browser policies; no capture/enrollment/network")
 	console := flag.Bool("console", false, "run as an interactive service host for diagnostics")
 	flag.Parse()
+	if *rememberEndpoints {
+		if err := requireEndpointAdministrator(); err != nil {
+			slog.Error("owner endpoint preparation refused", "class", "OWNER_PROXY_ADMIN_REQUIRED")
+			os.Exit(1)
+		}
+		if err := clientservice.PrepareOwnerAuthorityEndpoints(*path, *previousLease); err != nil {
+			failure := err.Error()
+			if !strings.HasPrefix(failure, "OWNER_PROXY_") { failure = "OWNER_PROXY_ENDPOINT_PREPARE_FAILED" }
+			slog.Error("owner endpoint preparation failed", "class", failure)
+			os.Exit(1)
+		}
+		return
+	}
+	if *previousLease != "" {
+		slog.Error("previous lease requires endpoint preparation")
+		os.Exit(1)
+	}
 	if *ownerProxy {
 		if runOwnerSystemProxy(os.Stdin, os.Stdout) != nil {
 			os.Exit(1)

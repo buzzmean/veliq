@@ -4,10 +4,12 @@ import (
 	"github.com/buzzmean/neexitlag/core/browserproxy"
 	wp "github.com/buzzmean/neexitlag/platform/windows"
 	"sort"
+	"strings"
 	"time"
 )
 
 type browserAuthorityView struct {
+	Listeners       []authorityListenerView `json:"listeners"`
 	State           string                  `json:"state"`
 	Reason          string                  `json:"reason,omitempty"`
 	Applied         bool                    `json:"system_proxy_applied"`
@@ -21,6 +23,56 @@ type browserAuthorityView struct {
 	ExistingTCP     string                  `json:"existing_tcp"`
 	RawTLS          string                  `json:"raw_tls"`
 }
+
+type authorityListenerPublished struct {
+	Role, Address, Error string
+	Server               *browserproxy.Server
+}
+type authorityListenerView struct {
+	Role              string                 `json:"role"`
+	Address           string                 `json:"address"`
+	Listening         bool                   `json:"listening"`
+	Error             string                 `json:"error,omitempty"`
+	ActiveConnections int                    `json:"active_connections"`
+	Failures          map[string]uint64      `json:"failures"`
+	Lost              uint64                 `json:"lost"`
+	Truncated         bool                   `json:"truncated"`
+	Requests          []authorityRequestView `json:"requests"`
+}
+type authorityRequestView struct {
+	PID      uint32    `json:"pid"`
+	Birth    uint64    `json:"creation_time"`
+	Exe      string    `json:"exe"`
+	Profile  string    `json:"profile_id"`
+	Domain   string    `json:"domain"`
+	Port     uint16    `json:"port"`
+	Started  time.Time `json:"started_at"`
+	Active   bool      `json:"active"`
+	Result   string    `json:"result"`
+	Sent     uint64    `json:"sent_bytes"`
+	Received uint64    `json:"received_bytes"`
+}
+
+func authorityListenerSnapshot(p authorityListenerPublished) (authorityListenerView, []browserproxy.Record) {
+	v := authorityListenerView{Role: p.Role, Address: p.Address, Error: p.Error, Requests: []authorityRequestView{}}
+	if p.Server == nil {
+		return v, nil
+	}
+	s := p.Server.Snapshot()
+	v.Listening, v.ActiveConnections, v.Failures, v.Lost, v.Truncated = s.Listening, s.ActiveConnections, s.Failures, s.Lost, s.Truncated
+	records := append([]browserproxy.Record(nil), s.Records...)
+	sort.Slice(records, func(i, j int) bool { return records[i].Started.After(records[j].Started) })
+	if len(records) > 4 {
+		records = records[:4]
+		v.Truncated = true
+	}
+	for _, r := range records {
+		exe := r.Owner.Exe[strings.LastIndexAny(r.Owner.Exe, `/\`)+1:]
+		v.Requests = append(v.Requests, authorityRequestView{PID: r.Owner.PID, Birth: r.Owner.Birth, Exe: exe, Profile: r.Owner.Profile, Domain: r.Domain, Port: r.Port, Started: r.Started, Active: r.Active, Result: r.Result, Sent: r.Sent, Received: r.Received})
+	}
+	return v, s.Records
+}
+
 type authorityProfileProof struct {
 	Profile   string `json:"profile_id"`
 	Requests  int    `json:"requests"`
@@ -37,6 +89,16 @@ func (c *Controller) authorityStatus() browserAuthorityView {
 	v.Reason = s.reason
 	v.Applied = s.applied
 	v.AppliedAt = s.appliedAt
+	listeners := s.listeners
+	if len(listeners) == 0 && s.server != nil {
+		listeners = []authorityListenerPublished{{Role: "primary", Address: s.server.Address(), Server: s.server}}
+	}
+	var records []browserproxy.Record
+	for _, listener := range listeners {
+		view, current := authorityListenerSnapshot(listener)
+		v.Listeners = append(v.Listeners, view)
+		records = append(records, current...)
+	}
 	if time.Since(s.verifiedAt) > 15*time.Second {
 		v.Applied = false
 		v.Reason = "OWNER_PROXY_VERIFICATION_EXPIRED"
@@ -50,7 +112,6 @@ func (c *Controller) authorityStatus() browserAuthorityView {
 		v.State = "AUTHORITY_LISTENER_UNAVAILABLE"
 		return v
 	}
-	var records []browserproxy.Record = snapshot.Records
 	proofs := map[string]authorityProfileProof{}
 	network := ""
 	if n := c.network.Load(); n != nil && n.Error == "" && time.Since(n.ObservedAt) <= 45*time.Second {

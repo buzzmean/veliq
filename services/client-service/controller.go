@@ -290,9 +290,16 @@ func (c *Controller) closeResources() {
 	}
 	c.browser.authority.mu.Lock()
 	authorityServer := c.browser.authority.server
+	var compatibilityServers []*browserproxy.Server
+	for _, server := range c.browser.authority.compatibility {
+		compatibilityServers = append(compatibilityServers, server)
+	}
 	c.browser.authority.mu.Unlock()
 	if authorityServer != nil {
 		authorityServer.Close()
+	}
+	for _, server := range compatibilityServers {
+		server.Close()
 	}
 	if c.Backend != nil {
 		c.Backend.Stop()

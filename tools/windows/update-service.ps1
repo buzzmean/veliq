@@ -7,6 +7,7 @@ param(
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
 . (Join-Path $PSScriptRoot 'service-startup.ps1')
+. (Join-Path $PSScriptRoot 'owner-proxy-endpoints.ps1')
 Assert-Administrator
 . (Join-Path $PSScriptRoot 'native-tcp-firewall.ps1')
 . (Join-Path $PSScriptRoot 'migrate-legacy-install.ps1')
@@ -54,6 +55,7 @@ New-Item -ItemType Directory -Path $backup|Out-Null
 $oldAcl=Get-Acl -LiteralPath $target
 $oldAcl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)|Set-Content -LiteralPath (Join-Path $backup 'binary.sddl') -Encoding ASCII
 Copy-Item -LiteralPath $target -Destination (Join-Path $backup 'veliq-service.exe')
+$proxyLeaseBackup=Save-VeliqOwnerProxyLease $manifestFile $backup
 function Set-BinaryOwnerReadExecute([string]$Path,[string]$OwnerSid){
  $binaryOwner=[Security.Principal.SecurityIdentifier]::new($OwnerSid)
  $acl=[Security.AccessControl.FileSecurity]::new();$acl.SetAccessRuleProtection($true,$false)
@@ -77,6 +79,11 @@ try{
  }
  Copy-Item -LiteralPath $source -Destination $pending
  Set-BinaryOwnerReadExecute $pending $owner.Value
+ # Old binaries delete their reversible lease when stopped. The replacement
+ # must remember its verified address before that boundary, without opening
+ # any listener, touching activation or changing Windows proxy settings.
+ & $pending -remember-owner-proxy-endpoints -config $manifestFile
+ if($LASTEXITCODE -ne 0){throw 'OWNER_PROXY_ENDPOINT_PREPARE_FAILED'}
  Set-Service VELIQ -StartupType Disabled
  Stop-Service VELIQ
  $stopped=$true
@@ -116,7 +123,7 @@ try{
  if($nativeFirewallCreated){try{Remove-NativeTcpFirewallAdmission $target}catch{$firewallRollbackError=$true}}
  if(!$replaced){
   Restore-VeliqServiceStartup $oldStartMode
-  if($stopped){try{if($oldStartMode -eq 'Disabled'){Set-Service VELIQ -StartupType Manual};Start-Service VELIQ;$service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30));Restore-VeliqServiceStartup $oldStartMode}catch{throw "Executable was not replaced; previous service could not restart. Backup: $backup"}}
+  if($stopped){try{Restore-VeliqOwnerProxyLease $proxyLeaseBackup;if($oldStartMode -eq 'Disabled'){Set-Service VELIQ -StartupType Manual};Start-Service VELIQ;$service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30));Restore-VeliqServiceStartup $oldStartMode}catch{throw "Executable was not replaced; previous service could not restart. Backup: $backup"}}
   throw "Windows update refused before replacement; previous binary/ACL retained: $failure. Backup: $backup"
  }
  try{
@@ -128,6 +135,7 @@ try{
   Set-Acl -LiteralPath $target -AclObject $oldAcl
   Restore-VeliqServiceStartup $oldStartMode
   Set-Service -Name VELIQ -DisplayName $oldDisplayName
+  Restore-VeliqOwnerProxyLease $proxyLeaseBackup
   Start-Service VELIQ
   $service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
  }catch{throw "Windows update failed ($failure); automatic binary rollback failed. Backup retained: $backup"}

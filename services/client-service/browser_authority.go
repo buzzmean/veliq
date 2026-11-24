@@ -22,6 +22,8 @@ type browserAuthorityRuntime struct {
 	guardRequired atomic.Bool
 	mu            sync.Mutex
 	server        *browserproxy.Server
+	compatibility map[string]*browserproxy.Server
+	endpoints     []authorityListenerPublished
 	applied       bool
 	appliedAt     time.Time
 	verifiedAt    time.Time
@@ -31,6 +33,7 @@ type browserAuthorityRuntime struct {
 }
 type browserAuthorityPublished struct {
 	server     *browserproxy.Server
+	listeners  []authorityListenerPublished
 	applied    bool
 	appliedAt  time.Time
 	verifiedAt time.Time
@@ -38,7 +41,7 @@ type browserAuthorityPublished struct {
 }
 
 func (a *browserAuthorityRuntime) publish() {
-	a.published.Store(&browserAuthorityPublished{server: a.server, applied: a.applied, appliedAt: a.appliedAt, verifiedAt: a.verifiedAt, reason: a.lastError})
+	a.published.Store(&browserAuthorityPublished{server: a.server, listeners: append([]authorityListenerPublished(nil), a.endpoints...), applied: a.applied, appliedAt: a.appliedAt, verifiedAt: a.verifiedAt, reason: a.lastError})
 }
 
 func (c *Controller) authorityOwner(ctx context.Context, source, local netip.AddrPort) (browserproxy.Owner, error) {
@@ -313,7 +316,7 @@ func (c *Controller) retryBrowserAuthority(force bool) {
 			}
 		}
 	}
-	if err := c.restoreAuthorityListenerLocked(a, false); err != nil {
+	if err := c.restoreAuthorityListenerLocked(a, false); err != nil && err.Error() != "AUTHORITY_COMPAT_LISTENER_UNAVAILABLE" {
 		a.lastError = err.Error()
 		return
 	}

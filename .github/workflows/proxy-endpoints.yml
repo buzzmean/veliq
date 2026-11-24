@@ -1,0 +1,31 @@
+name: Owner proxy endpoint continuity (isolated)
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/proxy-endpoint-persistence-20261124]
+permissions:
+  contents: read
+jobs:
+  windows-lifecycle:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Persisted endpoints and real cached clients through replacement
+        shell: powershell
+        run: |
+          New-Item bin -ItemType Directory -Force | Out-Null
+          & go build -o bin/veliq-service.exe ./services/client-service/cmd/service
+          if ($LASTEXITCODE) { throw 'OWNER_WORKER_BUILD_FAILED' }
+          $env:VELIQ_TEST_OWNER_WORKER=(Resolve-Path bin/veliq-service.exe).Path
+          $env:VELIQ_TEST_AUTHORITY_RUNTIME='1'
+          & go test -race -p 1 -count=1 -timeout 180s ./services/client-service '-run' '^(TestAuthority(Endpoints|Compatibility)|TestWindows(AuthorityEndpointsCachedClientsAcrossUpdate|OwnerAuthorityWorkerAndOtherApplications|OwnerProxyWorkerFromSYSTEM|AuthorityControllerStartAndCrashGuard))'
+          if ($LASTEXITCODE) { throw 'OWNER_ENDPOINT_CONTINUITY_FAILED' }
+      - name: Legacy rollback lease checks (PowerShell 5.1)
+        shell: powershell
+        run: '& ./tests/windows-tools/owner-proxy-endpoints-checks.ps1'
+      - name: Legacy rollback lease checks (PowerShell 7)
+        shell: pwsh
+        run: '& ./tests/windows-tools/owner-proxy-endpoints-checks.ps1'

@@ -7,6 +7,7 @@ import (
 	"github.com/buzzmean/neexitlag/core/flowpolicy"
 	"net"
 	"net/netip"
+	"path/filepath"
 	"time"
 )
 
@@ -23,15 +24,20 @@ func (c *Controller) RestoreOwnerAuthorityListener() error {
 	return c.restoreAuthorityListenerLocked(a, true)
 }
 func (c *Controller) restoreAuthorityListenerLocked(a *browserAuthorityRuntime, existingOnly bool) error {
-	if a.server != nil && a.server.Snapshot().Listening {
-		return nil
+	directory := filepath.Dir(c.customPath)
+	if err := prepareAuthorityEndpoints(directory, c.BrowserOwnerSID, ""); err != nil {
+		return err
+	}
+	endpoints, err := readAuthorityEndpoints(directory, c.BrowserOwnerSID)
+	if err != nil {
+		return err
 	}
 	address := ""
 	lease, err := readOwnerProxyLease(c.authorityLeasePath(), c.BrowserOwnerSID)
 	if err != nil {
 		return err
 	}
-	if lease == nil && existingOnly {
+	if lease == nil && endpoints == nil && existingOnly {
 		return nil
 	}
 	if lease != nil {
@@ -44,12 +50,58 @@ func (c *Controller) restoreAuthorityListenerLocked(a *browserAuthorityRuntime, 
 		}
 		a.guardRequired.Store(true)
 	}
-	server, err := browserproxy.Listen(c.ctx, browserproxy.Config{Address: address, RequireClientHelloReplay: true, Authorize: c.authorityOwner, Plan: c.authorityPlan, Open: c.authorityOpen, OpenPlan: c.authorityOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered})
-	if err != nil {
-		return errors.New("AUTHORITY_LISTENER_UNAVAILABLE")
+	if endpoints != nil {
+		address = endpoints.Primary
+		a.guardRequired.Store(true)
 	}
-	a.server = server
-	return nil
+	a.endpoints = []authorityListenerPublished{{Role: "primary", Address: address}}
+	if a.server == nil || !a.server.Snapshot().Listening {
+		server, err := c.listenOwnerAuthority(address)
+		if err != nil {
+			a.endpoints[0].Error = "AUTHORITY_LISTENER_UNAVAILABLE"
+			return errors.New("AUTHORITY_LISTENER_UNAVAILABLE")
+		}
+		if endpoints == nil {
+			endpoints = &ownerAuthorityEndpoints{Version: 1, Owner: c.BrowserOwnerSID, Primary: server.Address()}
+			if err := writeAuthorityEndpoints(directory, *endpoints); err != nil {
+				server.Close()
+				return err
+			}
+		}
+		a.server = server
+	}
+	if endpoints == nil {
+		endpoints = &ownerAuthorityEndpoints{Version: 1, Owner: c.BrowserOwnerSID, Primary: a.server.Address()}
+		if err := writeAuthorityEndpoints(directory, *endpoints); err != nil {
+			return err
+		}
+	}
+	a.endpoints[0].Address, a.endpoints[0].Server = a.server.Address(), a.server
+	if a.compatibility == nil {
+		a.compatibility = map[string]*browserproxy.Server{}
+	}
+	var bindError error
+	for _, address := range endpoints.Compatibility {
+		server := a.compatibility[address]
+		view := authorityListenerPublished{Role: "compatibility", Address: address}
+		if server == nil || !server.Snapshot().Listening {
+			var err error
+			server, err = c.listenOwnerAuthority(address)
+			if err != nil {
+				view.Error = "AUTHORITY_COMPAT_LISTENER_UNAVAILABLE"
+				bindError = errors.New(view.Error)
+			} else {
+				a.compatibility[address] = server
+			}
+		}
+		view.Server = server
+		a.endpoints = append(a.endpoints, view)
+	}
+	return bindError
+}
+
+func (c *Controller) listenOwnerAuthority(address string) (*browserproxy.Server, error) {
+	return browserproxy.Listen(c.ctx, browserproxy.Config{Address: address, RequireClientHelloReplay: true, Authorize: c.authorityOwner, Plan: c.authorityPlan, Open: c.authorityOpen, OpenPlan: c.authorityOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered})
 }
 func (c *Controller) authorityGuardPending() bool {
 	if !c.browser.authority.guardRequired.Load() {
