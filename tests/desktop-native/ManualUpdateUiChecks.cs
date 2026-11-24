@@ -45,6 +45,6 @@ internal static partial class Program
         model.ApplyUpdate(new() { State = "INSTALL_FAILED", CurrentBuild = "713", AvailableBuild = 713 }); Pump();
         Require(!button.IsVisible, "Old failure advertises the already installed build");
         SaveImage(window, "manual-update-current");
-        window.Close(); Pump(); Pass("Manual update progress, ready action and club hiding");
+        window.Exit(); Pump(); Pass("Manual update progress, ready action and club hiding");
     }
 }

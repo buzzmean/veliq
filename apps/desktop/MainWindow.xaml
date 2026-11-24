@@ -102,7 +102,6 @@
     <!-- ============ Сервисы (приложения и сайты) ============ -->
     <DockPanel x:Name="Applications" Visibility="Collapsed">
      <StackPanel DockPanel.Dock="Top">
-      <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="{ui:Tr AutomaticApplicationsTitle}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{ui:Tr AutomaticApplicationsHint}" TextWrapping="Wrap" Style="{StaticResource Hint}" Margin="0,8,0,0"/></StackPanel></Border>
       <WrapPanel Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}">
        <Button Style="{StaticResource Primary}" Click="AddApplication" IsEnabled="{Binding CanControl}"><StackPanel Orientation="Horizontal"><Path Data="{StaticResource IconPlus}" Width="16" Height="16" Stretch="Uniform" Stroke="{StaticResource OnControl}" StrokeThickness="1.75" Margin="0,0,8,0"/><TextBlock Text="{ui:Tr AddApplication}" Foreground="{StaticResource OnControl}"/></StackPanel></Button>
        <Button Content="{ui:Tr AutoOptimize}" Click="UseAuto" IsEnabled="{Binding CanControl}" Visibility="{Binding ShowTechnical, Converter={StaticResource BoolToVisible}}"/>
@@ -139,18 +138,21 @@
        <DataGrid ItemsSource="{Binding BrowserDomains}" MaxHeight="180"><DataGrid.Columns><DataGridTextColumn Header="{ui:Tr DomainLabel}" Binding="{Binding Domain}" Width="*"/><DataGridTextColumn Header="{ui:Tr CurrentRoute}" Binding="{Binding Route}" Width="140"/><DataGridTextColumn Header="{ui:Tr ReasonLabel}" Binding="{Binding Reason}" Width="2*"/><DataGridTextColumn Header="{ui:Tr Result}" Binding="{Binding Outcome}" Width="2*"/></DataGrid.Columns></DataGrid>
       </StackPanel></Expander>
      </StackPanel>
-     <DataGrid x:Name="AppGrid" ItemsSource="{Binding Applications}" SelectionChanged="ApplicationSelected" SelectionMode="Single" Margin="0,8,0,0"><DataGrid.Columns>
+     <Grid>
+     <TextBlock Text="{ui:Tr NoOptimizedApplications}" Style="{StaticResource Hint}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding NoActiveServices, Converter={StaticResource BoolToVisible}}"/>
+     <DataGrid x:Name="AppGrid" ItemsSource="{Binding ServiceApplications}" Visibility="{Binding HasVisibleServices, Converter={StaticResource BoolToVisible}}" SelectionChanged="ApplicationSelected" SelectionMode="Single" Margin="0,8,0,0"><DataGrid.Columns>
       <DataGridTextColumn Header="{ui:Tr Application}" Binding="{Binding Name}" Width="150"/>
       <DataGridTextColumn Header="{ui:Tr Executable}" Binding="{Binding Path}" Width="2*"/>
       <DataGridTextColumn Header="{ui:Tr Mode}" Binding="{Binding Mode}" Width="120"/>
       <DataGridTextColumn Header="{ui:Tr ProcessStatus}" Binding="{Binding ProcessStatus}" Width="130"/>
-      <DataGridTextColumn Header="{ui:Tr CurrentRoute}" Binding="{Binding UserStatus}" Width="*"/>
+      <DataGridTextColumn Header="{ui:Tr CurrentRoute}" Binding="{Binding ServiceStatus}" Width="*"/>
       <DataGridTextColumn Header="{ui:Tr UdpTraffic}" Binding="{Binding Udp}" Width="130" Visibility="Collapsed"/>
       <DataGridTextColumn Header="{ui:Tr TcpTraffic}" Binding="{Binding Tcp}" Width="130" Visibility="Collapsed"/>
       <DataGridTextColumn Header="{ui:Tr IPv4Label}" Binding="{Binding Ipv4}" Width="130" Visibility="Collapsed"/>
       <DataGridTextColumn Header="{ui:Tr IPv6Label}" Binding="{Binding Ipv6}" Width="180" Visibility="Collapsed"/>
       <DataGridTextColumn Header="{ui:Tr LocalDetails}" Binding="{Binding LocalDetails}" Width="300" Visibility="Collapsed"/>
      </DataGrid.Columns></DataGrid>
+     </Grid>
     </DockPanel>
 
     <!-- ============ Диагностика: проверка, маршруты, статистика, локальные стратегии ============ -->
@@ -278,7 +280,6 @@
      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><StackPanel>
       <Border Style="{StaticResource SetRow}"><CheckBox x:Name="Launch" Content="{ui:Tr AutoStart}" Margin="0"/></Border>
       <Border Style="{StaticResource SetRow}"><CheckBox x:Name="StartMinimized" Content="{ui:Tr StartMinimized}" Margin="0"/></Border>
-      <Border Style="{StaticResource SetRow}"><CheckBox x:Name="MinimizeToTray" Content="{ui:Tr MinimizeToTray}" Margin="0"/></Border>
       <Border Style="{StaticResource SetRow}" BorderThickness="0"><CheckBox x:Name="Automatic" Content="{ui:Tr AutoOptimization}" IsEnabled="{Binding Available}" Margin="0"/></Border>
      </StackPanel></Border>
      <TextBlock Text="{ui:Tr SetNetwork}" Style="{StaticResource GroupTitle}"/>
