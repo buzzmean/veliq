@@ -5,9 +5,10 @@ function Write-VeliqInstallDiagnostic([string]$Stage,$Evidence) {
   ConvertTo-Json -Depth 6 -Compress | Add-Content -LiteralPath $script:DiagnosticFile -Encoding UTF8
 }
 function Convert-VeliqPendingPath([string]$Path) {
- if($Path.StartsWith('!')){$Path=$Path.Substring(1)}
- if($Path.StartsWith('*1\??\') -or $Path.StartsWith('*2\??\')){$Path=$Path.Substring(2)}
- if($Path.StartsWith('\??\')){$Path=$Path.Substring(4)}
+ # The queue can combine a known operation marker with the replace marker:
+ # *1!\??\C:\... (observed for EdgeUpdate log rotation). Consume one complete
+ # prefix, never arbitrary leading punctuation; unknown/repeated flags fail closed.
+ $Path=$Path -replace '^(?:(?:\*[12])?!?\\\?\?\\|!\*[12]\\\?\?\\|!)',''
  if($Path -notmatch '^[a-zA-Z]:\\' -or $Path.Substring(2) -match '[:/*?]' -or $Path.Split('\') -contains '..'){throw 'INSTALL_PENDING_PATH_UNRESOLVED'}
  $Path=[IO.Path]::GetFullPath($Path).TrimEnd('\')
  $tail=@();$ancestor=$Path

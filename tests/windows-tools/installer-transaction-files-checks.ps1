@@ -33,6 +33,9 @@ try{
  $errorFile=Join-Path $fixture 'prepare.error'
  & $hostExe -NoProfile -File $script -Action Prepare -AppDirectory $app -TransactionDirectory $backup -DiagnosticFile $log -ErrorFile $errorFile
  if($LASTEXITCODE -ne 1 -or [IO.File]::ReadAllText($errorFile) -cne 'INSTALL_TRANSACTION_ALREADY_PREPARED'){throw 'FILES_PREPARE_ERROR_CODE_NOT_PRESERVED'}
+ # The expected negative probe passed; do not leak its native failure status
+ # into the caller's successful PowerShell test step.
+ $global:LASTEXITCODE=0
  Write-Output 'PASS real snapshot/restore of GUI, library and uninstall metadata; no service/task/registry/shortcut mutation'
 }finally{
  $resolved=[IO.Path]::GetFullPath($fixture)
