@@ -81,7 +81,7 @@ var TransactionPrepared, PackageCompleted: Boolean;
     DiagnosticPath, TransactionPath: String;
     TransactionAttempt: Integer;
     ExistingInstall, ExistingManifest: Boolean;
-    InstalledVersion, SelectedOperation: String;
+    InstalledVersion, SelectedOperation, InstallScanDirectory: String;
     OperationPage: TInputOptionWizardPage;
     UpdateOption, ReinstallOption: Integer;
 
@@ -128,13 +128,13 @@ var Key, Name, Location, RegisteredVersion: String; Comparison: Integer;
 begin
  InstalledVersion := '';
  ExistingManifest := FileExists(ExpandConstant('{commonappdata}\VELIQ\service.json'));
- ExistingInstall := ExistingManifest or FileExists(ExpandConstant('{app}\VELIQ.exe')) or
+ ExistingInstall := ExistingManifest or FileExists(AddBackslash(InstallScanDirectory) + 'VELIQ.exe') or
    FileExists(ExpandConstant('{commonappdata}\VELIQ\veliq-service.exe'));
- GetVersionNumbersString(ExpandConstant('{app}\VELIQ.exe'), InstalledVersion);
+ GetVersionNumbersString(AddBackslash(InstallScanDirectory) + 'VELIQ.exe', InstalledVersion);
  Key := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{E18D91DB-2E64-4405-A05E-AB15A4192318}_is1';
  if RegQueryStringValue(HKLM64, Key, 'DisplayName', Name) and (Name='VELIQ') and
     RegQueryStringValue(HKLM64, Key, 'InstallLocation', Location) and
-    (CompareText(RemoveBackslashUnlessRoot(Location), ExpandConstant('{app}'))=0) then begin
+    (CompareText(RemoveBackslashUnlessRoot(Location), RemoveBackslashUnlessRoot(InstallScanDirectory))=0) then begin
    ExistingInstall := True;
    if RegQueryStringValue(HKLM64, Key, 'DisplayVersion', RegisteredVersion) then begin
      if InstalledVersion='' then InstalledVersion := RegisteredVersion
@@ -188,6 +188,10 @@ begin
  DiagnosticPath := ExpandConstant('{commonappdata}\VELIQ-Setup\Logs\') + GetDateTimeString('yyyymmdd-hhnnss', '-', ':') + '.jsonl';
  ForceDirectories(ExtractFileDir(DiagnosticPath));
  Log('VELIQ build {#AppVersion}; diagnostics=' + DiagnosticPath);
+ { Inno initializes {app} only after InitializeWizard returns. During this
+   first read use the same fixed default/explicit DIR as the actual wizard. }
+ InstallScanDirectory := ExpandConstant('{param:DIR|}');
+ if InstallScanDirectory='' then InstallScanDirectory := ExpandConstant('{autopf}\VELIQ');
  InitializeVeliqOperation;
  LockNoRestartChoice;
  InitializeVeliqTheme;
@@ -284,6 +288,7 @@ begin
    Result := VeliqFailureMessage(SelectedOperation) + #13#10 + 'Код: ' + SelectedOperation;
    Exit;
  end;
+ InstallScanDirectory := ExpandConstant('{app}');
  ReadVeliqInstallation;
  Operation := ResolveVeliqOperation(ExistingInstall, InstalledVersion, '{#AppVersion}', SelectedOperation);
  if (Operation<>'INSTALL') and (Operation<>'UPDATE') and (Operation<>'REINSTALL') then begin

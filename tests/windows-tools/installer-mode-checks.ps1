@@ -12,6 +12,7 @@ function Get-ActualHandler([string]$Start,[string]$End){
  if(!$body){throw ('MODE_HANDLER_NOT_FOUND '+$Start)}
  return $body
 }
+$initialRead=(Get-ActualHandler 'procedure ReadVeliqInstallation;' 'function RequestedVeliqOperation()').Replace('ReadVeliqInstallation','ReadRealVeliqInstallation')
 $handlers=(Get-ActualHandler 'function RequestedVeliqOperation()' 'procedure LockNoRestartChoice;')+"`n"+
  (Get-ActualHandler 'function NextButtonClick(' 'function DiagnosticFile(')+"`n"+
  (Get-ActualHandler 'function UpdateArgument(' 'function TransactionErrorCode(')
@@ -35,11 +36,12 @@ OutputDir=.
 OutputBaseFilename=modes
 [Code]
 var ExistingInstall, ExistingManifest: Boolean;
-    InstalledVersion, SelectedOperation: String;
+    InstalledVersion, SelectedOperation, InstallScanDirectory: String;
     OperationPage: TInputOptionWizardPage;
     UpdateOption, ReinstallOption: Integer;
 {POLICY}
 {THEME}
+{INITIAL_READ}
 procedure ReadVeliqInstallation;
 begin
  ExistingInstall := ExpandConstant('{param:PRESENT|0}')='1';
@@ -50,6 +52,8 @@ end;
 procedure InitializeWizard;
 var Comparison, Count: Integer; Expected, Memo: String;
 begin
+ InstallScanDirectory := ExpandConstant('{tmp}\veliq-inert-mode');
+ ReadRealVeliqInstallation;
  InitializeVeliqOperation;
  InitializeVeliqTheme;
  if WizardForm.Color<>$0B0A0A then begin Log('MODE_DARK_THEME_FAILED'); Abort; end;
@@ -85,7 +89,7 @@ begin
  Abort;
 end;
 '@
-$fixture=$fixture.Replace('{POLICY}',$policy).Replace('{HANDLERS}',$handlers).Replace('{THEME}',$theme)
+$fixture=$fixture.Replace('{POLICY}',$policy).Replace('{HANDLERS}',$handlers).Replace('{THEME}',$theme).Replace('{INITIAL_READ}',$initialRead)
 [IO.File]::WriteAllText((Join-Path $directory 'modes.iss'),$fixture,[Text.UTF8Encoding]::new($true))
 try{
  & $Compiler '/Q' (Join-Path $directory 'modes.iss')
