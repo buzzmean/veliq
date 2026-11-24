@@ -188,7 +188,7 @@ begin
  DiagnosticPath := ExpandConstant('{commonappdata}\VELIQ-Setup\Logs\') + GetDateTimeString('yyyymmdd-hhnnss', '-', ':') + '.jsonl';
  ForceDirectories(ExtractFileDir(DiagnosticPath));
  Log('VELIQ build {#AppVersion}; diagnostics=' + DiagnosticPath);
- { Inno initializes {app} only after InitializeWizard returns. During this
+ { Inno initializes the application directory after InitializeWizard returns. During this
    first read use the same fixed default/explicit DIR as the actual wizard. }
  InstallScanDirectory := ExpandConstant('{param:DIR|}');
  if InstallScanDirectory='' then InstallScanDirectory := ExpandConstant('{autopf}\VELIQ');
