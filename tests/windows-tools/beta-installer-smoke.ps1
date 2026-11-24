@@ -187,6 +187,21 @@ func main(){
   Assert-InstalledCandidate
   Write-Output 'BETA_OWNER_ENDPOINT_PRE_GUI_PASS real Setup; exact GUI pipe closes process and removes legacy lease after persistence'
  }finally{if(!$fakeGui.HasExited){$fakeGui.Kill();$fakeGui.WaitForExit()};$fakeGui.Dispose()}
+ # Setup resumes the real GUI after replacing the stand-in. Return this new
+ # fixture to the original no-GUI baseline before the independent failure,
+ # locked-file and uninstall scenarios below; never terminate by process name.
+ $resumed=@(Get-CimInstance Win32_Process -Filter "Name='VELIQ.exe'"|Where-Object {$_.ExecutablePath -ieq (Join-Path $app 'VELIQ.exe')})
+ if($resumed.Count -ne 1){throw 'OWNER_GUI_FIXTURE_RESUME_COUNT_INVALID'}
+ $guiOwner=Invoke-CimMethod -InputObject $resumed[0] -MethodName GetOwnerSid
+ if($guiOwner.ReturnValue -ne 0 -or $guiOwner.Sid -cne $owner){throw 'OWNER_GUI_FIXTURE_RESUME_OWNER_INVALID'}
+ $close=[IO.Pipes.NamedPipeClientStream]::new('.','NeExitLag-activate-'+$owner+'-'+$resumed[0].SessionId,[IO.Pipes.PipeDirection]::Out)
+ try{$close.Connect(5000);$close.WriteByte(2)}finally{$close.Dispose()}
+ try{
+  $resumedProcess=[Diagnostics.Process]::GetProcessById([int]$resumed[0].ProcessId)
+  try{if(!$resumedProcess.WaitForExit(15000)){throw 'OWNER_GUI_FIXTURE_CLOSE_TIMEOUT'}}finally{$resumedProcess.Dispose()}
+ }catch [ArgumentException]{}
+ $unlocked=[IO.File]::Open((Join-Path $app 'VELIQ.exe'),[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);$unlocked.Dispose()
+ Write-Output 'BETA_OWNER_GUI_FIXTURE_CLEAN_PASS resumed owner GUI closed through its pipe; executable unlocked'
  # A verified package with a deliberately failing service must restore both
  # the previous executable AND the previous GUI/package/uninstall metadata.
  $failureStage=Join-Path $env:RUNNER_TEMP ('beta-service-failure-'+[guid]::NewGuid().ToString('N'))
@@ -327,6 +342,16 @@ func main(){
  $safe='UNEXPECTED_FIXTURE_EXCEPTION'
  if($_.Exception.Message -cmatch '^([A-Z][A-Z0-9_]{3,80})(;| |$)'){$safe=$Matches[1]}
  Write-Output ('BETA_INSTALLER_PRIMARY_FAILURE code='+$safe+' line='+$_.InvocationInfo.ScriptLineNumber+' type='+$_.Exception.GetType().Name)
+ # Only these disposable loopback fixtures create this directory. Emit bounded
+ # stage/code/action/PID fields, not configs, tokens or arbitrary exception text.
+ foreach($diagnostic in @(Get-ChildItem -LiteralPath (Join-Path $env:ProgramData 'VELIQ-Setup/Logs') -Filter '*.jsonl' -File -ErrorAction SilentlyContinue|Sort-Object LastWriteTime|Select-Object -Last 5)){
+  foreach($line in @(Get-Content -LiteralPath $diagnostic.FullName|Select-Object -Last 12)){
+   try{$item=$line|ConvertFrom-Json;$fields=[ordered]@{stage=$item.stage}
+    foreach($key in @('code','action','pid','exception_type','line')){if($item.evidence.PSObject.Properties[$key]){$fields[$key]=$item.evidence.PSObject.Properties[$key].Value}}
+    Write-Output ('BETA_TRANSACTION_TRACE '+($fields|ConvertTo-Json -Compress))
+   }catch{}
+  }
+ }
  Write-PreflightEnvironmentProbe
  $resultPath=Join-Path $app 'install-result.json'
  if(Test-Path -LiteralPath $resultPath){
