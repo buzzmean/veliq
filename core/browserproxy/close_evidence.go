@@ -3,6 +3,7 @@ package browserproxy
 import (
 	"context"
 	"errors"
+	"github.com/buzzmean/neexitlag/core/clubhealth"
 	"io"
 	"net"
 	"strings"
@@ -23,6 +24,9 @@ type tunnelCloseEvidence struct {
 	originData atomic.Bool
 	mu         sync.Mutex
 	reason     string
+	code       string
+	native     uint32
+	side       string
 }
 
 func (t *tunnelCloseEvidence) terminal(side string, err error) {
@@ -33,6 +37,10 @@ func (t *tunnelCloseEvidence) terminal(side string, err error) {
 	defer t.mu.Unlock()
 	if t.reason != "" || t.forcing.Load() {
 		return
+	}
+	if !errors.Is(err, io.EOF) && !errors.Is(err, net.ErrClosed) && !errors.Is(err, context.Canceled) {
+		t.code, t.native = clubhealth.ErrorCode(err)
+		t.side = strings.ToUpper(strings.ReplaceAll(side, "-", "_"))
 	}
 	switch {
 	case t.ctx != nil && t.ctx.Err() != nil:
@@ -69,6 +77,11 @@ func (t *tunnelCloseEvidence) cause() string {
 		return "SERVICE_STOP"
 	}
 	return "UNCLASSIFIED"
+}
+func (t *tunnelCloseEvidence) diagnostic() (string, uint32, string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.code, t.native, t.side
 }
 
 type closeReader struct {

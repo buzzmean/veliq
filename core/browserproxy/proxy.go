@@ -89,6 +89,7 @@ type Plan struct {
 	HTTPStatus          int                `json:"http_status,omitempty"`
 }
 type Record struct {
+	ErrorOperation     string `json:"error_operation,omitempty"`
 	ErrorCode          string `json:"error_code,omitempty"`
 	NativeCode         uint32 `json:"native_code,omitempty"`
 	planReporter       PlanReporter
@@ -563,6 +564,7 @@ func (s *Server) handle(c net.Conn, acceptedAt time.Time) {
 		r.Result = result
 		if planErr != nil {
 			r.ErrorCode, r.NativeCode = clubhealth.ErrorCode(planErr)
+			r.ErrorOperation = "PLAN"
 		}
 		p := s.paths[r.Owner.Profile]
 		if result == "ORIGIN_PLAN_FAILED" || result == "UPSTREAM_OPEN_FAILED" {
@@ -620,6 +622,7 @@ func (s *Server) handle(c net.Conn, acceptedAt time.Time) {
 		r := s.records[id]
 		r.OpenFailure = openFailure(e)
 		r.ErrorCode, r.NativeCode = clubhealth.ErrorCode(e)
+		r.ErrorOperation = "OPEN"
 		r.NoReplyReason = noReplyFailure(e)
 		s.records[id] = r
 		s.mu.Unlock()
@@ -670,6 +673,9 @@ func (s *Server) handle(c net.Conn, acceptedAt time.Time) {
 		s.mu.Lock()
 		r := s.records[id]
 		r.NoReplyReason = closeEvidence.cause()
+		if code, native, operation := closeEvidence.diagnostic(); code != "" {
+			r.ErrorCode, r.NativeCode, r.ErrorOperation = code, native, operation
+		}
 		r.RequestPayloadSeen = closeEvidence.clientData.Load()
 		r.OriginPayloadSeen = closeEvidence.originData.Load()
 		s.records[id] = r

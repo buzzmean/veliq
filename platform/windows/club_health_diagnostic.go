@@ -28,18 +28,26 @@ func decodeDiagnosticEvent(channel string, raw []byte, lookup func(uint32) (Proc
 		var claimedName string
 		for _, d := range x.EventData.Data {
 			switch strings.ToLower(d.Name) {
-			case "errorcode", "errorstate", "status":
-				// ErrorState is a provider-local state; prefer ErrorCode below.
+			case "errorcode", "status":
 				if e.NativeCode == 0 {
 					v, _ := strconv.ParseUint(strings.TrimSpace(d.Text), 0, 32)
 					e.NativeCode = uint32(v)
 				}
+			case "errorstate":
+				v, _ := strconv.ParseUint(strings.TrimSpace(d.Text), 0, 32)
+				e.ProviderState = uint32(v)
 			case "callerprocessid":
 				v, _ := strconv.ParseUint(strings.TrimSpace(d.Text), 0, 32)
 				e.PID = uint32(v)
 			case "callerprocessimage", "callerprocessname", "processname":
 				claimedName = strings.ToLower(d.Text[strings.LastIndexAny(d.Text, `/\`)+1:])
 			}
+		}
+		if e.EventID == 36876 {
+			e.Operation = "CERTIFICATE_VALIDATION"
+		}
+		if e.NativeCode == 0x80092013 {
+			e.Code = "CRYPT_E_REVOCATION_OFFLINE"
 		}
 		for _, d := range x.EventData.Data {
 			if strings.EqualFold(d.Name, "ErrorCode") {

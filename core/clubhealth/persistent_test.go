@@ -128,3 +128,13 @@ func TestPersistentPrivacyAndTypedErrors(t *testing.T) {
 		t.Fatal("raw error leaked")
 	}
 }
+func TestPersistentChangedNativeCodeIsNotSuppressed(t *testing.T) {
+	var tr Transitions
+	e := diagnosticFixture(1, time.Now())
+	first, _ := tr.Observe("proxy", e)
+	e.NativeCode = 10054
+	changed, ok := tr.Observe("proxy", e)
+	if !ok || changed.Incident != first.Incident {
+		t.Fatal("different native failure suppressed")
+	}
+}

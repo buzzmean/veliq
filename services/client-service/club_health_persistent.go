@@ -34,6 +34,10 @@ func (c *Controller) observeProxyDiagnostic(r browserproxy.Record) {
 	}
 	switch r.Result {
 	case "ORIGIN_PLAN_FAILED", "UPSTREAM_OPEN_FAILED", "HTTP_WRITE_FAILED", "HTTP_READ_FAILED", "DIRECT_MIDSTREAM_STALL":
+	case "TUNNEL_ENDED":
+		if r.ErrorCode == "" {
+			return
+		}
 	default:
 		return
 	}
@@ -42,6 +46,7 @@ func (c *Controller) observeProxyDiagnostic(r browserproxy.Record) {
 		e.Code = r.ErrorCode
 	}
 	e.NativeCode = r.NativeCode
+	e.Operation = r.ErrorOperation
 	e.PID, e.Birth = r.Owner.PID, r.Owner.Birth
 	name := strings.ToLower(filepath.Base(r.Owner.Exe))
 	if clubhealth.ValidApp(name) {
@@ -389,20 +394,32 @@ func (c *Controller) observeDiagnosticLocal(ctx context.Context, d *persistentDi
 			pools = append(pools, p)
 		}
 		c.mu.Unlock()
-		healthy, failures := false, false
+		var samples []transport.PoolSnapshot
 		for _, p := range pools {
-			s := p.Snapshot()
-			healthy = healthy || s.HealthySessions > 0
-			failures = failures || s.CreationFailures > 0 || s.SessionFailures > 0
+			samples = append(samples, p.Snapshot())
 		}
-		state, code = "unknown", "NO_AUTHENTICATED_SESSION"
-		if healthy {
-			state, code = "ready", "AUTHENTICATED_SESSION"
-		} else if failures {
-			state, code = "failed", "SESSION_UNAVAILABLE"
-		}
+		state, code = diagnosticRelayHealth(samples, time.Now())
 		d.note("RELAY", "AUTHENTICATED_TRANSPORT", state, code, 0, "relay")
 	}
+}
+
+func diagnosticRelayHealth(samples []transport.PoolSnapshot, now time.Time) (string, string) {
+	state, code := "unknown", "NO_AUTHENTICATED_SESSION"
+	for _, s := range samples {
+		if s.HealthySessions > 0 {
+			return "ready", "AUTHENTICATED_SESSION"
+		}
+		for _, open := range s.RecentOpens {
+			if !open.At.After(now) && now.Sub(open.At) <= 2*time.Minute && open.FailureReason != "" {
+				state, code = "failed", "RECENT_OPEN_FAILED"
+				reason := strings.ToUpper(open.FailureReason)
+				if clubhealth.ValidReason(reason) {
+					code = reason
+				}
+			}
+		}
+	}
+	return state, code
 }
 
 func (c *Controller) observeDiagnosticWindows(ctx context.Context, d *persistentDiagnostics) {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/buzzmean/neexitlag/core/clubhealth"
+	"github.com/buzzmean/neexitlag/core/transport"
 )
 
 func diagnosticRuntimeFixture() *persistentDiagnostics {
@@ -66,5 +67,20 @@ func TestPersistentOwnerIPCReadInClubMode(t *testing.T) {
 	raw, _ := json.Marshal(value)
 	if !strings.Contains(string(raw), "PC13") {
 		t.Fatal(string(raw))
+	}
+}
+func TestPersistentOldFailureCountersAreNotCurrentOutage(t *testing.T) {
+	now := time.Now()
+	s := transport.PoolSnapshot{SessionFailures: 100, CreationFailures: 100}
+	if state, _ := diagnosticRelayHealth([]transport.PoolSnapshot{s}, now); state != "unknown" {
+		t.Fatal("stale counters called an outage")
+	}
+	s.RecentOpens = []transport.PoolOpenEvent{{At: now.Add(-time.Second), FailureReason: "dial"}}
+	if state, _ := diagnosticRelayHealth([]transport.PoolSnapshot{s}, now); state != "failed" {
+		t.Fatal("fresh failure missing")
+	}
+	s.HealthySessions = 1
+	if state, _ := diagnosticRelayHealth([]transport.PoolSnapshot{s}, now); state != "ready" {
+		t.Fatal("authenticated recovery missing")
 	}
 }

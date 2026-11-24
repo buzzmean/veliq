@@ -42,6 +42,7 @@ func DiagnosticLanGameState() clubhealth.Diagnostic {
 		return e
 	}
 	e.NativeCode = status.Win32ExitCode
+	e.ProviderState = status.ServiceSpecificExitCode
 	e.Code = "SCM_NOT_RUNNING"
 	if status.CurrentState == windows.SERVICE_STOPPED && status.Win32ExitCode != 0 {
 		e.State = "failed"
