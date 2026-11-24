@@ -1,6 +1,9 @@
-# Network lab
-`go test -race -v ./tests/integration -run TestUDPDestinationDelayAndLoss`
-runs real client→relay→target UDP with deterministic 50% destination-leg loss
-and 5ms target delay. No retransmission layer is added.
-This does not emulate impairment of client-relay QUIC packets, Internet jitter,
-adapter changes, DNS outages or sleep/resume. tc/netem lab is a future validation.
+# Сетевой стенд
+
+```sh
+go test -race -v ./tests/integration -run TestUDPDestinationDelayAndLoss
+```
+
+Проверка запускает настоящий UDP-обмен клиент–релей–назначение. На участке до назначения задаются потеря каждого второго пакета и задержка 5 мс. Дополнительный слой повторной передачи не используется.
+
+Стенд не моделирует потери QUIC между клиентом и релеем, джиттер интернета, смену адаптера, отказ DNS и переход сна. Отдельная проверка через tc/netem остаётся будущим этапом.

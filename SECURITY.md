@@ -1,6 +1,9 @@
-# Security
-See docs/SECURITY.md. Not production approved: client certificate renewal, hardened
-identity provisioning and update signing are not delivered. Ticket revocation is
-implemented (signed-config polling plus live checks on relays); details and bounds
-are in docs/SECURITY.md.
-Report vulnerabilities privately through the repository owner's preferred channel.
+# Безопасность VELIQ
+
+Соединения защищены TLS, взаимной проверкой сертификатов и подписанными разрешениями. Ключи устройства, токены IPC, сертификаты и состояние защиты от повторного использования разрешений должны храниться с ограниченными правами доступа.
+
+Обновление проверяется по подписанному манифесту и контрольной сумме пакета. Для защищённых сервисов отказ разрешённого маршрута не должен приводить к прямому соединению. Проверки сертификатов, подписей и сроков действия нельзя отключать ради восстановления доступа.
+
+Подробные механизмы и их границы: [техническое описание безопасности](docs/SECURITY.md).
+
+Об обнаруженной уязвимости сообщите через [поддержку](https://veliqapp.ru/support). Не размещайте в публичном обращении ключи, токены, коды активации, персональные данные и исходные сетевые захваты.

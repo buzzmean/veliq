@@ -1,4 +1,4 @@
-# Development deployment
+# Окружение разработки
 
 ```sh
 docker compose up --build -d
@@ -6,21 +6,16 @@ docker compose --profile test run --rm dev-client
 docker compose -f compose.yaml -f deploy/compose.observability.yaml up -d
 ```
 
-Optional Prometheus: http://127.0.0.1:9091; Grafana: http://127.0.0.1:3000.
-Provisioning mounts a Prometheus data source and a small relay/CP dashboard.
-Grafana uses its initial local default login; change it before exposing anything.
-Ports bind loopback; no production publishing is performed. Probe metrics are on
-an independently running demo at http://127.0.0.1:8099/metrics and can be added to
-Prometheus explicitly when that host is reachable. No fake probe series is seeded.
+Дополнительные службы наблюдения: Prometheus — `http://127.0.0.1:9091`, Grafana — `http://127.0.0.1:3000`. Подготовка подключает источник данных и панель сервера управления и релея. Начальные учётные данные Grafana нужно заменить до предоставления внешнего доступа. Порты привязаны к локальному интерфейсу; эти команды не публикуют рабочую инфраструктуру.
 
-For a managed environment requiring a custom proxy CA, build with:
-`docker compose -f compose.yaml -f deploy/compose.managed.yaml build` and set
-`BUILD_PROXY_CA_CERT` to the provided CA file path. BuildKit secret injection verifies
-TLS without copying proxy credentials or CA into repository/output. Docker runtime
-internal destinations use NO_PROXY. Normal developer builds need no override.
+Метрики контрольных запросов доступны только при отдельно запущенном демо на `http://127.0.0.1:8099/metrics`. Их можно явно добавить в Prometheus, если стенд доступен. Выдуманные ряды измерений не создаются.
 
-PostgreSQL and signing/device/CA secrets live in scoped named volumes. Preserve
-volumes across rebuilds. Relay state includes a private replay cache. These are dev
-identities and egress rules; production needs HTTPS, durable protected keys,
-PostgreSQL backups, explicit destination policy, metrics access control and signed
-Windows driver/application distribution. WFP kernel deployment is not supplied.
+## Корпоративный удостоверяющий центр
+
+Для окружения сборки с обязательным корпоративным CA предусмотрен файл `deploy/compose.managed.yaml`. Путь к выданному сертификату задаётся в `BUILD_PROXY_CA_CERT`. BuildKit передаёт его как секрет, сохраняя проверку TLS. Сертификат и данные прокси не копируются в репозиторий или результат сборки. Внутренние назначения Docker используют `NO_PROXY`. Обычная сборка этого дополнения не требует.
+
+## Постоянное состояние
+
+База PostgreSQL, ключи подписи, CA и идентичности устройств находятся в отдельных томах. Их нужно сохранять при пересборке. Релей также хранит приватное состояние использованных билетов. Удаление томов уничтожает это состояние.
+
+Настройки разработки не заменяют рабочую конфигурацию. Для неё нужны HTTPS, защищённые постоянные ключи, резервные копии БД, явная политика назначений, ограниченный доступ к метрикам и проверенное распространение подписанного пакета Windows. Развёртывание собственного драйвера WFP этим комплектом не выполняется.

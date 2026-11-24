@@ -1,68 +1,33 @@
-# VELIQ: branding and existing-install compatibility
+# Имя продукта и совместимость обновления
 
-VELIQ is the user-facing product name. Desktop title, tray, messages, notifications,
-WPF dialogs, Windows service display name, published GUI and artifact labels use
-VELIQ. The theme uses black, white and neutral greys, including keyboard focus and
-disabled controls. Approved source SVG assets from 2dfdb48 are imported; the WPF header uses the
-approved symbol. The existing ICO resource remains until a validated Windows
-export. Inventory and exact scope: BRAND_INVENTORY.md.
+Публичное имя — VELIQ. Заголовок окна, трей, сообщения, уведомления, установщик, ярлыки, сайт и названия опубликованных пакетов используют его. Пояснения и документация пишутся на русском; технические обозначения сохраняют точное написание там, где это необходимо.
 
-## Compatibility contract
+## Оформление
 
-| Surface | Preserved identity |
-| --- | --- |
-| Windows SCM **name**, service binary | `neexitlag`, `neexitlag-service.exe` |
-| Service data/keys/profiles/driver | `%ProgramData%\neexitlag` |
-| GUI preferences/recovery/policy journals | `%LOCALAPPDATA%\NeExitLag` |
-| IPC, health marker, PAC hosts, recovery protocol | Existing names and payloads |
-| Single-instance mutex/activation pipe | Existing SID-scoped names |
-| HKCU Run value | `NeExitLag` (compatible, same per-user toggle) |
-| Go module, .NET namespaces/project paths | Existing identifiers |
-| Server paths/users/DB/certificates/tickets/ALPN | Existing identifiers, no migration |
+Интерфейс использует чёрный, белый и нейтральные серые цвета, включая фокус и отключённые элементы. Утверждённые исходные SVG импортированы из `2dfdb483e15abf7a0714347c973647b2c38b31f1`. Геометрия и пропорции не меняются. Состав изображений и проверки перечислены в [инвентаризации](BRAND_INVENTORY.md).
 
-The GUI assembly/product and primary executable are `VELIQ.exe`. The publish
-wrapper also emits a byte-identical `NeExitLag.exe` entry point, so existing
-shortcuts/autostart still launch the new application. Both use the same mutex and
-activation pipe: running one while the other is open activates the existing GUI.
-The Windows running-app picker excludes both executable names. Release artifacts
-use VELIQ labels and also publish legacy download-name aliases with the identical
-bytes and manifests, preserving existing pinned update-vps/download automation.
-The updater therefore needs no server or credential migration.
+## Существующие установки
 
-## Windows update
+Основной исполняемый файл — `VELIQ.exe`, служба Windows — `VELIQ`, бинарник службы — `veliq-service.exe`. Канонические пользовательские каталоги текущего установщика — `%ProgramData%\VELIQ` и `%LOCALAPPDATA%\VELIQ`.
 
-Exit only the VELIQ GUI through its tray **Exit** item before replacing the
-service/helper image. Keep Chrome and Edge open; never close/restart them for branding. In elevated PowerShell, pull the expected
-reviewed commit, run `build-e2e.ps1`, `build-desktop.ps1`, then `update-service.ps1`.
-The updater retains persistent binary/ACL backups and changes only the SCM display
-name to `VELIQ Routing Service`; its SCM name, path, identity and state are kept.
-A failed binary update restores the previous binary/ACL/display name.
+В исходном коде остаются исторические имена внутренних компонентов и механизмов совместимости. Их удаление не считается завершённым. Для переименования нужны отдельные проверки:
 
-As the ordinary installation owner run:
+- связь нового интерфейса с установленной службой и корректное завершение интерфейса при обновлении;
+- один экземпляр окна и сохранение поведения автозапуска;
+- чтение прежних настроек, идентичности устройства, профилей и журналов восстановления;
+- проверка подписей прежних разрешений и конфигураций, согласование транспорта с действующими серверами;
+- установка поверх прежней версии и возврат при отказе.
 
-```powershell
-.\tools\windows\install-desktop.ps1
-```
+Заменять ключи, заново активировать ПК или удалять пользовательское состояние ради нового имени нельзя.
 
-This per-user GUI installer is idempotent, backs up existing GUI binaries, uses
-atomic replacement and verifies hashes. It creates a VELIQ Start menu shortcut
-and replaces a legacy shortcut only when it belongs to the same installation.
-Foreign shortcuts/autostart are not overwritten. It never provisions a device,
-modifies Chrome policy, opens credentials, resets profiles or touches the VPS.
-An enabled compatible HKCU Run entry is retargeted without enabling a disabled one.
-Old GUI preferences and Chrome recovery journals remain in their original paths.
+## Обновление
 
-Start **VELIQ** normally, activate Chrome AUTO if needed, then optionally run the
-short `acceptance-chrome-sites.ps1 -RestartService` helper. Automated fixtures are
-not proof of Telegram/other public website reachability on a particular ISP.
+Обновление выполняется штатным проверенным установщиком. Он должен подготовить и проверить пакет, сохранить прежние файлы и состояние, затем заменить необходимые компоненты. Браузеры, Steam, игры и чужие программы ради переименования не закрываются. Перезагрузка и завершение пользовательской сессии не являются способом обновления в клубном тесте.
 
-## Verification
+Ярлык или запись автозапуска заменяются только при подтверждённой принадлежности этой установке. Выключенный автозапуск не включается самовольно. Содержимое ключей и пользовательских журналов не публикуется.
 
-Native Windows CI checks the published VELIQ title, tray lifecycle, Russian
-resources, keyboard/focus/disabled monochrome controls and single-instance
-activation. It launches the compatibility alias against the primary executable.
-Per-user installer regression installs twice, compares legacy/new binary hashes,
-checks shortcut replacement and collision protection, and verifies pre-existing
-preferences/recovery/profile/identity fixtures remain byte-identical. Existing
-service reinstall tests retain hashes/ACL checks and assert the preserved SCM
-name together with the new display name.
+## Проверка результата
+
+Нужны нативная проверка Windows, совпадение версии и файлов установленного пакета, работа IPC и трея, сохранение активации и настроек. Проверяются заголовок, русские ресурсы, клавиатурный фокус, контраст, поведение единственного экземпляра и малые значки.
+
+Сборка на другой ОС или импорт логотипа не доказывают успешное обновление установленного клиента и не подтверждают доступ к публичному сервису через конкретного провайдера.

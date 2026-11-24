@@ -1,25 +1,13 @@
-# Windows networking boundary
+# Сетевой слой Windows
 
-`WindowsCaptureBackend` separates service/routing from the native capture backend.
-WinDivert v2 joins FLOW/SOCKET identity and exact native ownership tables with
-NETWORK IPv4 UDP/TCP capture. UDP keeps its existing datagram path. TCP uses a
-separate bounded local stream reflector, with authenticated relay open before
-SYN reflection, connection pinning and native DIRECT fallback on opening failure.
-Unknown/self and unselected traffic remain DIRECT; TLS is never decrypted. IPv6
-relay transport is unsupported; the network guard blocks attributable new relay
-IPv6 flows, with explicit existing/unknown-socket fail-open limits.
-See [TCP/web architecture, evidence semantics and limitations](../../docs/WINDOWS_TCP_WEB.md).
+`WindowsCaptureBackend` отделяет маршрутизацию службы от нативного захвата. WinDivert v2 сопоставляет FLOW/SOCKET и таблицы владельцев сокетов с NETWORK-захватом IPv4 UDP/TCP.
 
-Absolute-path loader requires trusted DLL/SYS SHA256 pins, validates signed SYS
-Authenticode and constrains library search. External signed binaries are not
-committed. Missing dependencies fail before capture. WFP is a distinct unavailable
-boundary awaiting a signed kernel driver, preserving ADR-001.
+UDP сохраняет путь отдельных датаграмм. TCP использует ограниченный локальный отражатель потока: разрешённый защищённый канал открывается до отражения SYN, соединение закрепляется за маршрутом. Резервный путь при отказе открытия ограничивается политикой назначения. Неизвестный, собственный и невыбранный трафик не перенаправляется. TLS не расшифровывается.
 
-The owner reports successful real IPv4 UDP Windows E2E. TCP/web acceptance is
-separate; cross-builds, owner-table tests and driver handle tests do not establish
-a real external TCP/browser PASS.
+Защищённый транспорт IPv6 не поддерживается. Сетевая защита ограничивает новые сопоставленные IPv6-потоки выбранных приложений. Уже существующие и неизвестные сокеты имеют отдельно оговорённые ограничения. Подробнее: [TCP, браузеры и значение доказательств](../../docs/WINDOWS_TCP_WEB.md).
 
-Real E2E tools, owner-table fallback (including dual-stack socket ownership),
-process cache/cleanup and counter evidence are described in
-[Windows real E2E](../../docs/WINDOWS_REAL_E2E.md). Official unsigned DLL is protected
-by pinned SHA256; signature validation applies to the signed kernel SYS.
+Загрузчик использует абсолютные пути, закреплённые SHA-256 DLL/SYS, проверку Authenticode подписанного SYS и ограниченный поиск библиотек. Внешние бинарники не добавляются в исходный код. Отсутствие обязательной зависимости приводит к отказу до начала захвата. Собственный драйвер WFP остаётся отдельной нереализованной границей согласно ADR-001.
+
+Историческая успешная проверка IPv4 UDP не заменяет приёмку TCP и браузеров. Сборка под Windows на другой ОС, тест таблицы владельцев и открытие дескриптора драйвера не подтверждают успешное внешнее соединение.
+
+Инструменты сквозной проверки, резервный поиск владельца, учёт двухстековых сокетов, кэш процессов и счётчики описаны в [инструкции Windows](../../docs/WINDOWS_REAL_E2E.md). Официальная DLL без подписи защищается закреплённым SHA-256; проверка подписи применяется к подписанному драйверу SYS.
