@@ -1,44 +1,33 @@
-# Threat model and current controls
+# Модель угроз и меры защиты
 
-TLS 1.3 mTLS verifies relay CA/hostname and device keys. Ticket-required deployments
-use ALPN neexitlag/2 and a first-stream signed Ed25519 ticket bound to the client
-certificate public key and relay audience. Tickets normally expire in 2 minutes;
-expiry limits new authentication, not existing TCP lifetimes. Sessions have a
-30-minute lease. There is no 0-RTT or control-plane call per application packet.
-Relay uses expiry-checked bounded replay IDs and optional persistent atomic private
-replay state; production CLI enables it. Persistent capacity 512 fails closed when
-full. Device proofs also have time bounds and PostgreSQL nonce replay protection.
+## Транспорт и устройство
 
-Signed config envelopes use Ed25519 with separate ticket/config domain prefixes.
-Trust keys are provisioned out of band. The client rejects signature errors,
-expiry, rollback and same-version equivocation, stores signed LKG atomically, and
-uses only a still-valid LKG during outages. Config expires in 24 h by default.
-Revocations reach relays via signed-config polling (30 s); established sessions
-check live revoked state. Outages delay new revocations, bounded by session lease.
+TLS 1.3 с взаимной проверкой сертификатов проверяет CA релея, имя сервера и ключ устройства. Режим билетов использует отдельную версию ALPN и первый канал с подписанным билетом Ed25519. Билет привязан к открытому ключу сертификата клиента и конкретному релею.
 
-Rotation: provision new public trust key alongside old key to clients/relays,
-switch signer/key_id, wait beyond all old ticket/config/session lifetimes, then
-remove old trust key. The signed public_keys field does not automatically expand
-trust. Tests exercise overlap, retirement, tampering and persistent replay restart.
+Стандартный срок билета — две минуты. Он ограничивает новую авторизацию, а не время уже открытого TCP-соединения. Разрешённая сессия действует 30 минут. Данные 0-RTT не используются, обращений к серверу управления на каждый пакет нет.
 
-Control plane bootstrap administration uses a random >=24-character secret;
-relay heartbeat tokens are independent, scoped and stored as SHA256 hashes.
-Device private seeds persist only in private local files. Windows installer ACLs
-protect service identity, manifest, trust, state and driver files. Loader requires
-trusted SHA256 pins and signed SYS Authenticode validation and restricts DLL search.
-IPC owner/token authentication, timestamps, replay limits and bounded frames keep
-networking privilege out of the GUI. Optional publisher/signature profiles do not
-match when verification data is absent.
+Релей хранит ограниченный набор одноразовых идентификаторов с проверкой времени. Рабочий запуск включает атомарное сохранение приватного состояния защиты от повторов. При заполнении постоянного хранилища на 512 записей новая авторизация отклоняется. Подтверждения устройства также ограничены временем и одноразовыми значениями в PostgreSQL.
 
-Destination IP policy prevents special/private egress by default; dev/lab override
-is explicit. Flow/session/window/queue/probe limits, rate limits, timeouts and
-cancellation bound resources. Logs exclude payloads and secrets. Telemetry endpoint
-is admin-authorized MVP ingestion, not a device monitoring pipeline; it accepts
-aggregate counters only. API metrics count accepted submissions, not invented data.
+## Настройки и отзыв
 
-Relays see application payload at egress; applications still need end-to-end
-crypto. Hostile local administrators, stolen bootstrap/private keys, public DDoS,
-production onboarding, signed updater delivery, kernel-driver review and full
-security audit remain outside current verified coverage. Use HTTPS and managed
-key storage/firewall controls in production. Local Docker CA/HTTP are dev only.
-Short fuzz smoke tests are not a security audit.
+Конверты настроек подписываются Ed25519; билеты и настройки имеют разные области подписи. Доверенные ключи выдаются отдельно. Клиент отклоняет неверную подпись, истечение срока, откат версии и разные данные с тем же номером версии. Последняя пригодная подписанная конфигурация записывается атомарно и используется при отказе сервера только до истечения своего срока. Стандартный срок конфигурации — 24 часа.
+
+Отзыв устройств передаётся релеям через подписанную конфигурацию с опросом раз в 30 секунд. Действующие сессии проверяют состояние отзыва. Недоступность сервера задерживает новое уведомление об отзыве; верхнюю границу автономной авторизации задаёт срок сессии.
+
+При ротации новый открытый ключ сначала добавляют клиентам и релеям рядом с прежним. Затем меняют подписывающий ключ и `key_id`, ждут завершения сроков старых билетов, настроек и сессий и только после этого убирают старый ключ. Поле `public_keys` само по себе не расширяет доверие.
+
+## Локальные полномочия
+
+Административная начальная настройка сервера использует случайный секрет длиной не менее 24 символов. Токены состояния релеев независимы, ограничены конкретным сервером и хранятся как SHA-256. Приватные ключи устройства находятся только в защищённых локальных файлах.
+
+ACL установщика защищают идентичность службы, манифест, доверенные ключи, состояние и драйвер. Загрузчик проверяет хеши, подпись SYS и ограничивает поиск DLL. IPC проверяет владельца, токен, время, повтор запроса и размер кадра. Профиль с условием издателя или подписи не совпадает при отсутствии проверенных сведений.
+
+Подписанное обновление не разрешает ослаблять эти проверки. При ошибке подготовки или замены сохраняется возможность штатного восстановления; фактические файлы и права проверяются отдельно от кода завершения установщика.
+
+## Назначения и ресурсы
+
+Политика IP по умолчанию запрещает выход в служебные и частные сети через релей. Исключения стенда задаются явно. Ограничены сессии, потоки, окна, очереди, пробы, частота запросов и сроки выполнения. Отмена освобождает связанные ресурсы.
+
+Журналы не должны содержать пакеты и секреты. Служебная статистика принимает агрегированные счётчики, а не содержимое пользовательских соединений. Принятая статистика не доказывает, что непрерывное наблюдение всех пользовательских сбоев уже настроено.
+
+Релей видит прикладные данные на выходе; приложениям всё равно нужно сквозное шифрование. Враждебный локальный администратор, кража ключей, публичные DDoS и полный аудит инфраструктуры выходят за границы перечисленных проверок. Рабочее окружение требует HTTPS, защищённого хранения ключей и правил брандмауэра. Лабораторные CA и HTTP допустимы только на стенде. Короткие проверки случайными входами не заменяют аудит безопасности.
