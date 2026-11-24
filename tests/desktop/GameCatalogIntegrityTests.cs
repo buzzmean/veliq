@@ -59,7 +59,7 @@ public sealed class GameNetworkReferenceTests
         Assert.Equal(new[]{"443","19294-19344","50000-50100"},bf.UdpPorts);
         Assert.Contains("unverified",bf.Evidence);
         Assert.DoesNotContain(catalog.Games,x=>x.Id=="battlefield6");
-        Assert.Equal(10,catalog.Games.Length);Assert.All(catalog.Games,g=>Assert.Equal("DIRECT",g.DefaultMode));
+        Assert.Equal(13,catalog.Games.Length);Assert.All(catalog.Games,g=>Assert.Equal("DIRECT",g.DefaultMode));
         foreach(var g in catalog.Games)
             foreach(var id in g.NetworkReferences??[])Assert.Contains(catalog.NetworkInformation,x=>x.Id==id);
     }

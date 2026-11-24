@@ -36,7 +36,7 @@ func TestCS2TCPServiceStrictNativeDirectAndProtectedHints(t *testing.T) {
 		block bool
 	}{
 		{"93.184.216.34", 443, false}, {"93.184.216.35", 443, true}, {"2606:4700:4700::1111", 443, true},
-		{"93.184.216.34", 80, false}, {"93.184.216.34", 27017, false}, {"10.0.0.9", 1883, false}, {"93.184.216.35", 53, false},
+		{"93.184.216.34", 80, false}, {"93.184.216.34", 27017, false}, {"10.0.0.9", 27017, false}, {"93.184.216.35", 53, false},
 	} {
 		d := c.Classify(owner, destTuple("tcp", tc.ip, tc.port))
 		if !d.NewConnectionsOnly || !d.CS2Auto || d.Block != tc.block || d.BlockOnFailure != tc.block || d.Group != p.ID || !d.Route.Direct() || d.Local != nil || d.GameUDP != nil || d.OpenDeferred != nil || d.ResolveDomain != nil || d.Deferred || d.ProbeDirect || d.Flow.PinnedPolicy == nil || d.Flow.PinnedPolicy.Block != tc.block || d.Flow.PinnedPolicy.Route.RelayID != "" {
