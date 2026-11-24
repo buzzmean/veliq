@@ -200,7 +200,20 @@ func main(){
   $resumedProcess=[Diagnostics.Process]::GetProcessById([int]$resumed[0].ProcessId)
   try{if(!$resumedProcess.WaitForExit(15000)){throw 'OWNER_GUI_FIXTURE_CLOSE_TIMEOUT'}}finally{$resumedProcess.Dispose()}
  }catch [ArgumentException]{}
- $unlocked=[IO.File]::Open((Join-Path $app 'VELIQ.exe'),[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);$unlocked.Dispose()
+ # A terminated image can remain mapped briefly after WaitForExit. Require an
+ # actual exclusive open, with a bounded wait; never dismiss a persistent lock.
+ $unlockDeadline=[DateTime]::UtcNow.AddSeconds(15)
+ while($true){
+  try{$unlocked=[IO.File]::Open((Join-Path $app 'VELIQ.exe'),[IO.FileMode]::Open,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None);$unlocked.Dispose();break}
+  catch [IO.IOException]{
+   if([DateTime]::UtcNow -ge $unlockDeadline){
+    $remaining=@(Get-CimInstance Win32_Process -Filter "Name='VELIQ.exe'"|Where-Object {$_.ExecutablePath -ieq (Join-Path $app 'VELIQ.exe')}|Select-Object ProcessId,ParentProcessId,SessionId)
+    Write-Output ('BETA_GUI_REMAINING_PROCESSES '+(ConvertTo-Json -Compress -InputObject $remaining))
+    throw 'OWNER_GUI_FIXTURE_EXECUTABLE_STILL_LOCKED'
+   }
+   Start-Sleep -Milliseconds 100
+  }
+ }
  Write-Output 'BETA_OWNER_GUI_FIXTURE_CLEAN_PASS resumed owner GUI closed through its pipe; executable unlocked'
  # A verified package with a deliberately failing service must restore both
  # the previous executable AND the previous GUI/package/uninstall metadata.

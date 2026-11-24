@@ -3,7 +3,9 @@ package clientservice
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -82,5 +84,60 @@ func TestPersistentOldFailureCountersAreNotCurrentOutage(t *testing.T) {
 	s.HealthySessions = 1
 	if state, _ := diagnosticRelayHealth([]transport.PoolSnapshot{s}, now); state != "ready" {
 		t.Fatal("authenticated recovery missing")
+	}
+}
+
+func TestPersistentWindowsReadRetriesAndBoundsMissingHistory(t *testing.T) {
+	now := time.Now()
+	since := now.Add(-time.Minute)
+	err := errors.New("fixture")
+	next, gap := diagnosticNextWindow(since, now, err)
+	if !next.Equal(since) || !gap {
+		t.Fatal("failed query discarded retry window")
+	}
+	next, gap = diagnosticNextWindow(since.Add(-time.Hour), now, err)
+	if !next.Equal(now.Add(-15*time.Minute)) || !gap {
+		t.Fatal("failed query has unbounded history")
+	}
+	next, gap = diagnosticNextWindow(since, now, nil)
+	if !next.Equal(now.Add(-time.Second)) || gap {
+		t.Fatal("successful query did not advance")
+	}
+}
+
+func TestPersistentStorageFailureAndRecoveryAreDurableBeforeDelivery(t *testing.T) {
+	d := diagnosticRuntimeFixture()
+	d.done = make(chan struct{})
+	writes := 0
+	d.write = func([]byte) error {
+		writes++
+		if writes == 1 {
+			return syscall.Errno(112)
+		}
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { cancel(); <-d.done }()
+	go d.run(ctx, t.TempDir()+"/journal.json", "device")
+	get := func() clubhealth.Batch {
+		reply := make(chan clubhealth.Batch, 1)
+		d.uploads <- diagnosticUpload{device: "device", reply: reply}
+		select {
+		case b := <-reply:
+			return b
+		case <-time.After(time.Second):
+			t.Fatal("worker blocked")
+			return clubhealth.Batch{}
+		}
+	}
+	if b := get(); b.Protocol != 0 {
+		t.Fatal("failed write allowed upload")
+	}
+	if b := get(); b.Protocol != 0 {
+		t.Fatal("unsaved recovery allowed upload")
+	}
+	b := get()
+	if len(b.Events) != 2 || b.Events[0].NativeCode != 112 || b.Events[0].State != "failed" || b.Events[1].State != "recovered" || b.Events[1].Incident != b.Events[0].ID {
+		t.Fatal("storage evidence or incident link lost")
 	}
 }

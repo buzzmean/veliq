@@ -151,6 +151,11 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 		defer close(d.done)
 	}
 	j := clubhealth.LoadJournal(path, device, time.Now())
+	if j.Lost > 0 {
+		e := d.event("JOURNAL", "JOURNAL_READ", "observed", "PREVIOUS_EVENTS_LOST")
+		e.Lost = j.Lost
+		j.Add(e, time.Now())
+	}
 	if j.Open {
 		j.Add(d.event("JOURNAL", "JOURNAL_READ", "unknown", "UNCLEAN_STOP_TAIL_MAY_BE_MISSING"), time.Now())
 	}
@@ -183,14 +188,25 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 			return true
 		}
 		if err := j.Save(write); err != nil {
+			e := d.event("JOURNAL", "JOURNAL_WRITE", "failed", "WRITE_FAILED")
+			e.Code, e.NativeCode = clubhealth.ErrorCode(err)
+			if event, changed := transitions.Observe("journal-write", e); changed {
+				j.Add(event, time.Now())
+			}
+			dirty = true
 			storage = "WRITE_FAILED"
 			publish()
 			return false
 		}
 		dirty = false
+		if storage == "WRITE_FAILED" {
+			e, _ := transitions.Observe("journal-write", d.event("JOURNAL", "JOURNAL_WRITE", "ready", "WRITE_OK"))
+			j.Add(e, time.Now())
+			dirty = true
+		}
 		storage = "OK"
 		publish()
-		return true
+		return !dirty // Новое событие восстановления сначала попадёт на диск.
 	}
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -444,7 +460,11 @@ func (c *Controller) observeDiagnosticWindows(ctx context.Context, d *persistent
 		if err == nil {
 			d.note("WINDOWS", "WINDOWS_EVENT_LOG", "ready", "QUERY_OK", 0, "windows")
 		}
-		since = started.Add(-time.Second)
+		var incomplete bool
+		since, incomplete = diagnosticNextWindow(since, started, err)
+		if incomplete {
+			d.note("WINDOWS", "WINDOWS_EVENT_LOG", "unknown", "HISTORY_WINDOW_INCOMPLETE", 0, "windows-history")
+		}
 		timer := time.NewTimer(15 * time.Second)
 		select {
 		case <-ctx.Done():
@@ -453,6 +473,18 @@ func (c *Controller) observeDiagnosticWindows(ctx context.Context, d *persistent
 		case <-timer.C:
 		}
 	}
+}
+
+// Повторяем неудачное чтение, но не расширяем окно бесконечно при отказе журнала.
+func diagnosticNextWindow(since, started time.Time, err error) (time.Time, bool) {
+	if err == nil {
+		return started.Add(-time.Second), false
+	}
+	oldest := started.Add(-15 * time.Minute)
+	if since.Before(oldest) {
+		return oldest, true
+	}
+	return since, true
 }
 
 func (d *persistentDiagnostics) observeInternet(ctx context.Context) {
