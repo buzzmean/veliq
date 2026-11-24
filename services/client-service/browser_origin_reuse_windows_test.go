@@ -29,13 +29,13 @@ import (
 // and verified by Chrome using a unique disposable root. The native path uses
 // the pinned signed driver, normal filters and real PID/birth/SID ownership.
 func TestWindowsBrowserOriginReuse(t *testing.T) {
-	if os.Getenv("NEEXITLAG_TEST_ORIGIN_REUSE") != "1" {
+	if os.Getenv("VELIQ_TEST_ORIGIN_REUSE") != "1" {
 		t.Skip("explicit disposable Chromium origin reuse fixture")
 	}
-	if os.Getenv("GITHUB_ACTIONS") != "true" || os.Getenv("NEEXITLAG_TEST_DRIVER_DIR") == "" {
+	if os.Getenv("GITHUB_ACTIONS") != "true" || os.Getenv("VELIQ_TEST_DRIVER_DIR") == "" {
 		t.Fatal("disposable Actions Windows VM and pinned driver required")
 	}
-	if os.Getenv("NEEXITLAG_ORIGIN_REUSE_CHILD") != "1" {
+	if os.Getenv("VELIQ_ORIGIN_REUSE_CHILD") != "1" {
 		own, err := os.Executable()
 		if err != nil {
 			t.Fatal(err)
@@ -51,7 +51,7 @@ func TestWindowsBrowserOriginReuse(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 420*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, child, "-test.run=^TestWindowsBrowserOriginReuse$", "-test.v", "-test.timeout=390s")
-		cmd.Env = append(os.Environ(), "NEEXITLAG_ORIGIN_REUSE_CHILD=1")
+		cmd.Env = append(os.Environ(), "VELIQ_ORIGIN_REUSE_CHILD=1")
 		out, err := cmd.CombinedOutput()
 		t.Log(string(out))
 		if err != nil {
@@ -195,7 +195,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 	var startCapture, stopCapture func()
 	var restartProxy func()
 	if native {
-		raw, err := os.ReadFile(filepath.Join(os.Getenv("NEEXITLAG_TEST_DRIVER_DIR"), "pins.json"))
+		raw, err := os.ReadFile(filepath.Join(os.Getenv("VELIQ_TEST_DRIVER_DIR"), "pins.json"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -203,7 +203,7 @@ func runOriginReuseController(t *testing.T, chrome, mode string, requiredFirst b
 		if err = json.Unmarshal(raw, &files); err != nil {
 			t.Fatal(err)
 		}
-		files.Directory = os.Getenv("NEEXITLAG_TEST_DRIVER_DIR")
+		files.Directory = os.Getenv("VELIQ_TEST_DRIVER_DIR")
 		backend := wp.NewWinDivert(files, c.Engine)
 		c.Backend = backend
 		if usePAC {

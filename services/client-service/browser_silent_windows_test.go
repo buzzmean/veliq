@@ -28,7 +28,7 @@ import (
 // starts BEFORE registry mutation and keeps its exact PID/creation time. Only
 // the disposable test profile is terminated at teardown; product never does so.
 func TestSilentPACRunningChromeEdgePolicyUptake(t *testing.T) {
-	if os.Getenv("NEEXITLAG_TEST_SILENT_POLICY") != "1" {
+	if os.Getenv("VELIQ_TEST_SILENT_POLICY") != "1" {
 		t.Skip("disposable Windows CI only")
 	}
 	for _, edge := range []bool{false, true} {

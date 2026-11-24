@@ -260,7 +260,7 @@ func (f *Fixture) dns() {
 	}
 }
 func ChromePath() string {
-	if v := os.Getenv("NEEXITLAG_TEST_CHROME"); v != "" {
+	if v := os.Getenv("VELIQ_TEST_CHROME"); v != "" {
 		return v
 	}
 	for _, name := range []string{"google-chrome", "chromium", "chrome"} {

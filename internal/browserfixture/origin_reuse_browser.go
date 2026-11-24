@@ -54,7 +54,7 @@ func (f *OriginReuse) RunCaptureOutageSequence(t testing.TB, chrome, address, bo
 func (f *OriginReuse) runPhased(t testing.TB, chrome, address, bootstrapHost string, args []string, after func(stage string, pid uint32), variant string) {
 	fresh, outage := variant == "fresh", strings.HasPrefix(variant, "outage")
 	t.Helper()
-	if os.Getenv("NEEXITLAG_TEST_ORIGIN_REUSE") != "1" {
+	if os.Getenv("VELIQ_TEST_ORIGIN_REUSE") != "1" {
 		t.Fatal("explicit origin reuse fixture opt-in required")
 	}
 	if bootstrapHost != ReuseLocalHost && bootstrapHost != ReuseRequiredHost {

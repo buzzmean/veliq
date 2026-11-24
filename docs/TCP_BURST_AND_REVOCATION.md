@@ -44,7 +44,7 @@ This change does not deploy anything to the VPS.
 ```sh
 go test -race ./platform/windows -run TestTCPAdmission
 go test -race ./tests/integration -run TestPoolTCPBurst
-NEEXITLAG_TEST_DATABASE_URL='postgres://TEST_DATABASE' \
+VELIQ_TEST_DATABASE_URL='postgres://TEST_DATABASE' \
   go test -race -v ./services/control-plane -run 'TestRevoked|TestPostgresRevocation'
 ```
 

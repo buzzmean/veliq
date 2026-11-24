@@ -144,8 +144,8 @@ real controlled HTTPS/H2. These are controlled-origin tests, not Internet PASS.
 Build E2E binaries first, then the native fixture (elevated only for WinDivert):
 
 ```powershell
-$env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
-$env:NEEXITLAG_TEST_BROWSER_RECOVERY=(Resolve-Path bin/windows-e2e/browser-recovery-acceptance.exe).Path
+$env:VELIQ_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+$env:VELIQ_TEST_BROWSER_RECOVERY=(Resolve-Path bin/windows-e2e/browser-recovery-acceptance.exe).Path
 go test -v -timeout 120s ./platform/windows -run '^TestChromeSitesNativeAcceptance$'
 ```
 

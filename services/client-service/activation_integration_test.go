@@ -26,7 +26,7 @@ import (
 )
 
 func TestActivationHTTPSCSRPrivateKeyFreezeAndLostResponse(t *testing.T) {
-	dsn := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	dsn := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("isolated PostgreSQL required")
 	}

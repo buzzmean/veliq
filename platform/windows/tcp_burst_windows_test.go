@@ -450,7 +450,7 @@ func burstEchoProcess(t *testing.T) (net.Addr, func(), func() string, error) {
 		return nil, nil, nil, err
 	}
 	cmd := exec.Command(exe, "-test.run=^TestTCPNativeBurstEchoChild$", "-test.v=false")
-	cmd.Env = append(os.Environ(), "NEEXITLAG_BURST_ECHO_CHILD=1")
+	cmd.Env = append(os.Environ(), "VELIQ_BURST_ECHO_CHILD=1")
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, nil, nil, err
@@ -525,7 +525,7 @@ func burstEchoProcess(t *testing.T) (net.Addr, func(), func() string, error) {
 	return addr, stop, status, nil
 }
 func TestTCPNativeBurstEchoChild(t *testing.T) {
-	if os.Getenv("NEEXITLAG_BURST_ECHO_CHILD") != "1" {
+	if os.Getenv("VELIQ_BURST_ECHO_CHILD") != "1" {
 		t.Skip("dedicated destination child")
 	}
 	addr, stop, status, err := burstTCPEcho()

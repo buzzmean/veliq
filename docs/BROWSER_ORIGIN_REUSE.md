@@ -403,7 +403,7 @@ failure на17f6273; он не исправлен этой тестовой пр
 Linux baseline (нужны Chromium и NSS certutil):
 
 ```sh
-NEEXITLAG_TEST_ORIGIN_REUSE=1 go test -race -v ./internal/browserfixture -run '^TestChromiumOriginReuseBaseline$' -count=1 -timeout=70s
+VELIQ_TEST_ORIGIN_REUSE=1 go test -race -v ./internal/browserfixture -run '^TestChromiumOriginReuseBaseline$' -count=1 -timeout=70s
 ```
 
 Полный Windows сценарий — workflow `Browser HTTP2 origin reuse`, на отдельной

@@ -9,15 +9,15 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: neexitlag
-          POSTGRES_DB: neexitlag
+          POSTGRES_USER: veliq
+          POSTGRES_DB: veliq
           POSTGRES_PASSWORD: ci-only-test-password
         ports: [5432:5432]
         options: >-
-          --health-cmd "pg_isready -U neexitlag -d neexitlag"
+          --health-cmd "pg_isready -U veliq -d veliq"
           --health-interval 2s --health-timeout 2s --health-retries 30
     env:
-      NEEXITLAG_TEST_DATABASE_URL: postgres://neexitlag:ci-only-test-password@127.0.0.1:5432/neexitlag?sslmode=disable
+      VELIQ_TEST_DATABASE_URL: postgres://veliq:ci-only-test-password@127.0.0.1:5432/veliq?sslmode=disable
     steps:
       - uses: actions/checkout@v4
         with:

@@ -44,7 +44,7 @@ import (
 // signed WinDivert packet reinjection on an isolated loopback target. It is not
 // a measurement of public YouTube/OpenAI or the production VPS.
 func TestChromeSitesNativeAcceptance(t *testing.T) {
-	dir := os.Getenv("NEEXITLAG_TEST_DRIVER_DIR")
+	dir := os.Getenv("VELIQ_TEST_DRIVER_DIR")
 	if dir == "" {
 		t.Skip("signed driver required; enabled explicitly on native Windows CI")
 	}
@@ -171,7 +171,7 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 	if _, err = c.Handle(ctx, "optimize", []byte(`{"enabled":true}`)); err != nil {
 		t.Fatal(err)
 	}
-	helperPath := os.Getenv("NEEXITLAG_TEST_BROWSER_RECOVERY")
+	helperPath := os.Getenv("VELIQ_TEST_BROWSER_RECOVERY")
 	if helperPath == "" {
 		helperPath = filepath.Join("..", "..", "bin", "windows-e2e", "browser-recovery-acceptance.exe")
 	}
@@ -181,7 +181,7 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 	}
 	c.BrowserRecoveryExecutable = helperPath
 	helper := exec.CommandContext(ctx, helperPath, "-test.run=^TestChromeRecoveryChildProcess$", "-test.v=false")
-	helper.Env = append(os.Environ(), "NEEXITLAG_TEST_RECOVERY_CHILD=1")
+	helper.Env = append(os.Environ(), "VELIQ_TEST_RECOVERY_CHILD=1")
 	helperToken := restrictedRecoveryToken(t)
 	defer helperToken.Close()
 	helper.SysProcAttr = &syscall.SysProcAttr{Token: syscall.Token(helperToken)}

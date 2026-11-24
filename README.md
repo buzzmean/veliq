@@ -130,7 +130,7 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
 ```
 
 Для проверок `-race` нужен компилятор C. Чтобы запустить интеграционные тесты API,
-укажите в `NEEXITLAG_TEST_DATABASE_URL` одноразовую базу PostgreSQL; без неё этот
+укажите в `VELIQ_TEST_DATABASE_URL` одноразовую базу PostgreSQL; без неё этот
 тест явно пропускается. В CI PostgreSQL поднимается автоматически. Короткие
 команды фаззинга:
 

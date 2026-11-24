@@ -23,11 +23,11 @@ import (
 // Isolates the actual signed-driver TCP handoff from Chrome policy and slow
 // network inventory. A mocked packetWriter cannot satisfy this test.
 func TestNativeBrowserDriverHandshake(t *testing.T) {
-	dir := os.Getenv("NEEXITLAG_TEST_DRIVER_DIR")
+	dir := os.Getenv("VELIQ_TEST_DRIVER_DIR")
 	if dir == "" {
 		t.Skip("signed driver directory not configured")
 	}
-	if os.Getenv("NEEXITLAG_NATIVE_APP_FIREWALL_CHILD") != "1" {
+	if os.Getenv("VELIQ_NATIVE_APP_FIREWALL_CHILD") != "1" {
 		root, err := filepath.Abs(filepath.Join("..", "..", ".e2e"))
 		if err != nil {
 			t.Fatal(err)
@@ -65,7 +65,7 @@ func TestNativeBrowserDriverHandshake(t *testing.T) {
 		run, stop := context.WithTimeout(context.Background(), 60*time.Second)
 		defer stop()
 		command := exec.CommandContext(run, child, "-test.run", "^TestNativeBrowserDriverHandshake$", "-test.v")
-		command.Env = append(os.Environ(), "NEEXITLAG_NATIVE_APP_FIREWALL_CHILD=1")
+		command.Env = append(os.Environ(), "VELIQ_NATIVE_APP_FIREWALL_CHILD=1")
 		output, err := command.CombinedOutput()
 		t.Log(string(output))
 		if err != nil {

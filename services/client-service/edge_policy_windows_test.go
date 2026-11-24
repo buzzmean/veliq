@@ -12,7 +12,7 @@ import (
 )
 
 func TestEdgePolicyRefusesForeignAndWrongOwnerSID(t *testing.T) {
-	if os.Getenv("NEEXITLAG_TEST_EDGE_POLICY") != "1" {
+	if os.Getenv("VELIQ_TEST_EDGE_POLICY") != "1" {
 		t.Skip("disposable native policy acceptance only")
 	}
 	self, err := wp.NewDiscovery().Lookup(uint32(os.Getpid()))

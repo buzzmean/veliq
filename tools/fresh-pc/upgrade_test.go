@@ -41,7 +41,7 @@ func TestUpgradeCapabilityAndJournalContracts(t *testing.T) {
 }
 
 func TestUpgradeProbeRevokePublicationRetryPostgres(t *testing.T) {
-	database := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	database := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if database == "" {
 		t.Skip("isolated PostgreSQL required")
 	}
@@ -110,7 +110,7 @@ func TestUpgradeProbeRevokePublicationRetryPostgres(t *testing.T) {
 // The old binary executes only migration 001. Reapplying that exact additive
 // SQL must not remove activation tables, salt, device revocations or config rows.
 func TestSchema2RemainsCompatibleWithBaselineMigrationPostgres(t *testing.T) {
-	database := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	database := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if database == "" {
 		t.Skip("isolated PostgreSQL required")
 	}

@@ -317,7 +317,7 @@ internal static partial class Program
         Pass("Chrome recovery PAC executes: ordinary DIRECT; protected OpenAI fail-closed; suffix boundary exact");
     }
     static void ChromePolicyRecoveryLifecycle(){
-        if(Environment.GetEnvironmentVariable("NEEXITLAG_TEST_CHROME_POLICY")!="1")return;
+        if(Environment.GetEnvironmentVariable("VELIQ_TEST_CHROME_POLICY")!="1")return;
         using var key=Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Policies\Google\Chrome");
         Require(key.GetValue("ProxySettings")is null,"Refusing an existing Chrome policy in native UI fixture");
         var folder=Path.Combine(Path.GetTempPath(),"neexitlag-policy-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(folder);ChromePolicy.TestStatePath=Path.Combine(folder,"owned.json");

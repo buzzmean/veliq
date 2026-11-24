@@ -12,10 +12,10 @@ if(!(Test-Path -LiteralPath $DriverDirectory)){
 }
 # Never overwrite a partial/modified directory. The test verifies the DLL pin.
 if(!(Test-Path -LiteralPath (Join-Path $DriverDirectory 'WinDivert.dll') -PathType Leaf)){throw 'WINDIVERT_FILTER_DLL_REQUIRED; existing driver directory was not overwritten'}
-$oldDriver=$env:NEEXITLAG_TEST_DRIVER_DIR;$oldRequired=$env:NEEXITLAG_REQUIRE_FILTER_COMPILER
+$oldDriver=$env:VELIQ_TEST_DRIVER_DIR;$oldRequired=$env:VELIQ_REQUIRE_FILTER_COMPILER
 try{
- $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path -LiteralPath $DriverDirectory).Path
- $env:NEEXITLAG_REQUIRE_FILTER_COMPILER='1'
+ $env:VELIQ_TEST_DRIVER_DIR=(Resolve-Path -LiteralPath $DriverDirectory).Path
+ $env:VELIQ_REQUIRE_FILTER_COMPILER='1'
  $required=@('TestServiceFiltersCompileWithActualWinDivert','TestWinDivertCompilerRejectsLegacyGroupedNot','TestWinDivertCompilerReportsComplexityLimits','TestPrivateISCSIExcludedByActualWinDivertFilterEvaluator','TestClubInfrastructureWithActualWinDivertFilterEvaluator')
  $pattern='^(' + ($required -join '|') + ')$'
  # PS5.1 parses bare -test.run as -test followed by .run. Native dotted
@@ -28,4 +28,4 @@ try{
  if($text -match '(?m)^\s*--- SKIP:'){throw 'WINDIVERT_FILTER_PROOF_SKIPPED; compiler tests cannot skip'}
  foreach($name in $required){if($text -notmatch ('(?m)^--- PASS: '+[regex]::Escape($name)+'\s')){throw ('WINDIVERT_FILTER_PROOF_MISSING '+$name+'; skipped/missing tests are not proof')}}
  Write-Host 'WINDIVERT_FILTERS_PASS version=2.2.2; all service layers, TCP ports/fixtures and private MQTT and iSCSI exclusions verified; driver_opened=false'
-}finally{$env:NEEXITLAG_TEST_DRIVER_DIR=$oldDriver;$env:NEEXITLAG_REQUIRE_FILTER_COMPILER=$oldRequired}
+}finally{$env:VELIQ_TEST_DRIVER_DIR=$oldDriver;$env:VELIQ_REQUIRE_FILTER_COMPILER=$oldRequired}

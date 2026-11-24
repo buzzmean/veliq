@@ -38,7 +38,7 @@ import (
 // mTLS+one-shot ticket QUIC relay, HTTP body and relay source are real Windows.
 // This is NOT WinDivert/SCM/Internet acceptance and never writes browser policy.
 func TestWindowsNativeBrowserStartsBeforeControllerWithoutPAC(t *testing.T) {
-	if os.Getenv("NEEXITLAG_TEST_NATIVE_BROWSER") != "1" {
+	if os.Getenv("VELIQ_TEST_NATIVE_BROWSER") != "1" {
 		t.Skip("disposable native Windows browser fixture only")
 	}
 	runNativeBrowserHotAttachFixture(t, false)
@@ -173,7 +173,7 @@ func runNativeBrowserHotAttachFixture(t *testing.T, driver bool) {
 			b.ready = true
 			c.Backend = b
 			if driver {
-				raw, e := os.ReadFile(filepath.Join(os.Getenv("NEEXITLAG_TEST_DRIVER_DIR"), "pins.json"))
+				raw, e := os.ReadFile(filepath.Join(os.Getenv("VELIQ_TEST_DRIVER_DIR"), "pins.json"))
 				if e != nil {
 					t.Fatal(e)
 				}
@@ -181,7 +181,7 @@ func runNativeBrowserHotAttachFixture(t *testing.T, driver bool) {
 				if e = json.Unmarshal(raw, &files); e != nil {
 					t.Fatal(e)
 				}
-				files.Directory = os.Getenv("NEEXITLAG_TEST_DRIVER_DIR")
+				files.Directory = os.Getenv("VELIQ_TEST_DRIVER_DIR")
 				real := wp.NewWinDivert(files, c.Engine)
 				c.Backend = real
 				if e = real.Start(c.ctx, c.Classify); e != nil {

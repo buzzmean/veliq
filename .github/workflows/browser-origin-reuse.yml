@@ -44,7 +44,7 @@ jobs:
       - name: Real Chromium coalescing precondition with verified TLS
         shell: powershell
         run: |
-          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          $env:VELIQ_TEST_ORIGIN_REUSE='1'
           & go test -v -count=1 -timeout 70s ./internal/browserfixture '-run' '^TestChromiumOriginReuseBaseline$' 2>&1 | Tee-Object -FilePath origin-reuse-baseline.log
           if ($LASTEXITCODE) { throw 'COALESCING_PRECONDITION_NOT_OBSERVED' }
       - name: Required authority isolation through PAC and actual native capture
@@ -54,8 +54,8 @@ jobs:
           if ($LASTEXITCODE) { throw 'OWNER_WORKER_BUILD_FAILED' }
           $env:VELIQ_TEST_OWNER_WORKER=(Resolve-Path bin/veliq-service.exe).Path
           $env:VELIQ_TEST_AUTHORITY_RUNTIME='1'
-          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
-          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:VELIQ_TEST_ORIGIN_REUSE='1'
+          $env:VELIQ_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
           & go test -v -count=1 -timeout 480s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$' 2>&1 | Tee-Object -FilePath origin-reuse-routing.log
           if ($LASTEXITCODE) { throw 'ORIGIN_REUSE_ROUTING_GATE_FAILED' }
       - uses: actions/upload-artifact@v4

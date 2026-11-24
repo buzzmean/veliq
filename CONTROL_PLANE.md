@@ -32,5 +32,5 @@ coalesced to >=30 s and config refresh keeps expiry current.
 that authenticated in the last 30 minutes, not live socket inventory. Relay
 session/flow metrics describe actual data-plane state.
 
-Test: set NEEXITLAG_TEST_DATABASE_URL to a disposable DB and run
+Test: set VELIQ_TEST_DATABASE_URL to a disposable DB and run
 `go test -race ./services/control-plane`. Tests create and drop isolated schemas.

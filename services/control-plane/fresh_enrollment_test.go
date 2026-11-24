@@ -14,7 +14,7 @@ import (
 )
 
 func TestFreshEnrollmentAtomicReplacementRetryRevocationAndDBFailure(t *testing.T) {
-	database := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	database := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if database == "" {
 		t.Skip("isolated PostgreSQL required")
 	}

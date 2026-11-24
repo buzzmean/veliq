@@ -66,7 +66,7 @@ func continuityResolver(t *testing.T, addresses ...[4]byte) *net.Resolver {
 }
 
 func TestWindowsBrowserDisablePolicyContinuity(t *testing.T) {
-	if os.Getenv("NEEXITLAG_TEST_BROWSER_DISABLE") != "1" {
+	if os.Getenv("VELIQ_TEST_BROWSER_DISABLE") != "1" {
 		t.Skip("disposable Windows browser VM only")
 	}
 	for _, edge := range []bool{false, true} {

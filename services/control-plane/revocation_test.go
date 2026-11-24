@@ -97,9 +97,9 @@ func TestRevokedSnapshotCompleteOrError(t *testing.T) {
 
 func revocationStore(t *testing.T) (*Store, context.Context) {
 	t.Helper()
-	url := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	url := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("set NEEXITLAG_TEST_DATABASE_URL for PostgreSQL revocation integration")
+		t.Skip("set VELIQ_TEST_DATABASE_URL for PostgreSQL revocation integration")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	t.Cleanup(cancel)

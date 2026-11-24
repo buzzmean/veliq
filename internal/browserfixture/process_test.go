@@ -14,11 +14,11 @@ import (
 )
 
 func TestChromeProcessWaitChild(t *testing.T) {
-	mode := os.Getenv("NEEXITLAG_TEST_CHROME_WAIT")
+	mode := os.Getenv("VELIQ_TEST_CHROME_WAIT")
 	if mode == "" {
 		t.Skip("redirected process regression child")
 	}
-	release := os.Getenv("NEEXITLAG_TEST_CHROME_RELEASE")
+	release := os.Getenv("VELIQ_TEST_CHROME_RELEASE")
 	if mode == "hold" {
 		fmt.Fprintln(os.Stdout, "ready")
 		os.Stdout.Close()
@@ -37,7 +37,7 @@ func TestChromeProcessWaitChild(t *testing.T) {
 		os.Exit(0)
 	}
 	child := exec.Command(os.Args[0], "-test.run=^TestChromeProcessWaitChild$")
-	child.Env = append(os.Environ(), "NEEXITLAG_TEST_CHROME_WAIT=hold", "GORACE=atexit_sleep_ms=0")
+	child.Env = append(os.Environ(), "VELIQ_TEST_CHROME_WAIT=hold", "GORACE=atexit_sleep_ms=0")
 	child.Stderr = os.Stderr
 	stdout, err := child.StdoutPipe()
 	if err != nil {
@@ -62,7 +62,7 @@ func TestChromeWaitSeparatesActualExitCodeFromInheritedPipeEOF(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestChromeProcessWaitChild$")
-			command.Env = append(os.Environ(), "NEEXITLAG_TEST_CHROME_WAIT="+mode, "NEEXITLAG_TEST_CHROME_RELEASE="+release, "GORACE=atexit_sleep_ms=0")
+			command.Env = append(os.Environ(), "VELIQ_TEST_CHROME_WAIT="+mode, "VELIQ_TEST_CHROME_RELEASE="+release, "GORACE=atexit_sleep_ms=0")
 			var stderr bytes.Buffer
 			command.Stderr = &stderr
 			command.WaitDelay = 50 * time.Millisecond

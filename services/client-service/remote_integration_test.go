@@ -30,7 +30,7 @@ import (
 
 // Portable transport integration only. There is deliberately no fake Windows capture backend.
 func TestPrivateTLSControlPlaneAndAuthenticatedRemoteProbe(t *testing.T) {
-	database := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	database := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if database == "" {
 		t.Skip("PostgreSQL test URL required")
 	}

@@ -6,7 +6,7 @@ import (
 )
 
 func TestChromiumOriginReuseBaseline(t *testing.T) {
-	if os.Getenv("NEEXITLAG_TEST_ORIGIN_REUSE") != "1" {
+	if os.Getenv("VELIQ_TEST_ORIGIN_REUSE") != "1" {
 		t.Skip("explicit isolated trust/browser fixture")
 	}
 	chrome := ChromePath()

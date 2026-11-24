@@ -111,7 +111,7 @@ Browser phase/code/type пишутся в существующий ограни�
   отсутствие позднего apply/rollback, нейтральный startup failure, очистка на успехе,
   сохранение ACTIVATED/identity и немедленный DIRECT-статус без повторного мерцания.
 - Windows browser fixture TestWindowsBrowserDisablePolicyContinuity (только env
-  NEEXITLAG_TEST_BROWSER_DISABLE=1 в одноразовой CI VM): настоящий Chrome/Edge,
+  VELIQ_TEST_BROWSER_DISABLE=1 в одноразовой CI VM): настоящий Chrome/Edge,
   настоящий owner/SID и registry PAC, локальный HTTP body с новым marker для каждой
   фазы. Browser PID/birth не меняется при disable/host Close. Backend seam специально
   перестаёт принимать native dispatch; новый запрос обязан пройти без него.
