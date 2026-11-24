@@ -622,7 +622,7 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 		var game *gameudp.Flow
 		var gameErr error
 		decision, game, gameErr = BindGameUDP(decision, identity, tuple, time.Now())
-		if game != nil && !b.associations.MarkGameFirstFlight(tuple, identity) && (!decision.CS2Auto || decision.cs2LocalSocket) {
+		if game != nil && !b.associations.MarkGameFirstFlight(tuple, identity) && (!decision.CS2Auto || decision.cs2LocalSocket || decision.GameUDP.Evidence(game).Stage == gameudp.Local) {
 			decision.GameUDP.PinUnverifiedDirect(game)
 			decision.cs2LocalSocket = false
 			decision.Route = routing.Route{}
@@ -693,7 +693,7 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 	}
 	if f.game != nil && decision.GameUDP != nil && known && !decision.udpWorker() {
 		sender := SendGameUDP
-		if decision.CS2Auto {
+		if decision.CS2Auto && decision.GameUDP.Evidence(f.game).Stage != gameudp.Local {
 			sender = sendOriginalGameUDP
 		} else if !b.primeGameAllowed(packet, address) {
 			decision.GameUDP.SetReason("FOREIGN_UDP_INTERCEPTOR_OR_OBSERVER_PENDING")

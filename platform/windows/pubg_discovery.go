@@ -71,6 +71,11 @@ func FindSteamGame(roots []string, preset gameudp.Preset) PUBGInstallation {
 		}
 		parts := append([]string{library, "steamapps", "common", name}, preset.Relative...)
 		path := filepath.Join(parts...)
+		if preset.ID == "apex" {
+			if _, err := os.Lstat(path); os.IsNotExist(err) {
+				path = filepath.Join(filepath.Dir(path), "r5apex.exe")
+			}
+		}
 		file, err := os.Lstat(path)
 		if err == nil && file.Mode().IsRegular() && file.Mode()&os.ModeSymlink == 0 {
 			return PUBGInstallation{Path: path, Reason: "STEAM_APP_" + preset.SteamID + "_VERIFIED_PATH"}

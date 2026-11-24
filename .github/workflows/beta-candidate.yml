@@ -1,5 +1,8 @@
 name: Beta candidate kit (no deployment)
 on:
+  workflow_dispatch:
+  push:
+    branches: [feat/game-stun687-release-20261124]
   pull_request:
     paths:
       - '.github/workflows/beta-candidate.yml'

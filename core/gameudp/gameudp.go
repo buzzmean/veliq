@@ -97,6 +97,7 @@ const (
 )
 
 type Evidence struct {
+	FakeTTL       uint8       `json:"fake_ttl,omitempty"`
 	CS2Auto       bool        `json:"cs2_auto,omitempty"`
 	Selection     string      `json:"selection_reason"`
 	JoinPhase     string      `json:"join_phase,omitempty"`
@@ -132,6 +133,8 @@ type cadenceBucket struct {
 	replies, outgoing uint64
 }
 type Flow struct {
+	stunPrimer  bool
+	dataOrdinal int
 	cs2Auto     bool
 	cadence     [8]cadenceBucket
 	degradedAt  time.Time
@@ -161,6 +164,7 @@ type Learning struct {
 	Expires     time.Time `json:"expires"`
 }
 type Snapshot struct {
+	STUNAuto      bool          `json:"stun_auto,omitempty"`
 	CS2Endpoints  []CS2Endpoint `json:"cs2_endpoints,omitempty"`
 	LocalOnly     bool          `json:"local_only"`
 	InitialPolicy string        `json:"initial_policy"`
@@ -174,6 +178,7 @@ type Snapshot struct {
 	Lost          uint64        `json:"lost"`
 }
 type Engine struct {
+	stunAuto                   bool
 	cs2Auto                    bool
 	cs2Endpoints               map[string]CS2Endpoint
 	mu                         sync.Mutex
@@ -288,9 +293,21 @@ func (e *Engine) open(k Key, now time.Time, measuredRelay string, cs2Only bool) 
 		if cs2Only {
 			stage, selection = e.cs2Route(k, now)
 		}
-		f := e.addFlow(k, now, stage, selection, Variant{}, nil)
+		var f *Flow
+		if e.stunAuto && (selection == "CS2_DIRECT_DEFAULT" || stage == Local) {
+			var err error
+			f, err = e.openSTUN(k, now)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			f = e.addFlow(k, now, stage, selection, Variant{}, nil)
+		}
 		f.cs2Auto, f.e.CS2Auto = true, true
 		return f, nil
+	}
+	if e.stunAuto {
+		return e.openSTUN(k, now)
 	}
 	cache := e.learning[e.trialKey(k)]
 	// Results from another route policy cannot grant relay or carry exhaustion
@@ -366,6 +383,15 @@ func (e *Engine) addFlow(k Key, now time.Time, stage, selection string, v Varian
 // Plan advances the input cutoff even if a decoy fails. Existing flows never
 // restart their first flight after settings/learning/network changes.
 func (e *Engine) Plan(f *Flow, now time.Time) ([]byte, int) {
+	return e.plan(f, now, false)
+}
+
+// The framing-bit cutoff and burst sizes are carried over from Build 687.
+func (e *Engine) PlanDatagram(f *Flow, payload []byte, now time.Time) ([]byte, int) {
+	data := len(payload) >= 7 && payload[0]&0x80 != 0 && !(payload[0] == 255 && payload[1] == 255 && payload[2] == 255 && payload[3] == 255)
+	return e.plan(f, now, data)
+}
+func (e *Engine) plan(f *Flow, now time.Time, data bool) ([]byte, int) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if f == nil || f.engine != e {
@@ -374,7 +400,11 @@ func (e *Engine) Plan(f *Flow, now time.Time) ([]byte, int) {
 	f.last = now
 	f.e.Sequence++
 	f.ordinal++
-	if f.e.Stage != Local || !e.enabled || e.reason != "" || f.generation != e.generation || f.ordinal > f.e.Variant.Cutoff {
+	if data {
+		f.dataOrdinal++
+	}
+	withinCutoff := f.ordinal <= f.e.Variant.Cutoff || f.stunPrimer && data && f.dataOrdinal <= 4
+	if f.e.Stage != Local || !e.enabled || e.reason != "" || f.generation != e.generation || !withinCutoff || f.stunPrimer && !e.stunAuto {
 		return nil, 0
 	}
 	k := f.e.Variant.Repeats
@@ -475,6 +505,19 @@ func (e *Engine) Tick(now time.Time) {
 	e.cleanup(now)
 }
 func (e *Engine) health(f *Flow, now time.Time) {
+	if f.stunPrimer && !f.cs2Auto {
+		if f.generation == e.generation && e.enabled && e.reason == "" && now.Sub(f.e.Started) >= Probation && f.e.Outgoing >= 6 && now.Sub(f.e.LastOutgoing) < 2*time.Second {
+			f.e.Sequence++
+			if f.e.Replies == 0 {
+				f.e.State, f.e.Reason = "INSUFFICIENT_REPLIES", "NO_UDP_REPLY_OBSERVED"
+			} else if now.Sub(f.e.LastReply) >= Liveness {
+				f.e.State, f.e.Reason = "INSUFFICIENT_REPLIES", "UDP_REPLIES_STOPPED"
+			} else {
+				f.e.State, f.e.Reason = "REPLIES_OBSERVED", "GAME_ADMISSION_UNVERIFIED"
+			}
+		}
+		return
+	}
 	if f.cs2Auto || f.failed || f.generation != e.generation || !e.enabled || e.reason != "" || f.e.Outgoing < 6 || now.Sub(f.e.LastOutgoing) > 2*time.Second {
 		return
 	}
@@ -664,7 +707,7 @@ func (e *Engine) Snapshot() Snapshot {
 	if e.cs2Auto {
 		initialPolicy = "CS2_ENDPOINT_AUTO"
 	}
-	out := Snapshot{LocalOnly: e.localOnly, InitialPolicy: initialPolicy, Enabled: e.enabled, Application: e.application, Generation: e.generation, Reason: e.reason, Flows: []Evidence{}, Learning: []Learning{}, Lost: e.lost}
+	out := Snapshot{STUNAuto: e.stunAuto, LocalOnly: e.localOnly, InitialPolicy: initialPolicy, Enabled: e.enabled, Application: e.application, Generation: e.generation, Reason: e.reason, Flows: []Evidence{}, Learning: []Learning{}, Lost: e.lost}
 	if e.cs2Auto {
 		for _, row := range e.cs2Endpoints {
 			if !row.restored && (e.network == "" || row.Network == e.network) {

@@ -115,6 +115,9 @@ func (e *Engine) cs2Route(k Key, now time.Time) (string, string) {
 		return active.e.Stage, "CS2_ACTIVE_MATCH_PINNED"
 	}
 	if row.Outcome == "JOINED" && now.Before(row.ObservedAt.Add(cs2EvidenceTTL)) {
+		if row.Stage == Local && e.stunAuto {
+			return Local, "CS2_STUN687_CONFIRMED"
+		}
 		if row.Stage == LocalSocket {
 			return LocalSocket, "CS2_LOCAL_SOCKET_CONFIRMED"
 		}
@@ -126,6 +129,9 @@ func (e *Engine) cs2Route(k Key, now time.Time) (string, string) {
 		(row.trialAt.IsZero() || !now.Before(row.trialAt.Add(cs2TrialTTL))) {
 		row.trialAt, row.trialFlow = now, e.next+1
 		e.cs2Endpoints[key] = row
+		if e.stunAuto {
+			return Local, "CS2_STUN687_TRIAL"
+		}
 		return LocalSocket, "CS2_LOCAL_SOCKET_TRIAL"
 	}
 	return Direct, "CS2_DIRECT_DEFAULT"

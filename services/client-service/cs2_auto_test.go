@@ -45,7 +45,7 @@ func TestCS2AutoReleasedDesktopProfileAndPrivateScope(t *testing.T) {
 	call("profile.set", p)
 	call("gameudp.set", map[string]any{"profile_id": p.ID, "enabled": false})
 	g := c.games.items[p.ID]
-	if !g.CS2Auto || !g.Engine.Ready() || g.Engine.Snapshot().LocalOnly || g.Enabled {
+	if !g.CS2Auto || !g.Engine.Ready() || !g.Engine.Snapshot().LocalOnly || !g.Engine.Snapshot().STUNAuto || g.Enabled {
 		t.Fatalf("legacy mode overrode AUTO: %+v", c.gameStatus())
 	}
 	c.acceptanceRelays["VPS-01"] = acceptanceRelaySource{session: &readinessSession{done: make(chan struct{})}, address: "198.51.100.10:443"}
@@ -150,7 +150,7 @@ func TestCS2EndpointStatusThroughManagedReadOnlyIPC(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := out.(cs2EndpointStatus)
-	if v.Matched != 1 || len(v.Flows) != 1 || v.Flows[0].Destination != target.Destination.String() || v.Flows[0].Stage != gameudp.Direct || v.Truncated || v.Flows[0].Application != "" {
+	if v.Matched != 1 || len(v.Flows) != 1 || v.Flows[0].Destination != target.Destination.String() || v.Flows[0].Stage != gameudp.Local || v.Truncated || v.Flows[0].Application != "" {
 		t.Fatalf("%+v", v)
 	}
 	if _, err := c.HandleOwnerIPC(context.Background(), "gameudp.cs2.endpoint", json.RawMessage(`{"destination":"*","profile_id":"cs2"}`)); err == nil {

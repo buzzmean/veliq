@@ -324,6 +324,8 @@ func (c *Controller) handleProfileSet(ctx context.Context, raw json.RawMessage) 
 	if nativeBrowserProfile(p) && nativeActive {
 		c.browser.native.activateAt(p.ID, false, activationStarted)
 	}
+	c.registerSelectedSTUNGame(p)
+	c.updateGamesGate()
 	return c.Profiles.List(), nil
 }
 

@@ -20,11 +20,12 @@ import (
 // Retain the restriction against group profiles, helpers or versioned matches.
 func exactCS2Identity(p profiles.Profile) bool {
 	a := p.Identity
-	if p.AppPreset != "game-udp-cs2" || a == nil || len(p.Executables) != 1 || !gamePath(p.Executables[0]) {
+	if a == nil || len(p.Executables) != 1 || !gamePath(p.Executables[0]) {
 		return false
 	}
 	image := gameudp.Canonical(p.Executables[0])
-	return path.Base(image) == "cs2.exe" && gameudp.Canonical(a.Executable) == "cs2.exe" &&
+	base := path.Base(image)
+	return stunGameImage(image) && gameudp.Canonical(a.Executable) == base &&
 		gameudp.Canonical(a.Root) == path.Dir(image) && !a.Versioned &&
 		a.PackageFamily == "" && a.RelativePath == "" && len(a.Helpers) == 0
 }
@@ -32,8 +33,8 @@ func exactCS2Identity(p profiles.Profile) bool {
 // A 715 CS2 AUTO profile may still contain custom port or service rules.
 // Keep their deny/required floors while eliminating every relay dispatch.
 func cs2AutoRuleProfile(p profiles.Profile) bool {
-	return p.Mode == profiles.Auto && (p.AppPreset == "" || p.AppPreset == "game-udp-cs2") &&
-		len(p.Executables) == 1 && path.Base(gameudp.Canonical(p.Executables[0])) == "cs2.exe"
+	return p.Mode == profiles.Auto && (p.AppPreset == "" || strings.HasPrefix(p.AppPreset, "game-udp-")) &&
+		len(p.Executables) == 1 && stunGameImage(p.Executables[0])
 }
 
 func (c *Controller) cs2RouteBlocked(p profiles.Profile, t wp.Tuple, domain string) bool {
@@ -80,16 +81,31 @@ func cs2RestrictedAction(action flowpolicy.Action) bool {
 // The released desktop selects AUTO by setting the profile mode, then disabling
 // the old UDP ladder. That second write must not disable ordinary CS2 routing.
 // An explicitly enabled local-only profile still requests the legacy mode.
-func (g *gameEntry) syncCS2Mode(p profiles.Profile) {
-	active := g.SteamCS2 && p.ID == g.ProfileID && p.Mode == profiles.Auto &&
-		gameProfileSafe(p) && !(g.LocalOnly && g.Enabled)
-	if active == g.CS2Auto {
-		return
+func stunGameImage(image string) bool {
+	if !gamePath(image) {
+		return false
 	}
-	g.CS2Auto = active
+	base := path.Base(gameudp.Canonical(image))
+	if base == "r5apex.exe" {
+		return true
+	}
+	for _, preset := range gameudp.Presets() {
+		if strings.EqualFold(base, preset.Executable) {
+			return true
+		}
+	}
+	return false
+}
+
+func (g *gameEntry) syncCS2Mode(p profiles.Profile) {
+	selected := p.ID == g.ProfileID && gameProfileSafe(p) && stunGameImage(g.Path)
+	active := g.SteamCS2 && selected && p.Mode == profiles.Auto && !(g.LocalOnly && g.Enabled)
+	stun := selected && (p.Mode == profiles.Auto || g.LocalOnly && g.Enabled)
+	g.CS2Auto, g.STUNAuto = active, stun
 	g.Engine.SetCS2Auto(active)
-	g.Engine.SetLocalOnly(!active && g.LocalOnly)
-	g.Engine.Configure(g.Path, active || g.Enabled)
+	g.Engine.SetSTUNAuto(stun)
+	g.Engine.SetLocalOnly(stun || !active && g.LocalOnly)
+	g.Engine.Configure(g.Path, active || stun || g.Enabled)
 }
 
 // The no-relay policy applies even while capture guards and Steam discovery

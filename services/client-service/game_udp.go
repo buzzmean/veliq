@@ -25,12 +25,13 @@ const maxGameProfiles = 8
 // Each selected exact executable has an independent ladder. The byte/packet
 // budget is shared across the PC. No baseline optimizer policy is changed.
 type gameEntry struct {
+	STUNAuto     bool
 	ProfileID    string
 	Name         string
 	Path         string
 	Enabled      bool
 	LocalOnly    bool
-	SteamCS2     bool // Exact installation path verified by Steam preset discovery.
+	SteamCS2     bool // Exact CS2 path from Steam discovery or a selected full-path profile.
 	CS2Auto      bool
 	AntiCheat    string
 	Engine       *gameudp.Engine
@@ -227,7 +228,13 @@ func (c *Controller) registerGame(preset gameudp.Preset, path string) {
 	}
 }
 func (c *Controller) discoverGames() {
+	for _, p := range c.Profiles.List() {
+		c.registerSelectedSTUNGame(p)
+	}
 	for _, p := range gameudp.Presets() {
+		if p.SteamID == "" {
+			continue
+		}
 		if found := wp.DiscoverSteamGame(c.BrowserOwnerSID, p); found.Path != "" {
 			c.registerGame(p, found.Path)
 		}
@@ -279,7 +286,7 @@ func (c *Controller) updateGamesGate() {
 			r = c.games.error
 		}
 		g.syncCS2Mode(p)
-		if !g.Enabled && !g.CS2Auto {
+		if !g.Enabled && !g.CS2Auto && !g.STUNAuto {
 			r = "DISABLED_BY_USER"
 		}
 		if n != nil {
@@ -345,7 +352,7 @@ func (c *Controller) classifyGameUDP(id wp.ProcessIdentity, t wp.Tuple) (wp.Deci
 		return wp.Decision{}, false
 	}
 	g.syncCS2Mode(p)
-	if !g.Enabled && !g.CS2Auto {
+	if !g.Enabled && !g.CS2Auto && !g.STUNAuto {
 		return wp.Decision{}, false
 	}
 	n := c.network.Load()
@@ -353,7 +360,7 @@ func (c *Controller) classifyGameUDP(id wp.ProcessIdentity, t wp.Tuple) (wp.Deci
 		if g.CS2Auto {
 			return cs2DirectDecision(p, id, t), true
 		}
-		if g.LocalOnly {
+		if g.LocalOnly || g.STUNAuto {
 			// A suspended local trial must not fall through to AUTO's learned
 			// relay choice. Guards still prohibit decoys; only originals pass.
 			return wp.Decision{NewConnectionsOnly: true, Revision: "game-udp-local-only", Group: p.ID,
@@ -367,6 +374,10 @@ func (c *Controller) classifyGameUDP(id wp.ProcessIdentity, t wp.Tuple) (wp.Deci
 		d.CS2Auto = true
 		d.Revision = "cs2-endpoint-auto-v1"
 		d.Policy.Source = "cs2_auto"
+		d.GameRelayID = ""
+		return d, true
+	}
+	if g.STUNAuto {
 		d.GameRelayID = ""
 		return d, true
 	}
@@ -576,9 +587,22 @@ func (c *Controller) handleGameUDP(_ context.Context, method string, raw json.Ra
 		return nil, err
 	}
 	g.syncCS2Mode(p)
-	g.Engine.SetLocalOnly(g.LocalOnly && !g.CS2Auto)
-	g.Engine.Configure(g.Path, g.Enabled || g.CS2Auto)
+	g.Engine.SetLocalOnly(g.STUNAuto || g.LocalOnly && !g.CS2Auto)
+	g.Engine.Configure(g.Path, g.Enabled || g.CS2Auto || g.STUNAuto)
 	c.games.mu.Unlock()
 	c.updateGamesGate()
 	return c.gameStatus(), nil
+}
+
+func (c *Controller) registerSelectedSTUNGame(p profiles.Profile) {
+	if len(p.Executables) != 1 || !stunGameImage(p.Executables[0]) || !gameProfileSafe(p) {
+		return
+	}
+	image := strings.ToLower(filepath.Base(strings.ReplaceAll(p.Executables[0], `\`, "/")))
+	for _, preset := range gameudp.Presets() {
+		if strings.EqualFold(image, preset.Executable) || preset.ID == "apex" && image == "r5apex.exe" {
+			c.registerGame(preset, p.Executables[0])
+			return
+		}
+	}
 }

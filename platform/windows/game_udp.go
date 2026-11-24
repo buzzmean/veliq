@@ -13,14 +13,21 @@ import (
 // GameUDPPacket changes ONLY the added decoy's payload/length/checksums. The
 // original packet is passed separately, byte-for-byte, to the existing sender.
 func GameUDPPacket(original, payload []byte) ([]byte, error) {
+	return gameUDPPacketTTL(original, payload, 0)
+}
+func gameUDPPacketTTL(original, payload []byte, ttl uint8) ([]byte, error) {
 	_, _, err := ParseUDP(original)
-	if err != nil || len(payload) < 1200 || len(payload) > gameudp.MaxPayload {
+	stun := ttl != 0 && gameudp.IsSTUNBinding(payload)
+	if err != nil || !stun && len(payload) < 1200 || len(payload) > gameudp.MaxPayload || ttl > 16 || ttl != 0 && original[8] <= ttl {
 		return nil, errors.New("GAME_UDP_PACKET_INVALID")
 	}
 	h := int(original[0]&15) * 4
 	q := make([]byte, h+8+len(payload))
 	copy(q, original[:h+8])
 	copy(q[h+8:], payload)
+	if ttl != 0 {
+		q[8] = ttl
+	}
 	binary.BigEndian.PutUint16(q[2:4], uint16(len(q)))
 	binary.BigEndian.PutUint16(q[h+4:h+6], uint16(8+len(payload)))
 	q[10], q[11], q[h+6], q[h+7] = 0, 0, 0, 0
@@ -51,12 +58,22 @@ func GameUDPPacket(original, payload []byte) ([]byte, error) {
 }
 
 // The 5-packet generic DIRECT+ limit is untouched. This separate sender has
-// K<=16/N<=4 plus engine-wide packet/byte admission. No queue or relay call.
+// K<=16/N<=4 (STUN: first N<=2 plus data<=4) and shared packet/byte admission.
+// No queue or relay call; overlapping STUN cutoffs produce only one burst.
 func SendGameUDP(e *gameudp.Engine, flow *gameudp.Flow, id ProcessIdentity, tuple Tuple, p []byte, send func([]byte) error, ledger *EvidenceLedger, now time.Time) error {
-	payload, k := e.Plan(flow, now)
+	_, datagram, _ := ParseUDP(p)
+	payload, k := e.PlanDatagram(flow, datagram, now)
+	ttl := e.Evidence(flow).FakeTTL
 	sent := 0
 	for i := 0; i < k; i++ {
-		q, err := GameUDPPacket(p, payload)
+		var err error
+		if gameudp.IsSTUNBinding(payload) {
+			payload, err = gameudp.STUNPayload()
+		}
+		var q []byte
+		if err == nil {
+			q, err = gameUDPPacketTTL(p, payload, ttl)
+		}
 		if err == nil {
 			err = send(q)
 		}
@@ -122,6 +139,9 @@ func BindGameUDP(d Decision, id ProcessIdentity, t Tuple, now time.Time) (Decisi
 		f, err := d.GameUDP.OpenCS2(k, now)
 		if err != nil {
 			d.GameUDP = nil
+		} else if d.GameUDP.Evidence(f).Stage == gameudp.Local {
+			d.Policy.Action = flowpolicy.DirectPlus
+			d.Policy.Reason = d.GameUDP.Evidence(f).Selection
 		} else if d.GameUDP.Evidence(f).Stage == gameudp.LocalSocket {
 			d.cs2LocalSocket = true
 			d.BlockOnFailure = true // Never replay a failed datagram on the native socket.

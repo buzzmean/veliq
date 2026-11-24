@@ -49,7 +49,7 @@ func (e *Engine) RestoreCS2Preferences(application string, rows []CS2Preference,
 		_, err := hex.DecodeString(row.Network)
 		key := endpointKey(row.Network, image, row.Destination.String())
 		if len(row.Network) != 64 || err != nil || !Eligible(image, image, "udp", row.Destination) ||
-			(row.Stage != Direct && row.Stage != LocalSocket) || seen[key] ||
+			(row.Stage != Direct && row.Stage != LocalSocket && !(e.stunAuto && row.Stage == Local)) || seen[key] ||
 			row.ConfirmedAt.IsZero() || row.ConfirmedAt.After(now) {
 			return errors.New("CS2_PREFERENCES_INVALID")
 		}

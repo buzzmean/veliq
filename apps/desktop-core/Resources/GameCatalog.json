@@ -93,7 +93,8 @@
       "name": "Apex Legends",
       "icon": "APE",
       "executables": [
-        "r5apex.exe"
+        "r5apex.exe",
+        "r5apex_dx12.exe"
       ],
       "launcher": "Steam / EA",
       "antiCheat": "EAC",
@@ -151,6 +152,45 @@
       "networkReferences": [
         "steam-valve"
       ]
+    },
+    {
+      "id": "rob-run",
+      "name": "ROB RUN",
+      "icon": "ROB",
+      "executables": [
+        "ROB RUN.exe"
+      ],
+      "launcher": "Steam",
+      "antiCheat": "",
+      "defaultMode": "DIRECT",
+      "udpPreset": "rob-run",
+      "launcherNeedsBypass": false
+    },
+    {
+      "id": "warzone",
+      "name": "Call of Duty / Warzone",
+      "icon": "COD",
+      "executables": [
+        "cod.exe"
+      ],
+      "launcher": "Steam / Battle.net",
+      "antiCheat": "Ricochet",
+      "defaultMode": "DIRECT",
+      "udpPreset": "warzone",
+      "launcherNeedsBypass": false
+    },
+    {
+      "id": "rocket-league",
+      "name": "Rocket League",
+      "icon": "RL",
+      "executables": [
+        "RocketLeague.exe"
+      ],
+      "launcher": "Steam / Epic Games",
+      "antiCheat": "",
+      "defaultMode": "DIRECT",
+      "udpPreset": "rocket-league",
+      "launcherNeedsBypass": false
     }
   ],
   "networkInformation": [
