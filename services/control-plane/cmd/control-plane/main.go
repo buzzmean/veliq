@@ -247,7 +247,8 @@ func main() {
 		}
 	}
 	server := &http.Server{Addr: *addr, Handler: api.Handler(), ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 * 1024, TLSConfig: &tls.Config{MinVersion: tls.VersionTLS13}}
-	retentionContext, stopRetention := context.WithCancel(ctx)
+	// Ограничение времени начальной загрузки не должно останавливать постоянный worker.
+	retentionContext, stopRetention := context.WithCancel(context.Background())
 	defer stopRetention()
 	go store.RunPersistentDiagnosticsRetention(retentionContext)
 	done := make(chan os.Signal, 1)
