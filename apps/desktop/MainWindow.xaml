@@ -18,6 +18,20 @@
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Home}" Tag="Home" Click="Navigate" ui:Nav.Icon="{StaticResource IconHome}" ui:Nav.IsCurrent="True"/>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr NavServices}" Tag="Applications" Click="Navigate" ui:Nav.Icon="{StaticResource IconServices}"/>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Games}" Tag="Games" Click="Navigate" ui:Nav.Icon="{StaticResource IconGames}"/>
+     <Border x:Name="PlannedGameOptimization" Margin="0,2" Opacity="0.6" AutomationProperties.Name="{ui:Tr OptimizeGamesPlanned}">
+      <Grid Margin="16,7,10,7"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <Path Data="{StaticResource IconGames}" Stretch="Uniform" Width="18" Height="18" Stroke="{StaticResource Text}" StrokeThickness="1.5" VerticalAlignment="Center"/>
+       <TextBlock Grid.Column="1" Text="{ui:Tr OptimizeGamesPlanned}" FontSize="12" TextWrapping="Wrap" Margin="10,0,6,0" VerticalAlignment="Center"/>
+       <Border Grid.Column="2" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="5,2" VerticalAlignment="Center"><TextBlock Text="{ui:Tr ComingSoon}" FontSize="10"/></Border>
+      </Grid>
+     </Border>
+     <Border x:Name="PlannedSystemOptimization" Margin="0,2" Opacity="0.6" AutomationProperties.Name="{ui:Tr OptimizeSystemPlanned}">
+      <Grid Margin="16,7,10,7"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <Path Data="{StaticResource IconSettings}" Stretch="Uniform" Width="18" Height="18" Stroke="{StaticResource Text}" StrokeThickness="1.5" VerticalAlignment="Center"/>
+       <TextBlock Grid.Column="1" Text="{ui:Tr OptimizeSystemPlanned}" FontSize="12" TextWrapping="Wrap" Margin="10,0,6,0" VerticalAlignment="Center"/>
+       <Border Grid.Column="2" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="5,2" VerticalAlignment="Center"><TextBlock Text="{ui:Tr ComingSoon}" FontSize="10"/></Border>
+      </Grid>
+     </Border>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Diagnostics}" Tag="Diagnostics" Click="Navigate" ui:Nav.Icon="{StaticResource IconDiagnostics}"/>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Settings}" Tag="Settings" Click="Navigate" ui:Nav.Icon="{StaticResource IconSettings}"/>
     </StackPanel>

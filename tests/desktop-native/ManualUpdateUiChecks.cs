@@ -34,6 +34,7 @@ internal static partial class Program
             Require(button.TranslatePoint(new System.Windows.Point(), window).Y < 100, "Update action remained in the footer");
             Require(window.FindName("YouTubeLocalPanel") is null, "Experimental YouTube settings remain visible");
             Require(((FrameworkElement)window.FindName("ActivationCertificates")).Visibility == Visibility.Collapsed, "Certificate dates exposed in normal settings");
+            Require(window.FindName("PlannedGameOptimization") is Border && window.FindName("PlannedSystemOptimization") is Border, "Planned features must be labelled non-interactive items");
             SaveImage(window, "manual-update-ready");
         }
         Require(service.Installs == 0, "Opening the window triggered installation");
