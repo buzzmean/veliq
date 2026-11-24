@@ -4,14 +4,14 @@ using System.Text.Json;
 using Xunit;
 namespace NeExitLag.Tests;
 public sealed class GameCatalogTests {
- [Fact]public void BundledCatalogHasTenVerifiedNamesAndSafeDefaults(){
-  var c=GameCatalog.Bundled();Assert.Equal(1,c.Version);Assert.Equal(10,c.Games.Length);Assert.All(c.Games,g=>Assert.Equal("DIRECT",g.DefaultMode));
+ [Fact]public void BundledCatalogHasSelectedGamesAndSafeDefaults(){
+  var c=GameCatalog.Bundled();Assert.Equal(1,c.Version);Assert.Equal(13,c.Games.Length);Assert.All(c.Games,g=>Assert.Equal("DIRECT",g.DefaultMode));
   Assert.Contains(c.Games,g=>g.Id=="valorant"&&g.Executables.Contains("VALORANT-Win64-Shipping.exe")&&g.UdpPreset==""&&g.LauncherNeedsBypass);
   Assert.DoesNotContain(c.Games.SelectMany(g=>g.Executables),e=>e is "vgc.exe" or "vgk.exe" or "RiotClientServices.exe");
  }
  [Fact]public void TamperingAndUntrustedSignatureAreRejected(){
   var raw=JsonSerializer.SerializeToUtf8Bytes(GameCatalog.Bundled());Assert.Throws<InvalidDataException>(()=>GameCatalog.Parse(raw,GameCatalog.BundledSha256));
-  using var key=RSA.Create(2048);var sig=key.SignData(raw,HashAlgorithmName.SHA256,RSASignaturePadding.Pss);Assert.Equal(10,GameCatalog.VerifySigned(raw,sig,key).Games.Length);
+  using var key=RSA.Create(2048);var sig=key.SignData(raw,HashAlgorithmName.SHA256,RSASignaturePadding.Pss);Assert.Equal(13,GameCatalog.VerifySigned(raw,sig,key).Games.Length);
   raw[10]^=1;Assert.Throws<InvalidDataException>(()=>GameCatalog.VerifySigned(raw,sig,key));
  }
  sealed class Service:IServiceClient {

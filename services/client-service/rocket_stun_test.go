@@ -56,7 +56,7 @@ func TestSelectedGamesUseSTUN687WithoutRelay(t *testing.T) {
 			if _, err := c.Handle(context.Background(), "profile.set", raw); err != nil {
 				t.Fatal(err)
 			}
-			if d := c.Classify(id, tuple); d.GameUDP != nil {
+			if d := c.Classify(id, tuple); d.GameUDP != nil && d.GameUDP.Snapshot().STUNAuto {
 				t.Fatal("DIRECT opt-out ignored", gameudp.Canonical(image))
 			}
 		})

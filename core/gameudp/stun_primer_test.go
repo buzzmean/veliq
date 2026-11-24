@@ -29,6 +29,14 @@ func TestSTUN687AutoCutoffsAndPinnedDirect(t *testing.T) {
 	if otherFlow, err := e.OpenCS2(other, at); err != nil || e.Evidence(otherFlow).Stage != Local {
 		t.Fatal(err)
 	}
+	lateKey := advanceCS2Source(k, 7)
+	late, err := e.OpenCS2(lateKey, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, n := e.PlanDatagram(late, packets[3], at.Add(16*time.Second)); n != 0 {
+		t.Fatal("mid-game priming")
+	}
 	e.SetSTUNAuto(false)
 	if _, n := e.PlanDatagram(f, packets[3], at); n != 0 {
 		t.Fatal("disabled strategy sent decoys")

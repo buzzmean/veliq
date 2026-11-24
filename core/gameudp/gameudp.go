@@ -404,7 +404,7 @@ func (e *Engine) plan(f *Flow, now time.Time, data bool) ([]byte, int) {
 		f.dataOrdinal++
 	}
 	withinCutoff := f.ordinal <= f.e.Variant.Cutoff || f.stunPrimer && data && f.dataOrdinal <= 4
-	if f.e.Stage != Local || !e.enabled || e.reason != "" || f.generation != e.generation || !withinCutoff || f.stunPrimer && !e.stunAuto {
+	if f.e.Stage != Local || !e.enabled || e.reason != "" || f.generation != e.generation || !withinCutoff || f.stunPrimer && (!e.stunAuto || now.Sub(f.e.Started) > 15*time.Second || f.e.JoinOutcome == "JOINED") {
 		return nil, 0
 	}
 	k := f.e.Variant.Repeats
