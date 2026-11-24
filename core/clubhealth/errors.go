@@ -19,10 +19,6 @@ func ErrorCode(err error) (string, uint32) {
 	if errors.As(err, &native) {
 		return "OS_ERROR", uint32(native)
 	}
-	var verify *tls.CertificateVerificationError
-	if errors.As(err, &verify) {
-		return "TLS_CERTIFICATE_VERIFY", 0
-	}
 	var authority x509.UnknownAuthorityError
 	if errors.As(err, &authority) {
 		return "TLS_UNKNOWN_AUTHORITY", 0
@@ -34,6 +30,10 @@ func ErrorCode(err error) (string, uint32) {
 	var cert x509.CertificateInvalidError
 	if errors.As(err, &cert) {
 		return "TLS_CERTIFICATE_INVALID", uint32(cert.Reason)
+	}
+	var verify *tls.CertificateVerificationError
+	if errors.As(err, &verify) {
+		return "TLS_CERTIFICATE_VERIFY", 0
 	}
 	var record tls.RecordHeaderError
 	if errors.As(err, &record) {

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"time"
 
@@ -36,6 +37,8 @@ type Diagnostic struct {
 	Incident        string    `json:"incident,omitempty"`
 	Code            string    `json:"code"`
 	NativeCode      uint32    `json:"native_code,omitempty"`
+	ProviderState   uint32    `json:"provider_state,omitempty"`
+	Operation       string    `json:"operation,omitempty"`
 	EventID         uint32    `json:"event_id,omitempty"`
 	RecordID        uint64    `json:"record_id,omitempty"`
 	PID             uint32    `json:"pid,omitempty"`
@@ -50,6 +53,7 @@ func (e Diagnostic) Valid(now time.Time) bool {
 	if !eventID.MatchString(e.ID) || !eventID.MatchString(e.Session) ||
 		!label.MatchString(e.PC) || !buildID.MatchString(e.Version) || !buildID.MatchString(e.Source) ||
 		!symbol.MatchString(e.Observer) || !symbol.MatchString(e.Component) || !symbol.MatchString(e.Code) ||
+		e.Operation != "" && !symbol.MatchString(e.Operation) ||
 		e.Incident != "" && !eventID.MatchString(e.Incident) ||
 		e.App != "" && !ValidApp(e.App) || e.ProcessVerified && (e.PID == 0 || e.Birth == 0 || e.App == "") ||
 		e.At.Before(now.Add(-Retention)) || e.At.After(now.Add(time.Minute)) {
@@ -115,7 +119,7 @@ func (t *Transitions) Observe(key string, e Diagnostic) (Diagnostic, bool) {
 	if t.Previous == nil {
 		t.Previous = map[string]string{}
 	}
-	fingerprint := e.State + ":" + e.Code
+	fingerprint := fmt.Sprintf("%s:%s:%08x:%08x:%s:%d:%d", e.State, e.Code, e.NativeCode, e.ProviderState, e.Operation, e.PID, e.Birth)
 	if t.Previous[key] == fingerprint {
 		return e, false
 	}

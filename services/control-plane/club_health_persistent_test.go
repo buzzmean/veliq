@@ -205,6 +205,15 @@ func TestPersistentQuotaAndNoAckOnRolledBackStorage(t *testing.T) {
 	if err := s.DB.QueryRow(ctx, "SELECT count(*) FROM club_health_persistent_events WHERE device_id=$1", id).Scan(&count); err != nil || count > clubhealth.ServerDeviceEvents {
 		t.Fatal("quota", count, err)
 	}
+	if _, err := s.DB.Exec(ctx, "UPDATE club_health_persistent_devices SET last_seen=now()-interval '5 minutes' WHERE device_id=$1", id); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PrunePersistentDiagnostics(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DB.QueryRow(ctx, "SELECT count(*) FROM club_health_persistent_events WHERE device_id=$1", id).Scan(&count); err != nil || count != clubhealth.ServerDeviceEvents {
+		t.Fatal("background gap exceeds quota", count, err)
+	}
 	// Trigger aborts INSERT after proof consumption; transaction must roll back.
 	if _, err := s.DB.Exec(ctx, `CREATE FUNCTION diagnostic_fixture_reject() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture storage failure'; END $$;
 		CREATE TRIGGER diagnostic_fixture_reject BEFORE INSERT ON club_health_persistent_events FOR EACH ROW EXECUTE FUNCTION diagnostic_fixture_reject()`); err != nil {

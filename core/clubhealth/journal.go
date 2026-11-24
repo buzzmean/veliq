@@ -13,6 +13,7 @@ type JournalRow struct {
 	Acked bool       `json:"acked,omitempty"`
 }
 type Journal struct {
+	Open        bool         `json:"open"`
 	Transitions Transitions  `json:"transitions"`
 	Format      int          `json:"format"`
 	Device      string       `json:"device"`
@@ -47,6 +48,7 @@ func LoadJournal(path, device string, now time.Time) Journal {
 		return j
 	}
 	j.Lost = old.Lost
+	j.Open = old.Open
 	if len(old.Transitions.Active) <= 64 && len(old.Transitions.Previous) <= 64 {
 		j.Transitions = old.Transitions
 	}
@@ -132,13 +134,15 @@ func (j *Journal) Ack(b Batch, receipt Receipt) bool {
 		return false
 	}
 	ids := map[string]bool{}
+	changed := false
 	for _, e := range b.Events {
 		ids[e.ID] = true
 	}
 	for i := range j.Rows {
-		if ids[j.Rows[i].Event.ID] {
+		if ids[j.Rows[i].Event.ID] && !j.Rows[i].Acked {
 			j.Rows[i].Acked = true
+			changed = true
 		}
 	}
-	return true
+	return changed
 }

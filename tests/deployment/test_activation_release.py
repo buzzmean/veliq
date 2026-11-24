@@ -14,7 +14,7 @@ def load(name):
 
 class ActivationReleaseTests(unittest.TestCase):
  def test_known_additive_schema_reaches_leaf_preflight_unknown_schema_fails_closed(self):
-  for version in (1,2,3,4,5,6,7,8):
+  for version in (0,1,2,3,4,5,6,7,8,9,10,11,12,13,14):
    with self.subTest(schema=version):
     release=load('deploy-activation.py')
     report={'capabilities':{'relay':{},'control-plane':{}},'applied_schema_version':version,'systemd_version':257}
@@ -22,9 +22,9 @@ class ActivationReleaseTests(unittest.TestCase):
     preflight=mock.Mock(side_effect=RuntimeError('LEAF_PREFLIGHT_REACHED'))
     leaf=SimpleNamespace(Renewal=lambda:SimpleNamespace(preflight=preflight))
     with mock.patch.object(release,'guard'),mock.patch.object(release,'module',side_effect=[engine,leaf]),mock.patch.object(Path,'is_file',return_value=True):
-     with self.assertRaisesRegex(RuntimeError,'LEAF_PREFLIGHT_REACHED' if version<=7 else 'UNSUPPORTED_SCHEMA_VERSION'):
+     with self.assertRaisesRegex(RuntimeError,'LEAF_PREFLIGHT_REACHED' if 1<=version<=13 else 'UNSUPPORTED_SCHEMA_VERSION'):
       release.apply('fixture','a'*40,'ACTIVATE-CODES-2.56.177.4')
-    self.assertEqual(preflight.call_count,1 if version<=7 else 0)
+    self.assertEqual(preflight.call_count,1 if 1<=version<=13 else 0)
     self.assertEqual(release.PROGRESS.modified,'NO')
     self.assertIsNone(release.PROGRESS.backup)
 

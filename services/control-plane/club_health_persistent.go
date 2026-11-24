@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"time"
 
@@ -130,19 +131,26 @@ func (s *Store) RecordPersistentDiagnostics(ctx context.Context, q clubhealth.Pe
 	}
 	// A receipt acknowledges durable processing; bounded retention may then
 	// evict oldest records, with a visible monotonically increasing counter.
+	if err = pruneDiagnosticDevice(ctx, tx, q.Proof.DeviceID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func pruneDiagnosticDevice(ctx context.Context, tx pgx.Tx, device string) error {
 	tag, err := tx.Exec(ctx, `DELETE FROM club_health_persistent_events WHERE device_id=$1 AND event_id IN(
 		SELECT event_id FROM club_health_persistent_events WHERE device_id=$1
-		ORDER BY observed_at DESC,event_id DESC OFFSET $2)`, q.Proof.DeviceID, clubhealth.ServerDeviceEvents)
+		ORDER BY observed_at DESC,event_id DESC OFFSET $2)`, device, clubhealth.ServerDeviceEvents)
 	if err != nil {
 		return err
 	}
 	if tag.RowsAffected() > 0 {
-		_, err = tx.Exec(ctx, "UPDATE club_health_persistent_devices SET discarded=discarded+$2 WHERE device_id=$1", q.Proof.DeviceID, tag.RowsAffected())
+		_, err = tx.Exec(ctx, "UPDATE club_health_persistent_devices SET discarded=discarded+$2 WHERE device_id=$1", device, tag.RowsAffected())
 		if err != nil {
 			return err
 		}
 	}
-	return tx.Commit(ctx)
+	return nil
 }
 
 func (a *API) accountDiagnostics(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +211,7 @@ var diagnosticView = template.Must(template.New("diagnostics").Funcs(template.Fu
 {{range .Devices}}<tr><td>{{.PC}}</td><td>{{.Version}}</td><td>{{.State}}</td><td>{{.Discarded}}</td></tr>{{end}}</tbody></table>
 <h2>Последние события</h2><table><thead><tr><th>UTC</th><th>ПК / версия</th><th>Источник</th><th>Состояние</th><th>Код</th><th>Процесс</th></tr></thead><tbody>
 {{range .Events}}{{with .Summary}}<tr><td>{{.At}}</td><td>{{.PC}} / {{.Version}}</td><td>{{.Component}} / {{.Observer}}</td><td>{{.State}}</td>
-<td>{{.Code}} {{hex .NativeCode}}; EventID {{.EventID}}</td><td>{{.App}} PID {{.PID}}; поколение {{.Birth}}; подтверждено {{.ProcessVerified}}</td></tr>{{end}}{{end}}
+<td>{{.Code}} {{hex .NativeCode}}; операция {{.Operation}}; состояние провайдера {{.ProviderState}}; EventID {{.EventID}}</td><td>{{.App}} PID {{.PID}}; поколение {{.Birth}}; подтверждено {{.ProcessVerified}}</td></tr>{{end}}{{end}}
 </tbody></table><p>Показано до 300 событий. Журнал не содержит HTTPS-содержимое, ключи или коды активации.</p></html>`))
 
 func (s *Store) PersistentDiagnosticsView(ctx context.Context, owner, pc string) (json.RawMessage, error) {
@@ -232,23 +240,73 @@ func (s *Store) PrunePersistentDiagnostics(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.Exec(ctx, `WITH gaps AS (
+	rows, err := s.DB.Query(ctx, `SELECT device_id FROM club_health_persistent_devices
+		WHERE missing_since IS NULL AND last_seen<now()-interval '2 minutes' ORDER BY last_seen LIMIT 100`)
+	if err != nil {
+		return err
+	}
+	var devices []string
+	for rows.Next() {
+		var device string
+		if err := rows.Scan(&device); err != nil {
+			rows.Close()
+			return err
+		}
+		devices = append(devices, device)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, device := range devices {
+		if err := s.recordDiagnosticGap(ctx, device); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) recordDiagnosticGap(ctx context.Context, device string) error {
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	// Тот же порядок блокировок, что у приёма: устройство, метаданные, события.
+	// Занятое устройство проверит следующий проход, запись не задерживает upload.
+	var locked string
+	if err = tx.QueryRow(ctx, "SELECT id FROM devices WHERE id=$1 FOR UPDATE SKIP LOCKED", device).Scan(&locked); errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `WITH gaps AS (
 		UPDATE club_health_persistent_devices SET missing_since=last_seen+interval '2 minutes'
-		WHERE missing_since IS NULL AND last_seen<now()-interval '2 minutes' RETURNING *
+		WHERE device_id=$1 AND missing_since IS NULL AND last_seen<now()-interval '2 minutes' RETURNING *
 	) INSERT INTO club_health_persistent_events(device_id,event_id,account_id,observed_at,summary)
 	SELECT device_id,md5(device_id||':'||last_seen::text),account_id,missing_since,
 		jsonb_build_object('id',md5(device_id||':'||last_seen::text),'incident',md5(device_id||':'||last_seen::text),
 		'at',missing_since,'pc',pc,'version',software_version,'source',source,'component','HEARTBEAT','observer','SERVER_RECEIPT',
 		'state','failed','code','REPORTING_GAP_CAUSE_UNKNOWN') FROM gaps
-	ON CONFLICT(device_id,event_id) DO NOTHING`)
-	return err
+	ON CONFLICT(device_id,event_id) DO NOTHING`, device)
+	if err != nil {
+		return err
+	}
+	if err = pruneDiagnosticDevice(ctx, tx, device); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 func (s *Store) RunPersistentDiagnosticsRetention(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
 		job, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_ = s.PrunePersistentDiagnostics(job)
+		if err := s.PrunePersistentDiagnostics(job); err != nil && ctx.Err() == nil {
+			log.Print("DIAGNOSTIC_RETENTION_FAILED")
+		}
 		cancel()
 		select {
 		case <-ctx.Done():
