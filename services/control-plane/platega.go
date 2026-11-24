@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -49,9 +50,8 @@ type PlategaProvider struct {
 var ErrAutoRenewUnavailable = errors.New("PAYMENT_AUTORENEW_UNAVAILABLE")
 
 // ErrPaymentEventIgnored marks webhook notifications that are authentic but
-// carry a status VELIQ deliberately does not act on (PARTIALLY_REFUNDED keeps
-// the payment credited; unknown future statuses must not fail the endpoint and
-// trigger retries). The handler answers 200 without touching the store.
+// carry an unknown future status. The handler acknowledges without crediting.
+// Known disputes/refunds are persisted separately for operator review.
 var ErrPaymentEventIgnored = errors.New("PAYMENT_EVENT_IGNORED")
 
 func (p *PlategaProvider) Name() string { return "platega" }
@@ -158,6 +158,51 @@ func (p *PlategaProvider) CreatePayment(ctx context.Context, q PaymentRequest) (
 
 const plategaPayloadPrefix = "veliq:sub:"
 
+// CheckPayment authenticates directly to the provider. Never trust a browser
+// return URL as evidence of payment. The caller still checks the stored order.
+func (p *PlategaProvider) CheckPayment(ctx context.Context, id string) (PaymentEvent, error) {
+	if id == "" || len(id) > 128 {
+		return PaymentEvent{}, errors.New("PAYMENT_INVALID")
+	}
+	r, e := http.NewRequestWithContext(ctx, "GET", p.base()+"/transaction/"+url.PathEscape(id), nil)
+	if e != nil {
+		return PaymentEvent{}, e
+	}
+	r.Header.Set("X-MerchantId", p.MerchantID)
+	r.Header.Set("X-Secret", p.Secret)
+	resp, e := p.client().Do(r)
+	if e != nil {
+		return PaymentEvent{}, errors.New("PAYMENT_UNAVAILABLE")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return PaymentEvent{}, errors.New("PAYMENT_UNAVAILABLE")
+	}
+	var result struct {
+		ID             string `json:"id"`
+		Status         string `json:"status"`
+		Payload        string `json:"payload"`
+		MerchantID     string `json:"mechantId"` // Spelling from the provider contract.
+		PaymentDetails struct {
+			Amount   float64 `json:"amount"`
+			Currency string  `json:"currency"`
+		} `json:"paymentDetails"`
+	}
+	raw, e := io.ReadAll(io.LimitReader(resp.Body, (64<<10)+1))
+	if e != nil || len(raw) > 64<<10 || json.Unmarshal(raw, &result) != nil || result.ID != id || result.MerchantID != p.MerchantID {
+		return PaymentEvent{}, errors.New("PAYMENT_EVENT_REJECTED")
+	}
+	cb := plategaCallback{ID: result.ID, Status: result.Status, Payload: result.Payload, Amount: result.PaymentDetails.Amount, Currency: result.PaymentDetails.Currency}
+	// PENDING is valid for a poll, but must never credit or regress an order.
+	if result.Status == "PENDING" {
+		cb.Status = "CONFIRMED"
+		ev, err := cb.event()
+		ev.Status, ev.ProviderStatus = "pending", "PENDING"
+		return ev, err
+	}
+	return cb.event()
+}
+
 var subIDFormat = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func headerEqual(got, want string) bool {
@@ -173,17 +218,29 @@ func (p *PlategaProvider) HandleWebhook(r *http.Request) (PaymentEvent, error) {
 	if !headerEqual(r.Header.Get("X-MerchantId"), p.MerchantID) || !headerEqual(r.Header.Get("X-Secret"), p.Secret) {
 		return PaymentEvent{}, errors.New("PAYMENT_EVENT_REJECTED")
 	}
-	var cb struct {
-		ID       string  `json:"id"`
-		Amount   float64 `json:"amount"`
-		Currency string  `json:"currency"`
-		Status   string  `json:"status"`
-		Payload  string  `json:"payload"`
-	}
-	raw, e := io.ReadAll(io.LimitReader(r.Body, 64<<10))
-	if e != nil || json.Unmarshal(raw, &cb) != nil {
+	raw, e := io.ReadAll(io.LimitReader(r.Body, (64<<10)+1))
+	if e != nil || len(raw) > 64<<10 {
 		return PaymentEvent{}, errors.New("PAYMENT_EVENT_REJECTED")
 	}
+	var cb plategaCallback
+	if json.Unmarshal(raw, &cb) != nil {
+		return PaymentEvent{}, errors.New("PAYMENT_EVENT_REJECTED")
+	}
+	return cb.event()
+}
+
+type plategaCallback struct {
+	ID             string  `json:"id"`
+	Amount         float64 `json:"amount"`
+	Currency       string  `json:"currency"`
+	Status         string  `json:"status"`
+	Payload        string  `json:"payload"`
+	RefundID       string  `json:"refundId"`
+	RefundStatus   string  `json:"refundStatus"`
+	RefundedAmount float64 `json:"refundedAmount"`
+}
+
+func (cb plategaCallback) event() (PaymentEvent, error) {
 	if cb.ID == "" || len(cb.ID) > 128 || cb.Currency != "RUB" || !strings.HasPrefix(cb.Payload, plategaPayloadPrefix) {
 		return PaymentEvent{}, errors.New("PAYMENT_EVENT_REJECTED")
 	}
@@ -199,14 +256,17 @@ func (p *PlategaProvider) HandleWebhook(r *http.Request) (PaymentEvent, error) {
 	switch cb.Status {
 	case "CONFIRMED":
 		status = "succeeded"
-	case "CANCELED", "CHARGEBACKED", "DISPUTED":
+	case "CANCELED":
 		status = "canceled"
+	case "CHARGEBACKED", "DISPUTED", "PARTIALLY_REFUNDED":
+		status = "review"
 	default:
-		// PARTIALLY_REFUNDED: the payment stays credited (the store ignores a
-		// status change on an already succeeded payment; crediting here first
-		// would pay out a partially refunded payment). Future statuses land
-		// here too: acknowledged, not applied.
+		// Unknown future statuses are acknowledged without crediting.
 		return PaymentEvent{}, ErrPaymentEventIgnored
 	}
-	return PaymentEvent{ProviderID: cb.ID, Subscription: sub, AmountKopecks: amount, Status: status}, nil
+	refunded, err := kopecks(cb.RefundedAmount)
+	if err != nil || refunded > amount || len(cb.RefundID) > 128 || len(cb.RefundStatus) > 32 {
+		return PaymentEvent{}, errors.New("PAYMENT_EVENT_REJECTED")
+	}
+	return PaymentEvent{ProviderID: cb.ID, Subscription: sub, AmountKopecks: amount, Status: status, ProviderStatus: cb.Status, RefundID: cb.RefundID, RefundStatus: cb.RefundStatus, RefundedKopecks: refunded}, nil
 }

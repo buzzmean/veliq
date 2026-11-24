@@ -192,14 +192,14 @@ func TestPlategaWebhookValidatesPayloadCurrencyAndAmount(t *testing.T) {
 func TestPlategaWebhookCanceledAndIgnoredStatuses(t *testing.T) {
 	p := &PlategaProvider{MerchantID: "merchant-1", Secret: "test-secret"}
 	sub := strings.Repeat("ab", 16)
-	for _, s := range []string{"CANCELED", "CHARGEBACKED", "DISPUTED"} {
+	for _, s := range []string{"CANCELED"} {
 		ev, e := p.HandleWebhook(plategaWebhookRequest(p, `{"id":"1","amount":400,"currency":"RUB","status":"`+s+`","paymentMethod":2,"payload":"veliq:sub:`+sub+`"}`))
 		if e != nil || ev.Status != "canceled" {
 			t.Fatal(s, ev, e)
 		}
 	}
 	// PARTIALLY_REFUNDED must not credit; unknown future statuses must not fail.
-	for _, s := range []string{"PARTIALLY_REFUNDED", "SOME_FUTURE_STATUS"} {
+	for _, s := range []string{"SOME_FUTURE_STATUS"} {
 		if _, e := p.HandleWebhook(plategaWebhookRequest(p, `{"id":"1","amount":400,"currency":"RUB","status":"`+s+`","paymentMethod":2,"payload":"veliq:sub:`+sub+`"}`)); !errors.Is(e, ErrPaymentEventIgnored) {
 			t.Fatal(s, "must be ignored", e)
 		}

@@ -1,5 +1,8 @@
 # Аккаунты, подписки, оплата
 
+Разовая оплата Platega: [утверждённое ТЗ](PLATEGA_ONE_OFF.md),
+[подключение и проверка](PLATEGA_RUNBOOK.md), [результаты](PLATEGA_ACCEPTANCE_20261117.md).
+
 Новый основной сценарий без ручных кодов: [ACCOUNT_ONBOARDING.md](ACCOUNT_ONBOARDING.md).
 Ниже сохранены совместимые подписки/платежи и прежний code API.
 Схема005 добавляет тип аккаунта, подтверждение ПК и разрешения клубных образов.
@@ -29,7 +32,7 @@ SMTP/origin вход недоступен; готовый клиентский S
   устройства требуют оплаченный период/grace независимо от legacy enforcement.
 
 Миграции004/005 в `services/control-plane/migrations/` только добавляют данные;
-текущая версия схемы5. Device binding и разрешения образов описаны в ACCOUNT_ONBOARDING.md.
+Версия 006 сохраняет действующие бессрочные подписки; 007 добавляет журнал возвратов/споров и время сверки платежа. Текущая схема — 7. Device binding и разрешения образов описаны в ACCOUNT_ONBOARDING.md.
 
 ## API
 
@@ -46,6 +49,7 @@ SMTP/origin вход недоступен; готовый клиентский S
 | POST | `/api/v1/account/subscriptions/{id}/auto-renew` | `{enabled}` |
 | POST | `/api/v1/account/subscriptions/{id}/devices/{machine}/release` | освободить место |
 | POST | `/api/v1/account/subscriptions/{id}/pay` | ссылка на оплату (`redirect`) |
+| POST | `/api/v1/account/payments/{id}/refresh` | сверка своей оплаты через API Platega |
 | POST | `/api/v1/payments/webhook` | уведомление платёжного сервиса |
 
 Ошибки — коды строкой (`EMAIL_INVALID`, `LOGIN_CODE_INVALID`, `ACCOUNT_RATE_LIMIT`,
@@ -84,7 +88,13 @@ Webhook проверяет те же заголовки сравнением в 
 внеочередная доставка безопасны, сумма сверяется с ожидающей записью, чужой
 платёж отклоняется. Автопродление (paymentMethod 6) выключено: запрос с
 `auto_renew` отвечает 409 `PAYMENT_AUTORENEW_UNAVAILABLE` до подтверждения
-рекуррентных СБП-подписок менеджером Platega.
+рекуррентных СБП-подписок менеджером Platega. В утверждённую задачу автосписания не входят.
+
+`/pay` принимает `months` 1/3/6/12 и необязательный `expected_amount_kopecks`.
+Расчёт серверный, сроки 30/90/180/360 дней, скидки 0/5/10/20%.
+DISPUTED/CHARGEBACKED/PARTIALLY_REFUNDED сохраняются в `payment_review_events`
+для оператора без автоматического отзыва ранее выданного доступа.
+Сверка `/payments/{id}/refresh` ограничена владельцем и интервалом 15 секунд.
 
 ## Клиент
 
@@ -111,11 +121,11 @@ grace_until, checked_at}`, `subscription.refresh` — то же плюс про�
 ## Порядок включения
 
 1. На согласованном сервере после backup/rollback выкатить control-plane
-   (добавочные миграции до5 применяются сами), положить `plans.json`
+   (добавочные миграции до7 применяются сами; сохранить production 006), положить `plans.json`
    с ценами, настроить SMTP, `-account-origin`. Production здесь не менялся.
 2. Прокси: `/api/` → control-plane; проверить вход в кабинет.
 3. Опубликовать собранный сайт из того же серверного artifact.
 4. Подключить реализованный адаптер Platega и проверить платёж либо оформить
    подтверждённую оператором оплату по счёту. Тестовое зачисление из CI не переносится.
-5. Посмотреть `GET /api/v1/admin/subscriptions/cutoff`; когда список пуст или
-   согласован — включить `-enforce-subscription`.
+5. В рамках подключения Platega не менять `-enforce-subscription`, TLS, SMTP
+   и сетевые настройки. Проверить сохранность существующих подписок и ПК.
