@@ -25,21 +25,26 @@ const maxGameProfiles = 8
 // Each selected exact executable has an independent ladder. The byte/packet
 // budget is shared across the PC. No baseline optimizer policy is changed.
 type gameEntry struct {
-	ProfileID string
-	Name      string
-	Path      string
-	Enabled   bool
-	LocalOnly bool
-	AntiCheat string
-	Engine    *gameudp.Engine
-	persisted uint64
+	ProfileID    string
+	Name         string
+	Path         string
+	Enabled      bool
+	LocalOnly    bool
+	SteamCS2     bool // Exact installation path verified by Steam preset discovery.
+	CS2Auto      bool
+	AntiCheat    string
+	Engine       *gameudp.Engine
+	persisted    uint64
+	cs2Disk      cs2DiskState
+	cs2DiskError string
 }
 type gameRuntime struct {
-	mu      sync.Mutex
-	items   map[string]*gameEntry
-	budget  *gameudp.Budget
-	error   string
-	quality gameudp.TargetQuality
+	mu            sync.Mutex
+	items         map[string]*gameEntry
+	budget        *gameudp.Budget
+	error         string
+	quality       gameudp.TargetQuality
+	consoleStatus string
 }
 type gameDiskEntry struct {
 	LocalOnly bool               `json:"local_only,omitempty"`
@@ -58,6 +63,9 @@ type GameUDPStatus struct {
 	Error    string                `json:"error,omitempty"`
 }
 type GameProfileStatus struct {
+	CS2DiskError  string                       `json:"cs2_preference_error,omitempty"`
+	CS2Auto       bool                         `json:"cs2_auto,omitempty"`
+	CS2Console    string                       `json:"cs2_console,omitempty"`
 	Activity      string                       `json:"activity"`
 	Ready         bool                         `json:"ready"`
 	ProfileID     string                       `json:"profile_id"`
@@ -116,8 +124,12 @@ func (c *Controller) saveGamesLocked() error {
 	if err != nil || len(raw) > 256*1024 {
 		return errors.New("GAME_UDP_CONFIG_LIMIT")
 	}
-	dir := filepath.Dir(c.customPath)
-	if err = os.MkdirAll(dir, 0700); err != nil {
+	return writeGameStateFile(filepath.Join(filepath.Dir(c.customPath), "game-udp.json"), raw)
+}
+
+func writeGameStateFile(path string, raw []byte) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return errors.New("GAME_UDP_SAVE_FAILED")
 	}
 	f, err := os.CreateTemp(dir, ".game-udp-*")
@@ -135,7 +147,7 @@ func (c *Controller) saveGamesLocked() error {
 		err = ce
 	}
 	if err == nil {
-		err = os.Rename(f.Name(), filepath.Join(dir, "game-udp.json"))
+		err = os.Rename(f.Name(), path)
 	}
 	if err != nil {
 		return errors.New("GAME_UDP_SAVE_FAILED")
@@ -152,7 +164,7 @@ func gameProfileSafe(p profiles.Profile) bool {
 			return false
 		}
 	}
-	if (p.Mode != profiles.Direct && p.Mode != profiles.Auto) || p.Trial != nil || p.Identity != nil || len(p.Rules) > 0 || len(p.BrowserRecoveryRules) > 0 {
+	if (p.Mode != profiles.Direct && p.Mode != profiles.Auto) || p.Trial != nil || (p.Identity != nil && !exactCS2Identity(p)) || (len(p.Rules) > 0 || len(p.BrowserRecoveryRules) > 0) && !cs2AutoRuleProfile(p) {
 		return false
 	}
 	for _, preset := range gameudp.Presets() {
@@ -208,6 +220,8 @@ func (c *Controller) registerGame(preset gameudp.Preset, path string) {
 	}
 	// Never silently re-enable a user opt-out or move an existing per-path identity.
 	if gameudp.Canonical(g.Path) == gameudp.Canonical(path) {
+		g.SteamCS2 = preset.ID == "cs2"
+		g.syncCS2Mode(p)
 		g.Name = preset.Name
 		g.AntiCheat = preset.AntiCheat
 	}
@@ -264,7 +278,8 @@ func (c *Controller) updateGamesGate() {
 		if c.games.error != "" {
 			r = c.games.error
 		}
-		if !g.Enabled {
+		g.syncCS2Mode(p)
+		if !g.Enabled && !g.CS2Auto {
 			r = "DISABLED_BY_USER"
 		}
 		if n != nil {
@@ -279,6 +294,7 @@ func (c *Controller) watchGames() {
 	tick := time.NewTicker(time.Second)
 	defer tick.Stop()
 	nextDiscovery := time.Time{}
+	var console cs2ConsoleObserver
 	for {
 		now := time.Now()
 		if !now.Before(nextDiscovery) {
@@ -304,6 +320,8 @@ func (c *Controller) watchGames() {
 			}
 		}
 		c.games.mu.Unlock()
+		c.observeCS2Console(&console, now)
+		c.syncCS2Preferences(now)
 		select {
 		case <-c.ctx.Done():
 			return
@@ -323,11 +341,18 @@ func (c *Controller) classifyGameUDP(id wp.ProcessIdentity, t wp.Tuple) (wp.Deci
 	c.games.mu.Lock()
 	defer c.games.mu.Unlock()
 	g := c.games.items[p.ID]
-	if g == nil || !g.Enabled || gameudp.Canonical(g.Path) != gameudp.Canonical(id.Path) {
+	if g == nil || gameudp.Canonical(g.Path) != gameudp.Canonical(id.Path) {
+		return wp.Decision{}, false
+	}
+	g.syncCS2Mode(p)
+	if !g.Enabled && !g.CS2Auto {
 		return wp.Decision{}, false
 	}
 	n := c.network.Load()
-	if !g.Engine.Ready() || n == nil || len(n.Fingerprint) != 64 || time.Since(n.ObservedAt) > 45*time.Second {
+	if !g.Engine.Ready() || n == nil || len(n.Fingerprint) != 64 || time.Since(n.ObservedAt) > 45*time.Second || g.CS2Auto && n.Fingerprint != c.gameMeasurementNetwork() {
+		if g.CS2Auto {
+			return cs2DirectDecision(p, id, t), true
+		}
 		if g.LocalOnly {
 			// A suspended local trial must not fall through to AUTO's learned
 			// relay choice. Guards still prohibit decoys; only originals pass.
@@ -338,6 +363,13 @@ func (c *Controller) classifyGameUDP(id wp.ProcessIdentity, t wp.Tuple) (wp.Deci
 		return wp.Decision{}, false
 	}
 	d := wp.Decision{NewConnectionsOnly: true, Revision: "game-udp-ladder-v2", Group: p.ID, Network: n.Fingerprint, GameUDP: g.Engine, GameRelayID: "VPS-01", Flow: routing.Flow{PID: id.PID, ProcessPath: id.Path, ApplicationID: p.ID, Protocol: t.Protocol, Source: t.Source, Destination: t.Destination, PinnedPolicy: &routing.Policy{}}, Policy: flowpolicy.Result{Action: flowpolicy.Direct, Fallback: flowpolicy.FailOpen, Source: "game_udp_ladder", Reason: "game route chosen and pinned before first datagram"}}
+	if g.CS2Auto {
+		d.CS2Auto = true
+		d.Revision = "cs2-endpoint-auto-v1"
+		d.Policy.Source = "cs2_auto"
+		d.GameRelayID = ""
+		return d, true
+	}
 	if p.RelayID != "" {
 		d.GameRelayID = p.RelayID
 	}
@@ -405,12 +437,16 @@ func (c *Controller) gameStatus() GameUDPStatus {
 				}
 			}
 		}
+		if len(s.CS2Endpoints) > 12 {
+			s.CS2Endpoints = s.CS2Endpoints[:12]
+			s.Truncated = true
+		}
 		if len(s.Flows) > 12 {
 			s.Flows = s.Flows[:12]
 			s.Truncated = true
 		}
 		reason := s.Reason
-		if n := c.network.Load(); n != nil && s.Reason == "" {
+		if n := c.network.Load(); !g.CS2Auto && n != nil && s.Reason == "" {
 			for _, l := range s.Learning {
 				if l.Network == n.Fingerprint && l.LocalOnly == s.LocalOnly && (!s.LocalOnly || len(s.Flows) == 0 || l.Endpoint == s.Flows[0].Destination) && l.Exhausted && time.Now().Before(l.Expires) {
 					state = "COOLDOWN"
@@ -426,8 +462,12 @@ func (c *Controller) gameStatus() GameUDPStatus {
 		if name == "" {
 			name = g.ProfileID
 		}
-		row := GameProfileStatus{ProfileID: g.ProfileID, Name: name, State: state, Reason: reason, AntiCheat: g.AntiCheat, Engine: s, Ready: s.Enabled && reason == "", Activity: activity}
-		if len(s.Flows) != 0 {
+		row := GameProfileStatus{CS2Auto: g.CS2Auto, ProfileID: g.ProfileID, Name: name, State: state, Reason: reason, AntiCheat: g.AntiCheat, Engine: s, Ready: s.Enabled && reason == "", Activity: activity}
+		if g.CS2Auto {
+			row.CS2Console = c.games.consoleStatus
+			row.CS2DiskError = g.cs2DiskError
+		}
+		if !g.CS2Auto && len(s.Flows) != 0 {
 			if endpoint, err := netip.ParseAddrPort(s.Flows[0].Destination); err == nil {
 				target := c.games.quality.Compare(network, endpoint, relays, now)
 				row.TargetQuality = &target
@@ -463,7 +503,11 @@ func (c *Controller) gameStatus() GameUDPStatus {
 		if !trimmed {
 			for i := range out.Profiles {
 				e := &out.Profiles[i].Engine
-				if len(e.Learning) > 0 {
+				if len(e.CS2Endpoints) > 0 {
+					e.CS2Endpoints = e.CS2Endpoints[:len(e.CS2Endpoints)-1]
+					e.Truncated = true
+					trimmed = true
+				} else if len(e.Learning) > 0 {
 					e.Learning = e.Learning[:len(e.Learning)-1]
 					e.Truncated = true
 					trimmed = true
@@ -531,8 +575,9 @@ func (c *Controller) handleGameUDP(_ context.Context, method string, raw json.Ra
 		c.games.mu.Unlock()
 		return nil, err
 	}
-	g.Engine.SetLocalOnly(g.LocalOnly)
-	g.Engine.Configure(g.Path, g.Enabled)
+	g.syncCS2Mode(p)
+	g.Engine.SetLocalOnly(g.LocalOnly && !g.CS2Auto)
+	g.Engine.Configure(g.Path, g.Enabled || g.CS2Auto)
 	c.games.mu.Unlock()
 	c.updateGamesGate()
 	return c.gameStatus(), nil

@@ -342,3 +342,17 @@ func TestGameLocalOnlyBindingNeverAdmitsRelayIncludingExhaustion(t *testing.T) {
 		at = at.Add(8 * time.Second)
 	}
 }
+
+func TestCS2AutoBindPreservesExplicitBlock(t *testing.T) {
+	_, tuple := gamePacket()
+	for _, d := range []Decision{
+		{CS2Auto: true, Block: true},
+		{CS2Auto: true, Policy: flowpolicy.Result{Action: flowpolicy.Block}},
+		{CS2Auto: true, Flow: routing.Flow{PinnedPolicy: &routing.Policy{Block: true}}},
+	} {
+		out, game, err := BindGameUDP(d, ProcessIdentity{}, tuple, time.Now())
+		if err != nil || game != nil || !out.Block || out.cs2LocalSocket {
+			t.Fatal(out, game, err)
+		}
+	}
+}

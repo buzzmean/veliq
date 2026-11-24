@@ -102,7 +102,7 @@ func clubReadMethod(method string) bool {
 	switch method {
 	case "automation.status", "browser.youtube.decisions", "browser.youtube.local.status":
 		return true
-	case "account.status", "riot.status", "browser.local.probes", "traffic.status", "update.status", "local.catalog", "relay.primary.status", "relay.pool.diagnostics", "status", "profiles", "activation.status", "subscription.status", "subscription.refresh", "browser.native.status", "browser.status", "edge.status", "gameudp.status", "club.status", "capture.changes.marker", "capture.changes", "capture.diagnostics":
+	case "account.status", "riot.status", "browser.local.probes", "traffic.status", "update.status", "local.catalog", "relay.primary.status", "relay.pool.diagnostics", "status", "profiles", "activation.status", "subscription.status", "subscription.refresh", "browser.native.status", "browser.status", "edge.status", "gameudp.status", "gameudp.cs2.endpoint", "club.status", "capture.changes.marker", "capture.changes", "capture.diagnostics":
 		return true
 	default:
 		return false

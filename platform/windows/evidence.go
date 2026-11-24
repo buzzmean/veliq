@@ -140,7 +140,7 @@ func increment(c *CaptureCounters, event string) {
 	switch event {
 	case "game_fake":
 		c.GameFakePackets++
-	case "direct_reply":
+	case "direct_reply", "local_socket_reply":
 		c.DirectReplyPackets++
 	case "quic_fallback":
 		c.QuicFallback++
@@ -152,7 +152,7 @@ func increment(c *CaptureCounters, event string) {
 		c.Captured++
 	case "relay":
 		c.Relayed++
-	case "direct", "direct_proxy":
+	case "direct", "direct_proxy", "local_socket":
 		c.Direct++
 	case "drop":
 		c.Dropped++
@@ -249,6 +249,8 @@ func (l *EvidenceLedger) recordBytesLocked(id ProcessIdentity, t Tuple, event, r
 	if event == "ipv6_blocked" {
 		v.Route = "BLOCK_UNSUPPORTED_IPV6"
 		v.RelayID = ""
+	} else if event == "local_socket" || event == "local_socket_reply" {
+		v.Route, v.RelayID = "LOCAL_SOCKET", ""
 	} else if (event == "relay" || event == "reply") && !v.RequiredBlocked && v.FailureCause == "" {
 		v.Route = "RELAY"
 		v.RelayID = relay
@@ -340,9 +342,9 @@ func incrementBytes(c *CaptureCounters, event string, n uint64) {
 		c.CapturedBytes += n
 	case "relay":
 		c.RelayedBytes += n
-	case "direct", "direct_proxy":
+	case "direct", "direct_proxy", "local_socket":
 		c.DirectBytes += n
-	case "direct_reply":
+	case "direct_reply", "local_socket_reply":
 		c.DirectReplyBytes += n
 	case "reply":
 		c.ReplyBytes += n

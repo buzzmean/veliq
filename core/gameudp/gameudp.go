@@ -97,37 +97,42 @@ const (
 )
 
 type Evidence struct {
-	Selection     string    `json:"selection_reason"`
-	Sequence      uint64    `json:"update_seq"`
-	Stage         string    `json:"stage"`
-	ID            uint64    `json:"flow_id"`
-	Network       string    `json:"network_fingerprint"`
-	PID           uint32    `json:"pid"`
-	Birth         uint64    `json:"creation_time"`
-	Application   string    `json:"exe"`
-	Source        string    `json:"source"`
-	Destination   string    `json:"destination"`
-	Variant       Variant   `json:"variant"`
-	Started       time.Time `json:"started_at"`
-	LastOutgoing  time.Time `json:"last_outgoing"`
-	FirstReply    time.Time `json:"first_reply"`
-	LastReply     time.Time `json:"last_reply"`
-	Outgoing      uint64    `json:"outgoing_packets"`
-	OutgoingBytes uint64    `json:"outgoing_bytes"`
-	Replies       uint64    `json:"inbound_packets"`
-	ReplyBytes    uint64    `json:"inbound_bytes"`
-	Fakes         uint64    `json:"fake_packets"`
-	FakeBytes     uint64    `json:"fake_bytes"`
-	FakeErrors    uint64    `json:"fake_send_errors"`
-	RateLimited   uint64    `json:"rate_limited_packets"`
-	State         string    `json:"state"`
-	Reason        string    `json:"reason"`
+	CS2Auto       bool        `json:"cs2_auto,omitempty"`
+	Selection     string      `json:"selection_reason"`
+	JoinPhase     string      `json:"join_phase,omitempty"`
+	JoinOutcome   string      `json:"join_outcome,omitempty"`
+	GameQuality   *CS2Quality `json:"game_quality,omitempty"`
+	Sequence      uint64      `json:"update_seq"`
+	Stage         string      `json:"stage"`
+	ID            uint64      `json:"flow_id"`
+	Network       string      `json:"network_fingerprint"`
+	PID           uint32      `json:"pid"`
+	Birth         uint64      `json:"creation_time"`
+	Application   string      `json:"exe"`
+	Source        string      `json:"source"`
+	Destination   string      `json:"destination"`
+	Variant       Variant     `json:"variant"`
+	Started       time.Time   `json:"started_at"`
+	LastOutgoing  time.Time   `json:"last_outgoing"`
+	FirstReply    time.Time   `json:"first_reply"`
+	LastReply     time.Time   `json:"last_reply"`
+	Outgoing      uint64      `json:"outgoing_packets"`
+	OutgoingBytes uint64      `json:"outgoing_bytes"`
+	Replies       uint64      `json:"inbound_packets"`
+	ReplyBytes    uint64      `json:"inbound_bytes"`
+	Fakes         uint64      `json:"fake_packets"`
+	FakeBytes     uint64      `json:"fake_bytes"`
+	FakeErrors    uint64      `json:"fake_send_errors"`
+	RateLimited   uint64      `json:"rate_limited_packets"`
+	State         string      `json:"state"`
+	Reason        string      `json:"reason"`
 }
 type cadenceBucket struct {
 	second            int64
 	replies, outgoing uint64
 }
 type Flow struct {
+	cs2Auto     bool
 	cadence     [8]cadenceBucket
 	degradedAt  time.Time
 	engine      *Engine
@@ -156,18 +161,21 @@ type Learning struct {
 	Expires     time.Time `json:"expires"`
 }
 type Snapshot struct {
-	LocalOnly     bool       `json:"local_only"`
-	InitialPolicy string     `json:"initial_policy"`
-	Enabled       bool       `json:"enabled"`
-	Application   string     `json:"application"`
-	Generation    uint64     `json:"generation"`
-	Reason        string     `json:"reason"`
-	Flows         []Evidence `json:"flows"`
-	Learning      []Learning `json:"learning"`
-	Truncated     bool       `json:"truncated"`
-	Lost          uint64     `json:"lost"`
+	CS2Endpoints  []CS2Endpoint `json:"cs2_endpoints,omitempty"`
+	LocalOnly     bool          `json:"local_only"`
+	InitialPolicy string        `json:"initial_policy"`
+	Enabled       bool          `json:"enabled"`
+	Application   string        `json:"application"`
+	Generation    uint64        `json:"generation"`
+	Reason        string        `json:"reason"`
+	Flows         []Evidence    `json:"flows"`
+	Learning      []Learning    `json:"learning"`
+	Truncated     bool          `json:"truncated"`
+	Lost          uint64        `json:"lost"`
 }
 type Engine struct {
+	cs2Auto                    bool
+	cs2Endpoints               map[string]CS2Endpoint
 	mu                         sync.Mutex
 	ladder                     bool
 	localOnly                  bool
@@ -229,6 +237,7 @@ func (e *Engine) Configure(application string, enabled bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if Canonical(e.application) != Canonical(application) || e.enabled != enabled {
+		e.cs2Endpoints = nil
 		e.generation++
 	}
 	e.application = application
@@ -258,14 +267,30 @@ func (e *Engine) Open(k Key, now time.Time) (*Flow, error) {
 }
 
 func (e *Engine) OpenWithQuality(k Key, now time.Time, measuredRelay string) (*Flow, error) {
+	return e.open(k, now, measuredRelay, false)
+}
+
+func (e *Engine) open(k Key, now time.Time, measuredRelay string, cs2Only bool) (*Flow, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	if !e.enabled || e.reason != "" || (e.network != "" && e.network != k.Network) || len(k.Network) != 64 || k.PID == 0 || k.Birth == 0 || !Eligible(k.Application, e.application, "udp", k.Destination) {
+	if (cs2Only && !e.cs2Auto) || !e.enabled || e.reason != "" || (e.network != "" && e.network != k.Network) || len(k.Network) != 64 || k.PID == 0 || k.Birth == 0 || !Eligible(k.Application, e.application, "udp", k.Destination) {
 		return nil, errors.New("GAME_UDP_SCOPE_UNAVAILABLE")
 	}
 	e.cleanup(now)
 	if len(e.flows) >= MaxFlows {
 		return nil, errors.New("GAME_UDP_FLOW_CAPACITY")
+	}
+	if e.cs2Auto {
+		if !strings.HasSuffix(Canonical(k.Application), "/cs2.exe") || !k.Source.IsValid() || k.Source.Port() == 0 {
+			return nil, errors.New("CS2_AUTO_SCOPE_UNAVAILABLE")
+		}
+		stage, selection := Direct, "CS2_DIRECT_DEFAULT"
+		if cs2Only {
+			stage, selection = e.cs2Route(k, now)
+		}
+		f := e.addFlow(k, now, stage, selection, Variant{}, nil)
+		f.cs2Auto, f.e.CS2Auto = true, true
+		return f, nil
 	}
 	cache := e.learning[e.trialKey(k)]
 	// Results from another route policy cannot grant relay or carry exhaustion
@@ -328,10 +353,14 @@ func (e *Engine) OpenWithQuality(k Key, now time.Time, measuredRelay string) (*F
 			return nil, err
 		}
 	}
+	return e.addFlow(k, now, stage, selection, v, p), nil
+}
+
+func (e *Engine) addFlow(k Key, now time.Time, stage, selection string, v Variant, p []byte) *Flow {
 	e.next++
 	f := &Flow{engine: e, key: k, generation: e.generation, payload: p, last: now, e: Evidence{Selection: selection, Stage: stage, ID: e.next, Network: k.Network, PID: k.PID, Birth: k.Birth, Application: k.Application, Source: k.Source.String(), Destination: k.Destination.String(), Variant: v, Started: now, State: "PROBATION", Reason: "SUSTAINED_REPLY_NOT_OBSERVED"}}
 	e.flows[f.e.ID] = f
-	return f, nil
+	return f
 }
 
 // Plan advances the input cutoff even if a decoy fails. Existing flows never
@@ -417,6 +446,13 @@ func (e *Engine) Reply(f *Flow, n int, now time.Time) {
 	}
 	b.replies++
 	f.e.Replies++
+	if f.cs2Auto && f.e.Replies == 1 && f.e.JoinOutcome == "TIMEOUT" {
+		key := endpointKey(f.key.Network, f.key.Application, f.key.Destination.String())
+		if row := e.cs2Endpoints[key]; row.FlowID == f.e.ID {
+			row.lateReply = true
+			e.cs2Endpoints[key] = row
+		}
+	}
 	f.e.ReplyBytes += uint64(n)
 	f.e.LastReply = now
 	f.last = now
@@ -439,7 +475,7 @@ func (e *Engine) Tick(now time.Time) {
 	e.cleanup(now)
 }
 func (e *Engine) health(f *Flow, now time.Time) {
-	if f.failed || f.generation != e.generation || !e.enabled || e.reason != "" || f.e.Outgoing < 6 || now.Sub(f.e.LastOutgoing) > 2*time.Second {
+	if f.cs2Auto || f.failed || f.generation != e.generation || !e.enabled || e.reason != "" || f.e.Outgoing < 6 || now.Sub(f.e.LastOutgoing) > 2*time.Second {
 		return
 	}
 	replies, outgoing, buckets := uint64(0), uint64(0), 0
@@ -600,6 +636,11 @@ func (e *Engine) putLearning(key string, v Learning, now time.Time) {
 	e.revision++
 }
 func (e *Engine) cleanup(now time.Time) {
+	for k, row := range e.cs2Endpoints {
+		if !now.Before(row.ObservedAt.Add(cs2EvidenceTTL)) {
+			delete(e.cs2Endpoints, k)
+		}
+	}
 	for id, f := range e.flows {
 		if now.Sub(f.last) > 2*time.Minute {
 			delete(e.flows, id)
@@ -620,9 +661,21 @@ func (e *Engine) Snapshot() Snapshot {
 	if e.ladder && !e.startLocal {
 		initialPolicy = "DIRECT_FIRST"
 	}
+	if e.cs2Auto {
+		initialPolicy = "CS2_ENDPOINT_AUTO"
+	}
 	out := Snapshot{LocalOnly: e.localOnly, InitialPolicy: initialPolicy, Enabled: e.enabled, Application: e.application, Generation: e.generation, Reason: e.reason, Flows: []Evidence{}, Learning: []Learning{}, Lost: e.lost}
+	if e.cs2Auto {
+		for _, row := range e.cs2Endpoints {
+			if !row.restored && (e.network == "" || row.Network == e.network) {
+				row.Quality = copyCS2Quality(row.Quality)
+				out.CS2Endpoints = append(out.CS2Endpoints, row)
+			}
+		}
+		sort.Slice(out.CS2Endpoints, func(i, j int) bool { return out.CS2Endpoints[i].FlowID > out.CS2Endpoints[j].FlowID })
+	}
 	for _, f := range e.flows {
-		out.Flows = append(out.Flows, f.e)
+		out.Flows = append(out.Flows, f.evidence())
 	}
 	for _, l := range e.learning {
 		out.Learning = append(out.Learning, l)
@@ -672,7 +725,7 @@ func (e *Engine) Evidence(f *Flow) Evidence {
 	if f == nil || f.engine != e {
 		return Evidence{}
 	}
-	return f.e
+	return f.evidence()
 }
 
 func (e *Engine) Ready() bool { e.mu.Lock(); defer e.mu.Unlock(); return e.enabled && e.reason == "" }
@@ -709,6 +762,13 @@ func (e *Engine) PinUnverifiedDirect(f *Flow) {
 	defer e.mu.Unlock()
 	if f == nil || f.engine != e || f.e.Outgoing != 0 || f.e.Fakes != 0 {
 		return
+	}
+	if f.cs2Auto && f.e.Selection == "CS2_LOCAL_SOCKET_TRIAL" {
+		key := endpointKey(f.key.Network, f.key.Application, f.key.Destination.String())
+		if row := e.cs2Endpoints[key]; row.trialFlow == f.e.ID {
+			row.trialAt, row.trialFlow = time.Time{}, 0
+			e.cs2Endpoints[key] = row
+		}
 	}
 	f.e.Sequence++
 	f.e.Stage = Direct

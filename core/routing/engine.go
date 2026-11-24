@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/buzzmean/neexitlag/core/protocol"
+	"io"
 	"net"
 	"net/netip"
 	"sync"
@@ -178,6 +179,20 @@ func (e *Engine) Snapshot() []Flow {
 	return out
 }
 func (e *Engine) OpenUDP(ctx context.Context, f Flow) (Datagram, error) {
+	return e.openUDP(ctx, f, protocol.MaxPayload)
+}
+
+// OpenLocalUDP gives a locally forwarded IPv4 flow its own OS UDP socket.
+// An application, adaptive or fallback relay policy cannot override this pin.
+func (e *Engine) OpenLocalUDP(ctx context.Context, f Flow) (Datagram, error) {
+	if f.PID == 0 || f.ProcessPath == "" || f.ApplicationID == "" || !f.Destination.Addr().Is4() || f.PinnedPolicy != nil && f.PinnedPolicy.Block {
+		return nil, errors.New("local UDP requires an identified IPv4 flow")
+	}
+	f.PinnedPolicy = &Policy{}
+	return e.openUDP(ctx, f, 65507)
+}
+
+func (e *Engine) openUDP(ctx context.Context, f Flow, payloadLimit int) (Datagram, error) {
 	f.Protocol = "udp"
 	k, p, r, err := e.reserve(f)
 	if err != nil {
@@ -222,7 +237,7 @@ func (e *Engine) OpenUDP(ctx context.Context, f Flow) (Datagram, error) {
 		c, er := (&net.Dialer{}).DialContext(ctx, "udp", f.Destination.String())
 		err = er
 		if err == nil {
-			d = &directUDP{c: c}
+			d = &directUDP{c: c, payloadLimit: payloadLimit}
 		}
 	}
 	if err != nil {
@@ -324,15 +339,20 @@ func (f *trackedUDP) Close() error {
 }
 
 type directUDP struct {
-	c      net.Conn
-	readMu sync.Mutex
+	payloadLimit  int
+	receiveBuffer []byte // large IPv4 scratch owned by readMu
+	c             net.Conn
+	readMu        sync.Mutex
 }
 
 func (f *directUDP) Send(b []byte) error {
-	if len(b) > protocol.MaxPayload {
+	if len(b) > f.payloadLimit {
 		return protocol.ErrFrame
 	}
-	_, err := f.c.Write(b)
+	n, err := f.c.Write(b)
+	if err == nil && n != len(b) {
+		return io.ErrShortWrite
+	}
 	return err
 }
 func (f *directUDP) Receive(ctx context.Context) ([]byte, error) {
@@ -354,13 +374,26 @@ func (f *directUDP) Receive(ctx context.Context) ([]byte, error) {
 		}
 		f.c.SetReadDeadline(time.Time{})
 	}()
-	b := make([]byte, protocol.MaxPayload+1)
+	var b []byte
+	if f.payloadLimit > protocol.MaxPayload {
+		if f.receiveBuffer == nil {
+			f.receiveBuffer = make([]byte, f.payloadLimit+1)
+		}
+		b = f.receiveBuffer
+	} else {
+		b = make([]byte, f.payloadLimit+1)
+	}
 	n, err := f.c.Read(b)
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	if n > protocol.MaxPayload {
+	if n > f.payloadLimit {
 		return nil, protocol.ErrFrame
+	}
+	if f.receiveBuffer != nil {
+		data := make([]byte, n)
+		copy(data, b[:n])
+		return data, err
 	}
 	return b[:n], err
 }

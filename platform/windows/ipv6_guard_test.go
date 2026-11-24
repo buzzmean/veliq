@@ -67,3 +67,26 @@ func TestNativeNewConnectionsOnlyDoesNotDisableIPv6FailClosed(t *testing.T) {
 		t.Fatal("native browser IPv6 leaked")
 	}
 }
+
+func TestCS2IPv6TCPKeepsVerdictUntilNewSocket(t *testing.T) {
+	g := &IPv6Guard{}
+	id := ProcessIdentity{PID: 43, CreationTime: 12, Path: "cs2.exe"}
+	tuple := Tuple{Protocol: "tcp", Source: netip.MustParseAddrPort("[2001:db8::1]:55000"), Destination: netip.MustParseAddrPort("[2001:db8::2]:443")}
+	allow := Decision{CS2Auto: true, NewConnectionsOnly: true}
+	deny := allow
+	deny.Block, deny.BlockOnFailure = true, true
+	now := time.Now()
+	if g.Block(id, tuple, 2, allow, 1, now) || g.Block(id, tuple, 16, deny, 1, now) {
+		t.Fatal("new DNS hint interrupted an established IPv6 service")
+	}
+	if !g.Block(id, tuple, 2, deny, 1, now) || !g.Block(id, tuple, 16, allow, 1, now) {
+		t.Fatal("reused tuple inherited authorization or expired DNS opened blocked socket")
+	}
+	id.CreationTime++
+	if g.Block(id, tuple, 16, allow, 1, now) {
+		t.Fatal("PID reuse inherited blocked stream")
+	}
+	if !g.Block(id, tuple, 16, Decision{Block: true}, 1, now) {
+		t.Fatal("unrelated policy failed to apply")
+	}
+}

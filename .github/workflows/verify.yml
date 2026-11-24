@@ -224,6 +224,8 @@ jobs:
       - run: |
           $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
           $env:NEEXITLAG_TEST_BROWSER_RECOVERY=(Resolve-Path bin/windows-e2e/browser-recovery-acceptance.exe).Path
+          go test -count=1 -timeout 30s -v ./platform/windows -run '^TestCS2AutoSignedDriverFlowTuple$'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -race -timeout 30s -v ./platform/windows -run '^TestNativeBoundDial|^TestNativeChromeStaleAssociation'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -timeout 90s -v ./platform/windows -run TestNativeCaptureHandlesStartStop

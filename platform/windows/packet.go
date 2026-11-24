@@ -38,8 +38,12 @@ func udpReplyTemplate(packet []byte) []byte {
 	return out
 }
 func ReplyUDP(template, payload []byte) ([]byte, error) {
+	return udpReplyWithin(template, payload, protocol.MaxPayload)
+}
+
+func udpReplyWithin(template, payload []byte, payloadLimit int) ([]byte, error) {
 	tuple, _, err := ParseUDP(template)
-	if err != nil || len(payload) > protocol.MaxPayload {
+	if err != nil || len(payload) > payloadLimit || len(payload) > 65535-int(template[0]&15)*4-8 {
 		return nil, errors.New("invalid UDP reply")
 	}
 	ihl := int(template[0]&15) * 4

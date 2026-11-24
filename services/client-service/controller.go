@@ -392,6 +392,9 @@ func (c *Controller) Classify(identity windowsplatform.ProcessIdentity, t window
 	if !enabled || c.selfExecutable != "" && strings.EqualFold(identity.Path, c.selfExecutable) {
 		return decision
 	}
+	if d, ok := c.classifyCS2Auto(identity, t); ok {
+		return d
+	}
 	if d, ok := c.classifyGameUDP(identity, t); ok {
 		return d
 	}
@@ -733,6 +736,10 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return c.trafficSnapshot(), nil
 	case "local.catalog":
 		return c.catalog.snapshot(), nil
+	case "gameudp.cs2.endpoint":
+		return c.cs2EndpointStatus(raw)
+	case "gameudp.cs2.outcome":
+		return c.recordCS2Quality(raw)
 	case "gameudp.status", "gameudp.set", "pubg.status", "pubg.set":
 		return c.handleGameUDP(ctx, method, raw)
 	case "account.status":

@@ -190,6 +190,11 @@ func (b *WinDivertBackend) reconfigureApplications(ids []string, change func() e
 	}
 	b.mu.Lock()
 	for tuple, f := range b.flows {
+		// CS2 AUTO learns for new sockets. The next NETWORK packet rechecks
+		// explicit mode changes under the new policy epoch.
+		if f.decision.CS2Auto && f.game != nil {
+			continue
+		}
 		if f.decision.Flow.ApplicationID == "" || (!b.transitionAll && !affected[f.decision.Flow.ApplicationID]) {
 			continue
 		}

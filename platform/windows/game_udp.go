@@ -70,6 +70,10 @@ func SendGameUDP(e *gameudp.Engine, flow *gameudp.Flow, id ProcessIdentity, tupl
 	if sent > 0 {
 		ledger.RecordLocalResult(id, tuple, localstrategy.Result{Modified: true, Strategy: e.Evidence(flow).Variant.ID, Preset: "game-udp"}, uint64(len(p)))
 	}
+	return sendOriginalGameUDP(e, flow, id, tuple, p, send, ledger, now)
+}
+
+func sendOriginalGameUDP(e *gameudp.Engine, flow *gameudp.Flow, id ProcessIdentity, tuple Tuple, p []byte, send func([]byte) error, ledger *EvidenceLedger, now time.Time) error {
 	err := send(p)
 	if err == nil {
 		e.Outgoing(flow, len(p)-int(p[0]&15)*4-8, now)
@@ -96,10 +100,39 @@ func (l *EvidenceLedger) RecordGameUDP(id ProcessIdentity, t Tuple, v gameudp.Ev
 // BindGameUDP makes one immutable per-tuple selection before allocating relay
 // admission or sending the first packet. A cache update never changes this flow.
 func BindGameUDP(d Decision, id ProcessIdentity, t Tuple, now time.Time) (Decision, *gameudp.Flow, error) {
+	k := gameudp.Key{Network: d.Network, Application: id.Path, PID: id.PID, Birth: id.CreationTime, Source: t.Source, Destination: t.Destination}
+	if d.CS2Auto {
+		if d.Block || d.Policy.Action == flowpolicy.Block || d.Flow.PinnedPolicy != nil && d.Flow.PinnedPolicy.Block {
+			d.Block = true
+			d.GameUDP = nil
+			return d, nil, nil
+		}
+		// Pin the original application datagrams to Windows networking. Cached
+		// relay hints and failover policies from older profiles cannot open a relay.
+		d.Route, d.Flow.Route = routing.Route{}, routing.Route{}
+		d.Flow.PinnedPolicy = &routing.Policy{}
+		d.Flow.UDPFakePrelude, d.Flow.UDPFakeCutoff = 0, 0
+		d.ProbeDirect, d.Block, d.BlockOnFailure = false, false, false
+		d.Local, d.LocalStrategyID = nil, ""
+		d.GameRelayID, d.GameQualityRelayID, d.GameQualityRelayAddress = "", "", ""
+		d.Policy = flowpolicy.Result{Action: flowpolicy.Direct, Fallback: flowpolicy.FailOpen, Source: "cs2_auto", Reason: "CS2 uses the Windows route"}
+		if d.GameUDP == nil {
+			return d, nil, nil
+		}
+		f, err := d.GameUDP.OpenCS2(k, now)
+		if err != nil {
+			d.GameUDP = nil
+		} else if d.GameUDP.Evidence(f).Stage == gameudp.LocalSocket {
+			d.cs2LocalSocket = true
+			d.BlockOnFailure = true // Never replay a failed datagram on the native socket.
+			d.Policy.Reason = d.GameUDP.Evidence(f).Selection
+		}
+		return d, f, err
+	}
 	if d.GameUDP == nil {
 		return d, nil, nil
 	}
-	f, err := d.GameUDP.OpenWithQuality(gameudp.Key{Network: d.Network, Application: id.Path, PID: id.PID, Birth: id.CreationTime, Source: t.Source, Destination: t.Destination}, now, d.GameQualityRelayID)
+	f, err := d.GameUDP.OpenWithQuality(k, now, d.GameQualityRelayID)
 	if err != nil {
 		d.GameUDP = nil
 		return d, nil, err

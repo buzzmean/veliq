@@ -85,7 +85,11 @@ func (g *IPv6Guard) Block(id ProcessIdentity, t Tuple, flags byte, d Decision, s
 	if p, ok := g.pins[t]; ok {
 		if p.identity.PID == id.PID && p.identity.CreationTime == id.CreationTime && p.identity.Path == id.Path {
 			p.last = now
-			p.block = id.PID != self && requiresInterception(d)
+			// A new SYN may reuse this socket tuple. During an existing CS2
+			// connection, a DNS cache refresh must not interrupt the stream.
+			if t.Protocol != "tcp" || !d.CS2Auto || !d.NewConnectionsOnly || flags&0x12 == 0x02 {
+				p.block = id.PID != self && requiresInterception(d)
+			}
 			g.pins[t] = p
 			return p.block
 		}

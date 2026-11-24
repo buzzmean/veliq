@@ -48,6 +48,8 @@ type Decision struct {
 	DNSExchange func(context.Context, []byte) ([]byte, error)
 
 	GameUDP                                     *gameudp.Engine
+	CS2Auto                                     bool
+	cs2LocalSocket                              bool
 	GameRelayID                                 string
 	GameQualityRelayID, GameQualityRelayAddress string
 	// Native browser planning runs only in the bounded deferred worker, never

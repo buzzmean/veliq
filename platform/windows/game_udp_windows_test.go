@@ -20,7 +20,12 @@ import (
 // writes are replaced; this is not actual-driver or game/anti-cheat acceptance.
 func nativeGameIdentity(t *testing.T) ProcessIdentity {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run=^TestHotAttachIdentityChild$", "-test.v")
+	return nativeGameIdentityExecutable(t, os.Args[0])
+}
+
+func nativeGameIdentityExecutable(t *testing.T, executable string) ProcessIdentity {
+	t.Helper()
+	cmd := exec.Command(executable, "-test.run=^TestHotAttachIdentityChild$", "-test.v")
 	cmd.Env = append(os.Environ(), "NEEXITLAG_HOT_IDENTITY_CHILD=1")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

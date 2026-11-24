@@ -96,7 +96,7 @@ func (b *WinDivertBackend) observeGameReplies() {
 		tuple.Source, tuple.Destination = tuple.Destination, tuple.Source
 		b.mu.Lock()
 		f := b.flows[tuple]
-		if f == nil || f.game == nil || f.decision.GameUDP == nil || !f.decision.Route.Direct() || f.retired {
+		if f == nil || f.game == nil || f.decision.GameUDP == nil || !f.decision.Route.Direct() || f.decision.cs2LocalSocket || f.retired {
 			b.mu.Unlock()
 			continue
 		}

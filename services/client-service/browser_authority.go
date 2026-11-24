@@ -80,6 +80,9 @@ func (c *Controller) authorityPlan(ctx context.Context, q browserproxy.Request) 
 	if err != nil {
 		return browserproxy.Plan{}, err
 	}
+	if plan, ok := c.cs2ProxyPlan(id, q); ok {
+		return plan, nil
+	}
 	if c.authorityBrowser(q) {
 		if c.authorityGuardPending() {
 			return c.authorityGuardPlan(ctx, q)
@@ -139,6 +142,12 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 	id, err := c.authorityCurrent(q)
 	if err != nil {
 		return nil, err
+	}
+	if current, ok := c.cs2ProxyPlan(id, q); ok || plan.Policy.Source == cs2ProxySource {
+		if !ok || plan.Enabled || current.Policy != plan.Policy || current.Policy.Action != flowpolicy.Direct {
+			return nil, errors.New("CS2_PROXY_DIRECT_UNAVAILABLE")
+		}
+		return c.openCS2ProxyDirect(ctx, id, q)
 	}
 	if c.authorityBrowser(q) {
 		if plan.Policy.Source == "owner_authority_boot_guard" {

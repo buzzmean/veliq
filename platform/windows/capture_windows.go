@@ -17,11 +17,17 @@ import (
 	"golang.org/x/sys/windows"
 	"net/netip"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
 )
+
+func (d Decision) udpWorker() bool {
+	return d.cs2LocalSocket || d.ProbeDirect || !d.Route.Direct()
+}
 
 type queuedDatagram struct {
 	payload  []byte
@@ -223,7 +229,7 @@ func (b *WinDivertBackend) Start(parent context.Context, classify Classifier) (r
 	b.snapshotHotTargets()
 	b.wg.Add(6)
 	go b.hotAttachWorker()
-	go b.track()
+	go b.track(classify)
 	go b.socketGuard(classify)
 	go b.guardIPv6(classify)
 	go b.cleanup()
@@ -292,10 +298,9 @@ func (b *WinDivertBackend) stopLocked() error {
 	b.mu.Unlock()
 	return nil
 }
-func (b *WinDivertBackend) track() {
+func (b *WinDivertBackend) track(classify Classifier) {
 	defer b.wg.Done()
 	d := b.proc()
-	discovery := b.cache
 	var address [80]byte
 	for {
 		ok, _, e := d.recv.Call(b.flow, 0, 0, 0, uintptr(unsafe.Pointer(&address[0])))
@@ -308,45 +313,129 @@ func (b *WinDivertBackend) track() {
 		if b.ctx.Err() != nil {
 			return
 		}
-		if address[10]&0x10 != 0 {
-			continue
-		}
-		data := address[16:]
-		pid := binary.LittleEndian.Uint32(data[16:20])
-		proto := "udp"
-		if data[56] == 6 {
-			proto = "tcp"
-		} else if data[56] != 17 {
-			continue
-		}
-		src, dst := [4]byte{}, [4]byte{}
-		binary.BigEndian.PutUint32(src[:], binary.LittleEndian.Uint32(data[32:36]))
-		binary.BigEndian.PutUint32(dst[:], binary.LittleEndian.Uint32(data[48:52]))
-		tuple := Tuple{proto, netip.AddrPortFrom(netip.AddrFrom4(src), binary.LittleEndian.Uint16(data[52:54])), netip.AddrPortFrom(netip.AddrFrom4(dst), binary.LittleEndian.Uint16(data[54:56]))}
-		endpoint := binary.LittleEndian.Uint64(data[:8])
-		event := address[9]
-		if event == 2 {
-			b.associations.Delete(tuple, endpoint)
-			b.mu.Lock()
-			if f := b.flows[tuple]; f != nil && f.endpoint == endpoint {
-				f.once.Do(func() { close(f.done) })
-				delete(b.flows, tuple)
-			}
-			b.mu.Unlock()
-			continue
-		}
-		identity, e := discovery.Lookup(pid)
-		if e == nil {
-			b.associations.Put(Association{identity, tuple, endpoint})
-			// FLOW can arrive after the first packet/owner fallback. Consume proof for
-			// an already-observed tuple instead of rearming it after packet-cache expiry.
-			b.mu.Lock()
-			if b.flows[tuple] != nil {
-				b.associations.MarkGameFirstFlight(tuple, identity)
-			}
-			b.mu.Unlock()
+		b.trackFlowEvent(address, classify)
+	}
+}
+
+func (b *WinDivertBackend) trackFlowEvent(address [80]byte, classify Classifier) {
+	data := address[16:]
+	pid := binary.LittleEndian.Uint32(data[16:20])
+	endpoint := binary.LittleEndian.Uint64(data[:8])
+	remove := address[9] == 2
+	ipv6 := address[10]&0x10 != 0
+	if data[56] != 17 && (ipv6 || data[56] != 6) {
+		return
+	}
+	var identity ProcessIdentity
+	if !remove {
+		// The NETWORK layer has no PID. Use the same cache for FLOW ownership
+		// in both the CS2-specific and stock paths.
+		var err error
+		identity, err = b.cache.Lookup(pid)
+		if err != nil {
+			return
 		}
 	}
+
+	if data[56] == 17 && (remove || isCS2Image(identity)) {
+		tuple := cs2IPv4FlowTuple(data, ipv6)
+		if tuple.Destination.IsValid() {
+			if remove {
+				// The process can already be gone or its profile disabled.
+				// Accept a delete only for the exact recorded socket.
+				b.associations.mu.RLock()
+				owner := b.associations.items[tuple]
+				b.associations.mu.RUnlock()
+				b.mu.Lock()
+				f := b.flows[tuple]
+				matchesPin := f != nil && f.endpoint == endpoint && f.identity.PID == pid && f.decision.CS2Auto
+				b.mu.Unlock()
+				if endpoint != 0 && (matchesPin || owner.Endpoint == endpoint && owner.Identity.PID == pid && isCS2Image(owner.Identity)) {
+					b.removeTrackedFlow(tuple, endpoint)
+					return
+				}
+			} else if decision, _ := ClassifyCapture(identity, tuple, uint32(os.Getpid()), classify); decision.CS2Auto {
+				b.recordTrackedFlow(Association{identity, tuple, endpoint}, true)
+				return
+			}
+		}
+	}
+	if ipv6 {
+		return
+	}
+	proto := "udp"
+	if data[56] == 6 {
+		proto = "tcp"
+	} else if data[56] != 17 {
+		return
+	}
+	src, dst := [4]byte{}, [4]byte{}
+	binary.BigEndian.PutUint32(src[:], binary.LittleEndian.Uint32(data[32:36]))
+	binary.BigEndian.PutUint32(dst[:], binary.LittleEndian.Uint32(data[48:52]))
+	tuple := Tuple{proto, netip.AddrPortFrom(netip.AddrFrom4(src), binary.LittleEndian.Uint16(data[52:54])), netip.AddrPortFrom(netip.AddrFrom4(dst), binary.LittleEndian.Uint16(data[54:56]))}
+	if remove {
+		b.removeTrackedFlow(tuple, endpoint)
+	} else {
+		b.recordTrackedFlow(Association{identity, tuple, endpoint}, false)
+	}
+}
+
+func (b *WinDivertBackend) removeTrackedFlow(tuple Tuple, endpoint uint64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.associations.Delete(tuple, endpoint)
+	if f := b.flows[tuple]; f != nil && f.endpoint == endpoint {
+		f.once.Do(func() { close(f.done) })
+		delete(b.flows, tuple)
+	}
+}
+
+func (b *WinDivertBackend) recordTrackedFlow(a Association, cs2Auto bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if !b.associations.Put(a) {
+		return
+	}
+	f := b.flows[a.Tuple]
+	if f == nil {
+		return
+	}
+	if cs2Auto && f.decision.CS2Auto && a.Endpoint != 0 && f.endpoint != 0 && a.Endpoint != f.endpoint {
+		// Same PID, birth and UDP tuple can reappear on a newly created socket.
+		// A delayed delete for the old socket must leave the new decision intact.
+		f.once.Do(func() { close(f.done) })
+		delete(b.flows, a.Tuple)
+		return
+	}
+	if cs2Auto && f.endpoint == 0 && f.identity.PID == a.Identity.PID && f.identity.CreationTime == a.Identity.CreationTime {
+		f.endpoint = a.Endpoint
+	}
+	// FLOW can arrive after the first NETWORK packet. It cannot authorize a
+	// route change on that already active socket.
+	b.associations.MarkGameFirstFlight(a.Tuple, a.Identity)
+}
+
+func isCS2Image(id ProcessIdentity) bool {
+	return strings.EqualFold(filepath.Base(id.Path), "cs2.exe")
+}
+
+// Word zero of WinDivert's host-order address array holds an IPv4 address.
+// An IPv6-layer FLOW can also identify an IPv4 datagram on a dual-stack
+// socket, but only if both endpoints are IPv4-mapped.
+func cs2IPv4FlowTuple(data []byte, ipv6 bool) Tuple {
+	ip4 := func(words []byte) netip.Addr {
+		if ipv6 && (binary.LittleEndian.Uint32(words[4:8]) != 0x0000ffff || binary.LittleEndian.Uint64(words[8:16]) != 0) {
+			return netip.Addr{}
+		}
+		var ip [4]byte
+		binary.BigEndian.PutUint32(ip[:], binary.LittleEndian.Uint32(words[:4]))
+		return netip.AddrFrom4(ip)
+	}
+	src, dst := ip4(data[20:36]), ip4(data[36:52])
+	if !src.IsValid() || !dst.IsValid() {
+		return Tuple{}
+	}
+	return Tuple{"udp", netip.AddrPortFrom(src, binary.LittleEndian.Uint16(data[52:54])), netip.AddrPortFrom(dst, binary.LittleEndian.Uint16(data[54:56]))}
 }
 
 // proc is retained until receive loops have stopped; Stop only clears publication.
@@ -470,7 +559,7 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 			latest.Policy.Reason = "EXISTING_UDP_PINNED_UNTIL_CLOSED"
 			f.decision = latest
 		}
-		if latest.Revision != f.decision.Revision {
+		if latest.Revision != f.decision.Revision && !(f.decision.CS2Auto && latest.CS2Auto && f.game != nil) {
 			f.retired = true
 			f.once.Do(func() { close(f.done) })
 			if f.cancelOpen != nil {
@@ -533,8 +622,9 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 		var game *gameudp.Flow
 		var gameErr error
 		decision, game, gameErr = BindGameUDP(decision, identity, tuple, time.Now())
-		if game != nil && !b.associations.MarkGameFirstFlight(tuple, identity) {
+		if game != nil && !b.associations.MarkGameFirstFlight(tuple, identity) && (!decision.CS2Auto || decision.cs2LocalSocket) {
 			decision.GameUDP.PinUnverifiedDirect(game)
+			decision.cs2LocalSocket = false
 			decision.Route = routing.Route{}
 			decision.BlockOnFailure = false
 			decision.Flow.PinnedPolicy = &routing.Policy{}
@@ -544,7 +634,7 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 			b.evidence.RecordLifecycle(identity, tuple, gameErr.Error())
 		}
 		f = &captureFlow{policyEpoch: b.policyEpoch.Load(), decision: decision, game: game, dropCause: telemetry.Policy, identity: identity, endpoint: association.Endpoint, done: make(chan struct{}), address: address}
-		if (!decision.Route.Direct() || decision.ProbeDirect) && !decision.Block {
+		if decision.udpWorker() && !decision.Block {
 			f.opening = true
 			f.queue = make(chan queuedDatagram, 32)
 			f.template = udpReplyTemplate(packet)
@@ -556,7 +646,7 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 		if f.game != nil && decision.GameUDP != nil {
 			b.evidence.RecordGameUDP(identity, tuple, decision.GameUDP.Evidence(f.game))
 		}
-		if (!decision.Route.Direct() || decision.ProbeDirect) && !decision.Block {
+		if decision.udpWorker() && !decision.Block {
 			if b.admission.acquire(decision.ProbeDirect) {
 				b.wg.Add(1)
 				go b.forward(tuple, f, d)
@@ -601,23 +691,33 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 		b.drop(identity, tuple)
 		return
 	}
-	if f.game != nil && decision.GameUDP != nil && known && decision.Route.Direct() {
-		if !b.primeGameAllowed(packet, address) {
+	if f.game != nil && decision.GameUDP != nil && known && !decision.udpWorker() {
+		sender := SendGameUDP
+		if decision.CS2Auto {
+			sender = sendOriginalGameUDP
+		} else if !b.primeGameAllowed(packet, address) {
 			decision.GameUDP.SetReason("FOREIGN_UDP_INTERCEPTOR_OR_OBSERVER_PENDING")
 		}
-		if err := SendGameUDP(decision.GameUDP, f.game, identity, tuple, packet, func(q []byte) error { return b.inject(d, q, address) }, b.evidence, time.Now()); err != nil {
+		if err := sender(decision.GameUDP, f.game, identity, tuple, packet, func(q []byte) error { return b.inject(d, q, address) }, b.evidence, time.Now()); err != nil {
+			if decision.CS2Auto && localUDPRouteError(err) {
+				decision.GameUDP.CS2LocalFailure(f.game, time.Now())
+				b.evidence.RecordDrop(identity, tuple, "CS2_LOCAL_SEND_FAILED", false)
+				b.evidence.RecordGameUDP(identity, tuple, decision.GameUDP.Evidence(f.game))
+				b.Drops.Add(1)
+				return
+			}
 			b.fail(err)
 		}
 		return
 	}
-	if (decision.Route.Direct() && !decision.ProbeDirect) || !known {
+	if !decision.udpWorker() || !known {
 		if e = SendLocal(decision, &f.localState, identity, tuple, packet, func(q []byte) error { return b.inject(d, q, LocalPacketAddress(q, address)) }, b.evidence); e != nil {
 			b.fail(e)
 			return
 		}
 		return
 	}
-	if len(payload) > protocol.MaxPayload {
+	if !decision.cs2LocalSocket && len(payload) > protocol.MaxPayload {
 		b.LocalDrops.Attempt(telemetry.CaptureProcessing)
 		b.LocalDrops.Drop(telemetry.CaptureProcessing)
 		b.drop(identity, tuple)
@@ -633,7 +733,7 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 		b.drop(identity, tuple)
 		return
 	}
-	if latest.Route.Direct() && !latest.ProbeDirect {
+	if !latest.udpWorker() {
 		b.mu.Unlock()
 		b.LocalDrops.Attempt(telemetry.CaptureProcessing)
 		if err := b.inject(d, packet, address); err != nil {
@@ -657,6 +757,13 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 	b.mu.Unlock()
 }
 
+// Only definite local routing/address errors qualify. Permission failures,
+// an unavailable capture driver and receipt timeouts provide no such evidence.
+func localUDPRouteError(err error) bool {
+	return errors.Is(err, windows.WSAEADDRNOTAVAIL) || errors.Is(err, windows.WSAENETUNREACH) ||
+		errors.Is(err, windows.WSAEHOSTUNREACH) || errors.Is(err, windows.ERROR_NETWORK_UNREACHABLE) || errors.Is(err, windows.ERROR_HOST_UNREACHABLE)
+}
+
 func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 	defer b.wg.Done()
 	defer func() {
@@ -674,6 +781,7 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 	var datagram routing.Datagram
 	var err error
 	adaptive := f.decision.ProbeDirect
+	localSocket := f.decision.cs2LocalSocket
 	openStarted := time.Now()
 	// Limit simultaneous setup work, not the number of live sockets. Admission
 	// is already reserved; waiting shares the existing 750ms setup budget.
@@ -688,7 +796,12 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 	}
 	select {
 	case b.openWorkers <- struct{}{}:
-		if adaptive {
+		if localSocket {
+			datagram, err = b.Engine.OpenLocalUDP(ctx, f.decision.Flow)
+			if localUDPRouteError(err) {
+				f.decision.GameUDP.CS2LocalFailure(f.game, time.Now())
+			}
+		} else if adaptive {
 			datagram, err = b.Engine.OpenAdaptiveUDP(ctx, f.decision.Flow, f.decision.Policy.RelayID, 3*time.Second)
 		} else {
 			datagram, err = b.Engine.OpenUDP(ctx, f.decision.Flow)
@@ -710,7 +823,7 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 		}
 		return
 	}
-	if !adaptive {
+	if !adaptive && !localSocket {
 		b.evidence.RecordRelayOpen(f.identity, tuple, openStarted, err)
 		if err != nil && f.game != nil && f.decision.GameUDP != nil {
 			f.decision.GameUDP.TransportFailed(f.game, "GAME_RELAY_OPEN_FAILED")
@@ -720,7 +833,7 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 	if err == nil {
 		for _, flow := range b.Engine.Snapshot() {
 			if flow.PID == f.decision.Flow.PID && flow.Source == tuple.Source && flow.Destination == tuple.Destination {
-				if flow.Route.Direct() && !adaptive {
+				if flow.Route.Direct() && !adaptive && !localSocket {
 					err = errors.New("relay setup fell back to DIRECT")
 				} else {
 					b.mu.Lock()
@@ -786,7 +899,7 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 					b.evidence.RecordLifecycle(f.identity, tuple, "UDP_RELAY_RECOVERING")
 					continue
 				}
-				if errors.Is(e, context.DeadlineExceeded) {
+				if errors.Is(e, context.DeadlineExceeded) || localSocket && os.IsTimeout(e) {
 					continue
 				}
 				return
@@ -798,7 +911,11 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 			}
 			f.lastSeen = time.Now()
 			b.mu.Unlock()
-			packet, e := ReplyUDP(f.template, payload)
+			limit := protocol.MaxPayload
+			if localSocket {
+				limit = 65507
+			}
+			packet, e := udpReplyWithin(f.template, payload, limit)
 			if e != nil {
 				b.LocalDrops.Attempt(telemetry.ReplyReinjection)
 				b.LocalDrops.Drop(telemetry.ReplyReinjection)
@@ -838,6 +955,9 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 			if route == "" {
 				event = "direct_reply"
 			}
+			if localSocket {
+				event = "local_socket_reply"
+			}
 			b.evidence.RecordBytes(f.identity, tuple, event, route, uint64(len(payload)))
 			if f.game != nil && f.decision.GameUDP != nil {
 				f.decision.GameUDP.Reply(f.game, len(payload), time.Now())
@@ -854,6 +974,11 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		if b.flows[tuple] != f || !udpIdle(time.Now(), f.lastSeen, len(f.queue), udpIdleLimit(tuple, adaptive)) {
+			return false
+		}
+		// Keep the source mapping for a verified live game socket, including
+		// pauses. A different route may only be chosen for a fresh endpoint.
+		if localSocket && f.endpoint != 0 && IsCurrent(f.identity) {
 			return false
 		}
 		// Close tracked Engine state before exposing a vacant capture tuple.
@@ -906,6 +1031,9 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 				continue
 			}
 			if sendErr != nil {
+				if localSocket && localUDPRouteError(sendErr) {
+					f.decision.GameUDP.CS2LocalFailure(f.game, time.Now())
+				}
 				b.fallback(tuple, f, d, payload)
 				datagram.Close()
 				<-done
@@ -936,6 +1064,9 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 					policy.Policy.Source = "endpoint_cache"
 				}
 				b.evidence.RecordPolicy(f.identity, tuple, policy, why)
+			}
+			if localSocket {
+				event = "local_socket"
 			}
 			b.evidence.RecordBytes(f.identity, tuple, event, route, uint64(len(payload)))
 			if f.game != nil && f.decision.GameUDP != nil {
@@ -1010,7 +1141,7 @@ func (b *WinDivertBackend) fallback(tuple Tuple, f *captureFlow, d *divertDLL, f
 		f.decision.Route = routing.Route{}
 	}
 	b.mu.Unlock()
-	if f.game != nil && f.decision.GameUDP != nil {
+	if f.game != nil && f.decision.GameUDP != nil && !f.decision.CS2Auto {
 		f.decision.GameUDP.TransportFailed(f.game, "GAME_RELAY_TRANSPORT_FAILED")
 		b.evidence.RecordGameUDP(f.identity, tuple, f.decision.GameUDP.Evidence(f.game))
 	}
