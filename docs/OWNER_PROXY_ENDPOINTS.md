@@ -6,7 +6,11 @@ independent of `browser-owner-proxy.json`, the reversible Windows settings lease
 OFF/uninstall still restores only settings owned by the current lease, using the
 existing compare-before-write rules. The endpoint file contains no credentials.
 
-Before stopping an older service, the normal update script runs the candidate
+Before closing the old GUI, the Setup transaction snapshots the reversible lease
+and runs the incoming candidate. GUI exit can send `optimize=false` and delete
+that lease even while the old service is still running. The update script also
+runs the preparation idempotently before stopping an older service. Both invoke
+the candidate
 with `-remember-owner-proxy-endpoints -config <installed manifest>`. This elevated,
 offline operation imports only the current validated lease. A repair may also
 specify `-previous-owner-proxy-lease <verified same-owner backup lease>`; that
@@ -27,7 +31,11 @@ requests per listener (basename/PID/birth/hostname/counters; no URL or credentia
 The legacy `browser.status.listening` field keeps its original meaning.
 
 The updater snapshots the old lease and restores it, with original ACL and hash
-verification, before a failed update starts the old binary. Version 730 ignores
+verification, before a failed update starts the old binary. The outer Setup
+transaction retains its own pre-GUI snapshot, including the ACL as serializable
+SDDL; the inner service updater may already see an absent lease. Native stderr
+is captured separately so PowerShell 5.1 cannot turn it into a terminating error
+that hides the child exit code. Version 730 ignores
 the separate endpoint file and can read its unchanged lease schema. The compatible
 listener is unavailable after rollback to a version that did not implement it.
 
@@ -36,3 +44,6 @@ with production Windows owner authorization and existing guard/foreign-owner
 tests. Full Linux and Windows race/vet/build and pinned WinDivert filter checks
 remain required in the normal Verify/Beta workflows. These checks do not prove
 real Steam/EA authorization or video playback on an installed machine.
+The real Setup fixture also uses an installed GUI stand-in that receives the
+normal graceful-close pipe command and deletes its lease only after checking
+that the incoming candidate has already persisted the same address.

@@ -82,8 +82,7 @@ try{
  # Old binaries delete their reversible lease when stopped. The replacement
  # must remember its verified address before that boundary, without opening
  # any listener, touching activation or changing Windows proxy settings.
- & $pending -remember-owner-proxy-endpoints -config $manifestFile
- if($LASTEXITCODE -ne 0){throw 'OWNER_PROXY_ENDPOINT_PREPARE_FAILED'}
+ Invoke-VeliqOwnerEndpointPreparation $pending $manifestFile $backup
  Set-Service VELIQ -StartupType Disabled
  Stop-Service VELIQ
  $stopped=$true

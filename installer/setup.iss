@@ -67,6 +67,8 @@ Name: "desktopicon"; Description: "Создать ярлык на рабочем
 Source: "{#StageRoot}\payload\installer\transaction.ps1"; Flags: dontcopy
 Source: "{#StageRoot}\payload\installer\install-safety.ps1"; Flags: dontcopy
 Source: "{#StageRoot}\payload\installer\install-scope.ps1"; Flags: dontcopy
+Source: "{#StageRoot}\payload\service\veliq-service.exe"; DestName: "veliq-owner-endpoints.exe"; Flags: dontcopy
+Source: "{#StageRoot}\payload\tools\windows\owner-proxy-endpoints.ps1"; Flags: dontcopy
 Source: "{#StageRoot}\payload\installer\install-safety.ps1"; DestName: "veliq-install-preflight.ps1"; Flags: dontcopy
 Source: "{#StageRoot}\payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageRoot}\payload\gui\VELIQ.exe"; DestDir: "{app}"; Flags: ignoreversion
@@ -96,6 +98,8 @@ begin
   '" -Action ' + Action + ' -AppDirectory "' + ExpandConstant('{app}') + '" -TransactionDirectory "' +
   TransactionPath + '" -DiagnosticFile "' + DiagnosticPath + '" -ErrorFile "' +
   TransactionPath + '.' + Action + '.error"';
+ if Action='Prepare' then Command := Command + ' -IncomingService "' + ExpandConstant('{tmp}\veliq-owner-endpoints.exe') +
+  '" -OwnerProxyHelper "' + ExpandConstant('{tmp}\owner-proxy-endpoints.ps1') + '"';
  if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Command, '', SW_HIDE, ewWaitUntilTerminated, Code) then Result := Code;
  Log('VELIQ transaction ' + Action + ' exit=' + IntToStr(Result));
 end;
@@ -306,6 +310,8 @@ begin
  ExtractTemporaryFile('transaction.ps1');
  ExtractTemporaryFile('install-safety.ps1');
  ExtractTemporaryFile('install-scope.ps1');
+ ExtractTemporaryFile('veliq-owner-endpoints.exe');
+ ExtractTemporaryFile('owner-proxy-endpoints.ps1');
  Code := RunTransaction('Prepare');
  if Code<>0 then begin
    FailureCode := TransactionErrorCode('Prepare');

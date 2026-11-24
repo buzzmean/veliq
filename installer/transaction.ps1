@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param([ValidateSet('Prepare','Rollback','Commit')][string]$Action,
- [string]$AppDirectory,[string]$TransactionDirectory,[string]$DiagnosticFile,[string]$ErrorFile='')
+ [string]$AppDirectory,[string]$TransactionDirectory,[string]$DiagnosticFile,[string]$ErrorFile='',
+ [string]$IncomingService='',[string]$OwnerProxyHelper='')
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 if($PSVersionTable.PSEdition -eq 'Desktop'){
  $env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')+';'+[Environment]::GetEnvironmentVariable('PSModulePath','Machine')
@@ -131,6 +132,21 @@ try{
   $snapshot=Join-Path $transaction 'payload';[void][IO.Directory]::CreateDirectory($snapshot)
   $record=@{app=$app;service_existed=($null -ne $scm);service_running=($null -ne $scm -and $scm.State -eq 'Running');start_mode=if($scm){$scm.StartMode}else{''};gui=@();phase='PREPARING';uninstall_key_existed=(Test-Path -LiteralPath $uninstallKey)}
   $record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
+  if($scm -and $IncomingService){
+   # Closing the old GUI calls optimize=false and releases its reversible
+   # proxy lease. Preserve the address and rollback journal before that step.
+   Assert-TransactionTree $IncomingService
+   Assert-TransactionTree $OwnerProxyHelper
+   $savedHelper=Join-Path $transaction 'owner-proxy-endpoints.ps1'
+   Copy-Item -LiteralPath $OwnerProxyHelper -Destination $savedHelper
+   $record.proxy_helper_sha256=(Get-FileHash -LiteralPath $savedHelper).Hash
+   . $savedHelper
+   $proxySnapshot=Save-VeliqOwnerProxyLease (Join-Path $serviceRoot 'service.json') $transaction
+   $proxySnapshot|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $transaction 'owner-proxy-snapshot.json') -Encoding UTF8
+   $record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
+   Invoke-VeliqOwnerEndpointPreparation $IncomingService (Join-Path $serviceRoot 'service.json') $transaction
+   Write-VeliqInstallDiagnostic 'OWNER_PROXY_ENDPOINTS_PREPARED' @{lease_saved=[bool]$proxySnapshot.existed;before_gui_close=$true}
+  }
   $record.gui=@(Stop-OwnedGui)
   $record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
   Assert-VeliqInstallPreflight $app
@@ -205,6 +221,14 @@ try{
    if($record.service_existed){
     $binary=Join-Path $serviceRoot 'veliq-service.exe';Copy-Item -LiteralPath (Join-Path $transaction 'service.exe') -Destination $binary -Force
     $acl=[Security.AccessControl.FileSecurity]::new();$acl.SetSecurityDescriptorSddlForm([IO.File]::ReadAllText((Join-Path $transaction 'service.sddl')).Trim());Set-Acl -LiteralPath $binary -AclObject $acl
+    $proxySnapshotPath=Join-Path $transaction 'owner-proxy-snapshot.json'
+    if(Test-Path -LiteralPath $proxySnapshotPath){
+     $savedHelper=Join-Path $transaction 'owner-proxy-endpoints.ps1'
+     if((Get-FileHash -LiteralPath $savedHelper).Hash -cne $record.proxy_helper_sha256){throw 'OWNER_PROXY_ROLLBACK_HELPER_CHANGED'}
+     . $savedHelper
+     Restore-VeliqOwnerProxyLease (Get-Content -Raw -LiteralPath $proxySnapshotPath|ConvertFrom-Json)
+     Write-VeliqInstallDiagnostic 'OWNER_PROXY_LEASE_RESTORED' @{before_service_start=$true}
+    }
     $mode=switch($record.start_mode){'Auto'{'Automatic'}'Manual'{'Manual'}'Disabled'{'Disabled'}default{throw 'INSTALL_ROLLBACK_START_MODE_INVALID'}}
     Set-Service VELIQ -StartupType $mode
     if($record.service_running){

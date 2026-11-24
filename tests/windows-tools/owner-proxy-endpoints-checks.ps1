@@ -13,6 +13,8 @@ try{
  [IO.File]::WriteAllText($path,$raw,[Text.UTF8Encoding]::new($false))
  $before=(Get-FileHash -LiteralPath $path).Hash
  $snapshot=Save-VeliqOwnerProxyLease $manifest $backup
+ # The official transaction persists this snapshot across PowerShell processes.
+ $snapshot=$snapshot|ConvertTo-Json -Depth 5|ConvertFrom-Json
  Remove-Item -LiteralPath $path
  Restore-VeliqOwnerProxyLease $snapshot
  if((Get-FileHash -LiteralPath $path).Hash -cne $before){throw 'LEGACY_LEASE_ROLLBACK_FAILED'}
@@ -23,6 +25,20 @@ try{
  [IO.File]::AppendAllText($snapshot.backup,'tamper')
  $refused=$false;try{Restore-VeliqOwnerProxyLease $snapshot}catch{$refused=$_.Exception.Message -eq 'OWNER_PROXY_ROLLBACK_HASH_MISMATCH'}
  if(!$refused){throw 'TAMPERED_LEASE_ACCEPTED'}
+ if($env:GITHUB_ACTIONS -eq 'true'){
+  $candidate=(Resolve-Path (Join-Path $PSScriptRoot '../../bin/veliq-service.exe')).Path
+  $owner=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+  [IO.File]::WriteAllText($manifest,(@{state_directory=$state;token_file=(Join-Path $root 'unused.token');owner_sid=$owner}|ConvertTo-Json),[Text.UTF8Encoding]::new($false))
+  $lease.owner=$owner;[IO.File]::WriteAllText($path,($lease|ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
+  Invoke-VeliqOwnerEndpointPreparation $candidate $manifest $backup
+  # This is what the old GUI's optimize=false does during its graceful close.
+  Remove-Item -LiteralPath $path
+  $persisted=Get-Content -Raw -LiteralPath (Join-Path $state 'browser-owner-endpoints.json')|ConvertFrom-Json
+  if($persisted.primary -cne '127.0.0.1:32101' -or $persisted.owner -cne $owner){throw 'PRE_GUI_ADDRESS_NOT_PRESERVED'}
+  $lease.owner='foreign-owner';[IO.File]::WriteAllText($path,($lease|ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
+  $refused=$false;try{Invoke-VeliqOwnerEndpointPreparation $candidate $manifest $backup}catch{$refused=$_.Exception.Message -eq 'OWNER_PROXY_ENDPOINT_PREPARE_FAILED'}
+  if(!$refused -or (Get-Content -Raw -LiteralPath (Join-Path $backup 'endpoint-prepare.stderr')) -notmatch 'OWNER_PROXY_JOURNAL_INVALID'){throw 'NATIVE_FAILURE_EXIT_OR_DIAGNOSTIC_LOST'}
+ }
  Write-Host 'PASS owner-proxy update/legacy rollback, foreign-state preservation and tamper checks; no service or network mutation'
 }finally{
  $resolved=[IO.Path]::GetFullPath($root)

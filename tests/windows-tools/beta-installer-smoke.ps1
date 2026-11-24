@@ -143,6 +143,50 @@ try{
  Write-Output 'BETA_NEGATIVE_SETUP_PASS exit=1; invalid legacy file; no SCM service'
  Invoke-OwnedInstaller $setup 'install'
  Assert-InstalledCandidate
+ # A legacy GUI can release its lease as part of graceful close. Use the exact
+ # owner activation pipe and installed GUI path, with a disposable stand-in
+ # that removes only this fixture's lease after observing the persisted port.
+ $guiStage=Join-Path $env:RUNNER_TEMP ('beta-owner-gui-'+[guid]::NewGuid().ToString('N'))
+ New-Item -ItemType Directory -Path $guiStage|Out-Null
+ $guiSource=Join-Path $guiStage 'gui.go';$guiMarker=Join-Path $guiStage 'closed.txt'
+ $guiCode=@'
+package main
+import("encoding/json";"io";"os";"github.com/Microsoft/go-winio")
+func main(){
+ l,e:=winio.ListenPipe(os.Args[1],&winio.PipeConfig{SecurityDescriptor:"D:P(A;;GA;;;SY)(A;;GA;;;BA)"});if e!=nil{os.Exit(41)};defer l.Close()
+ if os.WriteFile(os.Args[4]+".ready",[]byte("ready"),0600)!=nil{os.Exit(42)}
+ c,e:=l.Accept();if e!=nil{os.Exit(43)};defer c.Close();b:=make([]byte,1);if _,e=io.ReadFull(c,b);e!=nil||b[0]!=2{os.Exit(44)}
+ raw,e:=os.ReadFile(os.Args[3]);var state struct{Primary string};if e!=nil||json.Unmarshal(raw,&state)!=nil||state.Primary!=os.Args[5]{os.WriteFile(os.Args[4],[]byte("ADDRESS_NOT_PERSISTED"),0600);os.Exit(45)}
+ if os.Remove(os.Args[2])!=nil{os.Exit(46)};os.WriteFile(os.Args[4],[]byte("PERSISTED_BEFORE_GUI_CLOSE"),0600)
+}
+'@
+ [IO.File]::WriteAllText($guiSource,$guiCode,[Text.UTF8Encoding]::new($false))
+ & go build -trimpath -o (Join-Path $app 'VELIQ.exe') $guiSource
+ if($LASTEXITCODE){throw 'OWNER_GUI_FIXTURE_BUILD_FAILED'}
+ Disable-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'|Out-Null
+ Stop-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog'
+ Stop-Service VELIQ;(Get-Service VELIQ).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
+ $owner=[Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+ $manifest=Get-Content -Raw -LiteralPath (Join-Path $installed 'service.json')|ConvertFrom-Json
+ $leasePath=Join-Path $manifest.state_directory 'browser-owner-proxy.json'
+ $endpointPath=Join-Path $manifest.state_directory 'browser-owner-endpoints.json'
+ $probe=[Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback,0);$probe.Start();$address='127.0.0.1:'+$probe.LocalEndpoint.Port;$probe.Stop()
+ $lease=@{version=1;owner=$owner;original=@{flags=1;server='';pac='';bypass=''};installed=@{flags=3;server=('http='+$address+';https='+$address);pac='';bypass=''}}
+ [IO.File]::WriteAllText($leasePath,($lease|ConvertTo-Json -Depth 4),[Text.UTF8Encoding]::new($false))
+ $pipe='\\.\pipe\NeExitLag-activate-'+$owner+'-'+[Diagnostics.Process]::GetCurrentProcess().SessionId
+ $guiArgs='"'+$pipe+'" "'+$leasePath+'" "'+$endpointPath+'" "'+$guiMarker+'" "'+$address+'"'
+ $fakeGui=Start-Process -FilePath (Join-Path $app 'VELIQ.exe') -ArgumentList $guiArgs -WindowStyle Hidden -PassThru
+ try{
+  $deadline=[DateTime]::UtcNow.AddSeconds(10)
+  while(!(Test-Path -LiteralPath ($guiMarker+'.ready')) -and [DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 100}
+  if(!(Test-Path -LiteralPath ($guiMarker+'.ready'))){throw 'OWNER_GUI_FIXTURE_NOT_READY'}
+  Invoke-OwnedInstaller $setup 'legacy-gui-endpoint-update'
+  if(!$fakeGui.WaitForExit(1000) -or [IO.File]::ReadAllText($guiMarker) -cne 'PERSISTED_BEFORE_GUI_CLOSE'){throw 'OWNER_ADDRESS_SAVED_AFTER_GUI_CLOSE'}
+  $remembered=Get-Content -Raw -LiteralPath $endpointPath|ConvertFrom-Json
+  if($remembered.primary -cne $address){throw 'OWNER_ADDRESS_CHANGED_DURING_SETUP'}
+  Assert-InstalledCandidate
+  Write-Output 'BETA_OWNER_ENDPOINT_PRE_GUI_PASS real Setup; exact GUI pipe closes process and removes legacy lease after persistence'
+ }finally{if(!$fakeGui.HasExited){$fakeGui.Kill();$fakeGui.WaitForExit()};$fakeGui.Dispose()}
  # A verified package with a deliberately failing service must restore both
  # the previous executable AND the previous GUI/package/uninstall metadata.
  $failureStage=Join-Path $env:RUNNER_TEMP ('beta-service-failure-'+[guid]::NewGuid().ToString('N'))
