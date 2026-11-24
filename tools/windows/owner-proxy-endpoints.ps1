@@ -49,7 +49,12 @@ function Invoke-VeliqOwnerEndpointPreparation([string]$Candidate,[string]$Manife
  $arguments='-remember-owner-proxy-endpoints -config "'+$ManifestFile+'"'
  $process=Start-Process -FilePath $Candidate -ArgumentList $arguments -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $DiagnosticDirectory 'endpoint-prepare.stdout') -RedirectStandardError (Join-Path $DiagnosticDirectory 'endpoint-prepare.stderr')
  try{
+  # Windows PowerShell 5.1 otherwise returns a null ExitCode after timed wait.
+  # Retain the native handle while the child exists, then drain redirection.
+  $null=$process.Handle
   if(!$process.WaitForExit(15000)){$process.Kill();$process.WaitForExit();throw 'OWNER_PROXY_ENDPOINT_PREPARE_TIMEOUT'}
+  $process.WaitForExit()
+  if($null -eq $process.ExitCode){throw 'OWNER_PROXY_ENDPOINT_EXIT_UNAVAILABLE'}
   if($process.ExitCode -ne 0){throw 'OWNER_PROXY_ENDPOINT_PREPARE_FAILED'}
  }finally{$process.Dispose()}
 }
