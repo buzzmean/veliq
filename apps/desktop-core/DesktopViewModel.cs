@@ -32,6 +32,9 @@ public sealed partial class ApplicationRow : Observable
     public Profile Profile { get; private set; } = new(); public string Name => Profile.Name; public string Path => executablePath; public string Mode => Text.Mode(Profile.Mode);
     string processStatus = Text.Get("NoData"), route = Text.Get("NoData"), executablePath = Text.Get("NoData"); public string ProcessStatus => processStatus; public string Route => route;
     public string UserStatus {get;private set;}=Text.Get("NoData");
+    public bool HasAppliedStrategy {get;private set;}
+    public string AppliedStrategyStatus {get;private set;}="";
+    public string ServiceStatus=>HasAppliedStrategy?AppliedStrategyStatus:UserStatus;
     public string LocalDetails {get;private set;}=Text.Get("NoData");
  public string Udp { get; private set; } = Text.Get("NoData");
  public string Tcp { get; private set; } = Text.Get("NoData");
@@ -52,6 +55,11 @@ public sealed partial class ApplicationRow : Observable
         var livePaths=active?.Where(f=>f.ProcessGroup==profile.Id&&f.IdentityCurrent&&profile.Executables.Any(exe=>string.Equals(exe.Replace('\\','/').Split('/').Last(),f.Exe.Replace('\\','/').Split('/').Last(),StringComparison.OrdinalIgnoreCase))).Select(f=>f.Exe).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if(livePaths is {Length:>0})executablePath=string.Join(", ",livePaths);
         bool relay=active?.Any(f=>f.SelectedRoute=="RELAY"&&f.Counters.RelayedBytes>0)==true;
+        var verified=active?.Where(f=>f.Pid!=0&&f.CreationTime!=0&&(f.IdentityCurrent||matched?.Any(p=>p.PID==f.Pid&&p.CreationTime==f.CreationTime)==true)).ToArray();
+        bool appliedRelay=verified?.Any(f=>f.SelectedRoute=="RELAY"&&f.Counters.RelayedBytes>0)==true;
+        bool appliedLocal=verified?.Any(f=>f.SelectedRoute=="DIRECT_PLUS"&&f.Counters.DirectPlusPackets>0)==true;
+        HasAppliedStrategy=appliedRelay||appliedLocal;
+        AppliedStrategyStatus=string.Join(", ",new[]{appliedLocal?Text.Get("AppliedDirectOptimization"):"",appliedRelay?Text.Get("ProtectedRoute"):""}.Where(s=>s.Length>0));
         bool direct=active?.Any(f=>f.SelectedRoute=="DIRECT"&&f.Counters.DirectPackets>0&&(f.Policy?.Fallback!="FLOW_RELAY_FALLBACK"||f.UdpHealth?.State=="DIRECT_CONFIRMED"))==true;
         UserStatus=active is null||active.Length==0?Text.Get("NoData"):active.Any(f=>f.SelectedRoute.StartsWith("BLOCK",StringComparison.Ordinal)||f.RelayRequiredBlocked)?Text.Get("ProtectedFlowBlocked"):relay&&direct?Text.Get("HybridRoute"):relay?Text.Get("ProtectedRoute"):active.Any(f=>f.Counters.DirectPlusPackets>0)?Text.Get("AppliedDirectOptimization"):direct?Text.Get("DirectConnection"):Text.Get("AutoChecking");
         if(capture?.Truncated==true)UserStatus=Text.Get("PartialRouteEvidence")+" "+UserStatus;
@@ -242,6 +250,7 @@ public sealed partial class DesktopViewModel : Observable
         RenderHistory(status.History);
         ClearBrowserPreparationIssue();
         ApplyDisabledBrowserDisplay();
+        UpdateServiceApplications(status, processes, capture);
         NotifyHomeChanges(previous);
     }
     void RenderHistory(JsonElement history)
@@ -276,6 +285,7 @@ public sealed partial class DesktopViewModel : Observable
         Connection = Text.Failure(e);
         Error = Connection;
         Applications.Clear();
+        ActiveServices.Clear();
         Routes.Clear();
         Relays.Clear();
         Measurements.Clear();

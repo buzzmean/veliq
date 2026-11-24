@@ -683,4 +683,5 @@
   <data name="OptimizeGamesPlanned" xml:space="preserve"><value>Оптимизация игр</value></data>
   <data name="OptimizeSystemPlanned" xml:space="preserve"><value>Оптимизация системы</value></data>
   <data name="ComingSoon" xml:space="preserve"><value>Скоро</value></data>
+  <data name="NoOptimizedApplications" xml:space="preserve"><value>Нет приложений с активной оптимизацией</value></data>
 </root>

@@ -93,7 +93,7 @@ internal static partial class Program
         var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromIndex(0);
         Require(row.ActualHeight > 82, "Long title/path/PIDs must expand the row");
         Require(((System.Windows.Controls.Button)picker.FindName("ManualButton")).IsEnabled, "Manual file picker unavailable");
-        SaveImage(picker, "add-application"); picker.Close(); owner.Close(); Pump();
+        SaveImage(picker, "add-application"); picker.Close(); owner.Exit(); Pump();
         Pass("Add application window opens (production BAML, long title/path/PIDs)");
     }
     static void Lifecycle()
@@ -131,8 +131,7 @@ internal static partial class Program
             w.ShowFromTray(); w.Close();
             Require(!closed, "Synchronous cleanup must not re-enter WPF Closing; defer final Close to dispatcher");
             Pump();
-            Require(closed == !tray, "X must close when OFF, hide when ON even with service absent");
-            if (tray)
+            Require(!closed && !w.IsVisible, "X must hide for every persisted tray preference");
             {
                 Require(!w.IsVisible && w.TrayVisible, "X tray state");
                 w.ShowFromTray(); Pump(); Require(w.IsVisible, "Open after X");
@@ -146,6 +145,8 @@ internal static partial class Program
         var failed = new MainWindow(new() { MinimizeToTray = false }, false, false, settings, failingService);
         bool failedClosed = false; failed.Closed += (_, _) => failedClosed = true;
         failed.Show(); Pump(); failed.Close(); Pump();
+        Require(!failedClosed && !failed.IsVisible && string.IsNullOrEmpty(((DesktopViewModel)failed.DataContext).Error), "X called routing shutdown instead of hiding");
+        failed.ShowFromTray(); failed.Exit(); Pump();
         Require(!failedClosed && failed.IsVisible, "Rejected routing shutdown must leave real GUI open");
         Require(!string.IsNullOrWhiteSpace(((DesktopViewModel)failed.DataContext).Error), "Rejected shutdown must show its error");
         failingService.Reject = false; failed.Exit(); Pump(); Require(failedClosed, "Known removed service must allow GUI exit");
@@ -254,7 +255,7 @@ internal static partial class Program
             }
         }
         TechnicalPreference(main, false); TechnicalDropdownsHidden(main);
-        main.Close(); Pump();
+        main.Exit(); Pump();
         var combo = new ComboBox { Width = 300, ItemsSource = new[] { "Normal / selected", "Hover / keyboard", "Third item" }, SelectedIndex = 0 };
         var next = new System.Windows.Controls.Button { Content = "Next focus target" };
         var panel = new StackPanel { Margin = new Thickness(20) }; panel.Children.Add(combo); panel.Children.Add(next);
@@ -292,7 +293,7 @@ internal static partial class Program
         var grid=(DataGrid)main.FindName("LocalGrid");
         var p=System.Text.Json.JsonSerializer.Deserialize<LocalStrategyProfile>("{\"ports\":null,\"domains\":null,\"ips\":null,\"exclude_domains\":null,\"exclude_ips\":null,\"actions\":null}",WireJson.Options)!;
         grid.ItemsSource=new[]{p};grid.SelectedItem=p;Pump();
-        Require(((System.Windows.Controls.TextBox)main.FindName("LocalDomains")).Text=="","Null arrays were not safe in real WPF selection handler");main.Close();Pump();Pass("real WPF null strategy arrays and collapsed Advanced controls");
+        Require(((System.Windows.Controls.TextBox)main.FindName("LocalDomains")).Text=="","Null arrays were not safe in real WPF selection handler");main.Exit();Pump();Pass("real WPF null strategy arrays and collapsed Advanced controls");
     }
     static void ChromeProxyValue()
     {

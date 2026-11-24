@@ -12,6 +12,8 @@ public sealed partial class DesktopViewModel {
 public sealed partial class ApplicationRow {
  Dictionary<string,object?> DisplayValues()=>new(){[nameof(Name)]=Name,[nameof(Path)]=Path,[nameof(Mode)]=Mode,
  [nameof(ProcessStatus)]=ProcessStatus,[nameof(Route)]=Route,[nameof(UserStatus)]=UserStatus,[nameof(LocalDetails)]=LocalDetails,
+ [nameof(HasAppliedStrategy)]=HasAppliedStrategy,[nameof(AppliedStrategyStatus)]=AppliedStrategyStatus,
+ [nameof(ServiceStatus)]=ServiceStatus,
  [nameof(Udp)]=Udp,[nameof(Tcp)]=Tcp,[nameof(Ipv4)]=Ipv4,[nameof(Ipv6)]=Ipv6};
  void NotifyDisplayChanges(Dictionary<string,object?> old){foreach(var pair in DisplayValues())if(!Equals(old[pair.Key],pair.Value))Changed(pair.Key);}
 }
