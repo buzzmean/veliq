@@ -15,13 +15,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/routing"
 	"golang.org/x/sys/windows"
 )
 
 func TestHotAttachSocketChild(t *testing.T) {
-	target := os.Getenv("NEEXITLAG_HOT_CHILD_TARGET")
+	target := os.Getenv("VELIQ_HOT_CHILD_TARGET")
 	if target == "" {
 		t.Skip("owned native helper")
 	}
@@ -68,7 +68,7 @@ func TestNativeHotAttachExactSocketResetWithoutProcessRestart(t *testing.T) {
 	}()
 	start := func() (*exec.Cmd, <-chan string) {
 		cmd := exec.Command(os.Args[0], "-test.run=^TestHotAttachSocketChild$", "-test.v")
-		cmd.Env = append(os.Environ(), "NEEXITLAG_HOT_CHILD_TARGET="+l.Addr().String())
+		cmd.Env = append(os.Environ(), "VELIQ_HOT_CHILD_TARGET="+l.Addr().String())
 		pipe, e := cmd.StdoutPipe()
 		if e != nil {
 			t.Fatal(e)
@@ -328,7 +328,7 @@ func TestNativeHotAttachDoesNotHoldGlobalPacketGateWhileDraining(t *testing.T) {
 }
 
 func TestHotAttachIdentityChild(t *testing.T) {
-	if os.Getenv("NEEXITLAG_HOT_IDENTITY_CHILD") != "1" {
+	if os.Getenv("VELIQ_HOT_IDENTITY_CHILD") != "1" {
 		t.Skip("owned identity fixture")
 	}
 	fmt.Println("IDENTITY_READY")
@@ -336,7 +336,7 @@ func TestHotAttachIdentityChild(t *testing.T) {
 }
 func TestNativeHotAttachInvalidatesAlreadyRunningUnselectedUDPCache(t *testing.T) {
 	cmd := exec.Command(os.Args[0], "-test.run=^TestHotAttachIdentityChild$", "-test.v")
-	cmd.Env = append(os.Environ(), "NEEXITLAG_HOT_IDENTITY_CHILD=1")
+	cmd.Env = append(os.Environ(), "VELIQ_HOT_IDENTITY_CHILD=1")
 	input, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)

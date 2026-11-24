@@ -6,8 +6,8 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/buzzmean/neexitlag/core/ipc"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/ipc"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 type Status struct {

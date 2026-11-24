@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/veliq/core/browserproxy"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 	"os"

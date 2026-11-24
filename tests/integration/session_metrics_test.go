@@ -2,7 +2,7 @@ package integration
 
 import (
 	"context"
-	"github.com/buzzmean/neexitlag/core/transport"
+	"github.com/buzzmean/veliq/core/transport"
 	"testing"
 	"time"
 )

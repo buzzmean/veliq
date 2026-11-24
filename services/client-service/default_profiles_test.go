@@ -5,8 +5,8 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/buzzmean/neexitlag/core/profiles"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/profiles"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 func destTuple(proto, addr string, port uint16) wp.Tuple {

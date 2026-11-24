@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/buzzmean/neexitlag/core/enrollment"
+	"github.com/buzzmean/veliq/core/enrollment"
 	"github.com/jackc/pgx/v5"
 )
 

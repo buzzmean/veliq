@@ -3,7 +3,7 @@ package windowsplatform
 import (
 	"encoding/json"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
+	"github.com/buzzmean/veliq/core/localstrategy"
 	"sort"
 	"time"
 )

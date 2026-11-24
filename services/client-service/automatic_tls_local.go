@@ -9,10 +9,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
-	"github.com/buzzmean/neexitlag/core/optimizer"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/localstrategy"
+	"github.com/buzzmean/veliq/core/optimizer"
 )
 
 const automaticTLSLocalSource = "automatic_tls_local"

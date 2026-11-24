@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public partial class WelcomeWindow : Window
 {

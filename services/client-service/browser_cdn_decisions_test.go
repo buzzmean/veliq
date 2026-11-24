@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/ipc"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/ipc"
 )
 
 func TestCDNDecisionReportsDenialWhenNativeStatusIsTruncated(t *testing.T) {

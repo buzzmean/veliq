@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public sealed record InstalledBrowser(string Id, string Name, string ExePath, bool AutoSupported);
 

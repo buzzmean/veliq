@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 type delegationRelay struct{ open func() net.Conn }

@@ -1,5 +1,5 @@
 using System.Collections.ObjectModel;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public sealed class RunningApplication
 {

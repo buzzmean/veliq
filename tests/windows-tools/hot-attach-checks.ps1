@@ -24,7 +24,7 @@ Write-Host 'PASS HOT ATTACH original root/PID-birth, fresh route/transform evide
 # Execute the real helper in owned child shells with a temporary IPC fixture.
 # Force failure immediately after OFF; both original ON and OFF must be restored.
 $fixture=Join-Path ([IO.Path]::GetTempPath()) ('neexitlag-hot-restore-'+[Guid]::NewGuid().ToString('N'))
-$oldLog=$env:NEEXITLAG_HOT_RESTORE_LOG;$oldInitial=$env:NEEXITLAG_HOT_RESTORE_INITIAL
+$oldLog=$env:VELIQ_HOT_RESTORE_LOG;$oldInitial=$env:VELIQ_HOT_RESTORE_INITIAL
 try{
  New-Item -ItemType Directory -Force $fixture|Out-Null
  foreach($name in @('acceptance-hot-attach.ps1','simultaneous-checks.ps1','hot-attach-checks.ps1')){Copy-Item (Join-Path $PSScriptRoot ('..\..\tools\windows\'+$name)) (Join-Path $fixture $name)}
@@ -33,33 +33,33 @@ Set-StrictMode -Version Latest
 $script:fixtureOff=$false
 function Invoke-ServiceIPC($Method,$Payload=$null){
  switch($Method){
-  'status' {return @{optimizing=($env:NEEXITLAG_HOT_RESTORE_INITIAL -eq '1')}}
+  'status' {return @{optimizing=($env:VELIQ_HOT_RESTORE_INITIAL -eq '1')}}
   'processes' {
    if($script:fixtureOff){throw 'expected owned fixture failure after OFF'}
    $rows=@();$n=1;foreach($name in @('chrome.exe','msedge.exe','ChatGPT.exe','codex.exe','Discord.exe')){$rows += [pscustomobject]@{PID=$n;CreationTime=10;Path=('C:\Apps\'+$name);ParentPID=0};$n++};return $rows
   }
-  'optimize' {[IO.File]::AppendAllText($env:NEEXITLAG_HOT_RESTORE_LOG,([string][bool]$Payload.enabled)+[Environment]::NewLine);$script:fixtureOff=$true;return @{}}
+  'optimize' {[IO.File]::AppendAllText($env:VELIQ_HOT_RESTORE_LOG,([string][bool]$Payload.enabled)+[Environment]::NewLine);$script:fixtureOff=$true;return @{}}
   default {throw 'unexpected IPC in restore fixture'}
  }
 }
 '@|Set-Content -LiteralPath (Join-Path $fixture 'common.ps1') -Encoding UTF8
  $runner=(Get-Process -Id $PID).Path
  foreach($initial in @('1','0')){
-  $env:NEEXITLAG_HOT_RESTORE_INITIAL=$initial
-  $env:NEEXITLAG_HOT_RESTORE_LOG=Join-Path $fixture ('calls-'+$initial+'.txt')
+  $env:VELIQ_HOT_RESTORE_INITIAL=$initial
+  $env:VELIQ_HOT_RESTORE_LOG=Join-Path $fixture ('calls-'+$initial+'.txt')
   $reports=Join-Path $fixture ('reports-'+$initial)
   $scriptFile=Join-Path $fixture 'acceptance-hot-attach.ps1'
   $fixtureArguments=@('-NoProfile','-File',('"{0}"' -f $scriptFile),'-StageSeconds','20','-ReportDirectory',('"{0}"' -f $reports))
   $child=Start-Process -FilePath $runner -ArgumentList $fixtureArguments -PassThru -RedirectStandardOutput (Join-Path $fixture ($initial+'-stdout.txt')) -RedirectStandardError (Join-Path $fixture ($initial+'-stderr.txt'))
   if(!$child.WaitForExit(10000)){$child.Kill();throw 'Owned restore fixture timeout'}
   $child.WaitForExit();$child.Refresh()
-  $calls=@(Get-Content -LiteralPath $env:NEEXITLAG_HOT_RESTORE_LOG)
+  $calls=@(Get-Content -LiteralPath $env:VELIQ_HOT_RESTORE_LOG)
   Check ($calls.Count -eq 2 -and $calls[0] -eq 'False' -and $calls[1] -eq ([string]($initial -eq '1'))) 'Original Optimize state not restored after acceptance failure'
   $failures=@(Get-ChildItem -LiteralPath $reports -Filter 'FAIL.json' -Recurse)
   Check ($failures.Count -eq 1) 'Expected failure diagnostics missing'
  }
  Write-Host 'PASS real helper restores original ON/OFF after an owned failure following OFF'
 }finally{
- $env:NEEXITLAG_HOT_RESTORE_LOG=$oldLog;$env:NEEXITLAG_HOT_RESTORE_INITIAL=$oldInitial
+ $env:VELIQ_HOT_RESTORE_LOG=$oldLog;$env:VELIQ_HOT_RESTORE_INITIAL=$oldInitial
  if(Test-Path $fixture){Remove-Item -LiteralPath $fixture -Recurse -Force}
 }

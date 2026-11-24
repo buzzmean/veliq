@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
+	"github.com/buzzmean/veliq/core/localstrategy"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 	"net"

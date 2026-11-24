@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/localcatalog"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/localcatalog"
+	"github.com/buzzmean/veliq/core/localstrategy"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 type localCatalogRelease struct {

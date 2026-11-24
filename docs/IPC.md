@@ -1,19 +1,11 @@
-# Desktop / service protocol v1
+# Протокол интерфейса и службы
 
-The unprivileged WPF client sends unary requests over `\\.\pipe\neexitlag-v1`.
-Each frame is a four-byte big-endian length and <=64 KiB JSON. Requests include
-version, random request ID, timestamp, token, method and payload. Responses include
-version, request ID, success, error code/message and payload. Token comparison is
-constant-time; timestamp and bounded request-ID replay checks precede dispatch.
+Непривилегированный клиент WPF отправляет одиночные запросы через именованный канал Windows. Его совместимое имя задаётся реализацией [IPC](../core/ipc/protocol.go) и Windows-клиентом; произвольная смена имени нарушает связь установленных компонентов.
 
-Methods: status, profiles, processes, profile.set, optimize, settings.set,
-diagnostics. demo.fail-relay is available only on the lab's explicit demo hook.
-The Windows pipe ACL permits SYSTEM, Administrators and the configured owner SID.
-Service state, device identity and driver binaries remain privileged; only the IPC
-token is readable by the GUI owner. Requests have deadlines and a 16-worker bound.
-The client distinguishes missing/stopped service, bad frames, versions, errors
-and timeouts and displays disconnected/unavailable rather than fabricated metrics.
+Кадр содержит четырёхбайтовую длину в сетевом порядке и JSON размером не более 64 КиБ. Запрос включает версию, случайный идентификатор, время, токен, метод и данные. Ответ содержит версию, тот же идентификатор, результат, код и сообщение ошибки, данные.
 
-Portable demo uses the same request/response shape over loopback HTTP with a
-per-instance token, JSON content-type checks, Host checks and no CORS. WPF demo
-URLs must be loopback; redirects are disabled. This is a development transport.
+Токен сравнивается за постоянное время. Проверки времени и повторного использования идентификатора выполняются до диспетчеризации. Доступ к каналу имеют SYSTEM, администраторы и назначенный SID владельца. Идентичность устройства, состояние службы и драйвер остаются привилегированными; владельцу интерфейса доступен только предусмотренный IPC-токен.
+
+Запросы имеют срок выполнения, число обработчиков ограничено 16. Клиент различает отсутствие службы, неверный кадр, неподдерживаемую версию, отказ и таймаут. Недоступность не заменяется выдуманными метриками. Реальный набор методов определяет диспетчер службы; лабораторные действия доступны только при явно включённом режиме стенда.
+
+Переносимое демо использует аналогичные запросы по локальному HTTP с отдельным токеном запуска, проверками Host и типа содержимого, без CORS. Адрес демо в WPF должен быть локальным; перенаправления запрещены. Это транспорт разработки.

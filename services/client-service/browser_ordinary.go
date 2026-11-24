@@ -7,8 +7,8 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 )
 
 // One negative IP must not select RELAY before a healthy DNS peer. This branch

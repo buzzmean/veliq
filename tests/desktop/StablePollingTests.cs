@@ -1,6 +1,6 @@
 using System.Text.Json;
-using Neexitlag.Desktop;
-using NeExitLag.Tests;
+using Veliq.Desktop;
+using Veliq.Tests;
 using Xunit;
 public class StablePollingTests {
  [Fact] public async Task IdenticalPollDoesNotDisableButtonsOrInvalidateHome(){

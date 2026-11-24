@@ -1,16 +1,14 @@
-# ADR-001: Windows networking
-Decision: WFP ALE classification + signed callout driver for production;
-WinDivert as a replaceable MVP candidate behind routing.Backend.
+# ADR-001: сетевая часть Windows
 
-| Approach | Process metadata | UDP/TCP | Costs and deployment |
+Решение: для собственного рабочего драйвера рассматривается классификация WFP ALE с подписанным драйвером callout. WinDivert — заменяемая интеграция за интерфейсом `routing.Backend`.
+
+| Подход | Данные процесса | UDP/TCP | Ограничения и развёртывание |
 |---|---|---|---|
-| WFP filters alone | ALE app identity | Classification only | Cannot forward packets alone |
-| WFP callout | ALE PID/path | Both with distinct redirection paths | Best integration; WDK, signing, kernel testing required |
-| WinDivert | FLOW/SOCKET PID joined to NETWORK | Both | Copies and kernel/user transitions; signed vendor driver, correlation races |
-| Wintun/TUN | No PID in IP packet | Both with userspace stack | Device-wide capture unless paired with classifier |
-| Routing table | No PID | Both | Destination routing, cannot satisfy per-process requirement |
-| Local proxy | Only cooperating apps | Both if explicitly supported | Useful lab transport; cannot transparently capture games |
+| Только фильтры WFP | Идентичность приложения на ALE | Классификация | Сами по себе не пересылают пакеты |
+| WFP callout | PID и путь на ALE | Разные пути перенаправления для обоих протоколов | Требуются WDK, подпись и испытания ядра |
+| WinDivert | Сопоставление FLOW/SOCKET с NETWORK | Оба протокола | Копирование, переходы ядро–процесс, гонки сопоставления |
+| Wintun/TUN | В IP-пакете нет PID | Оба, с пользовательским стеком | Без отдельного классификатора захватывает весь компьютер |
+| Таблица маршрутизации | PID отсутствует | Оба протокола | Маршрутизация по назначению не решает выбор по процессу |
+| Локальный прокси | Только взаимодействующие с ним приложения | При явной поддержке | Полезен для стенда; не обеспечивает прозрачный захват игр |
 
-Never use a full-device tunnel as a substitute. PID reuse, process exit,
-service crash, packet reinjection, anti-cheat compatibility, IPv6 and adapter
-changes must be tested before shipping. Linux cannot verify WFP behavior.
+Общий туннель устройства не заменяет маршрутизацию по приложениям. До выпуска проверяются повторное использование PID, выход процесса, авария службы, возврат пакетов в стек, совместимость с защитой игр, IPv6 и смена адаптера. Linux не подтверждает поведение WFP на Windows.

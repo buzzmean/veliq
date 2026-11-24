@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 // SubscriptionStatus is what a computer learns about its own access. It carries

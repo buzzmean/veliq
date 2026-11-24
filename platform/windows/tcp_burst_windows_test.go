@@ -22,12 +22,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/services/relay"
-	"github.com/buzzmean/neexitlag/tools/labcert"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/services/relay"
+	"github.com/buzzmean/veliq/tools/labcert"
 )
 
 // Runs on native Windows with real local TCP sockets, mTLS, one-shot tickets,
@@ -450,7 +450,7 @@ func burstEchoProcess(t *testing.T) (net.Addr, func(), func() string, error) {
 		return nil, nil, nil, err
 	}
 	cmd := exec.Command(exe, "-test.run=^TestTCPNativeBurstEchoChild$", "-test.v=false")
-	cmd.Env = append(os.Environ(), "NEEXITLAG_BURST_ECHO_CHILD=1")
+	cmd.Env = append(os.Environ(), "VELIQ_BURST_ECHO_CHILD=1")
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, nil, nil, err
@@ -525,7 +525,7 @@ func burstEchoProcess(t *testing.T) (net.Addr, func(), func() string, error) {
 	return addr, stop, status, nil
 }
 func TestTCPNativeBurstEchoChild(t *testing.T) {
-	if os.Getenv("NEEXITLAG_BURST_ECHO_CHILD") != "1" {
+	if os.Getenv("VELIQ_BURST_ECHO_CHILD") != "1" {
 		t.Skip("dedicated destination child")
 	}
 	addr, stop, status, err := burstTCPEcho()

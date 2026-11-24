@@ -7,7 +7,7 @@ import (
 	"encoding/base64"
 	"testing"
 
-	"github.com/buzzmean/neexitlag/core/optimizer"
+	"github.com/buzzmean/veliq/core/optimizer"
 )
 
 func TestFleetAtomicPublishCASAndRollbackPreservesSecurity(t *testing.T) {

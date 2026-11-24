@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // Only acquisition/validation of the core status decides service availability.
 // Optional browser/recovery diagnostics and rejected UI actions cannot revoke an

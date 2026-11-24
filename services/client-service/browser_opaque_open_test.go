@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 )
 
 func TestOpaqueDirectFailureNeverPoisonsOtherUnknownDestinations(t *testing.T) {

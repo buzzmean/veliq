@@ -26,11 +26,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/enrollment"
-	"github.com/buzzmean/neexitlag/core/freshpc"
-	"github.com/buzzmean/neexitlag/core/security"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
-	cp "github.com/buzzmean/neexitlag/services/control-plane"
+	"github.com/buzzmean/veliq/core/enrollment"
+	"github.com/buzzmean/veliq/core/freshpc"
+	"github.com/buzzmean/veliq/core/security"
+	wp "github.com/buzzmean/veliq/platform/windows"
+	cp "github.com/buzzmean/veliq/services/control-plane"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -58,7 +58,7 @@ type accountFixture struct {
 
 func newAccountFixture(t *testing.T) *accountFixture {
 	t.Helper()
-	dsn := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	dsn := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("isolated PostgreSQL required")
 	}

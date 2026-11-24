@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"net/netip"
 	"os"
 	"path/filepath"

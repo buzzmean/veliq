@@ -11,9 +11,9 @@ try{
  & go @goArgs ./services/client-service ./platform/windows -run 'Test(Club|NonClub|GameUDP|Hardware|PrivateISCSI)'
  if($LASTEXITCODE){throw 'CLUB_GO_CHECKS_FAILED'}
  . (Join-Path $PSScriptRoot 'activation-nuget.ps1');Initialize-ActivationNuGetSource
- & dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+ & dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
  if($LASTEXITCODE){throw 'CLUB_CSHARP_CHECKS_FAILED'}
- & dotnet build apps/desktop/Neexitlag.Desktop.csproj --nologo
+ & dotnet build apps/desktop/Veliq.Desktop.csproj --nologo
  if($LASTEXITCODE){throw 'CLUB_WPF_BUILD_FAILED'}
  Write-Output 'PASS local club contracts/Go native/C#/WPF; NO Inno install, real freeze, enrollment, SSH or VPS access'
 }finally{Pop-Location}

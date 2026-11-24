@@ -1,6 +1,6 @@
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class SubscriptionTests {
  sealed class Service(string json,bool fail=false):IServiceClient {public string? Method;public Task<T> Call<T>(string method,object? payload=null,CancellationToken cancellationToken=default){Method=method;if(fail)throw new ServiceException(ServiceFailure.Rejected,"unknown method");return Task.FromResult(System.Text.Json.JsonSerializer.Deserialize<T>(json,WireJson.Options)!);}}
  [Fact]public async Task ActiveShowsOnlyDate(){var s=new Service("""{"state":"ACTIVE","paid_until":"2030-11-26T10:00:00Z"}""");var m=new SubscriptionModel(s);await m.RefreshAsync();Assert.Equal("subscription.status",s.Method);Assert.StartsWith("Подписка до ",m.Status.Summary);Assert.Contains("2030",m.Status.Summary);Assert.False(m.Status.Expired);Assert.Equal("",m.Status.Hint);}

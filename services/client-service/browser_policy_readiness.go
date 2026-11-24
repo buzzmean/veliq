@@ -16,9 +16,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	"github.com/buzzmean/neexitlag/core/transport"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/profiles"
+	"github.com/buzzmean/veliq/core/transport"
 )
 
 type browserPolicyReadiness struct {

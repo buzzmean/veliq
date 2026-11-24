@@ -1,6 +1,6 @@
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public class BrowserRoutingTests {
  [Fact]public void DNSRecoveryProvesOriginOnlyNotBrowserPage(){
   var record=new BrowserConnection{Plan=new(){Probe="DNS_RELAY_HTTP_VERIFIED",HttpStatus=200,Policy=new(){Action="RELAY_REQUIRED",RelayId="VPS-01"}}};

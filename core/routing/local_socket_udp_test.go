@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/protocol"
+	"github.com/buzzmean/veliq/core/protocol"
 )
 
 func TestOpenLocalUDPUsesOnlyOriginalPeerAndFullDatagrams(t *testing.T) {

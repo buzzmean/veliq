@@ -12,7 +12,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/security"
 	"math/big"
 	"net"
 	"net/netip"

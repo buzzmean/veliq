@@ -5,7 +5,7 @@ package clientservice
 import (
 	"context"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/ipc"
+	"github.com/buzzmean/veliq/core/ipc"
 	"net"
 )
 

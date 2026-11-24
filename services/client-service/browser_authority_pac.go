@@ -2,7 +2,7 @@ package clientservice
 
 import (
 	"encoding/base64"
-	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/veliq/core/browserproxy"
 	"net/netip"
 	"regexp"
 	"strconv"

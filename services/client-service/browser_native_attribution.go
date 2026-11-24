@@ -2,7 +2,7 @@ package clientservice
 
 import (
 	"encoding/json"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 // Deliberately opt-in read-only IPC, not a process scanner in the GUI poll loop.

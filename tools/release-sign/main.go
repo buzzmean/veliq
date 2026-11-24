@@ -14,8 +14,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/buzzmean/neexitlag/core/release"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/release"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 func run() error {

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/buzzmean/neexitlag/core/netdiagnostic"
+	"github.com/buzzmean/veliq/core/netdiagnostic"
 	"net"
 	"os"
 	"strings"

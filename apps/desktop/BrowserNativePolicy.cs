@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // The non-elevated owner-user GUI requests a user GP refresh; never machine GP.
 // Chromium's Windows loader watches user GP notifications. The API is async:

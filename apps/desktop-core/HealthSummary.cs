@@ -1,5 +1,5 @@
 using System.Text;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 // «Диагностика» for people: one verdict, four plain rows and a report file for support.
 // Everything technical stays in the hidden «Технические детали» view and in the report.
 public sealed record HealthRow(string Name, string State, HealthLevel Level);

@@ -1,6 +1,6 @@
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class ManualUpdateTests
 {
     sealed class UpdateService : IServiceClient

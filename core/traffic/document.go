@@ -3,7 +3,7 @@ package traffic
 import (
 	"crypto/ed25519"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/security"
 	"time"
 )
 

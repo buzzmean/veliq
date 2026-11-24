@@ -3,7 +3,7 @@ using System.Diagnostics;
 using System.Security.AccessControl;
 using System.Security.Cryptography;
 using System.Security.Principal;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 internal static class EmergencyPasswordStore
 {

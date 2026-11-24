@@ -1,8 +1,8 @@
 package clientservice
 
 import (
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"sort"
 	"strings"
 	"time"

@@ -6,7 +6,7 @@ import (
 	"crypto/ed25519"
 	"crypto/sha256"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/protocol"
+	"github.com/buzzmean/veliq/core/protocol"
 	"time"
 )
 

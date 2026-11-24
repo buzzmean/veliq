@@ -5,8 +5,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
-	"github.com/buzzmean/neexitlag/core/enrollment"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/enrollment"
+	"github.com/buzzmean/veliq/core/security"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"os"
 	"strings"
@@ -16,7 +16,7 @@ import (
 
 func codeStore(t *testing.T) *Store {
 	t.Helper()
-	dsn := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	dsn := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("isolated PostgreSQL required")
 	}

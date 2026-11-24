@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/gameudp"
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/gameudp"
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 // Native PID/birth lookup + the real capture dispatch. Only final WinDivert
@@ -26,7 +26,7 @@ func nativeGameIdentity(t *testing.T) ProcessIdentity {
 func nativeGameIdentityExecutable(t *testing.T, executable string) ProcessIdentity {
 	t.Helper()
 	cmd := exec.Command(executable, "-test.run=^TestHotAttachIdentityChild$", "-test.v")
-	cmd.Env = append(os.Environ(), "NEEXITLAG_HOT_IDENTITY_CHILD=1")
+	cmd.Env = append(os.Environ(), "VELIQ_HOT_IDENTITY_CHILD=1")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)

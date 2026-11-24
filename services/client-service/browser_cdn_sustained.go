@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/localstrategy"
+	"github.com/buzzmean/veliq/core/localstrategy"
 )
 
 const cdnStrongBytes = 1024 * 1024

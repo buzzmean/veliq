@@ -22,11 +22,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/locallearning"
-	"github.com/buzzmean/neexitlag/core/optimizer"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/traffic"
+	"github.com/buzzmean/veliq/core/locallearning"
+	"github.com/buzzmean/veliq/core/optimizer"
+	"github.com/buzzmean/veliq/core/profiles"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/traffic"
 )
 
 type Settings struct {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/optimizer"
+	"github.com/buzzmean/veliq/core/optimizer"
 )
 
 func TestConfigRevocationSizeDomainBoundAndAtomicCache(t *testing.T) {

@@ -1,14 +1,14 @@
 using System.Xml.Linq;
 using System.Text.RegularExpressions;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class ResourceTests
 {
     static string Root()
     {
         var folder = new DirectoryInfo(AppContext.BaseDirectory);
-        while (folder is not null && !File.Exists(Path.Combine(folder.FullName, "NeExitLag.sln")))
+        while (folder is not null && !File.Exists(Path.Combine(folder.FullName, "VELIQ.sln")))
             folder = folder.Parent;
         return folder?.FullName ?? throw new Exception("Repository root missing");
     }

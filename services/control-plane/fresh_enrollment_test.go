@@ -5,7 +5,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/security"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"os"
 	"strings"
@@ -14,7 +14,7 @@ import (
 )
 
 func TestFreshEnrollmentAtomicReplacementRetryRevocationAndDBFailure(t *testing.T) {
-	database := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	database := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if database == "" {
 		t.Skip("isolated PostgreSQL required")
 	}

@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public sealed class NativeAccountException(string code) : Exception(code)
 {

@@ -14,13 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/telemetry"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/services/relay"
-	"github.com/buzzmean/neexitlag/tools/echo"
-	"github.com/buzzmean/neexitlag/tools/labcert"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/telemetry"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/services/relay"
+	"github.com/buzzmean/veliq/tools/echo"
+	"github.com/buzzmean/veliq/tools/labcert"
 )
 
 type poolFixture struct {

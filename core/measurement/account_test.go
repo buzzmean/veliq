@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/optimizer"
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/optimizer"
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 // scripted answers each probe by plan: ontime, late (after Timeout), lost, senderr.

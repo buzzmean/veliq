@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 // Home screen texts per app-ui/index.html states: off / connecting / on / error.
 public sealed partial class DesktopViewModel
 {

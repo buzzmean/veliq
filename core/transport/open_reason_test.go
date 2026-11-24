@@ -3,7 +3,7 @@ package transport
 import (
 	"context"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/protocol"
+	"github.com/buzzmean/veliq/core/protocol"
 	"github.com/quic-go/quic-go"
 	"io"
 	"os"

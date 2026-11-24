@@ -1,7 +1,7 @@
 package windowsplatform
 
 import (
-	"github.com/buzzmean/neexitlag/core/localstrategy"
+	"github.com/buzzmean/veliq/core/localstrategy"
 	"time"
 )
 

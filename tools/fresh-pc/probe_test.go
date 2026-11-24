@@ -20,11 +20,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/freshpc"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/internal/e2eprobe"
-	"github.com/buzzmean/neexitlag/services/relay"
+	"github.com/buzzmean/veliq/core/freshpc"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/internal/e2eprobe"
+	"github.com/buzzmean/veliq/services/relay"
 )
 
 func TestFreshProbeRealPinnedTLSMTLSTicketTCPUDP(t *testing.T) {

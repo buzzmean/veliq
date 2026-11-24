@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/controlclient"
-	"github.com/buzzmean/neexitlag/core/deviceinfo"
+	"github.com/buzzmean/veliq/core/controlclient"
+	"github.com/buzzmean/veliq/core/deviceinfo"
 )
 
 type deviceMetadataSource interface {

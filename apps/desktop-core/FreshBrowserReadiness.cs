@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // Explicit fresh/repair transaction. Ordinary GUI startup still preserves user modes.
 public sealed partial class DesktopViewModel

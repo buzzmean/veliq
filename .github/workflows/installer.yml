@@ -22,7 +22,7 @@ jobs:
           & .\tools\windows\build-e2e.ps1
           & .\tools\windows\build-desktop.ps1
           if (!(Test-Path '.e2e\windivert')) { & .\tools\windows\fetch-windivert.ps1 }
-          & dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+          & dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
           if($LASTEXITCODE){throw 'DESKTOP_TEST_FAILED'}
           & python -m unittest discover -s tests/installer -v
           if($LASTEXITCODE){throw 'INSTALLER_CONTRACT_FAILED'}

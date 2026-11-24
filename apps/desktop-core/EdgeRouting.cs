@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public sealed class EdgeTransportStatus {
  public BrowserSilentActivation SilentActivation {get;set;}=new();

@@ -17,8 +17,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/release"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/release"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 // BuildSequence is the git commit count of this build (set with -ldflags -X).

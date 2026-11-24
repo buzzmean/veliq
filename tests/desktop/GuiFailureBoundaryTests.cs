@@ -1,6 +1,6 @@
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public class GuiFailureBoundaryTests {
  sealed class AuxiliaryFault(string method,Exception error) : IServiceClient {
   public FakeService Core=new();

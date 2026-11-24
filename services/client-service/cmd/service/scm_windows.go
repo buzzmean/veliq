@@ -4,7 +4,7 @@ package main
 
 import (
 	"context"
-	windowsplatform "github.com/buzzmean/neexitlag/platform/windows"
+	windowsplatform "github.com/buzzmean/veliq/platform/windows"
 	"golang.org/x/sys/windows/svc"
 	"time"
 )

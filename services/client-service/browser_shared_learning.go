@@ -3,8 +3,8 @@ package clientservice
 import (
 	"context"
 	"crypto/ed25519"
-	"github.com/buzzmean/neexitlag/core/controlclient"
-	"github.com/buzzmean/neexitlag/core/locallearning"
+	"github.com/buzzmean/veliq/core/controlclient"
+	"github.com/buzzmean/veliq/core/locallearning"
 	"sort"
 	"strings"
 	"sync"

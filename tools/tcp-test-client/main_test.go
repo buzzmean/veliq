@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/pem"
-	"github.com/buzzmean/neexitlag/internal/webprobe"
+	"github.com/buzzmean/veliq/internal/webprobe"
 	"net/http/httptest"
 	"os"
 	"path/filepath"

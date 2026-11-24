@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public sealed class EdgeActivationException(string phase,string code,string explanation) : Exception($"{phase}: {code}. {explanation}") {
  public string Phase {get;}=phase; public string Code {get;}=code;

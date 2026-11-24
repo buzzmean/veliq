@@ -8,9 +8,9 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/buzzmean/neexitlag/core/optimizer"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/optimizer"
+	"github.com/buzzmean/veliq/core/profiles"
+	"github.com/buzzmean/veliq/core/security"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"io"
 	"math/big"
@@ -23,9 +23,9 @@ import (
 )
 
 func TestPostgresAPIIdentityTicketConfigAndRevoke(t *testing.T) {
-	url := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	url := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("set NEEXITLAG_TEST_DATABASE_URL to a test PostgreSQL database")
+		t.Skip("set VELIQ_TEST_DATABASE_URL to a test PostgreSQL database")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

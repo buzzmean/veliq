@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 )
 
 func automaticTLSExchange(t *testing.T, raw net.Conn, q browserproxy.Request, roots *x509.CertPool) {

@@ -3,7 +3,7 @@ package localstrategy
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/buzzmean/neexitlag/core/optimizer"
+	"github.com/buzzmean/veliq/core/optimizer"
 	"net/netip"
 	"sort"
 	"sync"

@@ -16,7 +16,7 @@ import (
 // Execute the actual generator output against PostgreSQL, then authenticate with
 // the exact original password. Fixtures never log credentials or generated SQL.
 func TestGeneratedSQLAuthenticatesExactPassword(t *testing.T) {
-	url := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	url := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if url == "" {
 		t.Skip("requires PostgreSQL integration database")
 	}

@@ -6,11 +6,11 @@ foreach($relative in @('tools/windows/test-windivert-filters.ps1','tools/windows
  if($errors.Count){throw ($errors|Out-String)}
 }
 $gate=Get-Content -Raw (Join-Path $root 'tools/windows/test-windivert-filters.ps1')
-foreach($name in @('TestServiceFiltersCompileWithActualWinDivert','TestWinDivertCompilerRejectsLegacyGroupedNot','TestWinDivertCompilerReportsComplexityLimits','TestPrivateISCSIExcludedByActualWinDivertFilterEvaluator','TestClubInfrastructureWithActualWinDivertFilterEvaluator','NEEXITLAG_REQUIRE_FILTER_COMPILER','WINDIVERT_FILTER_PROOF_MISSING','WINDIVERT_FILTER_WINDOWS_RUNTIME_REQUIRED')){
+foreach($name in @('TestServiceFiltersCompileWithActualWinDivert','TestWinDivertCompilerRejectsLegacyGroupedNot','TestWinDivertCompilerReportsComplexityLimits','TestPrivateISCSIExcludedByActualWinDivertFilterEvaluator','TestClubInfrastructureWithActualWinDivertFilterEvaluator','VELIQ_REQUIRE_FILTER_COMPILER','WINDIVERT_FILTER_PROOF_MISSING','WINDIVERT_FILTER_WINDOWS_RUNTIME_REQUIRED')){
  if(!$gate.Contains($name)){throw ('Required DLL proof missing: '+$name)}
 }
 if($gate -match 'Start-Service|Stop-Service|Invoke-ServiceIPC|WinDivertOpen|\bssh\b|\bscp\b'){throw 'Compiler gate must not change service/network/VPS state'}
-if(!$gate.Contains('finally{') -or !$gate.Contains('$env:NEEXITLAG_TEST_DRIVER_DIR=$oldDriver') -or !$gate.Contains('$env:NEEXITLAG_REQUIRE_FILTER_COMPILER=$oldRequired')){throw 'Fixture environment must be restored'}
+if(!$gate.Contains('finally{') -or !$gate.Contains('$env:VELIQ_TEST_DRIVER_DIR=$oldDriver') -or !$gate.Contains('$env:VELIQ_REQUIRE_FILTER_COMPILER=$oldRequired')){throw 'Fixture environment must be restored'}
 $build=Get-Content -Raw (Join-Path $root 'tools/windows/build-e2e.ps1')
 if($build.IndexOf("'test-windivert-filters.ps1'") -gt $build.IndexOf(' $targets=@{') -or !$build.Contains('TestServiceWinDivertFilterInventory')){throw 'DLL gate must run before building service payload'}
 Write-Host 'PASS filter gate scripts parse; mandatory DLL proof precedes service build; no service/network/VPS calls. Actual DLL execution is a separate Windows test.'

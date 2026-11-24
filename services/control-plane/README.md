@@ -1,6 +1,7 @@
-# PostgreSQL control plane
+# Сервер управления на PostgreSQL
 
-Implemented Go HTTP MVP with persistent device/relay/profile/config/audit state,
-Ed25519 device proofs, tickets, signed configs and scoped relay heartbeats.
-[API and standalone launch](../../CONTROL_PLANE.md); [Docker dev](../../DEPLOYMENT.md).
-The data plane verifies tickets locally and never forwards through this component.
+HTTP-сервер на Go хранит устройства, релеи, профили, конфигурации и журнал событий. Поддерживает подтверждение устройства ключом Ed25519, подписанные билеты и настройки, отдельные сообщения состояния релеев.
+
+[API и отдельный запуск](../../CONTROL_PLANE.md) · [Стенд Docker](../../DEPLOYMENT.md).
+
+Транспорт проверяет билеты локально и не пересылает пользовательские данные через сервер управления.

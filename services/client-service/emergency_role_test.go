@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/buzzmean/neexitlag/core/emergency"
-	"github.com/buzzmean/neexitlag/core/enrollment"
+	"github.com/buzzmean/veliq/core/emergency"
+	"github.com/buzzmean/veliq/core/enrollment"
 )
 
 func TestPersonalEmergencyIsRejectedBeforePasswordOrCleanup(t *testing.T) {

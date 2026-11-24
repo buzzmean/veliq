@@ -1,73 +1,40 @@
-# Windows E2E preparation: cloud verification
+# Историческая подготовка сквозной проверки Windows
 
-Linux x64, Go1.25.1, PowerShell7.4.6, actual PostgreSQL17.
-No real Windows runtime or operator VPS was available **in cloud**. The operator
-has since confirmed manual simultaneous per-process DIRECT/RELAY on Windows;
-see [reported evidence and exact rerun](WINDOWS_REAL_E2E.md). The updated automated
-suite has not been executed against that Windows/VPS pair here.
+Исходный облачный стенд: Linux x64, Go 1.25.1, PowerShell 7.4.6 и настоящий PostgreSQL 17. Физической Windows и рабочего VPS в нём не было. Позднейшее сообщение о ручной маршрутизации на Windows не превращает облачный прогон в проверку той же пары ПК/сервер.
 
-| Check | Result / actual scope |
+| Проверка | Зафиксированный результат и граница |
 |---|---|
-| go build ./... | PASS |
-| go test -race -count=1 -timeout 120s ./... | PASS with PostgreSQL URL supplied |
-| go vet ./... | PASS |
-| Windows amd64 CGO0 build of all Go packages | PASS |
-| Windows vet of platform/service packages | PASS |
-| Windows discovery/UDP owner test executable | Compiled; not executed on Linux |
-| build-e2e.ps1 | PASS, produced five Windows executables and four Linux binaries |
-| PowerShell syntax | All published setup/acceptance/service/test scripts PASS |
-| Actual PowerShell IPC client | Linux .NET fixture: framed round-trip, bad ID and bounded timeout PASS |
-| VPS shell installer | bash -n PASS; not executed against a remote host |
-| systemd units | systemd-analyze verify PASS in isolated dependency/executable fixtures |
-| Official WinDivert download | Archive and DLL/SYS SHA256 verified; PE signature-table structure inspected |
-| Original tools/lab | Actual local UDP/TCP E2E PASS |
-| Real Windows A–F | NOT RUN |
-| Public-Internet relay/echo | NOT RUN |
-| Real CS2 | NOT RUN |
+| Полная сборка Go и `vet` | Успешно |
+| Полный `-race`, повтор без кэша | Успешно с подключённой PostgreSQL |
+| Сборка и `vet` под Windows amd64 | Успешно; EXE на Linux не исполнялся |
+| `build-e2e.ps1` | Получены пять EXE Windows и четыре бинарника Linux |
+| Синтаксис PowerShell | Проверены опубликованные сценарии подготовки и приёмки |
+| Настоящий клиент IPC PowerShell | Локальная .NET-фикстура: обмен кадрами, отказ неверному ID и ограниченный таймаут |
+| Установщик VPS | `bash -n`; удалённый запуск не выполнялся |
+| Модули systemd | Проверены на изолированных фикстурах зависимостей и файлов |
+| WinDivert | Хеши ZIP/DLL/SYS и структура PE; доверие Windows и захват не подтверждены |
+| `tools/lab` | Настоящий локальный UDP/TCP-обмен |
+| Реальная Windows, публичный релей и CS2 | Не выполнялись этим стендом |
 
-The new integration test actually runs PostgreSQL APIs, private-CA HTTPS device
-registration, signed config/ticket issuance, mTLS QUIC relay and authenticated
-nonce echo over both DIRECT and relay transports. It then validates persisted LKG
-with the HTTP server stopped. It deliberately asserts that this portable transport
-alone does not advertise Windows capture as connected.
+## Проверенная цепочка
 
-Other tests cover PID reuse/cache expiry, wildcard/shared-port ownership,
-IPv4-mapped/dual-stack ownership parsing, service-PID exclusion and counter-ledger
-cleanup, echo authentication/reply rejection/observed source, actual ordinary UDP
-client RTT/loss and temporary profile removal without deleting default profiles.
-Windows-specific tests use real current-process discovery and actual sockets;
-only their compilation was checked here. CI can run those without a driver, but
-that still cannot substitute for administrator-run public-Internet acceptance.
+Интеграционный тест запускал API PostgreSQL, HTTPS с частным CA, регистрацию устройства, выдачу подписанных настроек и билета, mTLS/QUIC и авторизованный эхо-обмен по прямому и защищённому пути. После остановки HTTP-сервера проверялся сохранённый подписанный кэш. Переносимый транспорт намеренно не объявлял захват Windows подключённым.
 
-A new IPC fixture caught an AsyncWaitHandle ownership error in the PowerShell
-client; removing disposal of framework-owned cached handles resolved it, and all
-three scenarios subsequently passed. The new service-LKG integration fixture
-initially checked an uninitialized helper cache; it now loads and checks the
-actual signed cache persisted by the service. These were resolved before the
-final regression. No saved report is represented as a Windows runtime PASS.
+Отдельные проверки охватывали повторное использование PID, истечение кэша, общие порты, двухстековые сокеты, исключение собственной службы, очистку счётчиков, отказ неверному эхо-ответу, фактический исходящий адрес и сохранение стандартных профилей после удаления временного.
 
-## Deployment / acceptance reproducibility fixes
+Нативные тесты Windows используют реальные сокеты и процессы. Здесь проверялась только их сборка. Возможность выполнить часть тестов без драйвера не заменяет внешний захват на целевом ПК.
 
-The full Go race suite with PostgreSQL17, go vet and Windows amd64 cross-build
-passed again after these fixes. Actual build-e2e.ps1, PowerShell parsing and the
-existing framed-IPC round-trip/rejection/timeout fixtures passed.
+## Найденные и исправленные проблемы стенда
 
-Additional regression checks:
+Клиент PowerShell ошибочно освобождал принадлежащий среде `AsyncWaitHandle`; после исправления обмен, отказ и таймаут прошли. Проверка последней пригодной конфигурации сначала смотрела неинициализированный вспомогательный кэш; затем стала проверять настоящий файл службы. Эти исходные отказы не выдаются за успешный прогон.
 
-- Python deployment tests: core.autocrlf=true checkout still produces LF shell,
-  Python and systemd source; bash -n passes on the exported installer. Password
-  generation preserves quotes, backslashes, injection-shaped text and newlines.
-- Actual PostgreSQL: execute generated SET/CREATE ROLE/CREATE DATABASE and then
-  authenticate with the exact password for five special-character cases.
-- Actual loopback UDP socket: retain the same source socket across warm-up and
-  measurement; discard late warm-up nonce replies; deliberately lost measured
-  packets remain in measured loss.
-- PowerShell regression fixtures: reject wrong routes, relay IDs, counters,
-  recycled PID creation times, truncated proof and excess/inconsistent loss;
-  retry transient startup IPC and require three stable readiness snapshots;
-  retain status/capture/report/stdout/stderr for zero-reply failures and client
-  artifact paths even when IPC is unavailable; reject nonoverlapping measured
-  windows. Staged CRLF source is normalized while binary bytes are unchanged.
+Дополнительно проверялись:
 
-These tests exercise the published functions, SQL generator and ordinary socket
-client; they do not create a real Windows PASS report. No GUI changes were made.
+- сохранение LF для shell, Python и systemd при `core.autocrlf=true`, синтаксис экспортированного установщика;
+- пароли с кавычками, обратными косыми чертами, переводами строк и похожими на внедрение последовательностями: создавались настоящие роли и базы, затем проверялся вход с точным паролем;
+- сохранение исходного UDP-сокета между разогревом и измерением, отклонение запоздавших ответов разогрева, сохранение намеренных потерь в результате;
+- отказ неверным маршрутам, идентификаторам релея, счётчикам, повторно использованным PID, усечённым данным и несовместимой оценке потерь;
+- три устойчивых снимка готовности, ограниченный повтор временного отказа IPC, сохранение вывода при нуле ответов и отказ непересекающимся окнам измерений;
+- нормализация текстовых файлов без изменения бинарников.
+
+Эти результаты относятся к исходному стенду. Для новой версии нужны её точный коммит и отдельный результат. Они не подтверждают текущие Windows, VPS, игру, пользовательскую авторизацию или отсутствие сбоев сети.

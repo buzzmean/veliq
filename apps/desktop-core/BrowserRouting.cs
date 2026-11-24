@@ -1,5 +1,5 @@
 using System.Collections.ObjectModel;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public sealed class ChromeActivationException(string message, string phase = "chrome.activation", string code = "CHROME_ACTIVATION_FAILED") : Exception(message) {
  public string Phase {get;}=phase; public string Code {get;}=code;
 }

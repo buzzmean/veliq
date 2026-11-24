@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public sealed class WindowsServiceClient : IServiceClient
 {
     readonly ServiceClient client = new();

@@ -5,8 +5,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 )
 
 // An empty hostname MUST NOT enter the domain cache: two unrelated IP failures

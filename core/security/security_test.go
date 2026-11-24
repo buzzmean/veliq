@@ -3,8 +3,8 @@ package security
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"github.com/buzzmean/neexitlag/core/optimizer"
-	"github.com/buzzmean/neexitlag/core/profiles"
+	"github.com/buzzmean/veliq/core/optimizer"
+	"github.com/buzzmean/veliq/core/profiles"
 	"path/filepath"
 	"testing"
 	"time"

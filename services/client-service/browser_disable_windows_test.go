@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/profiles"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"golang.org/x/net/dns/dnsmessage"
 	"golang.org/x/net/websocket"
 	"golang.org/x/sys/windows"
@@ -66,7 +66,7 @@ func continuityResolver(t *testing.T, addresses ...[4]byte) *net.Resolver {
 }
 
 func TestWindowsBrowserDisablePolicyContinuity(t *testing.T) {
-	if os.Getenv("NEEXITLAG_TEST_BROWSER_DISABLE") != "1" {
+	if os.Getenv("VELIQ_TEST_BROWSER_DISABLE") != "1" {
 		t.Skip("disposable Windows browser VM only")
 	}
 	for _, edge := range []bool{false, true} {

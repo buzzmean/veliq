@@ -19,15 +19,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/internal/browserfixture"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
-	"github.com/buzzmean/neexitlag/services/relay"
-	"github.com/buzzmean/neexitlag/tools/labcert"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/profiles"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/internal/browserfixture"
+	wp "github.com/buzzmean/veliq/platform/windows"
+	"github.com/buzzmean/veliq/services/relay"
+	"github.com/buzzmean/veliq/tools/labcert"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -35,7 +35,7 @@ import (
 // No production targets/credentials, global proxy, user browser directory, MITM,
 // or native DIRECT+ claim. The fixture browser pins only its ephemeral TLS key.
 func TestEdgeActualPolicyHTTPSOutageRestart(t *testing.T) {
-	if os.Getenv("NEEXITLAG_TEST_EDGE_POLICY") != "1" {
+	if os.Getenv("VELIQ_TEST_EDGE_POLICY") != "1" {
 		t.Skip("explicit disposable Windows acceptance only")
 	}
 	edge := ""
@@ -49,7 +49,7 @@ func TestEdgeActualPolicyHTTPSOutageRestart(t *testing.T) {
 	if edge == "" {
 		t.Fatal("real Edge required")
 	}
-	helperPath := os.Getenv("NEEXITLAG_TEST_BROWSER_RECOVERY")
+	helperPath := os.Getenv("VELIQ_TEST_BROWSER_RECOVERY")
 	if helperPath == "" {
 		t.Fatal("real recovery helper required")
 	}
@@ -142,7 +142,7 @@ func TestEdgeActualPolicyHTTPSOutageRestart(t *testing.T) {
 	defer pool.Close()
 	c.Engine.SetRelay("VPS-01", pool)
 	helper := exec.CommandContext(ctx, helperPath, "-test.run=^TestChromeRecoveryChildProcess$", "-test.v=false")
-	helper.Env = append(os.Environ(), "NEEXITLAG_TEST_RECOVERY_CHILD=1")
+	helper.Env = append(os.Environ(), "VELIQ_TEST_RECOVERY_CHILD=1")
 	stdin, err := helper.StdinPipe()
 	if err != nil {
 		t.Fatal(err)

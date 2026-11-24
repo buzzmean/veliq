@@ -10,7 +10,7 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/buzzmean/neexitlag/core/localstrategy"
+	"github.com/buzzmean/veliq/core/localstrategy"
 )
 
 // Pinned native checksum helper only; no WinDivertOpen, driver, traffic or VPS.

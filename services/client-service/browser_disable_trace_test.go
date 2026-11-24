@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 // Test-only lifecycle evidence. No addresses, browser identities or payloads are

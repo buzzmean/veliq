@@ -4,7 +4,7 @@ using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
 using System.Text.Json;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 // Club UI has no ordinary routing mutations. Emergency stop is independently
 // password-authorized by the service; password setup requires the elevated owner.
 // Actual authorization is enforced by the service, independently of this window.

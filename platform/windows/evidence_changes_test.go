@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/transport"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/transport"
 )
 
 func drainChanges(t *testing.T, l *EvidenceLedger, cursor *ChangeCursor, seen map[uint64]FlowEvidence) {

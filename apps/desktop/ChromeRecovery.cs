@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Net;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // A standard-user child of the installed service binary; it never loads the
 // service manifest, driver or credentials. Only its inherited stdin config pipe

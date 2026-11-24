@@ -1,57 +1,33 @@
-# Destination-aware quality and adaptive FEC: future contracts
+# Качество конкретной цели и адаптивная FEC: будущие контракты
 
-## Destination-aware quality
+## Качество назначения
 
-The v1 sampler proves CLIENT -> selected route -> configured authenticated echo.
-A relay's handshake or echo RTT is not CLIENT -> RELAY -> GAME quality. The
-`core/quality` contract keys observations by application, real PID/creation time,
-protocol, actual existing-flow destination and route ID. Reused/unknown identities
-are invalid. Existing WinDivert capture/flow evidence already records bounded
-metadata and counters; no packet payload is needed for the groundwork.
+Первое поколение измерителя проверяет путь от клиента через выбранный маршрут до настроенной авторизованной эхо-цели. Задержка рукопожатия или эхо релея не является качеством пути до игры.
 
-Future observers may use only active classified flows, with bounded storage,
-expiry, local-drop categories and user-approved retention. Never scan arbitrary
-Internet addresses or maintain hardcoded CS2 server IPs. A UDP application's
-sent/reply counters are asymmetric; the contract explicitly reports network loss
-as unknown. Arbitrary encrypted game payloads do not expose a trustworthy RTT,
-packet sequence or acknowledgment scheme. Repeated UDP sends without replies
-could be entirely normal and must not imply a failed destination.
+Контракт `core/quality` различает приложение, настоящий PID и время создания, протокол, фактическое назначение существующего потока и идентификатор маршрута. Повторно использованная или неизвестная идентичность непригодна. Наблюдения WinDivert уже содержат ограниченные метаданные и счётчики; содержимое пакетов для этого не требуется.
 
-A future provider may expose known quality only from a protocol-aware, explicitly
-supported sequence/ack signal or an opted-in authenticated destination probe.
-Probe candidates need authorization, rate/MTU budgets and active-destination TTL;
-passive metadata does not authorize probes. Application/destination scoring must
-retain DIRECT comparison and confidence, and apply to new flows. No provider is
-wired to AUTO in v1: the default configured echo scope stays visible in the GUI.
+Будущий наблюдатель может использовать только активные сопоставленные потоки, ограниченное хранилище, срок годности и отдельные категории локальных отбросов. Нельзя сканировать произвольные адреса интернета или хранить жёсткий список IP серверов CS2.
 
-## Adaptive FEC
+Числа исходящих и входящих UDP-пакетов асимметричны и не дают сетевые потери автоматически. Зашифрованные игровые данные могут не раскрывать достоверные RTT, номера и подтверждения. Несколько отправок без ответа могут быть штатным поведением, а не отказом назначения.
 
-There is no FEC encoder/decoder in v1 and `DisabledFEC()` advertises no capability.
-Game payload remains QUIC DATAGRAM. Control/ticket/open handshakes may use streams;
-game UDP does not become a reliable stream and is not normally retransmitted.
+Достоверное качество может появиться из явно поддержанного протокольного признака подтверждения или отдельно разрешённой авторизованной пробы. Для проб нужны полномочия, предел частоты и MTU, срок активности цели. Пассивное наблюдение не разрешает активную проверку. Оценка приложения и назначения должна сохранять сравнение с прямым путём, уровень достоверности и применение только к новым потокам.
 
-Future FEC must negotiate an explicit capability/wire version at both ends;
-unknown peers remain on the existing DATAGRAM framing. Consider XOR parity for a
-small group (e.g. 4 packets + 1 parity, 25% payload overhead), and compare with a
-small erasure code for short bursts. A five-packet burst cannot be recovered by
-one XOR parity group; capability claims must match actual recoverable erasures.
+Этот документ не подключает такой источник к AUTO. Текущий интерфейс должен явно показывать, если измеряется только настроенная контрольная цель.
 
-Design constraints before implementation:
+## Адаптивное восстановление FEC
 
-- bounded group/sequence/generation metadata and authenticated parity, replay and
-  duplicate protection; no cross-flow recovery;
-- respect the existing 1100-byte user payload/QUIC MTU budget, including added
-  metadata and parity; no implicit fragmentation;
-- maximum extra group wait and recovery deadline budget (initial experiment at
-  most 2ms, not a claim that 2ms improves games);
-- late parity/recovered realtime payload must expire rather than delaying live
-  packets; no ordinary retransmission fallback;
-- enable only when measured burst patterns and overhead justify it; hysteresis,
-  CPU/queue caps and explicit rollback to no FEC;
-- count recovered, unrecoverable, expired, parity-byte, queue and reinjection
-  outcomes separately; never hide original loss behind recovery totals;
-- require impairment-lab tests and real Windows/VPS game validation comparing
-  loss, p95 latency and queue pressure before any opt-in runtime deployment.
+В первом контракте кодировщик и декодировщик FEC отсутствуют; `DisabledFEC()` не объявляет возможности. UDP остаётся DATAGRAM и не становится надёжным потоком с обычными повторами. Управляющие обмены могут использовать надёжные каналы отдельно.
 
-None of these designs claim source-IP continuity. FEC would recover erasures
-within a pinned path, not make relay-to-relay migration safe or seamless.
+Будущая FEC требует согласования возможности и версии обоими концами. Неизвестный узел сохраняет исходный формат. Возможный эксперимент — XOR для группы из четырёх пакетов и одного пакета чётности: 25% дополнительных данных. Его нужно сравнить с небольшим кодом стираний для коротких серий. Одна чётность не восстанавливает серию из пяти потерянных пакетов.
+
+До реализации нужны:
+
+- ограниченные метаданные группы, номера и поколения; проверка подлинности чётности, защита от повторов и дубликатов, запрет восстановления между разными потоками;
+- сохранение бюджета 1100 байт полезной нагрузки и MTU QUIC с учётом новых заголовков, без скрытой фрагментации;
+- предельное ожидание группы и восстановления; начальный эксперимент — не более 2 мс, без обещания, что это улучшает игру;
+- удаление запоздавших пакетов чётности и восстановленных данных вместо задержки текущего трафика, без обычной повторной передачи;
+- включение только при оправданных измерениями сериях потерь и расходах; подтверждение выбора, ограничения CPU и очередей, явное отключение FEC;
+- раздельные счётчики восстановленных, невосстановимых, устаревших пакетов, байтов чётности, очередей и возврата в стек; исходные потери не скрываются;
+- стенд с управляемыми потерями и реальная Windows/серверная проверка игры с сопоставлением потерь, p95 и давления на очереди до включения у пользователя.
+
+FEC восстанавливает потери внутри закреплённого пути. Она не сохраняет внешний IP при смене релея и не делает перенос сессии бесшовным. Наличие этого проекта не разрешает игровой релей в текущей версии VELIQ.

@@ -1,8 +1,8 @@
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using System.Security.Cryptography;
 using System.Text.Json;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class GameCatalogTests {
  [Fact]public void BundledCatalogHasSelectedGamesAndSafeDefaults(){
   var c=GameCatalog.Bundled();Assert.Equal(1,c.Version);Assert.Equal(13,c.Games.Length);Assert.All(c.Games,g=>Assert.Equal("DIRECT",g.DefaultMode));

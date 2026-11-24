@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/veliq/core/browserproxy"
 )
 
 // Native forwarding never replays/migrates established traffic. Only future

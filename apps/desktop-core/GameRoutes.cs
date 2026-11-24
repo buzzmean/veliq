@@ -1,5 +1,5 @@
 using System.Collections.ObjectModel;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 // «Игры» as Q badges (app-ui shape) with a route strip; labels are the community names, not forced codes.
 public sealed partial class GameCard
 {

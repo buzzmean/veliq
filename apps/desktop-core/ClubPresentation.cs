@@ -1,5 +1,5 @@
 using System.Text.Json;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public static class ClubPresentation
 {
     public static bool Enabled(string? json)

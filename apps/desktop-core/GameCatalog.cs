@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text.Json;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public sealed record GameDefinition(string Id, string Name, string Icon, string[] Executables, string Launcher, string AntiCheat, string DefaultMode, string UdpPreset, bool LauncherNeedsBypass, string[]? NetworkReferences = null);
 // Informational data only. Never consumed by capture/profile/routing code.
@@ -14,7 +14,7 @@ public static class GameCatalog
     // No unsigned imports/network updates. Catalog trust follows the installed
     // assembly. A public update envelope requires an owner-pinned signing key.
     public static GameCatalogData Bundled() {
-        using var stream=typeof(GameCatalog).Assembly.GetManifestResourceStream("Neexitlag.Desktop.Resources.GameCatalog.json") ?? throw new InvalidDataException("GAME_CATALOG_MISSING");
+        using var stream=typeof(GameCatalog).Assembly.GetManifestResourceStream("Veliq.Desktop.Resources.GameCatalog.json") ?? throw new InvalidDataException("GAME_CATALOG_MISSING");
         using var buffer=new MemoryStream();stream.CopyTo(buffer);
         return Parse(buffer.ToArray(),BundledSha256);
     }

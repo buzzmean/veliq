@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 type Request struct {

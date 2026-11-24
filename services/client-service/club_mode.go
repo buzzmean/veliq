@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/buzzmean/neexitlag/internal/clientconfig"
+	"github.com/buzzmean/veliq/internal/clientconfig"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/buzzmean/neexitlag/core/profiles"
+	"github.com/buzzmean/veliq/core/profiles"
 )
 
 // ConfigureClub trusts only the SYSTEM/admin-protected manifest, never owner IPC.

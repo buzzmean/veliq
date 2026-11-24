@@ -5,9 +5,9 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/buzzmean/neexitlag/core/profiles"
-	"github.com/buzzmean/neexitlag/core/security"
-	windowsplatform "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/profiles"
+	"github.com/buzzmean/veliq/core/security"
+	windowsplatform "github.com/buzzmean/veliq/platform/windows"
 )
 
 // Optional v1 query limits desktop results to configured applications instead of

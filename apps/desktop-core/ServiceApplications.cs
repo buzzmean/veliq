@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public sealed partial class DesktopViewModel
 {

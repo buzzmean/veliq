@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public partial class MainWindow
 {

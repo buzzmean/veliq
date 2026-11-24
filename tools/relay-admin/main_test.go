@@ -6,7 +6,7 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
-	cp "github.com/buzzmean/neexitlag/services/control-plane"
+	cp "github.com/buzzmean/veliq/services/control-plane"
 	"math/big"
 	"net"
 	"net/netip"

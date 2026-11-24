@@ -1,4 +1,4 @@
-<UserControl x:Class="Neexitlag.Desktop.GamesView" PreviewMouseDown="ClickOutside" PreviewKeyDown="EscapeCloses" Unloaded="Leave" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:Neexitlag.Desktop">
+<UserControl x:Class="Veliq.Desktop.GamesView" PreviewMouseDown="ClickOutside" PreviewKeyDown="EscapeCloses" Unloaded="Leave" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:Veliq.Desktop">
  <!-- «Игры»: each game is a Q badge (radius 36%, slit at 66%); the slit turns signal when the game has its own route.
       Clicking a badge opens the route strip with real choices only (direct, local, auto, relays reported by the service). -->
  <UserControl.Resources>

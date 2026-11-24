@@ -4,8 +4,8 @@ import (
 	"net"
 	"sync"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 )
 
 // The TCP socket returned by WinDivert delegation hides the QUIC error type.

@@ -37,8 +37,8 @@ jobs:
           $env:VELIQ_ORIGIN_BROWSER='${{ matrix.browser }}'
           $env:VELIQ_ORIGIN_REUSE_CASE='${{ matrix.scenario }}'
           & ./tools/windows/fetch-windivert.ps1
-          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
-          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          $env:VELIQ_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:VELIQ_TEST_ORIGIN_REUSE='1'
           & go test -v -count=1 -timeout 120s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
           if ($LASTEXITCODE) { throw 'AUTHORITY_RUNTIME_FAILED' }
   owner-lifecycle:
@@ -96,8 +96,8 @@ jobs:
           $env:VELIQ_TEST_GPO_COMMIT_EXEC=(Resolve-Path bin/owner-gpo-tests.exe).Path
           $env:VELIQ_TEST_GPO_GPUPDATE='1'
           & ./tools/windows/fetch-windivert.ps1
-          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
-          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          $env:VELIQ_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:VELIQ_TEST_ORIGIN_REUSE='1'
           $env:VELIQ_ORIGIN_REUSE_CASE='OwnedPACAppliedToRunningBrowser'
           & go test -v -count=1 -timeout 110s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$' 2>&1 | Tee-Object -FilePath owner-authority-probe.log
           if ($LASTEXITCODE) { throw 'LIVE_AUTHORITY_UPTAKE_NOT_PROVEN' }
@@ -124,8 +124,8 @@ jobs:
           VELIQ_ORIGIN_REUSE_CASE: ${{ matrix.scenario }}
         run: |
           & ./tools/windows/fetch-windivert.ps1
-          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
-          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          $env:VELIQ_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:VELIQ_TEST_ORIGIN_REUSE='1'
           & go test -v -count=1 -timeout 110s ./services/client-service '-run' '^TestWindowsBrowserOriginReuse$'
           if ($LASTEXITCODE) { throw 'CAPTURE_INDEPENDENT_ROUTE_FAILED' }
 
@@ -145,8 +145,8 @@ jobs:
         shell: powershell
         run: |
           & ./tools/windows/fetch-windivert.ps1
-          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
-          $env:NEEXITLAG_TEST_ORIGIN_REUSE='1'
+          $env:VELIQ_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:VELIQ_TEST_ORIGIN_REUSE='1'
           $env:VELIQ_ORIGIN_REUSE_CASE='OwnedPACAppliedToRunningBrowser'
           $env:VELIQ_TEST_OWNER_WININET='1'
           if ('${{ matrix.mode }}' -eq 'pulse') { $env:VELIQ_TEST_OWNER_WININET_PULSE='1' }

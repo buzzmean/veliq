@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public sealed class AccountConnectionView {
  public string State {get;set;}="NOT_LINKED";

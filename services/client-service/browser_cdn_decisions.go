@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/ipc"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/ipc"
 )
 
 const cdnDecisionLimit = 48

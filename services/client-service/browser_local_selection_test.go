@@ -1,9 +1,9 @@
 package clientservice
 
 import (
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/localstrategy"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"net/netip"
 	"testing"
 	"time"

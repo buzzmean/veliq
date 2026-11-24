@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/gameudp"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/gameudp"
+	"github.com/buzzmean/veliq/core/profiles"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 func TestSelectedGamesUseSTUN687WithoutRelay(t *testing.T) {

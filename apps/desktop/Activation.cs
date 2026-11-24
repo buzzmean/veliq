@@ -1,5 +1,5 @@
 using System.Windows;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public partial class MainWindow {
  bool activationBusy,activationEdit,activationSubmitted;
  async Task RefreshActivationAsync(){

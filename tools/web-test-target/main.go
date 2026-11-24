@@ -5,7 +5,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/buzzmean/neexitlag/internal/webprobe"
+	"github.com/buzzmean/veliq/internal/webprobe"
 	"github.com/quic-go/quic-go/http3"
 	"net/http"
 	"os"

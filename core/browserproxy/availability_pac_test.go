@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/buzzmean/neexitlag/core/originpolicy"
+	"github.com/buzzmean/veliq/core/originpolicy"
 )
 
 func executeAvailabilityPAC(t *testing.T, pac string, names []string) []string {

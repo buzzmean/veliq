@@ -1,6 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Button = System.Windows.Controls.Button;
 
 internal static partial class Program

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/enrollment"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/enrollment"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 // TEMPORARY OWNER TEST ONLY. Ordinary CreateCode cannot create short codes.

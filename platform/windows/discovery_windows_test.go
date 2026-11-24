@@ -3,7 +3,7 @@
 package windowsplatform
 
 import (
-	"github.com/buzzmean/neexitlag/core/profiles"
+	"github.com/buzzmean/veliq/core/profiles"
 	"net"
 	"net/netip"
 	"os"

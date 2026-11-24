@@ -6,9 +6,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/localstrategy"
 )
 
 var errBrowserAutoLocalBusy = errors.New("AUTO_LOCAL_PROBE_CAPACITY")

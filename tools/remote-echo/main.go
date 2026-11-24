@@ -4,7 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"github.com/buzzmean/neexitlag/internal/e2eprobe"
+	"github.com/buzzmean/veliq/internal/e2eprobe"
 	"net"
 	"net/http"
 	"os"

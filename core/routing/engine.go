@@ -3,7 +3,7 @@ package routing
 import (
 	"context"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/protocol"
+	"github.com/buzzmean/veliq/core/protocol"
 	"io"
 	"net"
 	"net/netip"

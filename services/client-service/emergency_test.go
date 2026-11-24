@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 	"time"
-	"github.com/buzzmean/neexitlag/core/emergency"
+	"github.com/buzzmean/veliq/core/emergency"
 )
 func TestEmergencyStopPreservesListenerUntilOwnedCleanupAndCannotReenable(t *testing.T) {
 	c,value,_,_:=policyReadyFixture(t,false)

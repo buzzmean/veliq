@@ -8,10 +8,10 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
-	"github.com/buzzmean/neexitlag/core/enrollment"
-	"github.com/buzzmean/neexitlag/core/freshpc"
-	"github.com/buzzmean/neexitlag/core/security"
-	cp "github.com/buzzmean/neexitlag/services/control-plane"
+	"github.com/buzzmean/veliq/core/enrollment"
+	"github.com/buzzmean/veliq/core/freshpc"
+	"github.com/buzzmean/veliq/core/security"
+	cp "github.com/buzzmean/veliq/services/control-plane"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"math/big"
 	"net"
@@ -26,7 +26,7 @@ import (
 )
 
 func TestActivationHTTPSCSRPrivateKeyFreezeAndLostResponse(t *testing.T) {
-	dsn := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	dsn := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("isolated PostgreSQL required")
 	}

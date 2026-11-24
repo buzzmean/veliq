@@ -2,7 +2,7 @@ package clientservice
 
 import (
 	"errors"
-	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/veliq/core/browserproxy"
 )
 
 // Called under browser.mu. A temporary bind conflict on boot must not leave a

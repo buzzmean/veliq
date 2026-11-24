@@ -22,7 +22,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/veliq/core/browserproxy"
 )
 
 type publicProbeConn struct {

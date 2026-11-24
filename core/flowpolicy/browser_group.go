@@ -1,7 +1,7 @@
 package flowpolicy
 
 import (
-	"github.com/buzzmean/neexitlag/core/originpolicy"
+	"github.com/buzzmean/veliq/core/originpolicy"
 	"strings"
 )
 
