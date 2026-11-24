@@ -1,17 +1,11 @@
-# Referenced implementations and runtime dependency
+# Изученные реализации и внешние зависимости
 
-Flowseal/zapret-discord-youtube and bol-van/zapret were studied at revisions recorded in docs/FLOWSEAL_ZAPRET_ANALYSIS.md. Independent Go implementation; no upstream fake files, full list snapshots, batch scripts, executable or packet-processing code is vendored. Their MIT notices are retained under licenses/.
+Проекты Flowseal/zapret-discord-youtube и bol-van/zapret изучены в ревизиях из `docs/FLOWSEAL_ZAPRET_ANALYSIS.md`. Реализация VELIQ на Go самостоятельна: исходные подставные файлы, полные списки, командные сценарии, исполняемые файлы и код обработки пакетов этих проектов не включены. Уведомления MIT сохранены в `licenses/`.
 
-Existing WinDivert 2.2.2 is dynamically loaded, unmodified, not relicensed by this project. Select LGPLv3 for distribution; include COPYING.LESSER, COPYING and the corresponding source link with binary artifacts. Users may replace the DLL with a compatible build. Sources and build instructions: https://github.com/basil00/WinDivert/tree/v2.2.2 . Do not distribute modified library/driver without fulfilling corresponding source obligations. Kernel-driver signing constraints still apply.
+WinDivert 2.2.2 загружается динамически без изменений. Проект не меняет его лицензию. При распространении по LGPLv3 необходимо приложить `COPYING.LESSER`, `COPYING` и ссылку на соответствующие исходники. Пользователь может заменить DLL совместимой сборкой. [Исходный код и сборка WinDivert](https://github.com/basil00/WinDivert/tree/v2.2.2). Изменённые библиотеку или драйвер нельзя распространять без выполнения обязательств по исходному коду; требования подписи драйвера ядра сохраняются.
 
-DIRECT+ v2 independently implements bounded fake/split/disorder concepts and manually curates small Discord/YouTube domain subsets after review of Flowseal eb16c1419057e36b8a36fbe7c959483450e6ac8b and zapret c4d0b1990129dce2b28095277173ee0d7702d304. Existing Flowseal/bol-van MIT copyright and license notices in licenses/ accompany distributions. No upstream fake templates, winws binary or C packet implementation is bundled. See docs/DIRECT_PLUS_V2.md.
+DIRECT+ v2 самостоятельно реализует ограниченные варианты подставных пакетов, разбиения и изменения порядка. Небольшие наборы доменов Discord/YouTube составлены после изучения Flowseal `eb16c1419057e36b8a36fbe7c959483450e6ac8b` и zapret `c4d0b1990129dce2b28095277173ee0d7702d304`. Уведомления об авторских правах Flowseal/bol-van и текст MIT из `licenses/` сопровождают распространение. Бинарник winws, исходные шаблоны и код обработки пакетов на C не включены. Подробнее: `docs/DIRECT_PLUS_V2.md`.
 
-LOCAL catalog review (2026-10-23): Flowseal1.10.4/176f56dc3f11ce5915c26abcdde903f93d835b64,
-zapret c4d0b1990129dce2b28095277173ee0d7702d304, zapret2
-4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d and zapretgui
-34c3bf9a775f30fdc14fdb2ceefdca1fe9991e8d. zapretgui MIT found at docs/LICENSE;
-its copyright notice and zapret2 MIT are retained in licenses/. Inventory contains
-parameters/provenance from all22 Flowseal general*.bat files, not scripts, binary
-fakes or upstream packet-processing code. Own TLS1.3 fake and packet adaptations
-are not claimed bit-for-bit equivalents. Unsupported catalog modes are explicitly
-non-executable; no arbitrary shell/Lua/Python from a catalog is executed.
+Проверка локального каталога от 23.10.2026 использует Flowseal 1.10.4 / `176f56dc3f11ce5915c26abcdde903f93d835b64`, zapret `c4d0b1990129dce2b28095277173ee0d7702d304`, zapret2 `4a33055448ce5f4e7acc704e1fbe0d8a8a6aa08d` и zapretgui `34c3bf9a775f30fdc14fdb2ceefdca1fe9991e8d`. Лицензия MIT zapretgui найдена в `docs/LICENSE`; её уведомление и MIT zapret2 сохранены в `licenses/`.
+
+Каталог содержит параметры и происхождение данных из 22 файлов Flowseal `general*.bat`. Сами сценарии, бинарные подставные пакеты и сторонний код обработки не включены. Собственные данные TLS 1.3 и адаптации пакетов не объявляются побайтовыми копиями. Неподдерживаемые режимы явно неисполняемы; произвольные shell/Lua/Python из каталога не запускаются. Оригинальные юридические тексты лицензий сохраняются без изменения.

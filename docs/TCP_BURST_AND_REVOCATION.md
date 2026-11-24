@@ -1,76 +1,48 @@
-# TCP burst admission and complete revocation publication
+# Пакетное открытие TCP и полный список отзыва
 
-TCP interception keeps 128 concurrent setup workers. An additional bounded wait
-allows up to 384 setup operations in total, including active work. The queue
-never blocks the WinDivert packet receiver or TCP accept loop. FIFO semaphore
-admission has a five-second wait budget, separate from the existing upstream
-OPEN timeout. Waiting SYNs remain intercepted; protected traffic is never
-reinjected DIRECT. Hard pending exhaustion and admission expiry fail closed with
-`TCP_ADMISSION_LIMIT` / `TCP_ADMISSION_TIMEOUT`. These are actual bounded resource
-failures, rather than a failure whenever the 128 workers are temporarily busy.
+## Приём соединений
 
-`tcp_admission.state` / `wait_ms` in flow evidence distinguish queue wait from
-`relay_open` latency. Hot-attach/profile transitions and shutdown cancel queued
-setup. Active application pipes hold no setup permits, including while their
-first buffered ClientHello write is blocked by the destination. TCP state remains
-bounded at 8192 entries; delegated DIRECT+ sockets now share that state bound
-instead of a separate lifetime limit of 128 (the existing evidence alias bound
-of 1024 still applies). No routing or strategy decisions change.
+Перехват TCP сохраняет 128 одновременных обработчиков подготовки. Ограниченное ожидание допускает суммарно до 384 операций, включая выполняющиеся. Очередь не блокирует приём пакетов WinDivert и цикл приёма TCP. Порядок FIFO имеет бюджет ожидания пять секунд, отдельный от таймаута открытия канала к назначению.
 
-Relay limits remain eight sessions of 48 reservations, with one probe reservation
-per session: **376 application flows maximum per relay**, shared by TCP and UDP.
-The admission queue does not create relay capacity. A relay at its genuine hard
-capacity may still fail protected opens closed; established flows are not evicted
-or replayed. OPEN timeouts, relay/server limits and lease renewal are unchanged.
+Ожидающие SYN остаются в перехвате. Защищённый трафик не возвращается в прямой путь. Исчерпание ёмкости и срока дают `TCP_ADMISSION_LIMIT` и `TCP_ADMISSION_TIMEOUT`. Кратковременная занятость всех обработчиков сама по себе не должна отклонять каждое новое соединение.
 
-Revocation publication queries **only revoked IDs, without a SQL LIMIT**, inside
-the serialized configuration publication transaction. It does not use the bounded
-admin device listing. A single statement reads a complete committed snapshot;
-stream/scan/DB/signing/commit errors abort publication and return no document.
-The last committed config stays intact. A revoke committed before the snapshot
-is included; a concurrent later revoke is included by its subsequent serialized
-publication. No partial or truncated list is signed.
+В диагностике `tcp_admission.state` и `wait_ms` отделяют ожидание от времени `relay_open`. Смена профиля, подключение уже запущенного процесса и завершение работы отменяют ожидающую подготовку. Работающий прикладной поток не держит разрешение подготовки, даже если первая запись ClientHello заблокирована назначением.
 
-Signed configuration, its HTTP download/serving/heartbeat refresh and cache have
-a dedicated **1 MiB** bound. Tickets/proofs/other documents retain their 64 KiB
-limit. Oversized revocation sets or whole configs explicitly fail publication;
-there is no clipping. A partial index supports the revoked-ID query. Upgrade the
-control plane **and every config consumer (client/relay)** before publishing
-configs larger than 64 KiB: older binaries cannot consume the larger document.
-This change does not deploy anything to the VPS.
+Состояние TCP ограничено 8192 записями. Переданные локальной стратегии сокеты входят в тот же предел вместо отдельного пожизненного ограничения 128. Предел связанных записей доказательств 1024 сохраняется. Решения о стратегии этим изменением не меняются.
 
-## Automated validation
+У релея восемь сессий по 48 резервирований с одним местом для проб в каждой: максимум 376 прикладных потоков, общих для TCP и UDP. Очередь не создаёт дополнительную ёмкость. При настоящем исчерпании защищённое открытие может быть отклонено; действующие потоки не вытесняются и не повторяются. Игровой релей текущей политикой не разрешён.
+
+## Публикация отзыва
+
+Публикация читает только отозванные идентификаторы без SQL `LIMIT` внутри сериализованной транзакции конфигурации. Ограниченный административный список устройств для этого не используется. Один запрос получает полный согласованный снимок. Ошибка чтения, БД, подписи или фиксации отменяет публикацию; прежняя конфигурация остаётся целой.
+
+Отзыв, зафиксированный до снимка, входит в него. Более поздний параллельный отзыв попадает в следующую сериализованную публикацию. Частичный список не подписывается.
+
+Подписанная конфигурация, HTTP-передача и кэш имеют отдельный предел 1 МиБ. Билеты, подтверждения и прочие документы сохраняют 64 КиБ. Чрезмерный документ явно отклоняется без обрезания. Запрос отозванных идентификаторов поддерживает частичный индекс.
+
+До публикации конфигураций больше 64 КиБ должны быть обновлены сервер управления и каждый потребитель — клиент и релей. Старые версии не прочитают увеличенный документ. Изменение исходников само по себе ничего на VPS не развёртывает.
+
+## Проверки
 
 ```sh
 go test -race ./platform/windows -run TestTCPAdmission
 go test -race ./tests/integration -run TestPoolTCPBurst
-VELIQ_TEST_DATABASE_URL='postgres://TEST_DATABASE' \
-  go test -race -v ./services/control-plane -run 'TestRevoked|TestPostgresRevocation'
 ```
 
-Native Windows (normal and race jobs in Verify):
+Проверки PostgreSQL запускаются с отдельной тестовой базой и настройкой окружения из workflow:
+
+```sh
+go test -race -v ./services/control-plane -run 'TestRevoked|TestPostgresRevocation'
+```
+
+Нативная Windows:
 
 ```powershell
 go test -race -timeout 90s -v ./platform/windows -run 'TestTCPNativeAdmissionBurst|TestTCPNativeQueuedSetupCancellation'
 ```
 
-Native tests deliberately fill all 128 setup permits, then admit 160/256 protected
-connections on both SYN and deferred-ClientHello paths. They use real Windows TCP
-sockets, an authenticated local QUIC relay and fresh one-shot tickets, retain the
-same sockets across repeated bidirectional exchanges, and inspect complete flow
-evidence for no DIRECT bytes, no BLOCK and correct relay counters. One established
-flow exchanges data while setup is saturated. Only privileged driver reinjection
-is substituted; these tests do not claim public-Internet Windows acceptance.
-Integration independently retains 160/256/320 authenticated relay TCP sockets,
-using a 128-connection setup window (pool waiters remain 256). Setup includes
-first real echo I/O so the target has actually accepted the connection before
-its test slot is reused. This avoids overflowing the Windows loopback target's
-implementation-defined SOMAXCONN backlog with completed-but-not-yet-accepted
-connections. A repeat listen call cannot adjust that Winsock backlog; no
-ineffective reconfiguration or production listener/packet-queue change is used.
-All sockets remain held for three further rounds; no failure is retried/ignored.
-Windows CI repeats these bursts three times both normally and with the race detector.
-PostgreSQL tests cover 1500/5000 IDs, revoke #5000, HTTP/cache/verifier updates,
-large-config heartbeat refresh, concurrent publications, and real query/commit/
-size failures. Existing Windows driver lifecycle checks remain enabled. No long
-manual lease or Discord test is required.
+Стенд намеренно занимает 128 разрешений, затем открывает 160/256 защищённых соединений через SYN и отложенный ClientHello. Используются настоящие сокеты Windows, локальный авторизованный QUIC и новые одноразовые билеты. Соединения удерживаются через повторные двусторонние обмены, проверяются счётчики и отсутствие прямых байтов. Один действующий поток продолжает обмен во время насыщения подготовки. Привилегированная реинъекция драйвера подменяется; публичный интернет не проверяется.
+
+Интеграционный тест удерживает 160/256/320 TCP-соединений через релей при окне подготовки 128. До освобождения места выполняется первый настоящий эхо-обмен, чтобы назначение уже приняло сокет. Это ограничивает переполнение очереди Windows loopback с нефиксированным `SOMAXCONN`; повторный `listen` не используется как мнимое исправление. Сокеты проходят ещё три раунда; ошибки не повторяются и не игнорируются. Windows CI повторяет обычный прогон и проверку гонок по три раза.
+
+PostgreSQL проверяется на 1500/5000 отозванных ID, включая отзыв последнего, HTTP, кэш, проверку подписи, обновление по состоянию релея, параллельные публикации и настоящие ошибки запроса, фиксации и размера. Результат каждого нового запуска оценивается отдельно; существование теста не означает его успешного выполнения.

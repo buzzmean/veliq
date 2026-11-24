@@ -1,18 +1,21 @@
-# Benchmarks
-No throughput or latency improvement claims yet. Planned: 64/512/1100-byte UDP,
-TCP streams, packets/sec, Gbps, CPU, memory per flow and transport overhead.
-Protocol payload limit is 1100 bytes, so 1200-byte forwarding is rejected until
-PMTU-aware support is implemented. Run protocol benchmarks with go test -bench . ./core/protocol.
+# Измерения производительности
 
-## Initial framing microbenchmark (Linux x64)
-Command: `go test ./core/protocol -run '^$' -bench BenchmarkFrame -benchmem -benchtime=100ms`.
-Worker CPU: Intel Xeon Platinum 8573C; concurrent compilation affected load.
+Измерения формата пакетов не доказывают снижение задержки или пропускную способность сети. Для полной оценки нужны UDP-пакеты разных размеров, TCP-потоки, число пакетов в секунду, загрузка CPU, память на поток и накладные расходы транспорта.
 
-| Payload | ns/op | allocated bytes/op | allocs/op |
+Протокол ограничивает полезную нагрузку 1100 байт. Пакет 1200 байт не должен считаться поддержанным без отдельной проверки MTU. Проверки формата запускаются командой:
+
+```sh
+go test ./core/protocol -run '^$' -bench BenchmarkFrame -benchmem -benchtime=100ms
+```
+
+## Историческое измерение формата, Linux x64
+
+Процессор: Intel Xeon Platinum 8573C. На нагрузку влияла параллельная компиляция.
+
+| Полезная нагрузка, байт | Наносекунд на операцию | Выделено байт на операцию | Выделений на операцию |
 |---|---:|---:|---:|
-| 64 | 521.1 | 80 | 1 |
+| 64 | 521,1 | 80 | 1 |
 | 512 | 1349 | 576 | 1 |
 | 1100 | 2743 | 1152 | 1 |
 
-These measure framing only, not network throughput or per-flow memory. Encode
-currently allocates one frame per packet; measure relay bottlenecks before pooling.
+Это результат только кодирования пакета. Он не измеряет сетевую скорость и память полного соединения. Изменение распределения памяти следует обосновывать измерением реального узкого места.
