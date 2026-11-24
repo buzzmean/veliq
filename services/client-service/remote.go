@@ -124,7 +124,9 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	done := make(chan struct{})
 	c.remoteDone = done
 	var workers sync.WaitGroup
-	workers.Add(6)
+	workers.Add(7)
+	c.wg.Add(1)
+	go func() { defer c.wg.Done(); defer workers.Done(); c.runDeviceMetadata(remoteCtx, cp) }()
 	c.wg.Add(1)
 	go func() { defer c.wg.Done(); defer workers.Done(); c.catalog.run(remoteCtx, cp, keys, m.StateDirectory) }()
 	c.wg.Add(1)
