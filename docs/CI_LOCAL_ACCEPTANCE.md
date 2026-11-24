@@ -1,141 +1,110 @@
-# Ранний отказ CI и локальная проверка deployment
+# Локальные проверки развёртывания и отказы CI
 
-21.10.2026 владелец предоставил аннотацию GitHub:
-> The job was not started because recent account payments have failed or your spending limit needs to be increased. Please check the 'Billing & plans' section in your settings
+GitHub Actions может отклонить задание до первого шага из-за ограничений оплаты
+или доступного бюджета аккаунта. Такой отказ не проверяет исходный код:
+исполнитель не выделен, шаги не запускались, журнал и артефакты отсутствуют.
+Сначала нужно проверить раздел Billing & plans в настройках аккаунта. Изменение
+прав доступа, меток исполнителя или кода продукта не устраняет платёжный отказ.
 
-Это account billing gate до выдачи runner. Аннотация не различает платёж и
-spending limit. Исправление — Settings → Billing & plans владельцем аккаунта;
-код/permissions/YAML не могут исправить оплату. Артефакты ещё не загружались.
-`fresh-credential` был cancelled из-за matrix fail-fast; теперь он отключён,
-чтобы после разблокировки оба layout давали независимый результат. Paths и
-concurrency сокращают лишние прогоны, не обходят платёжный лимит.
+## Linux: изолированная проверка systemd и PostgreSQL
 
-## Linux: тот же реальный systemd/PostgreSQL сценарий локально
+Нужна отдельная тестовая машина с Git, Go версии из `go.mod` и Docker/BuildKit.
+Не запускать на рабочем сервере или машине с действующей серверной установкой
+VELIQ. Сценарий использует привилегированный контейнер для пространств имён
+systemd; допустим только доверенный исходный код в чистом тестовом окружении.
 
-Тестовая Linux-машина с Go версии из go.mod, Git, Docker/BuildKit и доступом
-к локальному Docker socket. Не запускать на VPS или машине с /etc/neexitlag.
-Docker privileged нужен для systemd namespaces; использовать доверенный чистый
-checkout на отдельной тестовой машине. Production credentials не требуются.
-
-```bash
+```sh
 bash tests/deployment/run-local-systemd.sh fresh-credential
-```
-
-Второй layout:
-```bash
 bash tests/deployment/run-local-systemd.sh legacy
 ```
 
-Runner собирает Debian 13 image с systemd/PostgreSQL/Python/OpenSSL, затем
-release binaries из чистого checkout. Это тестовые инструменты, не новые
-зависимости продукта. Только build image обращается к пакетным репозиториям;
-runtime полностью offline (`--network none`), только loopback. Нет host network,
-host cgroup bind, bind mounts репозитория/секретов/Docker socket/host /etc.
-Root mutations выполняются исключительно внутри disposable filesystem.
-Внутренний tmpfs `/run` получает shared propagation для systemd LoadCredential;
-это не host /run и не host mount propagation. D-Bus установлен для systemd-run.
-Права CA root:600 сохраняются; отсутствие этих механизмов даёт ранний отказ.
-Production IP назначается только lo внутри нового namespace; реальных обращений
-к VPS нет. Guard требует systemd PID1, root-owned marker, отсутствие других
-интерфейсов и default route. GitHub flags не подделываются.
+Сценарий собирает образ Debian 13 с systemd, PostgreSQL, Python и OpenSSL,
+затем исполняемые файлы из чистого дерева Git. Это инструменты проверки,
+дополнительные зависимости продукта не устанавливаются. Сеть требуется при
+сборке образа; сам прогон идёт с `--network none` и использует только loopback.
+Контейнер не получает сеть хоста, его `/etc`, сокет Docker, секреты или каталоги
+репозитория. Изменения от имени root ограничены временной файловой системой.
 
-Git archive исключает незакоммиченные файлы, .e2e и credentials. PKI создаётся
-заново только для loopback теста, не используется CA пользователя. Cleanup удаляет
-конкретный собственный контейнер и временную PKI даже при ошибке; не делает prune
-и не останавливает чужие контейнеры. Для разработчика допускается
-`VELIQ_LOCAL_KEEP_FAILED=1`: при отказе остаётся только собственный контейнер с
-тестовой PKI, его имя выводится явно; после диагностики его нужно удалить.
-Приватные журналы и ключи не экспортируются. Публичный отчёт:
-`.e2e/local-systemd-fresh-credential.json` / `.e2e/local-systemd-legacy.json`.
-Не коммитить отчёты/PKI/private logs. Общий exit=0 обязателен; наличие JSON само
-по себе PASS не доказывает. Отчёт содержит commit, systemd/PG версии, units,
-schema/revocations, факт отзыва probe, rollback injection, без keys/codes/dumps.
+Для `LoadCredential` внутри контейнера создаётся отдельный tmpfs `/run` с нужной
+настройкой распространения монтирований. Используется D-Bus для `systemd-run`.
+Проверка требует systemd как PID 1, принадлежащую root тестовую метку, отсутствие
+внешних интерфейсов и маршрута по умолчанию. Невыполнение условий даёт отказ,
+а не пропуск проверки. Закрытый ключ CA остаётся доступным только root.
 
-Проверяется исходный isolated-upgrade.sh и, для fresh-credential,
-isolated-activation.py: root-only CA/LoadCredential, реальные TLS/QUIC /3
-TCP/UDP/renewal, 5000 отзывов, восстановление dump в отдельную БД, ошибочный
-binary и rollback, замена leaf/failure/rollback, внешний failure после renewal,
-успешный повтор schema 2, реальный renewal.service в sandbox и отсутствие активных
-rollback timers. Это лаборатория, не Internet/VPS acceptance.
+`git archive` исключает незакоммиченные файлы, `.e2e` и локальные учётные данные.
+Тестовая PKI создаётся заново и не использует CA пользователя. Очистка удаляет
+только собственный контейнер и временную PKI, в том числе при ошибке.
+`VELIQ_LOCAL_KEEP_FAILED=1` оставляет неудачный тестовый контейнер для разбора;
+после диагностики его нужно удалить. Общая очистка чужих контейнеров не выполняется.
 
-## Windows: локальный native эквивалент activation job
+Отчёты сохраняются локально как `.e2e/local-systemd-fresh-credential.json` и
+`.e2e/local-systemd-legacy.json`. Они содержат ревизию, версии systemd/PostgreSQL,
+состояние служб, схемы и отзывов, результат восстановления и внесённые тестовые
+отказы. Ключи, коды, исходные дампы и частные журналы в Git не публикуются.
+Наличие JSON не заменяет успешный код завершения всего сценария.
 
-В обычном Windows PowerShell 5.1 из корня клона, с Git/Go/.NET8/Python:
+Проверяются транзакции обновления, права CA, `LoadCredential`, реальные TLS/QUIC,
+TCP/UDP, продление сертификатов, публикация 5000 отзывов, восстановление дампа
+в отдельную БД, отказ неподходящего EXE, восстановление предыдущей версии,
+замена сертификата, отказ после продления и успешный повтор миграции схемы.
+Раскладки `fresh-credential` и `legacy` проверяются независимо. Полный сценарий
+продления выполняется в `fresh-credential`; результат `legacy` его не заменяет.
+Это проверка лаборатории, а не Интернета или рабочего VPS.
+
+## Windows: проверка активации без установки службы
+
+В Windows PowerShell 5.1 из корня клона, с Git, Go, .NET 8 и Python:
+
 ```powershell
 & .\tools\windows\test-activation-local.ps1
 ```
 
-Перед тестами проверяет официальный nuget.org через SDK и добавляет его в
-пользовательскую NuGet-конфигурацию, если URL отсутствует. Другие источники не
-меняются; уже включённый URL распознаётся независимо от имени. Явно отключённый
-источник или конфликт имени диагностируется, без перезаписи настройки. Затем
-запускает isolated NuGet-config regression, native activation/helper tests,
-C# tests/WPF build и fake-SSH fixture.
-Не устанавливает службу, не вызывает bootstrap/enroll, не подключается к VPS.
-Linux cross-build не заменяет эту проверку. Если Windows runtime недоступен,
-результат остаётся неподтверждённым до этого прогона или разблокировки GitHub.
+Сценарий проверяет официальный источник NuGet через SDK и добавляет его в
+пользовательскую конфигурацию, если URL отсутствует. Другие источники не меняются.
+Явно выключенный источник или конфликт имени диагностируется без перезаписи.
+Затем выполняются проверки конфигурации NuGet, активации, вспомогательных процессов,
+C#, сборки WPF и тест с подставным SSH-клиентом.
 
-## Результаты 21.10.2026
+Сценарий не устанавливает службу, не запускает регистрацию устройства и не
+подключается к VPS. Сборка Windows-кода на Linux не подтверждает работу в Windows.
+Если реальная Windows-проверка недоступна, её результат остаётся неподтверждённым.
 
-Чистые offline прогоны исходного кода `5adc8e52b0e50ec84281ece204a2f1d5810f96cb`:
+## Исторические результаты
 
-| Проверка | Результат |
+Следующие результаты относятся к 21.10.2026 и ревизии
+`5adc8e52b0e50ec84281ece204a2f1d5810f96cb`. Они не подтверждают последующие версии.
+
+| Проверка | Зафиксированный результат |
 |---|---|
-| fresh-credential, полный deployment/leaf/rollback/retry | PASS, exit 0 |
-| legacy, binary transaction/real relay/rollback | PASS, exit 0 |
-| systemd / PostgreSQL | 257.13 / 17.11, Debian 13 |
-| 5000 revoked IDs, signed publication >64 KiB | PASS, оба layout |
-| fresh leaf failure injection + outer failure после renewal | PASS, сертификаты восстановлены, security records сохранены |
-| fresh успешный повтор schema 2 | PASS, CA unchanged, renewal service Result=success/ExecMainStatus=0, renewal timer active |
-| временные probe identities | active=0; fresh revoked=5004 (включая четыре тестовых probe), legacy revoked=5000 |
-| deployment Python | 90 PASS |
-| Linux activation Go race с отдельной PostgreSQL 17 | PASS: core/enrollment, control-plane, client-service, tools/fresh-pc |
-| Go build/vet ./... | PASS |
-| Windows amd64 cross-build service/fresh-pc/codes | PASS, не runtime test |
-| C# desktop-core | 145 PASS на Linux |
-| WPF Windows targeting build | PASS на Linux, 4 существующих nullable warning, 0 errors |
-| PowerShell parsing/quoting fixture | PASS на PS7/Linux; Windows redirected ssh.exe не выполнялся |
-| native Windows / GitHub CI | НЕ ПОДТВЕРЖДЕНО: billing gate до первого шага |
+| Обе изолированные раскладки | Успешно, код завершения 0 |
+| systemd / PostgreSQL / ОС | 257.13 / 17.11 / Debian 13 |
+| 5000 отзывов, подписанная публикация свыше 64 КиБ | Успешно в обеих раскладках |
+| Отказ замены сертификата и отказ после продления | Сертификаты восстановлены, записи безопасности сохранены |
+| Повтор миграции схемы 2 | CA сохранён, продление успешно, таймер активен |
+| Временные тестовые устройства | Активных 0; отозванных 5004 и 5000 соответственно |
+| Проверки развёртывания на Python | 90 успешно |
+| Активация Go с проверкой гонок и отдельным PostgreSQL 17 | Успешно |
+| Go build/vet | Успешно |
+| Сборка Windows amd64 на Linux | Успешно; работу в Windows не подтверждает |
+| C# и сборка WPF на Linux | 145 тестов успешно; 0 ошибок, 4 предупреждения nullable |
+| Разбор PowerShell и тест кавычек на PS7/Linux | Успешно; настоящий перенаправленный ssh.exe в Windows не запускался |
+| GitHub Actions этой ревизии | Отказ до первого шага из-за ограничений аккаунта |
 
-Не выдавать legacy PASS за проверку renewal.service: полный activation/leaf
-сценарий выполняется только в fresh-credential, соответствующем нынешнему VPS.
-Оба контейнера и временная тестовая PKI удалены; production не контактировался.
-Публичные JSON остаются локально в `.e2e`, не в git. После этого SHA изменены
-только docs, полнота workflow paths и дополнительные parse-проверки
-локального Windows runner; production код не менялся.
+В том прогоне устранена взаимная блокировка: установщик удерживал `flock`,
+`systemctl enable --now` ожидал восстановление, а восстановление ожидало тот же
+замок. При живом владельце транзакции восстановление стало возвращать
+`live-transaction-owner`; наблюдатель отката продолжает ждать замок. Проверки
+использовали настоящий `flock`. После восстановления сохранялась исходная ошибка,
+а не общий `UpgradeError`.
 
-Найден и исправлен реальный дефект первого запуска: installer держал оба flock,
-`systemctl enable --now` ждал recovery, а recovery ждал те же flock. Теперь
-recovery при живом installer возвращает `live-transaction-owner`, как основной
-production updater; watchdog rollback всё ещё ждёт lock. Регрессии проверяют
-настоящий flock и CLI. Engine apply сохраняет оригинальную ошибку после rollback,
-не подменяет её общим UpgradeError. Ошибки тестовой fixture (relay_health до
-wait_health, /tmp staging, D-Bus, mount propagation) также устранены.
+Отдельно владелец подтвердил Windows-прогон `test-activation-local.ps1` на
+`c9c8af1`: платформенные проверки и активация успешны, C# 145/145, сборка WPF без
+ошибок с четырьмя предупреждениями, тест перенаправленного SSH на PS5.1 успешен.
+Это результат именно `c9c8af1`, а не Windows-проверка более позднего `5adc8e5`.
 
-Последние проверенные через API GitHub результаты исходного кода:
-[Activation Linux/Windows](https://github.com/buzzmean/neexitlag/actions/runs/39585387093)
-и [systemd matrix](https://github.com/buzzmean/neexitlag/actions/runs/39585387157):
-failure, нет steps/logs. Устранить billing gate может только владелец аккаунта.
-После исправления Billing & plans повторить эти проверки; менять permissions,
-runner labels или удалять artifacts для этого отказа не требуется.
-
-Полный допуск к production НЕ объявлен: Windows native transport fixture и
-внешний VPS ещё не проверены на этих изменениях. Сначала на ПК владельца из
-корня клона — только read-only VPS snapshot:
-```powershell
-git pull --ff-only origin main
-& .\tools\windows\verify-activation-vps.ps1 -VpsIP 2.56.177.4 -SSHUser root -SSHPort 22
-```
-Затем локальный Windows test runner выше (не меняет VPS/установку). Mutating
-update не запускать на основании одного зелёного лабораторного отчёта.
-
-## Подтверждение владельца: чистый Windows, c9c8af1
-
-Владелец выполнил test-activation-local.ps1 на c9c8af1: Go platform/windows,
-client-service и fresh-pc PASS; C# 145/145; WPF 0 errors/4 CS8604;
-PS5.1 redirected fake SSH fixture PASS. Это подтверждение именно c9c8af1,
-не native Windows проверка последующих production-изменений 5adc8e5.
-На ПК потребовались Git/Python3.12/Go/.NET SDK8.0.426. Источников NuGet не было,
-NU1100 устранён ручным добавлением nuget.org; теперь runner делает это сам.
-Одна загрузка testhost17.11.1 прошла после повтора из-за сетевого timeout60s;
-автоматический retry restore в этой задаче не добавлялся.
+Исходные запуски GitHub:
+[активация Linux/Windows](https://github.com/buzzmean/veliq/actions/runs/39585387093)
+и [матрица systemd](https://github.com/buzzmean/veliq/actions/runs/39585387157).
+Исторический успех лаборатории не является разрешением менять рабочий сервер.
+Проверка текущей версии, её восстановление и фактическое развёртывание требуют
+отдельного подтверждённого результата.
