@@ -6,6 +6,30 @@ on:
 permissions:
   contents: read
 jobs:
+  server-package:
+    if: github.ref_name == 'feat/persistent-diagnostics-server-20261125'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: {go-version: '1.25.x'}
+      - name: Build exact control-plane candidate without deployment
+        run: |
+          test -z "$(git status --porcelain --untracked-files=no)"
+          mkdir -p dist/diagnostics-server
+          go build -trimpath -o dist/diagnostics-server/control-plane ./services/control-plane/cmd/control-plane
+          go version -m dist/diagnostics-server/control-plane > dist/diagnostics-server/buildinfo.txt
+          grep -F "vcs.revision=$(git rev-parse HEAD)" dist/diagnostics-server/buildinfo.txt
+          grep -F 'vcs.modified=false' dist/diagnostics-server/buildinfo.txt
+          git rev-parse HEAD > dist/diagnostics-server/SOURCE
+          cp services/control-plane/migrations/013_persistent_club_health.sql dist/diagnostics-server/
+          cd dist/diagnostics-server
+          sha256sum control-plane buildinfo.txt SOURCE 013_persistent_club_health.sql > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: persistent-diagnostics-server
+          path: dist/diagnostics-server/
+          retention-days: 14
   windows:
     runs-on: windows-latest
     timeout-minutes: 30
