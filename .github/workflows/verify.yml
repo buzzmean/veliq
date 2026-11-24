@@ -57,6 +57,12 @@ jobs:
         shell: powershell
       - run: ./tests/windows-tools/fresh-pc-checks.ps1
         shell: pwsh
+      - name: Verify reversible CS2 service staging on NTFS (Windows PowerShell)
+        run: ./tests/windows-tools/cs2-auto-pilot-checks.ps1
+        shell: powershell
+      - name: Verify reversible CS2 service staging on NTFS (PowerShell 7)
+        run: ./tests/windows-tools/cs2-auto-pilot-checks.ps1
+        shell: pwsh
       # Fast real PS5.1/7 filesystem/shortcut/upgrade checks before long builds.
       - run: ./tests/windows-tools/desktop-upgrade-checks.ps1
         shell: powershell
