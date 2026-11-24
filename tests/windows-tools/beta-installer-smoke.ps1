@@ -162,7 +162,11 @@ try{
  foreach($entry in $badManifest.files){if($entry.path -eq 'service/veliq-service.exe'){$entry.sha256=(Get-FileHash -LiteralPath $badService).Hash.ToLowerInvariant()}}
  $badManifest|ConvertTo-Json -Depth 5|Set-Content -LiteralPath (Join-Path $failurePayload 'package.json') -Encoding UTF8
  $compiler=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3/ISCC.exe'
- & $compiler /Q ('/DStageRoot='+$failureStage) (Join-Path $PSScriptRoot '../../installer/setup.iss')
+ # Exercise the real SCM failure, not the new earlier downgrade guard. Keep
+ # the fixture's version equal to the candidate whose files are being repaired.
+ $fixtureVersion=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $payload 'gui/VELIQ.exe')).FileVersion
+ if($fixtureVersion -notmatch '^\d+\.\d+\.\d+\.\d+$'){throw 'SERVICE_FAILURE_FIXTURE_VERSION_UNAVAILABLE'}
+ & $compiler /Q ('/DStageRoot='+$failureStage) ('/DAppVersion='+$fixtureVersion) (Join-Path $PSScriptRoot '../../installer/setup.iss')
  if($LASTEXITCODE){throw 'SERVICE_FAILURE_FIXTURE_COMPILE_FAILED'}
  $preserved=@{}
  foreach($name in @('service.json','ipc.token')){$preserved[$name]=(Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash}
