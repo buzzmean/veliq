@@ -20,7 +20,9 @@ public partial class WelcomeWindow : Window
     SignInStage stage;
     string email = "";
     DateTime resendAfter;
-    bool refreshing, busy, codeSelected, transitioned, initial = true, registration, forceSignIn, nativeApproved;
+    bool refreshing, busy, codeSelected, transitioned, started, registration, forceSignIn, nativeApproved;
+    System.Windows.Forms.NotifyIcon? startupTray;
+    System.Drawing.Icon? startupIcon;
     WelcomeAccess access = new("CHECKING", "Проверяем подключение", "Подождите немного…", false);
     public WelcomeWindow(Action connected) : this(new WindowsServiceClient(), connected, true) { }
     internal WelcomeWindow(IServiceClient service, Action connected, bool shutdownOnClose,
@@ -35,10 +37,10 @@ public partial class WelcomeWindow : Window
         });
         account = new(service); activation = new(service); subscription = new(service);
         InitializeComponent(); WindowTheme.UseDarkCaption(this); Render();
-        Loaded += async (_, _) => { await RefreshAsync(); if (!transitioned) timer.Start(); };
+        Loaded += async (_, _) => { if (!started) { started = true; await RefreshAsync(); if (!transitioned) timer.Start(); } };
         timer.Tick += async (_, _) => await RefreshAsync();
         Closed += (_, _) => {
-            timer.Stop(); lifetime.Cancel(); native?.Dispose(); native = null;
+            timer.Stop(); lifetime.Cancel(); native?.Dispose(); native = null; DisposeStartupTray();
             ConnectionCode.Clear(); LoginCode.Clear(); EmailField.Clear();
             if (!transitioned && shutdownOnClose) System.Windows.Application.Current.Shutdown();
         };
@@ -46,6 +48,34 @@ public partial class WelcomeWindow : Window
     internal WelcomeAccess Access => access;
     internal System.Windows.Controls.PasswordBox CodeInput => ConnectionCode;
     internal System.Windows.Controls.Button CodeSubmit => ActivateButton;
+    internal bool ForegroundRequested { get; private set; }
+    internal bool StartupTrayVisible => startupTray?.Visible == true;
+    // Check service authorization before showing onboarding. During Windows
+    // startup keep a real tray icon even while the service is still warming up.
+    internal async Task StartAsync(bool quiet)
+    {
+        if (started) return;
+        started = true;
+        if (quiet)
+        {
+            startupIcon = TrayIcons.Load("connecting");
+            startupTray = new() { Icon = startupIcon, Text = "VELIQ: проверяем подключение", Visible = true };
+            var menu = new System.Windows.Forms.ContextMenuStrip();
+            menu.Items.Add(Text.Get("OpenApp"), null, (_, _) => Dispatcher.Invoke(ShowFromTray));
+            menu.Items.Add(Text.Get("Exit"), null, (_, _) => Dispatcher.Invoke(Exit));
+            TrayMenuRenderer.Apply(menu); startupTray.ContextMenuStrip = menu;
+            startupTray.MouseClick += (_, args) => { if (args.Button == System.Windows.Forms.MouseButtons.Left) Dispatcher.Invoke(ShowFromTray); };
+        }
+        await RefreshAsync();
+        if (transitioned || lifetime.IsCancellationRequested) return;
+        timer.Start();
+        if (!quiet) ShowFromTray();
+    }
+    void DisposeStartupTray()
+    {
+        if (startupTray is not null) { startupTray.Visible = false; startupTray.ContextMenuStrip?.Dispose(); startupTray.Dispose(); startupTray = null; }
+        startupIcon?.Dispose(); startupIcon = null;
+    }
     bool Ready => access.CanContinue && (!forceSignIn || nativeApproved);
     internal async Task RefreshAsync(bool recheck = false)
     {
@@ -57,8 +87,7 @@ public partial class WelcomeWindow : Window
             await account.RefreshAsync(lifetime.Token);
             await subscription.RefreshAsync(recheck, lifetime.Token);
             access = WelcomeAccess.Evaluate(activation.Status, account.Status, subscription.Status);
-            if (initial && Ready && account.Status.Linked) Enter();
-            initial = false;
+            if (Ready) Enter();
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
         finally { refreshing = false; if (!lifetime.IsCancellationRequested) Render(); }
@@ -76,15 +105,12 @@ public partial class WelcomeWindow : Window
         AccountPanel.Visibility = Visible(personal && stage == SignInStage.Account);
         ConnectingPanel.Visibility = Visible(personal && stage == SignInStage.Connecting);
         CodePanel.Visibility = Visible(!ready && codeSelected);
-        ReadyPanel.Visibility = Visible(ready);
         AuthBack.Visibility = Visible(personal && stage != SignInStage.Email);
         RetryButton.Visibility = Visible(access.State is "UNAVAILABLE" or "ERROR" or "EXPIRED" or "BLOCKED");
-        PersonalInsteadButton.Visibility = Visible(ready && !account.Status.Linked);
         EmailSubmit.IsEnabled = VerifySubmit.IsEnabled = ProfileSubmit.IsEnabled = ActivateButton.IsEnabled = available;
         PersonalTab.IsEnabled = CodeTab.IsEnabled = RegisterButton.IsEnabled = AuthBack.IsEnabled = !busy;
         ReloadAccountButton.IsEnabled = available && native is not null;
         ApproveButton.IsEnabled = available && nativeAccount?.Kind == "player" && SubscriptionChoices.Items.Count > 0;
-        ContinueButton.IsEnabled = ready && available;
         RetryButton.IsEnabled = available;
         PersonalTab.BorderBrush = (System.Windows.Media.Brush)FindResource(codeSelected ? "LineStrong" : "Accent");
         CodeTab.BorderBrush = (System.Windows.Media.Brush)FindResource(codeSelected ? "Accent" : "LineStrong");
@@ -128,7 +154,6 @@ public partial class WelcomeWindow : Window
     void SelectCode(object sender, RoutedEventArgs e) { if (busy) return; codeSelected = true; ResetNative(); Render(); ConnectionCode.Focus(); }
     void ToggleRegistration(object sender, RoutedEventArgs e) { registration = !registration; Feedback.Text = ""; Render(); EmailField.Focus(); }
     void RestartSignIn(object sender, RoutedEventArgs e) { if (busy) return; ResetNative(); Render(); EmailField.Focus(); }
-    void PersonalInstead(object sender, RoutedEventArgs e) { forceSignIn = true; codeSelected = false; ResetNative(); Render(); EmailField.Focus(); }
     async Task RunAsync(Func<Task> operation)
     {
         if (busy || refreshing || lifetime.IsCancellationRequested) return;
@@ -237,12 +262,11 @@ public partial class WelcomeWindow : Window
         await RunAsync(async () => { try { await activation.ActivateAsync(code, lifetime.Token); Feedback.Text = activation.Status.Message; } finally { code = ""; } });
     }
     async void Retry(object sender, RoutedEventArgs e) { Feedback.Text = ""; await RefreshAsync(true); }
-    async void Continue(object sender, RoutedEventArgs e) { await RefreshAsync(); if (Ready && !busy && !refreshing) Enter(); }
     void Enter()
     {
         if (transitioned || !Ready) return;
-        transitioned = true; timer.Stop(); connected(); Close();
+        transitioned = true; timer.Stop(); DisposeStartupTray(); connected(); Close();
     }
-    public void ShowFromTray() { Show(); WindowState = WindowState.Normal; Activate(); }
+    public void ShowFromTray() { ForegroundRequested = true; Show(); WindowState = WindowState.Normal; Activate(); }
     public void Exit() => Close();
 }

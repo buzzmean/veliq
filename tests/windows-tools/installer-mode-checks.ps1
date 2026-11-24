@@ -6,6 +6,7 @@ $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 if($env:GITHUB_ACTIONS -cne 'true' -and !$AllowLocalInertFixture){throw 'EXPLICIT_INERT_MODE_CHECK_REQUIRED'}
 $source=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '../../installer/setup.iss')
 $policy=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '../../installer/setup-mode.iss')
+$theme=Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '../../installer/setup-theme.iss')
 function Get-ActualHandler([string]$Start,[string]$End){
  $body=[regex]::Match($source,'(?s)'+[regex]::Escape($Start)+'.*?(?='+[regex]::Escape($End)+')').Value
  if(!$body){throw ('MODE_HANDLER_NOT_FOUND '+$Start)}
@@ -38,6 +39,7 @@ var ExistingInstall, ExistingManifest: Boolean;
     OperationPage: TInputOptionWizardPage;
     UpdateOption, ReinstallOption: Integer;
 {POLICY}
+{THEME}
 procedure ReadVeliqInstallation;
 begin
  ExistingInstall := ExpandConstant('{param:PRESENT|0}')='1';
@@ -49,6 +51,12 @@ procedure InitializeWizard;
 var Comparison, Count: Integer; Expected, Memo: String;
 begin
  InitializeVeliqOperation;
+ InitializeVeliqTheme;
+ if WizardForm.Color<>$0B0A0A then begin Log('MODE_DARK_THEME_FAILED'); Abort; end;
+ VeliqThemeChoice.ItemIndex := 1; VeliqThemeChanged(VeliqThemeChoice);
+ if (WizardForm.Color<>clWhite) or (WizardForm.ReadyMemo.Font.Color<>$0B0A0A) then begin Log('MODE_LIGHT_THEME_FAILED'); Abort; end;
+ VeliqThemeChoice.ItemIndex := 0; VeliqThemeChanged(VeliqThemeChoice);
+ if (WizardForm.Color<>$0B0A0A) or (WizardForm.ReadyMemo.Font.Color<>clWhite) then begin Log('MODE_THEME_RESTORE_FAILED'); Abort; end;
  Expected := ExpandConstant('{param:EXPECT|}');
  if SelectedOperation<>Expected then begin Log('MODE_UNEXPECTED=' + SelectedOperation); Abort; end;
  Count := 0;
@@ -77,7 +85,7 @@ begin
  Abort;
 end;
 '@
-$fixture=$fixture.Replace('{POLICY}',$policy).Replace('{HANDLERS}',$handlers)
+$fixture=$fixture.Replace('{POLICY}',$policy).Replace('{HANDLERS}',$handlers).Replace('{THEME}',$theme)
 [IO.File]::WriteAllText((Join-Path $directory 'modes.iss'),$fixture,[Text.UTF8Encoding]::new($true))
 try{
  & $Compiler '/Q' (Join-Path $directory 'modes.iss')

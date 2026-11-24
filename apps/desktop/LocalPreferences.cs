@@ -39,11 +39,16 @@ public sealed class LocalPreferences
         using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         key.DeleteValue(LegacyRunValue, false);
         if (enabled && Environment.ProcessPath is string path)
-            key.SetValue("VELIQ", '"' + path + '"');
+            key.SetValue("VELIQ", AutoStartCommand(path));
         else
             key.DeleteValue("VELIQ", false);
     }
     const string LegacyRunValue = "NeExitLag";
+    internal static string AutoStartCommand(string path) => '"' + path + "\" --autostart";
+    internal static bool IsOwnedAutoStart(string? command, string path) =>
+        string.Equals(command, '"' + path + '"', StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(command, path, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(command, AutoStartCommand(path), StringComparison.OrdinalIgnoreCase);
 
     // Pre-rebrand builds kept per-user state in %LOCALAPPDATA%\NeExitLag and the
     // autostart value under that name. Move both once; never overwrite new state.
@@ -59,9 +64,14 @@ public sealed class LocalPreferences
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true);
             if (key?.GetValue(LegacyRunValue) != null && Environment.ProcessPath is string path)
             {
-                key.SetValue("VELIQ", '"' + path + '"');
+                key.SetValue("VELIQ", AutoStartCommand(path));
                 key.DeleteValue(LegacyRunValue, false);
             }
+            // Upgrade only our existing enabled entry, never enable autostart or
+            // overwrite a foreign executable/command stored under the same name.
+            if (Environment.ProcessPath is string currentPath &&
+                IsOwnedAutoStart(key?.GetValue("VELIQ") as string, currentPath))
+                key!.SetValue("VELIQ", AutoStartCommand(currentPath));
         }
         catch (Exception) { }
     }

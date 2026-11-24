@@ -71,6 +71,12 @@ public partial class MainWindow : Window
         Closed += (_, _) => { timer.Stop(); lifetime.Cancel(); chromeRecovery.Dispose(); tray.Visible = false; tray.ContextMenuStrip?.Dispose(); tray.Dispose(); trayImage.Dispose(); stateIcon?.Dispose(); if (shutdownOnClose) System.Windows.Application.Current.Shutdown(); };
     }
     internal bool TrayVisible => tray.Visible;
+    internal void Start(bool quiet, bool minimized = false)
+    {
+        startupApplied = true;
+        if (quiet) WindowState = WindowState.Minimized;
+        else { ShowFromTray(); if (minimized) WindowState = WindowState.Minimized; }
+    }
     System.Drawing.Icon? stateIcon; string trayState = "";
     void UpdateTrayState()
     {

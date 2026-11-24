@@ -98,6 +98,20 @@ internal static partial class Program
     }
     static void Lifecycle()
     {
+        const string executable = @"C:\Program Files\VELIQ\VELIQ.exe";
+        Require(LocalPreferences.AutoStartCommand(executable) == "\"" + executable + "\" --autostart", "Run must identify Windows autostart");
+        Require(LocalPreferences.IsOwnedAutoStart("\"" + executable + "\"", executable), "Existing enabled Run entry must migrate");
+        Require(!LocalPreferences.IsOwnedAutoStart(null, executable) && !LocalPreferences.IsOwnedAutoStart("\"" + executable + "\" --foreign", executable), "Disabled/foreign Run entry must remain unchanged");
+        var quiet = Window(new() { StartMinimized = true, MinimizeToTray = true });
+        int visibleCount = 0; quiet.IsVisibleChanged += (_, _) => { if (quiet.IsVisible) visibleCount++; };
+        quiet.Start(true); Pump();
+        Require(visibleCount == 0 && quiet.TrayVisible, "Quiet startup must create a tray icon without showing a window");
+        quiet.ShowFromTray(); Pump();
+        Require(quiet.IsVisible && quiet.WindowState == WindowState.Normal, "First tray click must open a never-shown window");
+        quiet.Exit(); Pump(); Require(!quiet.TrayVisible, "Quiet startup exit must release the tray icon");
+        var manual = Window(new() { StartMinimized = true, MinimizeToTray = true });
+        manual.Start(false); Pump(); Require(manual.IsVisible && manual.WindowState == WindowState.Normal, "Manual start must open the desktop");
+        manual.Exit(); Pump();
         foreach (bool start in new[] { false, true }) foreach (bool tray in new[] { false, true })
         {
             var prefs = new LocalPreferences { StartMinimized = start, MinimizeToTray = tray };

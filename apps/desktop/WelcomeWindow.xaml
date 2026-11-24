@@ -48,10 +48,6 @@
      <PasswordBox x:Name="ConnectionCode" MaxLength="256" MinHeight="46" FontSize="18" Padding="12,10" Margin="0,0,0,16" AutomationProperties.Name="Код подключения" KeyDown="CodeKeyDown"/>
      <Button x:Name="ActivateButton" Content="Подключить компьютер" Click="ActivateCode" Style="{StaticResource Primary}" MinHeight="46" Margin="0"/>
     </StackPanel>
-    <StackPanel x:Name="ReadyPanel" Visibility="Collapsed">
-     <Button x:Name="ContinueButton" Content="Перейти в VELIQ" Click="Continue" Style="{StaticResource Primary}" MinHeight="46" Margin="0"/>
-     <Button x:Name="PersonalInsteadButton" Content="Войти в личный аккаунт" Click="PersonalInstead" Style="{StaticResource Quiet}" Margin="0,12,0,0"/>
-    </StackPanel>
     <TextBlock x:Name="Feedback" Style="{StaticResource Small}" Foreground="{StaticResource AccentText}" Margin="0,16,0,0" AutomationProperties.LiveSetting="Polite"/>
     <Button x:Name="AuthBack" Content="Начать заново" Click="RestartSignIn" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,8,0,0"/>
     <Button x:Name="RetryButton" Content="Проверить подключение" Click="Retry" Style="{StaticResource Quiet}" Visibility="Collapsed" Margin="0,8,0,0"/>

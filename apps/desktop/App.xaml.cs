@@ -47,15 +47,20 @@ public partial class App : System.Windows.Application
             return;
         }
         var freshReport = FreshPCSetupArguments(e.Args);
-        var welcome = new WelcomeWindow(() => {
-            var window = freshReport is null ? new MainWindow() : new MainWindow(LocalPreferences.Load(), false, true);
+        var preferences = LocalPreferences.Load();
+        bool automatic = freshReport is null && e.Args.Contains("--autostart", StringComparer.OrdinalIgnoreCase);
+        bool quiet = automatic && preferences.StartMinimized && preferences.MinimizeToTray;
+        WelcomeWindow? welcome = null;
+        welcome = new WelcomeWindow(() => {
+            var window = new MainWindow(preferences, freshReport is null, true);
             MainWindow = window;
-            window.Show();
+            window.Start(quiet && !welcome!.ForegroundRequested,
+                automatic && preferences.StartMinimized && !welcome!.ForegroundRequested);
             if (freshReport is not null) _ = window.RunFreshPCSetupAsync(freshReport);
         });
         MainWindow = welcome;
-        welcome.Show();
         _ = ListenForActivation(lifetime.Token);
+        await welcome.StartAsync(quiet);
     }
     async Task ListenForActivation(CancellationToken ct)
     {

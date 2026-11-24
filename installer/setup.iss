@@ -86,6 +86,7 @@ var TransactionPrepared, PackageCompleted: Boolean;
     UpdateOption, ReinstallOption: Integer;
 
 #include "setup-mode.iss"
+#include "setup-theme.iss"
 
 function RunTransaction(Action: String): Integer;
 var Code: Integer; Command: String;
@@ -189,11 +190,13 @@ begin
  Log('VELIQ build {#AppVersion}; diagnostics=' + DiagnosticPath);
  InitializeVeliqOperation;
  LockNoRestartChoice;
+ InitializeVeliqTheme;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
  LockNoRestartChoice;
+ ApplyVeliqTheme;
  if OperationPage<>nil then
    if CurPageID=OperationPage.ID then
      WizardForm.NextButton.Enabled := (UpdateOption>=0) or (ReinstallOption>=0);
