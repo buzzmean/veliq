@@ -1,4 +1,4 @@
-; Pure policy shared by the actual wizard and the compiled inert Windows tests.
+﻿{ Pure policy shared by the actual wizard and the compiled inert Windows tests. }
 type TVeliqVersionParts = array[0..3] of Integer;
 
 function ParseVeliqVersion(Value: String; var Parts: TVeliqVersionParts): Boolean;

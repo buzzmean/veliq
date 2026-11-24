@@ -54,6 +54,11 @@ $state=Get-VeliqInstallRebootState $app
 Check ($state.known -and !$state.required -and $state.windows_reboot_pending) 'Windows update incorrectly becomes VELIQ requirement'
 $script:values=@{'SYSTEM\CurrentControlSet\Services\VELIQ|DeleteFlag'=1}
 Check ((Get-VeliqInstallRebootState $app).required) 'service pending deletion accepted'
+$script:diagnostic=$null
+function Write-VeliqInstallDiagnostic([string]$Stage,$Evidence){if($Stage -eq 'REBOOT_SCOPE_UNKNOWN'){$script:diagnostic=$Evidence}}
+$script:values=@{};$script:values[$key]=@('C:\Windows\Temp\source.tmp','*3!\??\C:\unknown')
+Check (!(Get-VeliqInstallRebootState $app).known) 'bad destination must stay unresolved'
+Check ($script:diagnostic.detail_code -ceq 'INSTALL_PENDING_PATH_UNRESOLVED' -and $script:diagnostic.queue -ceq 'PendingFileRenameOperations' -and $script:diagnostic.pair_index -eq 0 -and $script:diagnostic.path_role -ceq 'destination') 'failure must identify the operation without a private path'
 $script:denied=$true
 Check (!(Get-VeliqInstallRebootState $app).known) 'unreadable registry accepted'
 Write-Output 'PASS scoped pending operations: nsProcess cleanup, combined EdgeUpdate rename prefixes, VELIQ source/destination/ancestor, driver, service deletion, malformed/unknown queues; no registry mutation'

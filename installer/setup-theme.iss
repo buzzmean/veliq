@@ -1,4 +1,4 @@
-﻿; Native controls, VELIQ palette. Theme selection affects this wizard only.
+﻿{ Native controls, VELIQ palette. Theme selection affects this wizard only. }
 var VeliqThemeChoice: TNewComboBox;
     VeliqAccentLine: TPanel;
     VeliqDark: Boolean;

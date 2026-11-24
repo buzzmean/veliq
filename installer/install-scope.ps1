@@ -30,6 +30,7 @@ function Convert-VeliqPendingPath([string]$Path) {
 }
 function Get-VeliqInstallRebootState([string]$Directory) {
  $blocking=@();$operations=@();$windowsReasons=@()
+ $queueName='';$pairIndex=$null;$pathRole=''
  try{
   foreach($pair in @(
    @('SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending','CBS_REBOOT_PENDING'),
@@ -42,15 +43,18 @@ function Get-VeliqInstallRebootState([string]$Directory) {
   if($active -and $pending -and $active -ine $pending){$windowsReasons+='COMPUTER_RENAME_PENDING'}
   $roots=@($Directory,(Join-Path $env:ProgramData 'VELIQ'),(Join-Path $env:ProgramData 'neexitlag'))
   foreach($name in @('PendingFileRenameOperations','PendingFileRenameOperations2')){
+   $queueName=$name;$pairIndex=$null;$pathRole=''
    $value=Read-VeliqRebootRegistry 'SYSTEM\CurrentControlSet\Control\Session Manager' $name
    if($null -eq $value){continue}
    $items=@($value)
    if($items.Count){$windowsReasons+=$name.ToUpperInvariant()}
    if($items.Count % 2){throw 'INSTALL_PENDING_QUEUE_MALFORMED'}
    for($i=0;$i -lt $items.Count;$i+=2){
+    $pairIndex=[int]($i/2);$pathRole='source'
     if($items[$i] -isnot [string] -or !$items[$i] -or $items[$i+1] -isnot [string]){throw 'INSTALL_PENDING_QUEUE_MALFORMED'}
     $paths=@((Convert-VeliqPendingPath $items[$i]))
-    if($items[$i+1]){$paths+=Convert-VeliqPendingPath $items[$i+1]}
+    if($items[$i+1]){$pathRole='destination';$paths+=Convert-VeliqPendingPath $items[$i+1]}
+    $pathRole=''
     $related=$false
     foreach($path in $paths){
      foreach($root in $roots){
@@ -64,6 +68,7 @@ function Get-VeliqInstallRebootState([string]$Directory) {
     if($related){$blocking+=($name.ToUpperInvariant()+'_VELIQ')}
    }
   }
+  $queueName='';$pairIndex=$null;$pathRole=''
   foreach($service in @('VELIQ','neexitlag')){
    if(Read-VeliqRebootRegistry ('SYSTEM\CurrentControlSet\Services\'+$service) 'DeleteFlag'){$blocking+='SERVICE_DELETE_PENDING'}
   }
@@ -71,7 +76,9 @@ function Get-VeliqInstallRebootState([string]$Directory) {
   Write-VeliqInstallDiagnostic 'REBOOT_SCOPE' $state
   return $state
  }catch{
-  Write-VeliqInstallDiagnostic 'REBOOT_SCOPE_UNKNOWN' @{code='INSTALL_PENDING_QUEUE_UNRESOLVED'}
+  $detail='INSTALL_PENDING_QUEUE_UNRESOLVED'
+  if($_.Exception.Message -cmatch '^INSTALL_[A-Z0-9_]{1,72}$'){$detail=$_.Exception.Message}
+  Write-VeliqInstallDiagnostic 'REBOOT_SCOPE_UNKNOWN' @{code='INSTALL_PENDING_QUEUE_UNRESOLVED';detail_code=$detail;queue=$queueName;pair_index=$pairIndex;path_role=$pathRole}
   return [pscustomobject]@{known=$false;required=$null;reasons=@('INSTALL_PENDING_QUEUE_UNRESOLVED');deferred_cleanup_count=$null}
  }
 }
