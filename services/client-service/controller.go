@@ -307,6 +307,10 @@ func (c *Controller) closeResources() {
 		c.Backend.Stop()
 	}
 	c.wg.Wait()
+	if d:=c.diagnostics.Load();d!=nil && d.done!=nil {
+		timer:=time.NewTimer(2*time.Second)
+		select{case <-d.done:timer.Stop();case <-timer.C:}
+	}
 	_ = c.traffic.Flush()
 }
 func (c *Controller) SetCustomPath(path string) error {
@@ -632,10 +636,6 @@ func (c *Controller) Snapshot() Snapshot {
 	return snapshot
 }
 func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMessage) (result any, err error) {
-	if method == "diagnostics.status" {
-		if d := c.diagnostics.Load(); d != nil { return d.status.Load(), nil }
-		return diagnosticStatus{Storage:"NOT_CONFIGURED"}, nil
-	}
 	defer func() {
 		if err != nil {
 			if d := c.diagnostics.Load(); d != nil {
@@ -810,6 +810,9 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return c.hotAttachStatus(), nil
 	case "status":
 		return c.Snapshot(), nil
+	case "diagnostics.status":
+		if d := c.diagnostics.Load(); d != nil { return d.status.Load(), nil }
+		return diagnosticStatus{Storage:"NOT_CONFIGURED"}, nil
 	case "profiles":
 		return c.Profiles.List(), nil
 	case "profiles.routing":

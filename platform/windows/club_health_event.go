@@ -33,7 +33,7 @@ type clubHealthEventXML struct {
 	}
 }
 
-var clubFaultingExe = regexp.MustCompile(`(?i)\b(veliq(?:-service)?\.exe|langameservice\.exe)\b`)
+var clubFaultingExe = regexp.MustCompile(`(?i)\b(veliq(?:-service)?\.exe|langameservice\.exe|steam\.exe|steamwebhelper\.exe|r5apex\.exe|cs2\.exe|chrome\.exe|msedge\.exe)\b`)
 var clubRequestExe = regexp.MustCompile(`(?i)([a-z0-9_-]+\.exe)(?:\s|$)`)
 
 // Parsing only the selected providers keeps event messages, account names,
@@ -73,6 +73,8 @@ func decodeClubHealthEvent(channel string, raw []byte) (clubhealth.Event, bool) 
 				e.Kind = "veliq_crash"
 				if e.App == "langameservice.exe" {
 					e.Kind = "langame_crash"
+				} else if e.App != "veliq.exe" && e.App != "veliq-service.exe" {
+					e.Kind = "application_crash"
 				}
 				break
 			}

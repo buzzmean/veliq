@@ -76,6 +76,7 @@ type diagnosticStatus struct {
 	Events        []clubhealth.Diagnostic `json:"events"`
 }
 type persistentDiagnostics struct {
+	done    chan struct{}
 	write   func([]byte) error // Isolated fixture only; never configured through IPC.
 	input   chan diagnosticInput
 	uploads chan diagnosticUpload
@@ -117,7 +118,7 @@ func (c *Controller) ConfigurePersistentDiagnostics(m Manifest) {
 	if source == "" {
 		source = "unknown"
 	}
-	d := &persistentDiagnostics{input: make(chan diagnosticInput, clubhealth.InputEvents), uploads: make(chan diagnosticUpload, 1),
+	d := &persistentDiagnostics{done: make(chan struct{}), input: make(chan diagnosticInput, clubhealth.InputEvents), uploads: make(chan diagnosticUpload, 1),
 		base: clubhealth.Diagnostic{PC: pc, Version: "0.3." + BuildSequence, Source: source, Session: session, ServicePID: uint32(os.Getpid())}}
 	if !c.diagnostics.CompareAndSwap(nil, d) {
 		return
@@ -141,9 +142,16 @@ func (c *Controller) ConfigurePersistentDiagnostics(m Manifest) {
 }
 
 func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
+	if d.done != nil {
+		defer close(d.done)
+	}
 	j := clubhealth.LoadJournal(path, device, time.Now())
+	if j.Open {
+		j.Add(d.event("JOURNAL", "JOURNAL_READ", "unknown", "UNCLEAN_STOP_TAIL_MAY_BE_MISSING"), time.Now())
+	}
+	j.Open = true
 	transitions := &j.Transitions
-	dirty := false
+	dirty := true
 	storage := "PENDING"
 	write := func(raw []byte) error { return protectedActivationWrite(path, raw) }
 	if d.write != nil {
@@ -162,7 +170,13 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 		d.status.Store(s)
 	}
 	flush := func() bool {
+		before, lost := len(j.Rows), j.Lost
 		j.Trim(time.Now())
+		dirty = dirty || before != len(j.Rows) || lost != j.Lost
+		if !dirty && storage == "OK" {
+			publish()
+			return true
+		}
 		if err := j.Save(write); err != nil {
 			storage = "WRITE_FAILED"
 			publish()
@@ -179,7 +193,18 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 	for {
 		select {
 		case <-ctx.Done():
+			for draining := true; draining; {
+				select {
+				case in := <-d.input:
+					j.Add(in.event, time.Now())
+				default:
+					draining = false
+				}
+			}
+			j.Lost += d.dropped.Swap(0)
 			j.Add(d.event("SERVICE", "SERVICE_LIFECYCLE", "observed", "SERVICE_STOP_REQUESTED"), time.Now())
+			j.Open = false
+			dirty = true
 			flush()
 			return
 		case in := <-d.input:
@@ -200,11 +225,23 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 				dirty = true
 			}
 			if request.device != j.Device {
-				// Activation identity changes never transfer another device's history.
-				if request.reply != nil {
-					request.reply <- clubhealth.Batch{}
+				// Rotate at authenticated identity replacement. Old events are
+				// never uploaded under the new owner/device; account the loss.
+				if request.reply == nil {
+					continue
 				}
-				continue
+				lost := j.Lost
+				for _, row := range j.Rows {
+					if !row.Acked {
+						lost++
+					}
+				}
+				j = clubhealth.Journal{Format: 1, Device: request.device, Lost: lost, Open: true}
+				transitions = &j.Transitions
+				e := d.event("JOURNAL", "DEVICE_BINDING", "observed", "DEVICE_IDENTITY_CHANGED")
+				e.Lost = lost
+				j.Add(e, time.Now())
+				dirty = true
 			}
 			if request.reply != nil {
 				if flush() {
@@ -300,6 +337,9 @@ func (d *persistentDiagnostics) upload(ctx context.Context) {
 			return
 		}
 		delay = 30 * time.Second
+		if len(b.Events) == clubhealth.MaxEvents {
+			delay = 5 * time.Second
+		}
 	}
 }
 
@@ -371,6 +411,11 @@ func (c *Controller) observeDiagnosticWindows(ctx context.Context, d *persistent
 	for {
 		started := time.Now()
 		rows, err := wp.DiagnosticWindowsEvents(since)
+		service := wp.DiagnosticLanGameState()
+		base := d.event(service.Component, service.Observer, service.State, service.Code)
+		service.ID, service.At = base.ID, base.At
+		service.PC, service.Version, service.Source, service.Session, service.ServicePID = d.base.PC, d.base.Version, d.base.Source, d.base.Session, d.base.ServicePID
+		d.offer(service, "langame")
 		for _, e := range rows {
 			e.PC, e.Version, e.Source, e.Session, e.ServicePID = d.base.PC, d.base.Version, d.base.Source, d.base.Session, d.base.ServicePID
 			d.offer(e, "")

@@ -79,6 +79,8 @@ func decodeDiagnosticEvent(channel string, raw []byte, lookup func(uint32) (Proc
 		e.Component = "LANGAME"
 	case "veliq_crash", "veliq_start_failed":
 		e.Component = "SERVICE"
+	case "application_crash":
+		e.Component = "APPLICATION"
 	}
 	// Only named numeric fields; never arbitrary text/exception messages.
 	for _, d := range x.EventData.Data {

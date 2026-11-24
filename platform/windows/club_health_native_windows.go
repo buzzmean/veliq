@@ -5,6 +5,7 @@ package windowsplatform
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -17,6 +18,43 @@ var healthEvtQuery = healthEvt.NewProc("EvtQuery")
 var healthEvtNext = healthEvt.NewProc("EvtNext")
 var healthEvtRender = healthEvt.NewProc("EvtRender")
 var healthEvtClose = healthEvt.NewProc("EvtClose")
+
+func DiagnosticLanGameState() clubhealth.Diagnostic {
+	e := clubhealth.Diagnostic{Component: "LANGAME", Observer: "SCM_QUERY", State: "unknown", Code: "SCM_UNAVAILABLE"}
+	manager, err := windows.OpenSCManager(nil, nil, windows.SC_MANAGER_CONNECT)
+	if err != nil {
+		e.Code, e.NativeCode = clubhealth.ErrorCode(err)
+		return e
+	}
+	defer windows.CloseServiceHandle(manager)
+	name, _ := windows.UTF16PtrFromString("LanGameService")
+	service, err := windows.OpenService(manager, name, windows.SERVICE_QUERY_STATUS)
+	if err != nil {
+		e.Code, e.NativeCode = clubhealth.ErrorCode(err)
+		return e
+	}
+	defer windows.CloseServiceHandle(service)
+	var status windows.SERVICE_STATUS_PROCESS
+	var size uint32
+	err = windows.QueryServiceStatusEx(service, windows.SC_STATUS_PROCESS_INFO, (*byte)(unsafe.Pointer(&status)), uint32(unsafe.Sizeof(status)), &size)
+	if err != nil {
+		e.Code, e.NativeCode = clubhealth.ErrorCode(err)
+		return e
+	}
+	e.NativeCode = status.Win32ExitCode
+	e.Code = "SCM_NOT_RUNNING"
+	if status.CurrentState == windows.SERVICE_STOPPED && status.Win32ExitCode != 0 {
+		e.State = "failed"
+	}
+	if status.CurrentState == windows.SERVICE_RUNNING {
+		e.State, e.Code = "ready", "SCM_RUNNING"
+		id, err := NewDiscovery().Lookup(status.ProcessId)
+		if err == nil && IsCurrent(id) && strings.EqualFold(id.Name, "LanGameService.exe") {
+			e.PID, e.Birth, e.App, e.ProcessVerified = id.PID, id.CreationTime, "langameservice.exe", true
+		}
+	}
+	return e
+}
 
 // Native XPath uses the Windows subset, with a separate bounded channel query.
 // No subprocess, certutil, certificate/cache mutation or network probe.

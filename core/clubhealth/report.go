@@ -84,7 +84,7 @@ func (e Event) Valid(now time.Time) bool {
 		return false
 	}
 	switch e.Kind {
-	case "capture_start_failed", "capture_failed", "route_failure", "capture_history_gap",
+	case "application_crash", "capture_start_failed", "capture_failed", "route_failure", "capture_history_gap",
 		"veliq_crash", "veliq_start_failed", "langame_crash", "langame_start_failed", "langame_error",
 		"unexpected_restart", "shutdown_requested", "bugcheck", "storage_error", "network_error",
 		"lan_unreachable", "lan_recovered", "report_delivery_gap", "event_log_unavailable", "events_overflow":
