@@ -7,7 +7,8 @@ import sys
 import urllib.parse
 
 KEYS = {'RELAY_LISTEN', 'RELAY_METRICS', 'RELAY_ID', 'RELAY_ALLOW_CIDRS',
-        'RELAY_CONTROL_PLANE', 'RELAY_CONTROL_PLANE_CA_FILE', 'RELAY_DESTINATION_POLICY'}
+        'RELAY_CONTROL_PLANE', 'RELAY_CONTROL_PLANE_CA_FILE', 'RELAY_DESTINATION_POLICY',
+        'RELAY_FLEET_ADMISSION'}
 
 def validate(path):
     settings = {}
@@ -50,6 +51,8 @@ def validate(path):
     ca = settings.get('RELAY_CONTROL_PLANE_CA_FILE', '/etc/neexitlag/relay/ca.pem')
     if not pathlib.PurePosixPath(ca).is_absolute():
         raise ValueError('control-plane CA path must be absolute')
+    if settings.get('RELAY_FLEET_ADMISSION', '0') not in {'0', '1', 'observe'}:
+        raise ValueError('invalid fleet admission mode')
     return settings
 
 if __name__ == '__main__':

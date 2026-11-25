@@ -76,3 +76,5 @@ Hostkey на Windows и не ISP acceptance. Существующие mTLS/ticke
 тесты выполняются в общем Go race; production серверы тестами не используются.
 PS7 fixture проверяет live status/reset/legacy/allowlist; PS5.1 syntax/CI gate
 подготовлен, native PS5.1 здесь не выполнялся.
+
+Режим fleet и порядок настройки нового узла описаны в [Fleet relay admission](RELAY_FLEET.md).

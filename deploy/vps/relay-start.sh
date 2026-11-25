@@ -15,6 +15,13 @@ case "${RELAY_DESTINATION_POLICY:-cidrs}" in
   ;;
  *) echo 'Unknown relay destination policy.' >&2; exit 1 ;;
 esac
+fleet_args=()
+case "${RELAY_FLEET_ADMISSION:-0}" in
+ 0) ;;
+ 1) fleet_args=(-fleet-admission) ;;
+ observe) fleet_args=(-fleet-observe-only) ;;
+ *) echo 'RELAY_FLEET_ADMISSION must be 0, 1 or observe.' >&2; exit 1 ;;
+esac
 exec /opt/neexitlag/bin/relay \
  -listen "${RELAY_LISTEN:-:4433}" -metrics "${RELAY_METRICS:-127.0.0.1:9090}" \
  -cert /etc/neexitlag/relay/server.pem -key /etc/neexitlag/relay/server.key \
@@ -22,4 +29,4 @@ exec /opt/neexitlag/bin/relay \
  -ticket-keys /etc/neexitlag/relay/trust.json -replay-cache /var/lib/neexitlag/replay.json \
  -control-plane "${RELAY_CONTROL_PLANE:-https://127.0.0.1:8443}" \
  -control-plane-ca "${RELAY_CONTROL_PLANE_CA_FILE:-/etc/neexitlag/relay/ca.pem}" \
- -heartbeat-token-file /etc/neexitlag/relay/heartbeat.token "${destination_args[@]}"
+ -heartbeat-token-file /etc/neexitlag/relay/heartbeat.token "${destination_args[@]}" "${fleet_args[@]}"
