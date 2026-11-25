@@ -68,20 +68,20 @@ git pull --ff-only origin codex/direct-plus-flowseal
 if($LASTEXITCODE){throw 'git pull failed'}
 Expand-Archive .\windows-real-e2e-tools.zip .\bin\windows-e2e -Force
 Expand-Archive .\VELIQ-win-x64.zip .\.e2e\gui-update -Force
-$GuiInstalled='C:\NeExitLag\NeExitLag.exe' # ваш существующий путь GUI
-$replacement=(Resolve-Path .\bin\windows-e2e\neexitlag-service.exe).Path
+$GuiInstalled='C:\VELIQ\VELIQ.exe' # ваш существующий путь GUI
+$replacement=(Resolve-Path .\bin\windows-e2e\veliq-service.exe).Path
 $guiReplacement=(Resolve-Path .\.e2e\gui-update\VELIQ.exe).Path
-$svc=Get-CimInstance Win32_Service -Filter "Name='neexitlag'"
+$svc=Get-CimInstance Win32_Service -Filter "Name='VELIQ'"
 if(!$svc -or $svc.PathName -notmatch '^"([^"\r\n]+)"'){throw 'Cannot determine installed service executable'}
 $installed=$Matches[1]
 $old=if($svc.ProcessId -gt 0){Get-Process -Id $svc.ProcessId -ErrorAction SilentlyContinue}
-Stop-Service neexitlag
-(Get-Service neexitlag).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
+Stop-Service VELIQ
+(Get-Service VELIQ).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
 if($old -and !$old.WaitForExit(30000)){throw 'Old service has not exited'}
 Copy-Item $replacement $installed -Force
 Copy-Item $guiReplacement $GuiInstalled -Force
-Start-Service neexitlag
-(Get-Service neexitlag).WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
+Start-Service VELIQ
+(Get-Service VELIQ).WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
 ```
 
 ProgramData credentials, state и ACL не удаляются/не ослабляются. GUI затем запустите обычным двойным кликом в Проводнике, без elevation. Не запускать winws/GoodbyeDPI параллельно. VPS redeploy не нужен.
@@ -231,23 +231,23 @@ reassembly_ms — elapsed, transform_applied=true только после все
 ### Новый REAL TEST: service + scripts, затем YouTube
 
 Скачайте artifact **windows-real-e2e-tools** из Verify workflow именно нового
-HEAD; распакуйте, например в `C:\neexitlag-artifacts\reassembly`.
+HEAD; распакуйте, например в `C:\VELIQ-artifacts\reassembly`.
 Закройте Chrome, выключите Happ полностью. В elevated PowerShell из checkout:
 
 ```powershell
 git switch codex/direct-plus-flowseal
 git pull --ff-only origin codex/direct-plus-flowseal
-$replacement=(Resolve-Path 'C:\neexitlag-artifacts\reassembly\neexitlag-service.exe').Path
-$svc=Get-CimInstance Win32_Service -Filter "Name='neexitlag'"
-if(!$svc){throw 'Existing neexitlag service is required'}
+$replacement=(Resolve-Path 'C:\VELIQ-artifacts\reassembly\veliq-service.exe').Path
+$svc=Get-CimInstance Win32_Service -Filter "Name='VELIQ'"
+if(!$svc){throw 'Требуется установленная служба VELIQ'}
 $installed=if($svc.PathName -match '^"([^"\r\n]+)"'){$Matches[1]}elseif($svc.PathName -match '^(.+?\.exe)(?:\s|$)'){$Matches[1]}else{throw 'Cannot parse existing service executable path'}
 if(!(Test-Path -LiteralPath $installed -PathType Leaf)){throw 'Installed service executable missing'}
-Stop-Service neexitlag -ErrorAction Stop
-(Get-Service neexitlag).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(15))
+Stop-Service VELIQ -ErrorAction Stop
+(Get-Service VELIQ).WaitForStatus('Stopped',[TimeSpan]::FromSeconds(15))
 Copy-Item -LiteralPath $installed -Destination ($installed+'.before-reassembly.bak') -Force
 Copy-Item -LiteralPath $replacement -Destination $installed -Force
-Start-Service neexitlag -ErrorAction Stop
-(Get-Service neexitlag).WaitForStatus('Running',[TimeSpan]::FromSeconds(15))
+Start-Service VELIQ -ErrorAction Stop
+(Get-Service VELIQ).WaitForStatus('Running',[TimeSpan]::FromSeconds(15))
 .\tools\windows\strategy-tester-v2.ps1 `
   -AppPath 'C:\Program Files\Google\Chrome\Application\chrome.exe' `
   -Preset youtube -URL 'https://www.youtube.com/' -TimeoutSeconds 30

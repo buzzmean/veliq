@@ -19,7 +19,7 @@
   Ротация подготовлена по явному требованию владельца, не выполняется автоматически.
 - `update-vps.ps1` обновляет бинарники с сохранением identity, требует старые
   credentials для live proof; он не восстанавливает утраченную identity/CA.
-- `install.ps1` сохраняет SCM `neexitlag`, IPC, owner SID и закрытые ACL. Он
+- `install.ps1` сохраняет SCM `VELIQ`, IPC, owner SID и закрытые ACL. Он
   принимает уже выданные device/trust files. `reinstall-state.ps1` намеренно
   запрещает молча заменить сохранённую identity другим bundle. Эти проверки
   новый bootstrap не обходит; существующая установка сохраняется и отклоняется.
@@ -133,7 +133,7 @@ TLS credentials не дают обхода mTLS, службы остаются �
 Локальная копия на том же VPS не является резервной копией от потери его диска.
 
 После отдельного решения владельца migration запускается с Windows **обычным
-PowerShell** из `C:\neexitlag` (одна SSH-сессия; пароль вводится интерактивно):
+PowerShell** из `C:\VELIQ` (одна SSH-сессия; пароль вводится интерактивно):
 
 ```powershell
 & .\tools\windows\bootstrap-fresh-pc.ps1 -VpsIP 2.56.177.4 -SSHUser root -SSHPort 22 -RotateCA -ConfirmCARotation 'ROTATE-CA-2.56.177.4'
@@ -277,7 +277,7 @@ PowerShell владельца (обычный при включённом UAC; �
 
 ```powershell
 # Клонирование и переход выполняются один раз после каждого freeze.
-$repo = Join-Path $env:USERPROFILE 'neexitlag'
+$repo = Join-Path $env:USERPROFILE 'VELIQ'
 git clone --branch main https://github.com/buzzmean/veliq.git $repo
 Set-Location $repo
 # Единственная команда установки после подготовленной migration VPS:
@@ -308,7 +308,7 @@ PAC дают FAIL, а не фиктивный готовый браузер. Ч�
 
 Все входные/staging файлы — под репозиторием (`.e2e/fresh-pc`, `.e2e/windivert`,
 `bin`); не нужны bundle/USB/файлы из предыдущей загрузки. Обычные **выходы установки**
-в `%ProgramData%\neexitlag`, `%LOCALAPPDATA%\Programs\VELIQ`, shortcut и служба,
+в `%ProgramData%\VELIQ`, `%LOCALAPPDATA%\Programs\VELIQ`, shortcut и служба,
 а также стандартные caches Go/.NET, естественно создаются вне repo. Если запрет
 «никаких файлов вне repo» относится и к этим outputs, Windows service/GUI install
 с ним несовместим — это не portable-режим.
@@ -395,8 +395,8 @@ SYSTEM/admin/owner. На UAC-off ПК защита от самого польз�
 ограничена правами этого пользователя в Windows; скрипт не выдаёт дополнительных
 прав и не делает credentials доступными всем.
 
-Скрипты определяют repo по `$PSScriptRoot`, не по текущей папке и не по `C:\neexitlag`.
-Поддерживается, например, `C:\Users\<user>\neexitlag`, включая пробелы в имени:
+Скрипты определяют repo по `$PSScriptRoot`, не по текущей папке и не по `C:\VELIQ`.
+Поддерживается, например, `C:\Users\<user>\VELIQ`, включая пробелы в имени:
 пример клонирования выше использует `$env:USERPROFILE`, создание каталога в корне
 C: не требуется. Стандартные install outputs в ProgramData/LocalAppData остаются.
 

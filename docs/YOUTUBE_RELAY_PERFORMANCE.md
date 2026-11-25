@@ -118,7 +118,7 @@ git pull --ff-only origin main
 ```
 
 ```powershell
-& .\tools\windows\build-e2e.ps1 -DriverDirectory "$env:ProgramData\neexitlag\driver"
+& .\tools\windows\build-e2e.ps1 -DriverDirectory "$env:ProgramData\VELIQ\driver"
 ```
 
 Только после успешной сборки (в том числе WINDIVERT_FILTERS_PASS):
@@ -128,7 +128,7 @@ git pull --ff-only origin main
 ```
 
 ```powershell
-(Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash
+(Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash
 ```
 
 Ожидается True. Обновление службы пересоздаёт её транспортные сессии; browser

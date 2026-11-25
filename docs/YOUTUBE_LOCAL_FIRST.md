@@ -124,7 +124,7 @@ recovery helpers, если они есть. На обычном ПК GUI зат�
 ```powershell
 git switch main
 git pull --ff-only origin main
-$m=Get-Content -Raw "$env:ProgramData\neexitlag\service.json" | ConvertFrom-Json
+$m=Get-Content -Raw "$env:ProgramData\VELIQ\service.json" | ConvertFrom-Json
 & .\tools\windows\build-e2e.ps1 -DriverDirectory $m.driver.directory
 & .\tools\windows\Close-VeliqGuiForUpdate.ps1
 & .\tools\windows\update-service.ps1

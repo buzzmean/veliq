@@ -97,7 +97,7 @@ connected=True и отсутствие ошибки фильтра. Ошибка
 профилей или ослаблением protected-политик. Проверка установленных байтов:
 
 ```powershell
-(Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash
+(Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash
 ```
 
 Сервер обновлять не требуется. В разработке не выполнялись команды на VPS,

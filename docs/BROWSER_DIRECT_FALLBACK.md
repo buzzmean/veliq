@@ -90,7 +90,7 @@ cardinality overflow bytes. Counters обновляются во время пр
 ```powershell
 & {
 $ErrorActionPreference='Stop'
-cd C:\neexitlag
+cd C:\VELIQ
 if (@(git status --porcelain).Count) { throw 'Есть локальные правки: сохраните их перед обновлением' }
 git fetch origin refs/heads/main:refs/remotes/origin/main
 if ($LASTEXITCODE) { throw 'fetch failed' }
@@ -102,10 +102,10 @@ if ($LASTEXITCODE) { throw 'pull failed' }
 & .\tools\windows\build-desktop.ps1
 & .\tools\windows\update-service.ps1
 & .\tools\windows\install-desktop.ps1
-$built=(Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash
-$installed=(Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash
+$built=(Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash
+$installed=(Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash
 if ($built -ne $installed) { throw 'SHA256 установленной службы не совпадает' }
-if ((Get-Service neexitlag).Status -ne 'Running') { throw 'Служба не Running' }
+if ((Get-Service VELIQ).Status -ne 'Running') { throw 'Служба не Running' }
 }
 ```
 

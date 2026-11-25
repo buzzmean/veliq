@@ -40,7 +40,7 @@ WinDivertHelperEvalFilter, который проверяет это исключ
 
 ## 1. Сборка на тестовом ПК владельца
 
-PowerShell администратора **из корня клона**, например `$HOME\neexitlag`.
+PowerShell администратора **из корня клона**, например `$HOME\VELIQ`.
 Нужны Git, Go, .NET SDK8, публичный `.e2e\activation-trust\ca.pem`, сеть для
 пакетов. Один build-command добавит отсутствующий nuget.org, найдёт или установит
 через winget закреплённый Inno Setup 6.4.3, проверит версию/подпись компилятора,
@@ -114,13 +114,13 @@ SYSTEM-задачи получают owner Administrators и admin-only write AC
 стандартный гость не сохраняет права владельца на boot-скрипты.
 
 ```powershell
-Get-Service neexitlag | Select-Object Status,StartType
+Get-Service VELIQ | Select-Object Status,StartType
 ```
 
 Ожидается Stopped/Automatic. Проверить отсутствие runtime-state, не печатая его:
 
 ```powershell
-@('identity.json','device.pem','probe.token','club-boot-ready.json') | ForEach-Object { [pscustomobject]@{Name=$_;Exists=(Test-Path (Join-Path "$env:ProgramData\neexitlag" $_))} }
+@('identity.json','device.pem','probe.token','club-boot-ready.json') | ForEach-Object { [pscustomobject]@{Name=$_;Exists=(Test-Path (Join-Path "$env:ProgramData\VELIQ" $_))} }
 ```
 
 Все Exists=False. Наличие любой identity — STOP, не копировать этот образ.
@@ -162,7 +162,7 @@ native; обычные игры остаются DIRECT. PUBG — существ
 ```
 
 Один структурированный журнал текущей загрузки:
-`%ProgramData%\neexitlag\club-status.json` (обновляется каждые10с).
+`%ProgramData%\VELIQ\club-status.json` (обновляется каждые10с).
 `club-boot.json` содержит состояние SYSTEM boot task, если служба не поднялась.
 `BASELINE_PASS_RUNTIME_UNVERIFIED` означает activation+capture+backend и настоящий
 nonce/HMAC TCP+UDP roundtrip через authenticated relay. Начальная проверка
@@ -188,7 +188,7 @@ nonce/HMAC TCP+UDP roundtrip через authenticated relay. Начальная 
 & .\tools\windows\Get-ClubStatus.ps1 -ComputerName PC01,PC02,PC03
 ```
 
-Читает `\\PC\C$\ProgramData\neexitlag\club-status.json`; старше60с — STALE,
+Читает `\\PC\C$\ProgramData\VELIQ\club-status.json`; старше60с — STALE,
 без доступа — UNAVAILABLE. Файл — снимок, не remote attestation; stopped service
 может иметь свежий файл до60с. Для живого подтверждения использовать локальную
 команду. Без существующих административных прав доступна только локальная сводка.
@@ -237,13 +237,13 @@ exit
 Перезапускается **только служба**; identity не удаляется, новая принимается после
 валидного enrollment. Проверить Get-ClubStatus. На freeze-клиенте это изменение
 overlay не переживёт reboot: заменить также ровно **один private file** в sealed
-base — `ProgramData\neexitlag\activation-code.json.pending`.
+base — `ProgramData\VELIQ\activation-code.json.pending`.
 
 Для редактирования оригинального sealed base до его загрузки/офлайн, когда он
 смонтирован провайдером как папка (а не активированный runtime), helper из клона:
 
 ```powershell
-& .\tools\windows\Set-ClubActivationCode.ps1 -CodeFile "$HOME\veliq-next-code.txt" -InstallDirectory 'X:\ProgramData\neexitlag' -Image
+& .\tools\windows\Set-ClubActivationCode.ps1 -CodeFile "$HOME\veliq-next-code.txt" -InstallDirectory 'X:\ProgramData\VELIQ' -Image
 ```
 
 `-Image` не запускает enrollment и требует чистый image. Не использовать его

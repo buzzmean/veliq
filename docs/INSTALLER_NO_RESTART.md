@@ -31,10 +31,10 @@ NeedsRestart. Проверенная подготовка возвращает �
 
 Get-VeliqInstallRebootState читает обе очереди PendingFileRenameOperations,
 признаки CBS/Windows Update/UpdateExeVolatile/переименования компьютера и DeleteFlag
-служб VELIQ/neexitlag. Windows_pending и блокировка данного пакета — разные поля.
+текущей службы VELIQ и прежней службы, учитываемой при миграции. Windows_pending и блокировка данного пакета — разные поля.
 
 Операции, затрагивающие source или destination внутри каталога приложения,
-ProgramData/VELIQ, прежнего ProgramData/neexitlag, их родительские каталоги или
+ProgramData/VELIQ, каталога прежней установки, их родительские каталоги или
 системные WinDivert DLL/SYS, блокируют замену. Нечитаемые/неоднозначные/непарные
 записи тоже блокируют. Обрабатываются NT-префиксы, существующие короткие пути;
 reparse points в пути запрещены. Сторонняя операция вне этих областей записывается

@@ -81,7 +81,7 @@ GUI подтверждает браузер после наблюдаемого 
 Новая `TestWindowsNativeBrowserDriverHotAttach` в отдельном задании
 `Chrome policy native / browser-native-driver` требует:
 
-1. Одноразовую Windows VM без установленной службы neexitlag, настоящий Chrome
+1. Одноразовую Windows VM без установленной службы VELIQ, настоящий Chrome
    и Edge, исходные SHA256 pins и подписанный WinDivert.
 2. Браузер и его NetworkService запущены до Controller/capture; PAC не пишется.
 3. Production NewWinDivert/фильтр/owner lookup/reflect/accept без packetWriter и
@@ -135,7 +135,7 @@ git pull --ff-only origin main
 ```
 
 ```powershell
-(Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash
+(Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash
 ```
 
 True обязательно. Запустить установленный VELIQ (обычный owner, при UAC-off full-admin):

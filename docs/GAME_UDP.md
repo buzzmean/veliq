@@ -141,7 +141,7 @@ REFLECT и гонка одновременного открытия чужого
 PID/creation/exe, destination, variant, реальные outgoing/reply/fake counters,
 wire fake bytes, first_reply, cadence state, cache/TTL. `gameudp.set` принимает
 `{profile_id,enabled}`; существующий owner IPC/ACL не менялся. Opt-out и learning
-хранятся атомарно в защищённом `%ProgramData%\neexitlag\game-udp.json`;
+хранятся атомарно в защищённом `%ProgramData%\VELIQ\game-udp.json`;
 обычное обновление их сохраняет. После freeze локальное обучение может пропасть:
 это честный новый DIRECT baseline, а не сохранённый fake PASS.
 
@@ -178,7 +178,7 @@ git pull --ff-only origin main
 & .\tools\windows\install-desktop.ps1
 ```
 ```powershell
-Get-FileHash .\bin\windows-e2e\neexitlag-service.exe,"$env:ProgramData\neexitlag\neexitlag-service.exe" -Algorithm SHA256
+Get-FileHash .\bin\windows-e2e\veliq-service.exe,"$env:ProgramData\VELIQ\veliq-service.exe" -Algorithm SHA256
 ```
 
 Оба SHA256 должны совпасть, служба Running. Открыть GUI и включить «Оптимизировать»;
@@ -309,11 +309,11 @@ Start-Process "$env:LOCALAPPDATA\Programs\VELIQ\VELIQ.exe"
 Проверить работающую службу и равенство хешей сборки/установленного service:
 
 ```powershell
-Get-Service neexitlag
+Get-Service VELIQ
 ```
 
 ```powershell
-(Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash
+(Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash
 ```
 
 ```powershell

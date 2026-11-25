@@ -40,10 +40,10 @@ GUI: «Приложения» → Counter-Strike 2 → DIRECT → «Примен
 Не удалять встроенный профиль: удаление запрещено, а default существует при старте.
 Остальные игры/Steam-профили также можно явно оставить DIRECT, не меняя браузеры.
 
-Эквивалент для **обычного PowerShell**, `C:\neexitlag`, только встроенный `cs2`:
+Эквивалент для **обычного PowerShell**, `C:\VELIQ`, только встроенный `cs2`:
 
 ```powershell
-Set-Location C:\neexitlag
+Set-Location C:\VELIQ
 $ErrorActionPreference='Stop'
 . .\tools\windows\common.ps1
 $csProfiles=@(Invoke-ServiceIPC 'profiles' | Where-Object { $_.id -eq 'cs2' })
@@ -68,7 +68,7 @@ TCP не переносится на другой egress. После смены 
 под elevated owner SID и `install-desktop.ps1` под обычным owner. Проверить SHA256
 службы, затем открыть GUI. Никаких VPS/setup/enroll-команд.
 
-Во время матча, **обычный PowerShell**, `C:\neexitlag`:
+Во время матча, **обычный PowerShell**, `C:\VELIQ`:
 
 ```powershell
 & .\tools\windows\diag-no-vpn.ps1 -Only apps,ipc

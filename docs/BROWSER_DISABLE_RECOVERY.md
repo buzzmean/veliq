@@ -58,7 +58,7 @@ API, live_uptake=NOT_OBSERVED. Отказ/недоступный owner session �
 
 ## C: SCM host, watchdog и recovery имеют одно имя файла
 
-`neexitlag-service.exe --chrome-recovery` — отдельный owner-GUI child, а не второй
+`veliq-service.exe --chrome-recovery` — отдельный owner-GUI child, а не второй
 SCM host. Его старый lifecycle завершался только по stdin EOF/GUI Dispose; поэтому
 он мог пережить Stop-Service. `-browser-policy-watchdog` — ещё один отдельный
 SYSTEM процесс, но он не открывает CONNECT ports. По одному имени EXE и порту
@@ -149,7 +149,7 @@ git pull --ff-only origin main
 ```
 
 ```powershell
-(Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash
+(Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash
 ```
 
 Открыть VELIQ обычным ярлыком, включить Optimize. Оба браузера уже открыты.
@@ -181,7 +181,7 @@ git pull --ff-only origin main
 ```
 
 ```powershell
-Stop-Service neexitlag
+Stop-Service VELIQ
 ```
 
 ```powershell
@@ -200,7 +200,7 @@ NETWORK_NOT_AUTOMATICALLY_VERIFIED. Сразу открыть новую вкл�
 Возврат службы после проверки:
 
 ```powershell
-Start-Service neexitlag
+Start-Service VELIQ
 ```
 
 Затем обычная кнопка Optimize. Protected маршруты должны снова проходить через

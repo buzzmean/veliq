@@ -143,7 +143,7 @@ git pull --ff-only origin main
 pinned DLL. Команда ничего не развёртывает на VPS:
 
 ```powershell
-& .\tools\windows\build-e2e.ps1 -DriverDirectory "$env:ProgramData\neexitlag\driver"
+& .\tools\windows\build-e2e.ps1 -DriverDirectory "$env:ProgramData\VELIQ\driver"
 ```
 
 5. Обновить установленную службу с сохранением identity/config/profiles:
@@ -155,7 +155,7 @@ pinned DLL. Команда ничего не развёртывает на VPS:
 6. Проверить копирование бинарника:
 
 ```powershell
-(Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash
+(Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash
 ```
 
 Ожидается `True`. Запустить установленный GUI:

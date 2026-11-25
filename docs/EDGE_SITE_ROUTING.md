@@ -72,7 +72,7 @@ Loopback CONNECT исключён штатным WinDivert `!loopback`; внеш
 Origin HTTP 200 — только проверка origin, не доказательство работоспособности всей страницы.
 
 Состояние службы: `edge-transport.json` рядом с локальными профилями в защищённом
-каталоге установки. GUI/recovery: `%LOCALAPPDATA%\NeExitLag\edge-recovery.json`.
+каталоге установки. GUI/recovery: `%LOCALAPPDATA%\VELIQ\edge-recovery.json`.
 Сохраняются свои loopback-порты. Ошибка восстановления Edge диагностируется отдельно
 и не останавливает восстановление Chrome. Существующие пути identity/ACL не мигрируют.
 
@@ -135,9 +135,9 @@ Elevated PowerShell **под тем же SID владельца установк
 
 ```powershell
 & .\tools\windows\update-service.ps1
-Get-Service neexitlag
-Get-FileHash .\bin\windows-e2e\neexitlag-service.exe
-Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe"
+Get-Service VELIQ
+Get-FileHash .\bin\windows-e2e\veliq-service.exe
+Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe"
 ```
 
 Служба должна быть Running, SHA256 должны совпасть. В обычном PowerShell:
@@ -164,6 +164,7 @@ YouTube, Telegram Web, Discord. Не коммитьте `diag-result.txt`. `PAGE
 
 ```powershell
 . .\tools\windows\common.ps1
+Invoke-ServiceIPC 'diagnostics.status' | Select-Object storage,pending,lost,retention_days,max_bytes | ConvertTo-Json -Depth 4
 Invoke-ServiceIPC 'edge.status' | ConvertTo-Json -Depth 12
 ```
 
@@ -213,16 +214,19 @@ ProxySettings; оно больше не утверждает, что реест�
 
 ### Где искать ошибки
 
-Текущая SCM-служба пишет стандартный `slog` в stderr; файловый sink и каталог
-`%ProgramData%\neexitlag\logs` установщиком **не создаются**. Отсутствие каталога
-не доказывает отсутствие ошибки. SCM System log показывает жизненный цикл службы,
-а не подробные ошибки IPC. Не запускайте второй экземпляр capture для получения лога.
-Используйте безопасные диагностические поля:
+Стандартный `slog` и постоянный журнал сбоев — разные источники. Служба ведёт
+ограниченный журнал `club-health-journal.json` в своём защищённом каталоге
+состояния. Его готовность, очередь доставки и потерянные записи доступны через
+`diagnostics.status`. Отсутствие отдельного каталога `logs` не доказывает отсутствие
+диагностики. Журнал System показывает жизненный цикл службы; для ошибок IPC и
+компонентов используйте диагностические поля. Не запускайте второй экземпляр
+захвата ради получения журнала.
 
 ```powershell
 . .\tools\windows\common.ps1
+Invoke-ServiceIPC 'diagnostics.status' | Select-Object storage,pending,lost,retention_days,max_bytes | ConvertTo-Json -Depth 4
 Invoke-ServiceIPC 'edge.status' | Select-Object listening,policy_ready,ready_profiles,last_error | ConvertTo-Json -Depth 4
-Get-Content "$env:LOCALAPPDATA\NeExitLag\gui-failure.json" -ErrorAction SilentlyContinue
+Get-Content "$env:LOCALAPPDATA\VELIQ\gui-failure.json" -ErrorAction SilentlyContinue
 Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Service Control Manager'; StartTime=(Get-Date).AddMinutes(-15)} -MaxEvents 20 | Select-Object TimeCreated,Id,LevelDisplayName
 ```
 

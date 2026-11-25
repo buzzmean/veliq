@@ -3,7 +3,7 @@
 Это короткая приёмка владельца; команды на ПК запускает он сам, на VPS ничего не запускается.
 Фактический Chrome157/ISP результат после этих исправлений ещё не получен.
 Ниже PowerShell под прежним пользователем; административные команды помечены.
-Корень клона, например `$env:USERPROFILE\neexitlag`. Chrome/Edge не закрывать.
+Корень клона, например `$env:USERPROFILE\VELIQ`. Chrome/Edge не закрывать.
 
 ## 1. Уже установленный клиент: обновить, не переустанавливать
 
@@ -30,7 +30,7 @@ git pull --ff-only origin main
 ```
 
 ```powershell
-(Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash
+(Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash
 ```
 
 Ожидается True. update теперь по умолчанию проверяет узкое app-scoped inbound
@@ -99,7 +99,7 @@ $pins=Get-Content .\.e2e\windivert\pins.json -Raw | ConvertFrom-Json
 ```
 
 ```powershell
-& .\tools\windows\install.ps1 -ActivationOnly -ServiceExecutable .\bin\windows-e2e\neexitlag-service.exe -OwnerSid $ownerSid -TrustDirectory .\.e2e\activation-trust -DriverDirectory .\.e2e\windivert -DllSha256 $pins.dll_sha256 -DriverSha256 $pins.driver_sha256 -ControlPlaneUrl https://2.56.177.4:8443 -ProbeTarget 2.56.177.4:40000 -TCPProbeTarget 2.56.177.4:40000
+& .\tools\windows\install.ps1 -ActivationOnly -ServiceExecutable .\bin\windows-e2e\veliq-service.exe -OwnerSid $ownerSid -TrustDirectory .\.e2e\activation-trust -DriverDirectory .\.e2e\windivert -DllSha256 $pins.dll_sha256 -DriverSha256 $pins.driver_sha256 -ControlPlaneUrl https://2.56.177.4:8443 -ProbeTarget 2.56.177.4:40000 -TCPProbeTarget 2.56.177.4:40000
 ```
 
 ```powershell
@@ -158,7 +158,7 @@ Automatic=true он должен включить маршрутизацию о�
 Необязательная проверка SCM, PowerShell администратора после нового запуска GUI:
 
 ```powershell
-Stop-Service neexitlag
+Stop-Service VELIQ
 ```
 
 ```powershell
@@ -166,7 +166,7 @@ Stop-Service neexitlag
 ```
 
 ```powershell
-Start-Service neexitlag
+Start-Service VELIQ
 ```
 
 Сбор безопасной диагностики без изменений настроек:

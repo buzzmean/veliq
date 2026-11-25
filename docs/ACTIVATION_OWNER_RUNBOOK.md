@@ -61,7 +61,7 @@ exit
 ## 2. Пустой Windows-ПК: установить без старой device identity
 
 Git, Go, .NET SDK 8, Python уже установлены. Команды по одной из корня клона в
-профиле владельца, например `$HOME\neexitlag`; путь C:\neexitlag не требуется.
+профиле владельца, например `$HOME\VELIQ`; путь C:\VELIQ не требуется.
 Исходники — main. Не выполнять bootstrap-fresh-pc: это другой, SSH-enroll
 путь, он не проверяет сценарий активации кодом.
 
@@ -153,7 +153,7 @@ $pins = Get-Content .\.e2e\windivert\pins.json -Raw | ConvertFrom-Json
 ```
 
 ```powershell
-& .\tools\windows\install.ps1 -ActivationOnly -ServiceExecutable .\bin\windows-e2e\neexitlag-service.exe -OwnerSid $ownerSid -TrustDirectory .\.e2e\activation-trust -DriverDirectory .\.e2e\windivert -DllSha256 $pins.dll_sha256 -DriverSha256 $pins.driver_sha256 -ControlPlaneUrl https://2.56.177.4:8443 -ProbeTarget 2.56.177.4:40000 -TCPProbeTarget 2.56.177.4:40000
+& .\tools\windows\install.ps1 -ActivationOnly -ServiceExecutable .\bin\windows-e2e\veliq-service.exe -OwnerSid $ownerSid -TrustDirectory .\.e2e\activation-trust -DriverDirectory .\.e2e\windivert -DllSha256 $pins.dll_sha256 -DriverSha256 $pins.driver_sha256 -ControlPlaneUrl https://2.56.177.4:8443 -ProbeTarget 2.56.177.4:40000 -TCPProbeTarget 2.56.177.4:40000
 ```
 
 Приватный device key при этом не импортируется. install фиксирует fingerprint
@@ -360,7 +360,7 @@ git pull --ff-only origin main
 не добавлять -NativeTcpFirewall. Проверка реально установленного файла:
 
 ```powershell
-Get-FileHash .\bin\windows-e2e\neexitlag-service.exe,"$env:ProgramData\neexitlag\neexitlag-service.exe" -Algorithm SHA256
+Get-FileHash .\bin\windows-e2e\veliq-service.exe,"$env:ProgramData\VELIQ\veliq-service.exe" -Algorithm SHA256
 ```
 
 Оба SHA256 должны совпасть; служба должна быть Running. Обычный owner PowerShell
@@ -638,13 +638,13 @@ git pull --ff-only origin main
 & .\tools\windows\install-desktop.ps1
 ```
 ```powershell
-Get-FileHash .\bin\windows-e2e\neexitlag-service.exe,"$env:ProgramData\neexitlag\neexitlag-service.exe" -Algorithm SHA256
+Get-FileHash .\bin\windows-e2e\veliq-service.exe,"$env:ProgramData\VELIQ\veliq-service.exe" -Algorithm SHA256
 ```
 
 Оба SHA256 должны совпасть. Далее read-only:
 
 ```powershell
-Get-Service neexitlag
+Get-Service VELIQ
 ```
 ```powershell
 Get-ScheduledTask -TaskName VELIQ-BrowserPolicyWatchdog | Select-Object TaskName,State
@@ -657,10 +657,10 @@ Get-ScheduledTaskInfo -TaskName VELIQ-BrowserPolicyWatchdog | Select-Object Last
 currently running), это не код отказа. Проверить recovery configuration:
 
 ```powershell
-sc.exe qfailureflag neexitlag
+sc.exe qfailureflag VELIQ
 ```
 ```powershell
-sc.exe qfailure neexitlag
+sc.exe qfailure VELIQ
 ```
 ```powershell
 . .\tools\windows\common.ps1

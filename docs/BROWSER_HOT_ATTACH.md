@@ -38,7 +38,7 @@ GUI ничего не записывает в политику браузера 
 проверка после отказа выполняется не чаще раза в 10 с; после успеха — один раз за запуск GUI.
 
 В «Диагностике» есть сводка регистрации. Ограниченный отчёт без секретов:
-`%LOCALAPPDATA%\NeExitLag\browser-startup.json`. В нём время начала/окончания,
+`%LOCALAPPDATA%\VELIQ\browser-startup.json`. В нём время начала/окончания,
 длительность, браузер, полный путь, профиль, режим, состояние и безопасный код отказа.
 Содержимое ошибки IPC, токены, сертификаты и HTTPS payload туда не записываются.
 Отчёт относится к текущему пользователю; проверяйте время, чтобы отличить старый GUI.
@@ -69,9 +69,9 @@ Start-Process "$env:LOCALAPPDATA\Programs\VELIQ\VELIQ.exe"
 
 ```powershell
 & .\tools\windows\update-service.ps1
-$built=(Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash
-$running=(Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash
-if ($built -ne $running -or (Get-Service neexitlag).Status -ne 'Running') { throw 'Service update verification failed' }
+$built=(Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash
+$running=(Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash
+if ($built -ne $running -or (Get-Service VELIQ).Status -ne 'Running') { throw 'Service update verification failed' }
 ```
 
 После этого выполните GUI-only команды выше в обычном окне. Закрывать браузеры
@@ -142,7 +142,7 @@ Edge при nonce failure не выдаёт PAC READY: native используе
 не меняются. Старый owner recovery-процесс восстанавливается из имеющегося состояния.
 GUI запрашивает `RefreshPolicy(false)` под owner user, не SYSTEM/machine: Windows Chromium
 смотрит user GP notifications. API асинхронный; `REQUESTED` **не доказывает** live uptake.
-Отчёт: `%LOCALAPPDATA%\NeExitLag\browser-native-policy-refresh.txt`. Если уже открытый
+Отчёт: `%LOCALAPPDATA%\VELIQ\browser-native-policy-refresh.txt`. Если уже открытый
 Edge держит старый мёртвый PAC, отсутствие actual exchange остаётся видимым отказом;
 не утверждаем автоматическое исправление этого случая до Windows-проверки владельца.
 
@@ -155,7 +155,7 @@ IPv6 data routing и UDP/443 политика не меняются. IPv6 guard 
 Закройте **только GUI** через «Выход» в трее. Сохраните уже установленные owned PAC,
 не удаляйте профили или реестр. Обновление службы само разрывает принадлежащие ей sockets;
 это отличается от native enable при уже работающей службе и не доказывает continuity.
-Из elevated PowerShell **того же SID владельца установки**, в `C:\neexitlag`:
+Из elevated PowerShell **того же SID владельца установки**, в `C:\VELIQ`:
 
 ```powershell
 $ErrorActionPreference='Stop'
@@ -166,8 +166,8 @@ if ($LASTEXITCODE) { throw 'git pull failed' }
 & .\tools\windows\build-e2e.ps1
 & .\tools\windows\build-desktop.ps1
 & .\tools\windows\update-service.ps1 -NativeTcpFirewall
-if ((Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash -ne (Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash) { throw 'Service hash mismatch' }
-Get-Service neexitlag | Select-Object Status
+if ((Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash -ne (Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash) { throw 'Service hash mismatch' }
+Get-Service VELIQ | Select-Object Status
 ```
 
 Далее обычный owner PowerShell: `& .\tools\windows\install-desktop.ps1`, открыть
@@ -269,7 +269,7 @@ GUI пишет «Origin probe; результат страницы не изме
 Обновить службу и GUI штатным блоком выше, сверить SHA256 службы. Chrome/Edge
 оставить открытыми; service update может разорвать принадлежащие службе sockets.
 Открыть новые вкладки ChatGPT/Claude/YouTube и обычного сайта, обновить их, затем
-обычным PowerShell в `C:\neexitlag`:
+обычным PowerShell в `C:\VELIQ`:
 
 ```powershell
 & .\tools\windows\diag-no-vpn.ps1 -Only browser,youtube
@@ -294,8 +294,8 @@ bidirectional bytes. Это отдельная причина от медлен�
 
 В обычном обновлении firewall не меняется скрыто. Параметр
 `update-service.ps1 -NativeTcpFirewall` явно создаёт/проверяет локальное правило
-`neexitlag-native-tcp-v1`: inbound TCP **только для полного пути установленного
-neexitlag-service.exe**, все network profiles, edge traversal Block. Порт у
+`VELIQ-native-tcp-v1`: inbound TCP **только для полного пути установленного
+veliq-service.exe**, все network profiles, edge traversal Block. Порт у
 native listener динамический, поэтому правило привязано к EXE, а не к прежнему
 порту. Оно не меняет outbound, UDP, игры, остальные EXE, настройки firewall или VPS.
 GUI по-прежнему без elevation; обновление выполняет администратор прежнего owner SID.
@@ -311,11 +311,11 @@ GPO, запрещающая локальные inbound правила, не об
 Это opt-in prerequisite текущей native TCP reflection architecture. Fresh без
 owned PAC всё ещё не активируется. Не удалять правило при активном native режиме:
 для отката сначала вернуть прежний PAC-путь и бинарник штатным update workflow.
-Только после такого отката, elevated owner PowerShell в C:\neexitlag:
+Только после такого отката, elevated owner PowerShell в C:\VELIQ:
 
 ```powershell
 . .\tools\windows\native-tcp-firewall.ps1
-Remove-NativeTcpFirewallAdmission "$env:ProgramData\neexitlag\neexitlag-service.exe"
+Remove-NativeTcpFirewallAdmission "$env:ProgramData\VELIQ\veliq-service.exe"
 ```
 
 Удаление тоже проверяет точный EXE и маркер владения; чужую политику не удаляет.
@@ -379,7 +379,7 @@ PAC или асинхронная запись реестра атомарной
 
 Для повторной проверки оставить Chrome/Edge открытыми, закрыть только GUI и
 обновить службу по блоку выше с -NativeTcpFirewall. Затем открыть/обновить вкладки
-и в обычном owner PowerShell из C:\neexitlag выполнить:
+и в обычном owner PowerShell из C:\VELIQ выполнить:
 `& .\tools\windows\diag-no-vpn.ps1 -Only browser,youtube`.
 Состояние правила отдельно: `. .\tools\windows\common.ps1; Invoke-ServiceIPC 'browser.native.firewall'`.
 Перезапуск службы прерывает её sockets; это не тест непрерывности во время enable.
@@ -457,7 +457,7 @@ Timeout-кэш показывает group, probe_host, network/profile/port и �
 Закрыть только GUI. Тем же owner SID обновить службу штатным блоком выше с
 `-NativeTcpFirewall`; GUI в этой итерации не менялся. Chrome/Edge не закрывать,
 PAC/профили/identity не удалять. Открыть/обновить YouTube, затем новое видео, и
-из обычного owner PowerShell в C:\neexitlag выполнить:
+из обычного owner PowerShell в C:\VELIQ выполнить:
 
 ```powershell
 & .\tools\windows\diag-no-vpn.ps1 -Only browser,youtube
@@ -529,7 +529,7 @@ Diag `2026-10-19.8` показывает причины и before/after отде
 anthropic, youtube-media, сети, профилю, порту и пути. Нет выборки — NOT_OBSERVED.
 Лимит googlevideo 8/32 waiters/2 с, байты в минуту и routing evidence сохранены.
 Для сравнения открыть новые вкладки Telegram Web, Claude и видео YouTube при
-выключенном VPN, затем обычный owner PowerShell в C:\neexitlag:
+выключенном VPN, затем обычный owner PowerShell в C:\VELIQ:
 
 ```powershell
 & .\tools\windows\diag-no-vpn.ps1 -Only browser,youtube

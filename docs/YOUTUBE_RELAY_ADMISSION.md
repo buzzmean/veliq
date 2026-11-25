@@ -126,7 +126,7 @@ git pull --ff-only origin main
 ```
 
 ```powershell
-& .\tools\windows\build-e2e.ps1 -DriverDirectory "$env:ProgramData\neexitlag\driver"
+& .\tools\windows\build-e2e.ps1 -DriverDirectory "$env:ProgramData\VELIQ\driver"
 ```
 
 Обязателен WINDIVERT_FILTERS_PASS, далее успешный конец build-e2e. PS5.1 dotted
@@ -139,7 +139,7 @@ git pull --ff-only origin main
 ```
 
 ```powershell
-(Get-FileHash .\bin\windows-e2e\neexitlag-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\neexitlag\neexitlag-service.exe").Hash
+(Get-FileHash .\bin\windows-e2e\veliq-service.exe).Hash -eq (Get-FileHash "$env:ProgramData\VELIQ\veliq-service.exe").Hash
 ```
 
 Ожидается True. Запуск имеющегося GUI:
