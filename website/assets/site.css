@@ -221,14 +221,27 @@
 .plan li svg { width: 18px; height: 18px; color: var(--accent); }
 @media (max-width: 900px) { .plans { grid-template-columns: 1fr; } .plan + .plan { border-left: 0; border-top: 1px solid var(--line-strong); } }
 
+/* Мягкое отделение заголовка и условий тарифов от фона страницы. */
+.pricing-page .page-head { background: linear-gradient(115deg, color-mix(in srgb, var(--bg) 97%, var(--text)), var(--bg) 75%); }
+.pricing-page .page-head .lede { padding-left: 18px; border-left: 2px solid color-mix(in srgb, var(--text) 14%, transparent); }
+.pricing-page #pay { background: color-mix(in srgb, var(--bg) 98%, var(--text)); }
+.pricing-page #pay .prose { min-width: 0; }
+.pricing-page .pricing-table { width: 100%; overflow-x: auto; border: 1px solid color-mix(in srgb, var(--line) 75%, transparent); border-radius: var(--r-md); background: color-mix(in srgb, var(--bg) 99%, var(--text)); }
+.pricing-page .pricing-table table { width: 100%; min-width: 580px; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.pricing-page .pricing-table caption { padding: 16px; text-align: left; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.pricing-page .pricing-table th, .pricing-page .pricing-table td { padding: 14px 16px; text-align: left; vertical-align: top; }
+.pricing-page .pricing-table th { background: color-mix(in srgb, var(--text) 3%, transparent); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.pricing-page .pricing-table td { white-space: nowrap; }
+.pricing-page .pricing-table tbody tr { border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent); }
+
 /* ---------- Подвал ---------- */
-.foot { border-top: 1px solid var(--line); padding-block: var(--sp-8) var(--sp-6); font-size: var(--fs-sm); }
+.foot { background: color-mix(in srgb, var(--bg) 98%, var(--text)); border-top: 1px solid var(--line); padding-block: var(--sp-8) var(--sp-6); font-size: var(--fs-sm); }
 .foot__grid { display: grid; grid-template-columns: 2fr repeat(3, 1fr); gap: var(--sp-6); }
-.foot h2 { font-size: var(--fs-sm); font-weight: var(--fw-semibold); margin: 0 0 12px; }
+.foot h2 { font-size: var(--fs-sm); font-weight: var(--fw-bold); margin: 0 0 12px; }
 .foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.foot a { color: var(--text-muted); text-decoration: none; }
+.foot a { color: color-mix(in srgb, var(--text-muted) 90%, var(--text)); text-decoration: none; }
 .foot a:hover { color: var(--text); text-decoration: underline; }
-.foot__bottom { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: var(--sp-7); color: var(--text-faint); }
+.foot__bottom { padding-top: var(--sp-5); border-top: 1px solid color-mix(in srgb, var(--line) 65%, transparent); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: var(--sp-7); color: var(--text-faint); }
 @media (max-width: 760px) { .foot__grid { grid-template-columns: 1fr 1fr; } .foot__grid > :first-child { grid-column: 1 / -1; } }
 
 .center-stack { min-height: 70vh; display: grid; place-items: center; text-align: center; }
