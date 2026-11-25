@@ -5,12 +5,18 @@ import vm from 'node:vm';
 const source = await readFile(new URL('../../website/assets/release.js', import.meta.url), 'utf8');
 const now = 1804284000000;
 const key = 'veliq-public-release-v1';
+const fallback = 'https://github.com/buzzmean/veliq/releases/latest/download/VELIQ-Setup.exe';
 const makeRelease = tag => ({tag_name: tag, draft: false, prerelease: false, assets: [{
   name: 'VELIQ-Setup.exe', size: 57694241,
   browser_download_url: 'https://github.com/buzzmean/veliq/releases/download/' + tag + '/VELIQ-Setup.exe'
 }]});
 async function run({release = makeRelease('v0.3.577'), cache, error = false, httpOK = true, storageBlocked = false} = {}) {
-  const elements = Object.fromEntries(['download', 'version', 'size', 'status'].map(name => [name, [{textContent:'на GitHub', href:'https://github.com/buzzmean/veliq/releases/latest'}]]));
+  const elements = {
+    download: [{href:fallback}],
+    version: [{textContent:'для Windows'}],
+    size: [{textContent:'Уточняется'}],
+    status: [{textContent:'Последний опубликованный релиз'}]
+  };
   const storage = new Map(cache ? [[key, JSON.stringify(cache)]] : []);
   let requests = 0;
   const context = {
@@ -32,6 +38,7 @@ async function run({release = makeRelease('v0.3.577'), cache, error = false, htt
 let result = await run();
 assert.equal(result.elements.version[0].textContent, '0.3.577');
 assert.equal(result.elements.download[0].href, makeRelease('v0.3.577').assets[0].browser_download_url);
+assert.equal(result.elements.status[0].textContent, 'Последний опубликованный релиз');
 assert.equal(result.requests, 1);
 result = await run({release:makeRelease('v0.3.656'), cache:{at:now - 900001, release:makeRelease('v0.3.577')}});
 assert.equal(result.elements.version[0].textContent, '0.3.656');
@@ -48,14 +55,16 @@ for (const bad of [
   {...makeRelease('v0.3.656'), assets:[{name:'VELIQ-Setup.exe',size:10,browser_download_url:makeRelease('v0.3.577').assets[0].browser_download_url}]}
 ]) {
   result = await run({release:bad});
-  assert.equal(result.elements.version[0].textContent, 'на GitHub');
-  assert.equal(result.elements.download[0].href, 'https://github.com/buzzmean/veliq/releases/latest');
+  assert.equal(result.elements.version[0].textContent, 'для Windows');
+  assert.equal(result.elements.download[0].href, fallback);
+  assert.equal(result.elements.status[0].textContent, 'Скачать последний опубликованный установщик для Windows.');
 }
 for (const options of [{error:true}, {httpOK:false}, {error:true,cache:{at:now-900001,release:makeRelease('v0.3.577')}}]) {
   result = await run(options);
-  assert.equal(result.elements.download[0].href,'https://github.com/buzzmean/veliq/releases/latest');
-  assert.equal(result.elements.version[0].textContent,'на GitHub');
+  assert.equal(result.elements.download[0].href,fallback);
+  assert.equal(result.elements.version[0].textContent,'для Windows');
+  assert.equal(result.elements.status[0].textContent,'Скачать последний опубликованный установщик для Windows.');
 }
 result = await run({storageBlocked:true});
 assert.equal(result.elements.version[0].textContent,'0.3.577');
-console.log('RELEASE_METADATA_PASS: same-release version/asset, refresh/cache, invalid asset, prerelease/draft, offline/rate-limit, blocked storage');
+console.log('RELEASE_METADATA_PASS: версия и файл одного выпуска, кэш, неверные данные, недоступный API и заблокированное хранилище');
