@@ -3,7 +3,7 @@
 package windowsplatform
 
 import (
-	"github.com/buzzmean/neexitlag/core/gameudp"
+	"github.com/buzzmean/veliq/core/gameudp"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 	"os"

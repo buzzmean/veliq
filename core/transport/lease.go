@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/protocol"
+	"github.com/buzzmean/veliq/core/protocol"
 	"github.com/quic-go/quic-go"
 )
 

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/controlclient"
+	"github.com/buzzmean/veliq/core/controlclient"
 )
 
 type subscriptionFixture struct {

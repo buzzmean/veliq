@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/deviceinfo"
+	"github.com/buzzmean/veliq/core/deviceinfo"
 )
 
 func TestDeviceMetadataCapabilityAndBoundProof(t *testing.T) {

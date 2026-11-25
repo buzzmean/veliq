@@ -9,14 +9,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"github.com/buzzmean/neexitlag/core/controlclient"
-	"github.com/buzzmean/neexitlag/core/optimizer"
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/internal/e2eprobe"
-	controlplane "github.com/buzzmean/neexitlag/services/control-plane"
-	"github.com/buzzmean/neexitlag/services/relay"
+	"github.com/buzzmean/veliq/core/controlclient"
+	"github.com/buzzmean/veliq/core/optimizer"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/internal/e2eprobe"
+	controlplane "github.com/buzzmean/veliq/services/control-plane"
+	"github.com/buzzmean/veliq/services/relay"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"math/big"
 	"net"
@@ -30,7 +30,7 @@ import (
 
 // Portable transport integration only. There is deliberately no fake Windows capture backend.
 func TestPrivateTLSControlPlaneAndAuthenticatedRemoteProbe(t *testing.T) {
-	database := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	database := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if database == "" {
 		t.Skip("PostgreSQL test URL required")
 	}

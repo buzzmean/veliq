@@ -2,7 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public abstract class Observable : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;

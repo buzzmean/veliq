@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/enrollment"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/enrollment"
+	"github.com/buzzmean/veliq/core/security"
 	"github.com/jackc/pgx/v5"
 	"time"
 )

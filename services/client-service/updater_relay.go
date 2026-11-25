@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 // relayHTTPClient fetches updates through the VELIQ relay, for networks that

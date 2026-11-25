@@ -3,7 +3,7 @@
 package windowsplatform
 
 import (
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/routing"
 	"net"
 	"os"
 	"os/exec"

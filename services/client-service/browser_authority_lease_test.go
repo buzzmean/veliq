@@ -3,7 +3,7 @@ package clientservice
 import (
 	"context"
 	"errors"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"os"
 	"path/filepath"
 	"testing"

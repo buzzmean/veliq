@@ -5,7 +5,7 @@ package clientservice
 import (
 	"context"
 	"errors"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 func exchangeOwnerProxy(context.Context, wp.OwnerProxyCommand) (wp.OwnerProxyState, error) {

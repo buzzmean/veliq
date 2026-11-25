@@ -97,7 +97,7 @@ jobs:
       - name: Desktop contracts and self-contained GUI
         shell: powershell
         run: |
-          & dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+          & dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
           if ($LASTEXITCODE) { throw 'DESKTOP_CONTRACTS_FAILED' }
           & ./tools/windows/build-desktop.ps1
       - name: Build service and verify pinned DLL (PowerShell 5.1)

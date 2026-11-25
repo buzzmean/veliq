@@ -3,15 +3,15 @@ package windowsplatform
 import (
 	"encoding/binary"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/protocol"
+	"github.com/buzzmean/veliq/core/protocol"
 	"github.com/quic-go/quic-go"
 	"io"
 	"net/netip"
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 func TestUDPAdmissionReserveAndDNSChurn(t *testing.T) {

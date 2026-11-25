@@ -1,5 +1,5 @@
 using System.Windows.Markup;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 [MarkupExtensionReturnType(typeof(string))]
 public sealed class TrExtension(string key) : MarkupExtension
 {

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // Native AUTO configuration is separate from armed capture and Optimize.
 // This report describes profiles, not browser/network readiness.

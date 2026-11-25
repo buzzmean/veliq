@@ -1,7 +1,7 @@
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using System.Text.Json;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public class EdgeRoutingTests {
  [Fact] public async Task EdgeCleanInstallCreatesOnePendingDirectProfileAndLeavesChromeUntouched(){
   var dir=Path.Combine(Path.GetTempPath(),"veliq-edge-"+Guid.NewGuid());Directory.CreateDirectory(dir);

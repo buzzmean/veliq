@@ -1,43 +1,41 @@
-# Relay protocol v1
-QUIC ALPN `neexitlag/1`, TLS 1.3 mutual authentication, no 0-RTT.
-One persistent connection multiplexes flows. Device CA and server CA are pinned.
+# Протокол защищённого транспорта
 
-Each flow opens a reliable bidirectional stream with a 24-byte OPEN:
-version u8 (1), kind u8 (UDP=1/TCP=2), flow ID u32 BE (nonzero),
-IP 16 bytes (IPv4-mapped for IPv4), destination port u16 BE (nonzero).
-Relay replies status u8 (0 accepted, 1 rejected). No destination DNS resolution;
-client resolves to an IP before opening. Control format is fixed binary because
-OPEN has fixed fields; unknown version/type is rejected. QUIC is the session ID.
+Соединение использует QUIC, TLS 1.3 и взаимную проверку сертификатов. Ранние данные 0-RTT не применяются. Версия транспорта согласуется через ALPN; значения определены в [исходном коде транспорта](core/transport/tls.go). Один постоянный сеанс обслуживает несколько потоков. Удостоверяющие центры устройства и сервера закреплены в доверенной конфигурации.
 
-UDP: stream remains open for lifetime. DATAGRAM contains version u8 + flow ID
-u32 BE + original payload (0..1100 bytes). Unknown ID drops. Each relay flow owns
-one connected UDP socket, pinning its NAT mapping to one destination. Close the
-control stream to close the mapping. Idle expiry is 60 seconds by default.
-32-datagram client receive queue drops on overflow. No reliability or reordering
-layer; late, lost or out-of-order datagrams retain UDP semantics.
+## Открытие потока
 
-TCP: after status byte the stream carries bytes; stream FIN maps to TCP half-close.
-No independent relay migration of existing connections. Relay failure resets flows.
+Для каждого потока открывается надёжный двунаправленный канал с заголовком `OPEN` длиной 24 байта:
 
-## MTU
-UDP data header: 5 bytes, no redundant session ID. Typical QUIC short header:
-1 flags + 0..20 destination CID + 1..4 packet number + 16 AEAD tag;
-DATAGRAM framing 1..3 bytes. UDP 8 bytes; IPv4 20, IPv6 40.
-With CID 8 and packet number 2: overhead IPv4 about 64..66 bytes, IPv6 84..86.
-Worst short-header estimate with CID 20/PN 4 and 3-byte framing: 100 bytes IPv6.
-An 1100-byte payload fits a 1200-byte path packet with that estimate.
-ACK/control coalescing varies: transport may reject or defer a datagram.
-quic-go PMTU discovery is enabled; oversized application packets are rejected,
-not fragmented by this framing layer. Destination-leg UDP PMTU support is future
-work. Client cannot infer end-to-end game PMTU just from client-relay PMTU.
+| Поле | Формат |
+|---|---|
+| Версия | `u8`, значение 1 |
+| Тип | `u8`, UDP = 1, TCP = 2 |
+| Идентификатор потока | `u32`, сетевой порядок байтов, не ноль |
+| IP-адрес | 16 байт; IPv4 представлен как IPv4-mapped |
+| Порт назначения | `u16`, сетевой порядок байтов, не ноль |
 
-## Ticket-authenticated session v2
+Сервер отвечает одним байтом: 0 — принято, 1 — отклонено. Неизвестная версия или тип отклоняются. Сервер не разрешает имя назначения через DNS: клиент передаёт уже определённый IP-адрес. Идентификатором сеанса служит само соединение QUIC.
 
-ALPN `neexitlag/2` adds one first bidirectional AUTH stream before flows.
-AUTH is a four-byte big-endian length (<=8192) followed by a signed ticket JSON
-envelope. Relay returns status byte 0 only after validating signature, time,
-audience, revocation, certificate key binding and single-use ticket ID.
-After successful AUTH, the existing v1 flow OPEN and UDP/TCP framing above is
-unchanged. Relay lease is 30 minutes; ticket expiry governs new authentication.
-Legacy ALPN v1 remains available only on explicitly mTLS-only configured servers.
-See [security](docs/SECURITY.md) for replay persistence and rotation.
+## UDP
+
+Управляющий канал открыт всё время существования потока. Датаграмма содержит версию `u8`, идентификатор потока `u32` и исходные данные длиной от 0 до 1100 байт. Неизвестный идентификатор отклоняется. У каждого потока есть отдельный подключённый UDP-сокет с закреплённым назначением. Закрытие управляющего канала завершает соответствующее сопоставление. Стандартный срок простоя — 60 секунд.
+
+Очередь приёма клиента ограничена 32 датаграммами; при переполнении новые записи могут отбрасываться. Дополнительной надёжной доставки или восстановления порядка нет: потери и перестановки сохраняют семантику UDP.
+
+Расширенный формат для нагрузок 1101–1472 байта передаёт две части с номером пакета, длиной и смещением. Сборка ограничена 64 незавершёнными пакетами сессии и сроком две секунды, без повторов и FEC. Для него нужны совместимые клиент и релей; успешная малая датаграмма не доказывает поддержку расширения. Подробнее: [UDP и большие датаграммы](docs/WINDOWS_TCP_WEB.md).
+
+## TCP
+
+После байта подтверждения канал передаёт поток байтов. Завершение передачи QUIC соответствует полузакрытию TCP. Действующее соединение не переносится на другой релей; отказ транспорта завершает связанные потоки.
+
+## Размер пакета
+
+Служебный заголовок UDP занимает 5 байт. При типичных идентификаторе QUIC длиной 8 байт и номере пакета длиной 2 байта суммарные накладные расходы составляют примерно 64–66 байт для IPv4 и 84–86 для IPv6. Оценка для более длинного заголовка достигает 100 байт в IPv6. Поэтому полезная нагрузка 1100 байт укладывается в оценочный размер пути 1200 байт.
+
+Объединение служебных данных меняет фактический размер. QUIC может отложить или отклонить отправку датаграммы. Обнаружение MTU пути включено; этот уровень протокола не фрагментирует чрезмерно большой пакет приложения. MTU участка клиент–релей не доказывает MTU полного пути до игрового сервера.
+
+## Авторизация билетом
+
+Версия с билетами требует первого двунаправленного канала `AUTH` до открытия потоков. Сообщение содержит четырёхбайтовую длину в сетевом порядке и подписанный конверт JSON размером не более 8192 байт.
+
+Сервер принимает авторизацию только после проверки подписи, времени, назначения билета, отзыва, привязки к ключу сертификата и одноразового идентификатора. Форматы `OPEN`, UDP и TCP после авторизации сохраняются. Срок разрешённой сессии — 30 минут; срок билета определяет возможность новой авторизации. Исторический режим только с mTLS допустим исключительно при явной настройке сервера. Подробнее: [защита и отзыв](docs/SECURITY.md).

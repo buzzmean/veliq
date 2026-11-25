@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/gameudp"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/gameudp"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 const (

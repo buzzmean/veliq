@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/enrollment"
+	"github.com/buzzmean/veliq/core/enrollment"
 )
 
 func TestAccountRealBrowserRegistrationToDeviceBinding(t *testing.T) {

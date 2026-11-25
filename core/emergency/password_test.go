@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/ipc"
+	"github.com/buzzmean/veliq/core/ipc"
 )
 
 func fixture(t *testing.T) (*Authenticator,[]byte) {

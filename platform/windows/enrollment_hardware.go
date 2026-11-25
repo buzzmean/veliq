@@ -1,7 +1,7 @@
 package windowsplatform
 
 import (
-	"github.com/buzzmean/neexitlag/core/enrollment"
+	"github.com/buzzmean/veliq/core/enrollment"
 	"net"
 	"sort"
 )

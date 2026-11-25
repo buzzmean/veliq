@@ -8,9 +8,9 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/protocol"
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/internal/webprobe"
+	"github.com/buzzmean/veliq/core/protocol"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/internal/webprobe"
 	"github.com/quic-go/quic-go/http3"
 	"io"
 	"net"
@@ -21,12 +21,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/optimizer"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/internal/e2eprobe"
-	"github.com/buzzmean/neexitlag/services/relay"
-	"github.com/buzzmean/neexitlag/tools/labcert"
+	"github.com/buzzmean/veliq/core/optimizer"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/internal/e2eprobe"
+	"github.com/buzzmean/veliq/services/relay"
+	"github.com/buzzmean/veliq/tools/labcert"
 )
 
 func testRelay(t *testing.T) (options, authenticated, *transport.Client, []byte, ed25519.PrivateKey) {

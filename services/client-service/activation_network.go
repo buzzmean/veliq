@@ -3,8 +3,8 @@ package clientservice
 import (
 	"context"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/enrollment"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/enrollment"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 // New/unconfigured controllers and valid legacy installations retain their

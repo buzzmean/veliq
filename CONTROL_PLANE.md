@@ -1,36 +1,42 @@
-# Control plane MVP
+# Сервер управления
 
-`docker compose up --build -d` is the reproducible development launch.
-Standalone binary: `go run ./services/control-plane/cmd/control-plane` with
-`DATABASE_URL`, `-signing-key`, `-ca`, `-ca-key`, `-admin-token-file` and optional
-`-database-password-file`. Use TLS termination for remote access. See CLI `-help`.
-Never put credentials into public command lines or logs.
+Сервер управления выдаёт подписанные настройки и разрешения на защищённые соединения. Он не пересылает трафик приложений. Сведения об устройствах, профилях, релеях, подписках и проверках подлинности хранятся в PostgreSQL.
 
-PostgreSQL 17 (pgx, pool8) stores users, devices, relay nodes, application profiles,
-config versions, audit log and auth nonce replay protection. Transactional,
-advisory-locked migration is idempotent. No Redis dependency. Default owner and
-CS2/Discord/Steam profiles are seeded. This is bootstrap-admin enrollment, not
-production multi-tenant user login.
+## Запуск для разработки
 
-| Endpoint | Authentication / behavior |
+```sh
+docker compose up --build -d
+go run ./services/control-plane/cmd/control-plane -help
+```
+
+Для отдельного процесса нужны `DATABASE_URL`, ключ подписи, сертификат и ключ CA, а также файл административного токена. Доступные параметры перечисляет `-help`. При удалённом доступе обязателен HTTPS. Ключи, пароли и токены передаются через защищённые файлы или предусмотренные переменные окружения; их нельзя помещать в публичные команды и журналы.
+
+Миграции выполняются транзакционно с блокировкой от одновременного применения. Повторный запуск не должен менять существующую идентичность устройств и историю подписок. Отдельный Redis для сервера управления не требуется.
+
+## Основные методы API
+
+| Метод | Назначение и доступ |
 |---|---|
-| POST /api/v1/auth | Signed device proof → short-lived signed relay ticket |
-| GET/POST/DELETE /api/v1/devices | Admin; register certificate or revoke ID |
-| GET/POST /api/v1/relays | Read registry; admin writes return a scoped heartbeat token |
-| POST /api/v1/relays/heartbeat | Relay-specific token; health/load persisted |
-| GET /api/v1/config | Public digitally signed versioned config |
-| GET/POST /api/v1/apps | Read profiles; admin writes validated profiles |
-| POST /api/v1/telemetry | Admin aggregate ingestion; bounded payload, no packet payload |
-| GET /api/v1/version | Supported client/schema version |
-| GET /healthz, /metrics | Database health and aggregate Prometheus counters |
+| `POST /api/v1/auth` | Проверка подписанного запроса устройства и выдача ограниченного по времени билета |
+| `GET/POST/DELETE /api/v1/devices` | Административный просмотр, регистрация и отзыв устройств |
+| `GET/POST /api/v1/relays` | Реестр релеев; изменение требует административного доступа |
+| `POST /api/v1/relays/heartbeat` | Состояние релея с отдельным токеном этого сервера |
+| `GET /api/v1/config` | Подписанная конфигурация с номером версии и сроком действия |
+| `GET/POST /api/v1/apps` | Профили приложений; изменение требует проверки полномочий |
+| `POST /api/v1/telemetry` | Ограниченная служебная статистика без содержимого пакетов |
+| `GET /api/v1/version` | Сведения о поддерживаемых версиях |
+| `GET /healthz`, `/metrics` | Проверка доступности БД и агрегированные метрики |
 
-Device proofs authenticate by Ed25519 ownership, not bootstrap token. Revoked
-devices cannot receive tickets. Registry/profile/revoke operations publish a new
-signed config. Heartbeat is normally 30 s; load-driven config publication is
-coalesced to >=30 s and config refresh keeps expiry current.
-`neexitlag_connected_devices` is explicitly an estimate of non-revoked devices
-that authenticated in the last 30 minutes, not live socket inventory. Relay
-session/flow metrics describe actual data-plane state.
+Устройство подтверждает владение ключом Ed25519. Административный токен не заменяет эту проверку. Отозванному устройству билет не выдаётся. Изменение реестра, профилей или отзыва приводит к публикации новой подписанной конфигурации.
 
-Test: set NEEXITLAG_TEST_DATABASE_URL to a disposable DB and run
-`go test -race ./services/control-plane`. Tests create and drop isolated schemas.
+Метрики недавней авторизации не являются списком компьютеров, которые прямо сейчас находятся на связи. Состояние действующих сессий и потоков измеряется отдельно на релеях.
+
+## Тестовая база
+
+Серверные тесты с PostgreSQL требуют отдельной одноразовой базы. Параметр подключения и подготовка БД приведены в [задании проверки](.github/workflows/verify.yml). Тесты создают собственные схемы и удаляют их после завершения; рабочую базу для них использовать нельзя.
+
+```sh
+go test -race ./services/control-plane
+```
+
+Сборка или тест с пропущенной проверкой БД не подтверждает корректность миграций и оплаты. Изменения сервера не следует развёртывать поверх рабочего экземпляра без сверки его версии, резервной копии и плана восстановления.

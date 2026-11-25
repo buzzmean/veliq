@@ -13,13 +13,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/clubhealth"
-	"github.com/buzzmean/neexitlag/core/controlclient"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/internal/releaseinfo"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/clubhealth"
+	"github.com/buzzmean/veliq/core/controlclient"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/internal/releaseinfo"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 type diagnosticInput struct {

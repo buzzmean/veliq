@@ -7,7 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/security"
 	"io"
 	"sync"
 	"time"

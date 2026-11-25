@@ -1,6 +1,6 @@
 package clientservice
 
-import "github.com/buzzmean/neexitlag/core/browserproxy"
+import "github.com/buzzmean/veliq/core/browserproxy"
 
 func (c *Controller) browserFirstBytes(edge bool) browserproxy.FirstByteReport {
 	c.browser.mu.Lock()

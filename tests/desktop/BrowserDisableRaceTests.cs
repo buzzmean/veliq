@@ -1,7 +1,7 @@
 using System.Text.Json;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
-namespace NeExitLag.Tests;
+namespace Veliq.Tests;
 public sealed class BrowserDisableRaceTests {
  sealed class DelayedService:IServiceClient {
   public readonly TaskCompletionSource Entered=new(TaskCreationOptions.RunContinuationsAsynchronously);

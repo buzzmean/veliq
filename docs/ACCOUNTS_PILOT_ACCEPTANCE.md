@@ -42,7 +42,7 @@ Python deployment: 103/103. C# portable: 223/223. Актуальные резу�
 ## Воспроизведение без production
 
 Нужны Go1.25, Python3 и отдельная временная PostgreSQL17 с пустой тестовой БД и правами создания/удаления временных схем.
-`NEEXITLAG_TEST_DATABASE_URL` должен указывать только на эту фикстуру, не на рабочую БД или tunnel к VPS.
+`VELIQ_TEST_DATABASE_URL` должен указывать только на эту фикстуру, не на рабочую БД или tunnel к VPS.
 Без переменной тесты БД пропускаются: такой прогон не является приёмкой.
 
 ```sh
@@ -52,7 +52,7 @@ go vet ./...
 go build ./...
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
 python3 -m unittest discover -s tests/deployment -v
-dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
 ```
 
 ## Следующий живой пилот — отдельная среда, без enforcement

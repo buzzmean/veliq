@@ -4,8 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/locallearning"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/locallearning"
+	"github.com/buzzmean/veliq/core/security"
 	"time"
 )
 

@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Resources;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public static class Text
 {
-    static readonly ResourceManager Resources = new("Neexitlag.Desktop.Resources.Strings", typeof(Text).Assembly);
+    static readonly ResourceManager Resources = new("Veliq.Desktop.Resources.Strings", typeof(Text).Assembly);
     public static readonly CultureInfo Russian = CultureInfo.GetCultureInfo("ru-RU");
     public static CultureInfo UICulture { get; set; } = Russian;
     public static string Get(string key) => Resources.GetString(key, UICulture) ?? throw new InvalidOperationException($"Missing UI resource: {key}");

@@ -3,7 +3,7 @@ package clientservice
 import (
 	"context"
 	"encoding/json"
-	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/veliq/core/browserproxy"
 	"testing"
 )
 

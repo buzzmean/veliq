@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"github.com/buzzmean/neexitlag/core/emergency"
+	"github.com/buzzmean/veliq/core/emergency"
 )
 
 // ConfigureEmergencyManager is called before opening the authenticated pipe.

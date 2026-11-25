@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/buzzmean/neexitlag/core/clubhealth"
+	"github.com/buzzmean/veliq/core/clubhealth"
 )
 
 func TestPersistentRequiresDurableMatchingReceipt(t *testing.T) {

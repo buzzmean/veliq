@@ -2,7 +2,7 @@ package controlclient
 
 import (
 	"context"
-	"github.com/buzzmean/neexitlag/core/traffic"
+	"github.com/buzzmean/veliq/core/traffic"
 )
 
 func (c *Client) RelayTraffic(ctx context.Context, token string, o traffic.Observation) error {

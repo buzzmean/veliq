@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public sealed partial class DesktopViewModel {
  Dictionary<string,object?> HomeValues()=>new(){
   [nameof(Optimizing)]=Optimizing,[nameof(OptimizeLabel)]=OptimizeLabel,[nameof(OptimizationStatus)]=OptimizationStatus,

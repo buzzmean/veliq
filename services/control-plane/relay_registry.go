@@ -7,7 +7,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/optimizer"
+	"github.com/buzzmean/veliq/core/optimizer"
 	"github.com/jackc/pgx/v5"
 )
 

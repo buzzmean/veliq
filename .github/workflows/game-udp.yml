@@ -19,7 +19,7 @@ jobs:
       - run: go build ./...
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
-      - run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+      - run: dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
   windows:
     runs-on: windows-latest
     steps:
@@ -44,6 +44,6 @@ jobs:
         shell: pwsh
       - uses: actions/setup-dotnet@v4
         with: {dotnet-version: '8.0.x'}
-      - run: dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
-      - run: dotnet build apps/desktop/Neexitlag.Desktop.csproj -c Release --nologo
+      - run: dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
+      - run: dotnet build apps/desktop/Veliq.Desktop.csproj -c Release --nologo
 # No actual game or anti-cheat/ISP PASS is inferred from these tests.

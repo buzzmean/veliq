@@ -5,7 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/security"
 	"net/netip"
 	"os"
 	"path/filepath"

@@ -1,5 +1,5 @@
 using System.Windows;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public partial class MainWindow {
     async void ToggleGameUdp(object sender,RoutedEventArgs e){
         if(sender is FrameworkElement {DataContext:GameUdpProfile p})await Execute(()=>model.SetGameUdpAsync(p.ProfileId,!p.Engine.Enabled,lifetime.Token));

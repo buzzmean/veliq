@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/clubhealth"
+	"github.com/buzzmean/veliq/core/clubhealth"
 )
 
 func decodeDiagnosticEvent(channel string, raw []byte, lookup func(uint32) (ProcessIdentity, error)) (clubhealth.Diagnostic, bool) {

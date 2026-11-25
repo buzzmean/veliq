@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/profiles"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 func silentFixture(t *testing.T, edge bool) (*Controller, profiles.Profile, *string) {

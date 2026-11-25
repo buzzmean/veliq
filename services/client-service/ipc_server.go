@@ -2,7 +2,7 @@ package clientservice
 
 import (
 	"context"
-	"github.com/buzzmean/neexitlag/core/ipc"
+	"github.com/buzzmean/veliq/core/ipc"
 	"net"
 	"sync"
 	"time"

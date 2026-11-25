@@ -1,5 +1,5 @@
 using System.Windows;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public partial class MainWindow {
  async Task RefreshSubscriptionAsync(bool recheck=false){
   var subscription=model.SubscriptionClient();await subscription.RefreshAsync(recheck,lifetime.Token);

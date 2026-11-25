@@ -1,7 +1,7 @@
 package clientservice
 
 import (
-	"github.com/buzzmean/neexitlag/core/profiles"
+	"github.com/buzzmean/veliq/core/profiles"
 	"testing"
 )
 

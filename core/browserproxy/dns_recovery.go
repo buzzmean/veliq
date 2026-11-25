@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/json"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 	"net"
 	"net/netip"
 	"sync"

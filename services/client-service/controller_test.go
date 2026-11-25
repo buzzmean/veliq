@@ -3,9 +3,9 @@ package clientservice
 import (
 	"context"
 	"encoding/json"
-	"github.com/buzzmean/neexitlag/core/optimizer"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	windowsplatform "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/optimizer"
+	"github.com/buzzmean/veliq/core/profiles"
+	windowsplatform "github.com/buzzmean/veliq/platform/windows"
 	"net/netip"
 	"path/filepath"
 	"testing"

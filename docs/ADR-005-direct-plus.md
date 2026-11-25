@@ -1,28 +1,39 @@
-# ADR-005: process-scoped DIRECT+ in the existing capture owner
+# ADR-005: локальные стратегии в существующем захвате
 
-Status: implemented experimental; external Windows validation pending.
-Base: codex/windows-tcp-web at 3306fa7d03c292c795a90f63d8547f78ad15430b.
+Исторический контракт первой реализации, исходный коммит `3306fa7d03c292c795a90f63d8547f78ad15430b`. Более поздние стратегии и каталоги описаны в [DIRECT_PLUS_V2.md](DIRECT_PLUS_V2.md). Этот документ не подтверждает текущую приёмку на пользовательском ПК.
 
-## Decision
+## Решение
 
-Retain one VELIQ WinDivert owner and existing non-overlapping IPv4 UDP/TCP NETWORK filters plus existing FLOW/SOCKET/IPv6 guard. Do not add winws, a second packet backend, TLS termination, process injection, global route/DNS changes or a new tunnel. The classifier yields DIRECT, DIRECT_PLUS, RELAY (and existing BLOCK). Route.Direct() continues to mean native/direct egress including DIRECT_PLUS for compatibility; Route.Type()/Local() distinguish local transformation.
+Сохраняется один владелец захвата VELIQ и непересекающиеся фильтры IPv4 UDP/TCP на NETWORK, а также существующие FLOW/SOCKET и защита IPv6. Не добавляются второй перехватчик, завершение TLS, внедрение в процессы, глобальная смена маршрута или DNS и общий туннель.
 
-LocalStrategyEngine owns an immutable versioned configuration and small atomic metrics. Existing bounded capture tables own per-flow strategy state. TCP route eligibility is pinned on a new SYN; only an eligible native DIRECT_PLUS flow may transform initial payload. Existing TCP sessions never migrate to relay/local. First complete TCP payload can refine eligibility with HTTP Host / TLS SNI without decrypting TLS application data. Unknown/fragmented/ECH metadata passes through. UDP requires an explicit IP set, not an inferred QUIC domain.
+Классификатор различает `DIRECT`, `DIRECT_PLUS`, `RELAY` и `BLOCK`. Метод `Route.Direct()` для совместимости включает локальную обработку; `Route.Type()` и `Local()` позволяют отличить её. Состояние стратегии хранится в ограниченных таблицах потоков. Настройки движка неизменяемы после публикации, счётчики обновляются атомарно.
 
-Configuration has separate builtin/user arrays; builtin is reserved/empty in this release. No background remote list download. Reload validates the whole <=24KB / <=32-profile snapshot before publication. Rules require application, protocol, ports, explicit domains/IPs, exclusions, enabled flag, priority and cutoff (1–8 payload packets). Exclusions take precedence. Domains are exact ASCII/punycode or explicit `*.` subdomain rules; IP sets accept IPv4/IPv6 CIDR, but packet transformations are IPv4 only. /0 is forbidden. IPv6 matching is future architecture, not IPv6 runtime support.
+Выбор для TCP закрепляется на новом SYN. Только подходящий новый поток допускает обработку начальной нагрузки. Уже существующее соединение не переносится. HTTP Host или TLS SNI могут уточнить применимость без расшифровки данных TLS. Неизвестные, фрагментированные или скрытые через ECH данные не считаются доказанным совпадением. Для UDP требуется явное условие назначения; домен QUIC не угадывается.
 
-Representative strategies: `tcp-split-1`, `tcp-split-5` and `udp-fragment-24`. Generic `tcp-split` accepts a validated `split_position` (1–512), so new TCP profile variants are data driven. TCP creates two in-order segments with unchanged sequence space, options, encrypted bytes and destination; PSH stays on the final segment. UDP creates two IPv4 fragments of one checksummed datagram; it clears DF only under explicit opt-in, requires nonzero original ID, <=1500-byte packet, and does not add retransmissions or reliability. Fragment filtering can make this strategy worse; tester must report that failure. No fake/overlap packets, timers, delayed queues or arbitrary templates.
+## Первоначальные настройки и стратегии
 
-Fail-safe: unmatched/unsupported/error/saturation -> original DIRECT. A transformation send failure disables further transforms for that flow and attempts the original packet. Partial TCP send does not create a new connection; native TCP sequence deduplication applies. Stop removes capture; no persistent modifications remain. Known concurrent WinDivert users/anti-cheat processes disable local transforms and new selected routing decisions; diagnostics do not terminate them. Process-name/module detection is partial, not a guarantee of anti-cheat compatibility.
+Первый формат разделял встроенные и пользовательские массивы; встроенный список был пуст. Перед публикацией целиком проверялся снимок не более 24 КБ и 32 профилей. Правило задавало приложение, протокол, порты, явные домены или IP, исключения, флаг включения, приоритет и предел обработки 1–8 пакетов. Исключения имеют приоритет. Домены сопоставляются точно или по явной маске поддоменов; сеть `/0` запрещена. Наличие IPv6 в формате адресов не означает поддержку обработки IPv6 во время работы.
 
-## Learning / route quality
+Начальные варианты: `tcp-split-1`, `tcp-split-5`, `udp-fragment-24`. Общий `tcp-split` допускает проверенную позицию 1–512. TCP делится на последовательные сегменты без изменения пространства номеров, опций, зашифрованных байтов и назначения; PSH остаётся на последнем сегменте.
 
-Controlled tester records real application-level response RTT, connect/TLS timings, jitter, failed probe ratio and authenticated endpoint source, plus capture identity/route/modification evidence. It tests a finite list, never brute-forces a live game's connections. Cache key includes observed network configuration fingerprint, exact application path, destination:port, protocol, strategy config digest/schema. TTL=15min, capacity=1024 targets with <=8 variants; three failures quarantine a variant for five minutes. Config/network change invalidates old evidence. No payload is persisted. Cache is volatile; restart requires revalidation.
+UDP делится на два фрагмента одной IPv4-датаграммы с контрольной суммой. Снятие DF требует явного разрешения; нужны ненулевой исходный ID и пакет не более 1500 байт. Стратегия не добавляет надёжности. Сеть может отбрасывать фрагменты, поэтому отрицательный результат тоже фиксируется. Подставные пакеты и более поздние режимы не входили в эту первую реализацию.
 
-AUTO changes only with fresh, per-target tester evidence. Healthy DIRECT wins. A known-working DIRECT+ may beat degraded/failed DIRECT using existing optimizer.Score; RELAY gets only a bounded 5ms equivalent traffic-cost tie-break. Worse quality is never rescued by zero traffic cost. No evidence -> unchanged existing AUTO selector. Global relay quality is not assumed to describe every website. Existing TCP remains pinned. Network inspection is background-only (30s cadence), so undetected network changes within that interval remain a limitation.
+## Поведение при ошибке
 
-## Metrics / performance / validation
+Несовпадение, неподдерживаемый пакет, ошибка или насыщение не дают разрешения менять исходное прямое соединение. Ошибка отправки отключает дальнейшую обработку этого потока и вызывает попытку отправить исходный пакет. Частично отправленные TCP-сегменты не создают новое соединение; действует штатная дедупликация TCP.
 
-Count inspected payload packets, successfully sent modifications, extra packets, matched local flows and original outbound DIRECT+ bytes. `bytes_relay_avoided=0` is explicitly unknown without an actual RELAY counterfactual, not a savings claim. Cutoff fast path retains no payload and allocates no packet buffers. Initial transforms allocate bounded output packets; the pre-existing identity/evidence path has its own costs.
+Остановка снимает захват без постоянных сетевых изменений. Обнаруженный конкурентный перехватчик или защитный процесс ограничивает новые решения и локальную обработку; диагностика их не завершает. Проверка по имени процесса или модулю неполна и не подтверждает совместимость со всеми средствами защиты игр.
 
-Portable tests prove transformations, checksums, stream/datagram reconstruction, exclusions, bounds, cache/AUTO and identity delegation; native CI covers Windows compilation/driver lifecycle. Real external Windows A=DIRECT_PLUS/B=DIRECT/C=RELAY and actual ISP bypass/performance require the controlled acceptance command. Until then GUI/docs call strategies experimental, never proven working. See DIRECT_PLUS.md and FLOWSEAL_ZAPRET_ANALYSIS.md.
+## Обучение и качество
+
+Управляемая проверка фиксирует реальные ответы приложения, время подключения и TLS, джиттер, долю неудачных запросов, назначение, процесс, маршрут и факт обработки. Список проверок конечен; нельзя бесконечно перебирать подключения к действующей игре.
+
+Первоначальный ключ кэша включал сеть, точный путь приложения, IP и порт назначения, протокол, схему и хеш настроек. Срок — 15 минут, до 1024 целей и восьми вариантов на цель; три отказа исключают вариант на пять минут. Изменение сети или настроек делает прежнее доказательство непригодным. Содержимое пакетов не сохраняется. Кэш первого варианта был временным и требовал повторной проверки после запуска.
+
+AUTO использует свежие данные конкретной цели. Исправный прямой маршрут сохраняется. Подтверждённая локальная стратегия может заменить неработающий или ухудшившийся путь. Небольшая стоимость трафика релея в оценке не компенсирует плохое качество. Эти общие правила не разрешают игровой релей в текущем продукте.
+
+## Метрики и проверка
+
+Считаются просмотренные пакеты, успешно отправленные изменения, дополнительные пакеты, подходящие потоки и обработанные байты. Нулевое значение `bytes_relay_avoided` не означает экономию: без сопоставимого измерения защищённого пути она неизвестна.
+
+Переносимые тесты проверяют контрольные суммы, восстановление данных, исключения, границы, кэш, выбор и идентичность процесса. Нативная проверка Windows подтверждает отдельные свойства сборки и драйвера. Реальный доступ через провайдера и производительность требуют самостоятельного испытания. Подробнее: [локальные стратегии](DIRECT_PLUS.md) и [исследование существующих решений](FLOWSEAL_ZAPRET_ANALYSIS.md).

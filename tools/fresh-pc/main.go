@@ -27,14 +27,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/controlclient"
-	"github.com/buzzmean/neexitlag/core/enrollment"
-	"github.com/buzzmean/neexitlag/core/freshpc"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/internal/e2eprobe"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
-	cp "github.com/buzzmean/neexitlag/services/control-plane"
+	"github.com/buzzmean/veliq/core/controlclient"
+	"github.com/buzzmean/veliq/core/enrollment"
+	"github.com/buzzmean/veliq/core/freshpc"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/internal/e2eprobe"
+	wp "github.com/buzzmean/veliq/platform/windows"
+	cp "github.com/buzzmean/veliq/services/control-plane"
 	"github.com/jackc/pgx/v5"
 )
 

@@ -113,8 +113,8 @@ production updater; watchdog rollback всё ещё ждёт lock. Регрес�
 wait_health, /tmp staging, D-Bus, mount propagation) также устранены.
 
 Последние проверенные через API GitHub результаты исходного кода:
-[Activation Linux/Windows](https://github.com/buzzmean/neexitlag/actions/runs/39585387093)
-и [systemd matrix](https://github.com/buzzmean/neexitlag/actions/runs/39585387157):
+[Activation Linux/Windows](https://github.com/buzzmean/veliq/actions/runs/39585387093)
+и [systemd matrix](https://github.com/buzzmean/veliq/actions/runs/39585387157):
 failure, нет steps/logs. Устранить billing gate может только владелец аккаунта.
 После исправления Billing & plans повторить эти проверки; менять permissions,
 runner labels или удалять artifacts для этого отказа не требуется.

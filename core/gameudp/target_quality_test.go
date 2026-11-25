@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/optimizer"
+	"github.com/buzzmean/veliq/core/optimizer"
 )
 
 func recordTarget(q *TargetQuality, network, route, address string, dst netip.AddrPort, now time.Time, rtt time.Duration, losses int) {

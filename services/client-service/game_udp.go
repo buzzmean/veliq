@@ -12,12 +12,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/gameudp"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/core/security"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/gameudp"
+	"github.com/buzzmean/veliq/core/profiles"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/core/security"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 const maxGameProfiles = 8

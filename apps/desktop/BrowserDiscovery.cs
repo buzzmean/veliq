@@ -1,5 +1,5 @@
 using Microsoft.Win32;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // Read-only owner registry discovery; no launch, scanner or elevation.
 internal static class BrowserDiscovery {

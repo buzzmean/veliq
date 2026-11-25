@@ -69,10 +69,10 @@ jobs:
       - name: Actual Chrome policy, owner/SID, ECH, native DIRECT+, outage and restart
         shell: pwsh
         run: |
-          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:VELIQ_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
           go test -c -o .e2e/browser-recovery-acceptance.exe ./services/client-service/cmd/service
           if ($LASTEXITCODE) { throw "Recovery helper build failed" }
-          $env:NEEXITLAG_TEST_BROWSER_RECOVERY=(Resolve-Path .e2e/browser-recovery-acceptance.exe).Path
+          $env:VELIQ_TEST_BROWSER_RECOVERY=(Resolve-Path .e2e/browser-recovery-acceptance.exe).Path
           go test -v -count=1 -timeout 120s ./platform/windows -run '^(TestNativeBrowserDriverHandshake|TestChromeSitesNativeAcceptance|TestBrowserAliasCleanupBeforeFirstCapturedSYN)$' 2>&1 | Tee-Object chrome-native.log
           if ($LASTEXITCODE) { throw "Native Chrome regression failed: $LASTEXITCODE" }
       - uses: actions/upload-artifact@v4
@@ -95,7 +95,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $env:NEEXITLAG_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
-          $env:NEEXITLAG_TEST_NATIVE_BROWSER_DRIVER='1'
+          $env:VELIQ_TEST_DRIVER_DIR=(Resolve-Path .e2e/windivert).Path
+          $env:VELIQ_TEST_NATIVE_BROWSER_DRIVER='1'
           go test -v -count=3 -timeout 180s ./services/client-service -run '^TestWindowsNativeBrowserDriverHotAttach$'
           if ($LASTEXITCODE) { throw "Actual driver/browser hot-attach failed: $LASTEXITCODE" }

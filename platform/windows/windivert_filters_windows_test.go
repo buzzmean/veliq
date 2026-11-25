@@ -15,9 +15,9 @@ import (
 
 func loadPinnedFilterDLL(t *testing.T) *windows.DLL {
 	t.Helper()
-	dir := os.Getenv("NEEXITLAG_TEST_DRIVER_DIR")
+	dir := os.Getenv("VELIQ_TEST_DRIVER_DIR")
 	if dir == "" {
-		if os.Getenv("NEEXITLAG_REQUIRE_FILTER_COMPILER") == "1" {
+		if os.Getenv("VELIQ_REQUIRE_FILTER_COMPILER") == "1" {
 			t.Fatal("WINDIVERT_FILTER_DLL_REQUIRED; build gate cannot skip")
 		}
 		t.Skip("pinned WinDivert DLL required; no filter compilation proof")

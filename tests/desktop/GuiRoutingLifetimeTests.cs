@@ -1,4 +1,4 @@
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
 public class GuiRoutingLifetimeTests {
  [Fact] public async Task ClosingStopsRoutingBeforeCompleting() {

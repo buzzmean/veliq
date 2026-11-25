@@ -4,7 +4,7 @@ package windowsplatform
 
 import (
 	"context"
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 type WinDivertBackend struct{}

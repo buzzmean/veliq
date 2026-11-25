@@ -11,17 +11,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/internal/browserfixture"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
-	cs "github.com/buzzmean/neexitlag/services/client-service"
-	"github.com/buzzmean/neexitlag/services/relay"
-	"github.com/buzzmean/neexitlag/tools/labcert"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/localstrategy"
+	"github.com/buzzmean/veliq/core/profiles"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/internal/browserfixture"
+	wp "github.com/buzzmean/veliq/platform/windows"
+	cs "github.com/buzzmean/veliq/services/client-service"
+	"github.com/buzzmean/veliq/services/relay"
+	"github.com/buzzmean/veliq/tools/labcert"
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 	"io"
@@ -44,7 +44,7 @@ import (
 // signed WinDivert packet reinjection on an isolated loopback target. It is not
 // a measurement of public YouTube/OpenAI or the production VPS.
 func TestChromeSitesNativeAcceptance(t *testing.T) {
-	dir := os.Getenv("NEEXITLAG_TEST_DRIVER_DIR")
+	dir := os.Getenv("VELIQ_TEST_DRIVER_DIR")
 	if dir == "" {
 		t.Skip("signed driver required; enabled explicitly on native Windows CI")
 	}
@@ -171,7 +171,7 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 	if _, err = c.Handle(ctx, "optimize", []byte(`{"enabled":true}`)); err != nil {
 		t.Fatal(err)
 	}
-	helperPath := os.Getenv("NEEXITLAG_TEST_BROWSER_RECOVERY")
+	helperPath := os.Getenv("VELIQ_TEST_BROWSER_RECOVERY")
 	if helperPath == "" {
 		helperPath = filepath.Join("..", "..", "bin", "windows-e2e", "browser-recovery-acceptance.exe")
 	}
@@ -181,7 +181,7 @@ func TestChromeSitesNativeAcceptance(t *testing.T) {
 	}
 	c.BrowserRecoveryExecutable = helperPath
 	helper := exec.CommandContext(ctx, helperPath, "-test.run=^TestChromeRecoveryChildProcess$", "-test.v=false")
-	helper.Env = append(os.Environ(), "NEEXITLAG_TEST_RECOVERY_CHILD=1")
+	helper.Env = append(os.Environ(), "VELIQ_TEST_RECOVERY_CHILD=1")
 	helperToken := restrictedRecoveryToken(t)
 	defer helperToken.Close()
 	helper.SysProcAttr = &syscall.SysProcAttr{Token: syscall.Token(helperToken)}

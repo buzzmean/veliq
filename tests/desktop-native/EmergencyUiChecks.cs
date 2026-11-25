@@ -3,7 +3,7 @@ using Microsoft.Win32;
 using System.Windows.Controls;
 using Button = System.Windows.Controls.Button;
 using System.Windows.Threading;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 
 internal static class EmergencyUiChecks
 {

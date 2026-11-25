@@ -2,7 +2,7 @@ package clientservice
 
 import (
 	"context"
-	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/veliq/core/browserproxy"
 	"net"
 	"net/http"
 	"net/netip"

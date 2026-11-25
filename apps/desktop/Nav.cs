@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Media;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 // Attached state for the navigation rail and segmented tabs (Assets/Theme.xaml).
 public static class Nav
 {

@@ -1,21 +1,17 @@
-# Route quality and flow semantics
+# Оценка качества и закрепление потоков
 
-DIRECT is a normal candidate. Lower score is better, in equivalent milliseconds:
-`RTT_ms + 2*jitter_ms + 1000*loss + 2000*failure_rate + 15*load + 20*(1-stability)`.
-Fractions must be finite in [0,1]. History stability is smoothed and reduced by RTT
-variation. Missing, failed or stale measurements cannot win; an unmeasured DIRECT
-path does not prove that a relay is better.
+Прямой маршрут участвует в выборе на общих основаниях. Меньшая оценка лучше; единица — условная миллисекунда:
 
-Defaults: improvement >=5 score-ms, minimum lifetime 30 s, winner confirmation
-10 s, freshness 90 s. A healthy route survives small changes. Unhealthy relays
-can fail over immediately; all stale paths return to DIRECT. Rankings include up
-to three healthy choices. UDP/TCP handles remain pinned; policy changes apply to
-new flows. Failed opens try up to two backups then DIRECT or explicit BLOCK.
+```text
+RTT_ms + 2*jitter_ms + 1000*loss + 2000*failure_rate + 15*load + 20*(1-stability)
+```
 
-Real nonce-echo UDP probes traverse each selected transport, not ICMP. RTT uses
-Go's monotonic time. Default active/idle periods are 5/30 s; each round has
-700 ms timeout, 5 samples, 100 ms spacing. Global slots bound concurrent probes
-and cancellation closes sessions. Limits: 32 probe candidates, <=8 concurrency,
-<=20 samples, active interval >=1 s. Measurement and selection history are bounded.
-The demo shortens lifetime/confirmation to 4/2 s and intentionally impairs DIRECT.
-The configured echo target is not a universal prediction of game server quality.
+Доли должны быть конечными числами от 0 до 1. Стабильность сглаживается по истории и снижается при колебаниях RTT. Отсутствующее, неудачное или устаревшее измерение не может победить. Неизмеренный прямой путь не доказывает преимущество релея.
+
+Первоначальные параметры: улучшение не менее 5 единиц, минимальное время маршрута 30 секунд, подтверждение победителя 10 секунд, свежесть 90 секунд. Небольшие колебания не переключают исправный путь. Аварийный выбор ограничен политикой сервиса: запрет прямого пути у защищённого назначения сохраняется. В ранжировании учитываются до трёх исправных вариантов. Ошибка открытия допускает до двух резервных вариантов, затем только разрешённый политикой путь или блокировку.
+
+TCP- и UDP-потоки закреплены за маршрутом. Изменения касаются новых соединений. Игровой релей текущей политикой не разрешён.
+
+Контрольные UDP-запросы с одноразовым значением проходят через выбранный транспорт, а не через ICMP. RTT измеряется монотонными часами Go. Исходные интервалы активного и неактивного режима — 5 и 30 секунд; раунд включает пять проб с интервалом 100 мс и таймаутом 700 мс. Есть глобальный предел параллельных проб, до 32 кандидатов, до восьми одновременных проверок и до 20 образцов. Активный интервал не меньше секунды. Отмена завершает связанные сессии, история ограничена.
+
+Демо намеренно сокращает время подтверждения до 4/2 секунд и ухудшает прямой путь. Результат до настроенной эхо-цели нельзя переносить на любой игровой сервер.

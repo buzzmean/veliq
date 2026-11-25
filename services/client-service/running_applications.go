@@ -6,7 +6,7 @@ import (
 	"strings"
 	"unicode"
 
-	windowsplatform "github.com/buzzmean/neexitlag/platform/windows"
+	windowsplatform "github.com/buzzmean/veliq/platform/windows"
 )
 
 const maxApplicationProcesses = 4096

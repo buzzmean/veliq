@@ -5,7 +5,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 // This is session/open evidence, not echo quality or a game-packet delivery claim.

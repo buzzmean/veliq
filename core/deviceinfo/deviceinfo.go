@@ -9,7 +9,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 type Details struct {

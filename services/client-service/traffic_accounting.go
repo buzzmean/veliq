@@ -3,11 +3,11 @@ package clientservice
 import (
 	"context"
 	"crypto/ed25519"
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/controlclient"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/routing"
-	"github.com/buzzmean/neexitlag/core/traffic"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/controlclient"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/routing"
+	"github.com/buzzmean/veliq/core/traffic"
 	"sync"
 	"time"
 )

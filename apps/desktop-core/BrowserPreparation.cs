@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public sealed class BrowserPreparationDeferredException() : Exception("BROWSER_PREPARATION_DEFERRED");
 public sealed partial class DesktopViewModel {
  long browserPreparationGeneration;

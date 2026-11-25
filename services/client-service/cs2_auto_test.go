@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/gameudp"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/gameudp"
+	"github.com/buzzmean/veliq/core/profiles"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 func cs2GameFixture(t *testing.T) (*Controller, wp.ProcessIdentity, profiles.Profile) {

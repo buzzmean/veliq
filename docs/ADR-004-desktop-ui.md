@@ -1,13 +1,12 @@
-# ADR-004: Desktop UI
-Choose WPF for the first Windows-only UI, with an unprivileged process and
-ACL-restricted named pipe IPC to the Windows service.
+# ADR-004: интерфейс Windows
 
-| Option | Tradeoff |
+Для первого клиента Windows выбран WPF. Интерфейс работает без повышения прав и управляет службой через именованный канал с ограничением доступа по ACL.
+
+| Вариант | Особенности |
 |---|---|
-| WPF | Mature Windows integration; .NET runtime; Windows-only |
-| WinUI 3 | Modern controls; packaging and Windows App SDK complexity |
-| Tauri | Cross-platform; Rust/WebView bridge and dependency footprint |
-| Qt | Cross-platform native toolkit; licensing and C++ deployment |
+| WPF | Зрелая интеграция с Windows; среда .NET; только Windows |
+| WinUI 3 | Современные элементы; сложнее упаковка и зависимости Windows App SDK |
+| Tauri | Несколько платформ; дополнительное взаимодействие Rust/WebView и зависимости |
+| Qt | Нативный интерфейс для нескольких платформ; условия лицензирования и распространение C++ |
 
-UI is Phase 6. Home, Applications, Routes, Statistics, Diagnostics and Settings
-must show measured service state. No fabricated connection or latency status.
+Экраны приложения должны показывать измеренное состояние службы. Нельзя заменять отсутствие наблюдения выдуманным подключением, задержкой или применённым маршрутом. Состав разделов может меняться вместе с интерфейсом; это решение фиксирует выбор технологии и границу полномочий.

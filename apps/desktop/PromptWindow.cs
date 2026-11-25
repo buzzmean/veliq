@@ -1,7 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public sealed class PromptWindow : Window
 {
     internal PromptWindow(Window owner, string key, bool confirm)

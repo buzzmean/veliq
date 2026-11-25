@@ -3,7 +3,7 @@ package netdiagnostic
 import (
 	"context"
 	"crypto/tls"
-	"github.com/buzzmean/neexitlag/tools/labcert"
+	"github.com/buzzmean/veliq/tools/labcert"
 	"net"
 	"testing"
 	"time"

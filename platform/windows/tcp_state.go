@@ -2,7 +2,7 @@ package windowsplatform
 
 import (
 	"context"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
+	"github.com/buzzmean/veliq/core/localstrategy"
 	"net"
 	"sync"
 	"time"

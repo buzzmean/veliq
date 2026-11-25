@@ -1,41 +1,20 @@
-# Windows runtime acceptance blockers
+# Приёмка сетевой части на Windows
 
-> Final Build639/source d20e957 and CI evidence: [BETA_CANDIDATE_2026-11-02.md](BETA_CANDIDATE_2026-11-02.md).
-> Current beta work, 2026-11-02: draft #56 supersedes the Build618 origin
-> blockers with an owner CONNECT transport. See [BROWSER_AUTHORITY_TRANSPORT.md](BROWSER_AUTHORITY_TRANSPORT.md)
-> for the implemented contract and [BETA_ACCEPTANCE.md](BETA_ACCEPTANCE.md) for
-> exact-SHA CI plus physical PC gates. The historical matrix below is not the
-> current candidate's acceptance result. No production state was inferred.
+Матрица описывает необходимые проверки, а не их автоматически подтверждённый результат. Историческая приёмка отдельной сборки не распространяется на последующие изменения. [Статус реализации](STATUS.md) и [правила приёмки кандидата](BETA_ACCEPTANCE.md) читаются вместе с результатом для точного коммита.
 
+Для Windows 10/11 x64 проверяются:
 
-This matrix was written before real Windows runs. Several items are now exercised
-by native CI tests or were run on a real PC (see `docs/STATUS.md`), but it has not
-been re-reviewed line by line: the owner decides which items are closed. Anything
-not re-run after `6b50bd1` on a real Windows machine stays open here.
+1. Определение PID, полного пути, времени создания процесса, завершения и повторного использования PID.
+2. Доступ обычного владельца интерфейса к службе; отказ другому SID; безопасное отклонение неверного токена, повтора, несовместимого кадра и просроченного запроса.
+3. Независимость маршрутов выбранного и невыбранного процессов. Проверяются фактические ответы, адреса, порты, контрольные суммы и данные. Испытание защищённого транспорта не разрешает игровой релей.
+4. Первый пакет до появления метаданных FLOW, повторное использование конечной точки и события её удаления. Событие старого потока не должно удалить новый.
+5. Отказ маршрута и выбор разрешённого резерва только для новых соединений. Установленные потоки сохраняют свой путь; защищённое назначение не получает прямой обход.
+6. Штатная остановка захвата и обработка накопленных пакетов. Аварийное завершение службы проверяется отдельно на изолированном стенде с независимым восстановлением; оно может потерять пакеты, уже находящиеся в захвате.
+7. Отказ до захвата при неверных контрольных суммах, неподходящих файлах или ошибке доверия к подписи SYS. Официальная DLL проверяется по SHA-256; наличие у неё Authenticode не требуется.
+8. Ограничения очередей и параллельности под нагрузкой, несколько адаптеров, взаимодействие с другим сетевым ПО и защитой игр.
+9. Настоящий WPF: страницы, выбор EXE, отсутствие службы, сохранение профилей, автозапуск, трей, IPC и диагностика.
+10. Официальное обновление и возврат к прежней версии с проверкой фактических файлов, активации, настроек и прав доступа.
 
-On a Windows 10/11 x64 test machine with administrator access and an official
-signed WinDivert v2 distribution, verify:
+Перезагрузка, отключение адаптера, сон, сброс и завершение пользовательской сессии не входят в обычную проверку клубного ПК. Такие сценарии нельзя выполнять автоматически или считать пройденными по другим результатам. Наличие установщика с параметром запрета перезагрузки не заменяет проверку его дочерних действий.
 
-1. Process discovery: PID, full path, creation time, exited process and PID reuse.
-2. GUI owner without elevation reaches the service; another SID cannot connect;
-   bad tokens, replays, incompatible frames and timeouts fail safely.
-3. Selected Process A IPv4 UDP traverses relay while unselected Process B stays
-   DIRECT; reply IP/port tuple, checksum and payload match the original socket.
-4. First packet before FLOW metadata stays DIRECT for that flow. Endpoint-delete
-   events cannot delete a reused endpoint/identity. Stop/restart capture repeatedly.
-5. Relay failure switches new flows to backups or DIRECT; existing TCP stays
-   pinned at core level. Transparent TCP/IPv6/fragment/loopback traffic stays DIRECT.
-6. Stop and forcibly kill the service with active traffic. Verify WinDivert handle
-   close releases capture and ordinary networking continues without route changes.
-   Graceful shutdown drains/reinjects; abrupt crash may lose in-flight captured
-   datagrams. The real driver fail-open behavior still requires this acceptance test.
-7. Missing, wrong-hash, unsigned or incompatible DLL fails with a clear UI error
-   before capture. Check bounded queues/concurrency under traffic, driver reboot,
-   NIC change, sleep/resume, AV interaction and multiple adapters.
-8. Native WPF six pages, .exe picker, disconnected service, profile persistence,
-   launch-on-login preference, actual named-pipe bindings and diagnostics.
-
-Full BLOCK profiles are rejected by the current UDP-only Windows backend.
-Optional publisher/signature matching needs independently verified discovery data.
-Production WFP needs WDK, a signed kernel driver, security review and acceptance
-coverage; the current WFP boundary deliberately reports unavailable.
+Условия по издателю и подписи профиля требуют независимо проверенных данных. Полная поддержка IPv6 и собственный драйвер WFP не подтверждены. Для драйвера нужны WDK, подпись, проверка безопасности и отдельная приёмка.

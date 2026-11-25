@@ -6,7 +6,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/Microsoft/go-winio"
-	"github.com/buzzmean/neexitlag/core/ipc"
+	"github.com/buzzmean/veliq/core/ipc"
 	"golang.org/x/sys/windows"
 	"net"
 	"time"

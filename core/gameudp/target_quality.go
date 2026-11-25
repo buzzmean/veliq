@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/optimizer"
+	"github.com/buzzmean/veliq/core/optimizer"
 )
 
 const (

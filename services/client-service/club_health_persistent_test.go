@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/clubhealth"
-	"github.com/buzzmean/neexitlag/core/transport"
+	"github.com/buzzmean/veliq/core/clubhealth"
+	"github.com/buzzmean/veliq/core/transport"
 )
 
 func diagnosticRuntimeFixture() *persistentDiagnostics {

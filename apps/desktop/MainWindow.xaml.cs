@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Win32;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public partial class MainWindow : Window
 {
     readonly GameCatalogViewModel games;

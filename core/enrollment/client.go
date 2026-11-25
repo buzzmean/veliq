@@ -10,7 +10,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/freshpc"
+	"github.com/buzzmean/veliq/core/freshpc"
 	"io"
 	"net/http"
 	"net/url"

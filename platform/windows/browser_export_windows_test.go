@@ -5,7 +5,7 @@ package windowsplatform
 import (
 	"context"
 	"fmt"
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/routing"
 	"os"
 	"os/exec"
 	"testing"

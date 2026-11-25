@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 func TestNativeBrowserTLSObservesRelayBeforeClientDelivery(t *testing.T) {

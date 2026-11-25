@@ -15,9 +15,9 @@ try{
  if($LASTEXITCODE){throw 'NATIVE_ACTIVATION_TESTS_FAILED'}
  & go test ./tools/fresh-pc -run '^TestUpgradeCapabilityAndJournalContracts$' -count=1
  if($LASTEXITCODE){throw 'HELPER_JOURNAL_TESTS_FAILED'}
- & dotnet test tests/desktop/NeExitLag.Client.Tests.csproj --nologo
+ & dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
  if($LASTEXITCODE){throw 'DESKTOP_TESTS_FAILED'}
- & dotnet build apps/desktop/Neexitlag.Desktop.csproj --nologo
+ & dotnet build apps/desktop/Veliq.Desktop.csproj --nologo
  if($LASTEXITCODE){throw 'DESKTOP_BUILD_FAILED'}
  foreach($p in @('install','stage-club-activation','update-activation-vps','activation-ssh','verify-activation-vps')) {
   $tokens=$null;$errors=$null

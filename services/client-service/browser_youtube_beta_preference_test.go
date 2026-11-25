@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
+	"github.com/buzzmean/veliq/core/browserproxy"
 )
 
 func TestYouTubeLocalBetaPreferenceAndRollbackCompatibility(t *testing.T) {

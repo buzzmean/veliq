@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/internal/browserfixture"
-	"github.com/buzzmean/neexitlag/services/relay"
-	"github.com/buzzmean/neexitlag/tools/labcert"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/internal/browserfixture"
+	"github.com/buzzmean/veliq/services/relay"
+	"github.com/buzzmean/veliq/tools/labcert"
 )
 
 // Each pool captures its immutable server, including after a real restart.

@@ -26,8 +26,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/optimizer"
-	cp "github.com/buzzmean/neexitlag/services/control-plane"
+	"github.com/buzzmean/veliq/core/optimizer"
+	cp "github.com/buzzmean/veliq/services/control-plane"
 )
 
 const control = "/etc/neexitlag/control"

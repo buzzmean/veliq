@@ -3,15 +3,15 @@ package clientservice
 import (
 	"context"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/transport"
+	"github.com/buzzmean/veliq/core/transport"
 	"io"
 	"net"
 	"net/netip"
 	"testing"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 func TestBrowserKnownGroupsRelayFirstWithoutColdDirectOrFallback(t *testing.T) {

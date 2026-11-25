@@ -14,10 +14,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/protocol"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/internal/e2eprobe"
+	"github.com/buzzmean/veliq/core/protocol"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/internal/e2eprobe"
 	"github.com/quic-go/quic-go"
 )
 

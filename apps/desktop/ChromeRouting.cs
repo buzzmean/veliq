@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Windows;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public partial class MainWindow {
  readonly ChromeRecovery chromeRecovery=new();
  bool chromeActivating,chromeMonitoring;

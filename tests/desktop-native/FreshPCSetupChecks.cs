@@ -1,5 +1,5 @@
 using System.IO;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 internal static class FreshPCSetupChecks
 {
     internal static void Run()

@@ -2,7 +2,7 @@
 
 package windowsplatform
 
-import "github.com/buzzmean/neexitlag/core/gameudp"
+import "github.com/buzzmean/veliq/core/gameudp"
 
 func DiscoverPUBG(string) PUBGInstallation { return PUBGInstallation{Reason: "WINDOWS_REQUIRED"} }
 

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/internal/releaseinfo"
-	cp "github.com/buzzmean/neexitlag/services/control-plane"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/internal/releaseinfo"
+	cp "github.com/buzzmean/veliq/services/control-plane"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -41,7 +41,7 @@ func TestUpgradeCapabilityAndJournalContracts(t *testing.T) {
 }
 
 func TestUpgradeProbeRevokePublicationRetryPostgres(t *testing.T) {
-	database := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	database := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if database == "" {
 		t.Skip("isolated PostgreSQL required")
 	}
@@ -110,7 +110,7 @@ func TestUpgradeProbeRevokePublicationRetryPostgres(t *testing.T) {
 // The old binary executes only migration 001. Reapplying that exact additive
 // SQL must not remove activation tables, salt, device revocations or config rows.
 func TestSchema2RemainsCompatibleWithBaselineMigrationPostgres(t *testing.T) {
-	database := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	database := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if database == "" {
 		t.Skip("isolated PostgreSQL required")
 	}

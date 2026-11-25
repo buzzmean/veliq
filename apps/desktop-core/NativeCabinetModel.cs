@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 // Cabinet authentication is separate from machine activation. A club guest's
 // service status never creates an owner session or administrator permission.

@@ -41,7 +41,7 @@ try {
  # The service carries the monotonic build sequence its auto-updater compares
 # against signed release manifests (git commit count of the build commit).
 $sequence=(& git -C $root rev-list --count HEAD).Trim();if($LASTEXITCODE -or $sequence -notmatch '^[0-9]+$'){$sequence='0'}
-$ldflags='-X github.com/buzzmean/neexitlag/services/client-service.BuildSequence='+$sequence
+$ldflags='-X github.com/buzzmean/veliq/services/client-service.BuildSequence='+$sequence
 foreach($name in $targets.Keys){& go build -trimpath -ldflags $ldflags -o (Join-Path $Output $name) $targets[$name];if($LASTEXITCODE){throw "Build failed: $name"}}
  & go test -c -o (Join-Path $Output 'lease-acceptance.exe') ./tests/integration
  if($LASTEXITCODE){throw 'Lease acceptance build failed'}

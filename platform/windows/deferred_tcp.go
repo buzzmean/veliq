@@ -6,8 +6,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/localstrategy"
 )
 
 // ReadDeferredHello retains original bytes (at most 32 KiB for two seconds),

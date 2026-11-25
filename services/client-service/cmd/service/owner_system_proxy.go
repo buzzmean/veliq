@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"io"
 )
 

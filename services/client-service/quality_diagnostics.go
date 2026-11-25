@@ -1,9 +1,9 @@
 package clientservice
 
 import (
-	"github.com/buzzmean/neexitlag/core/measurement"
-	"github.com/buzzmean/neexitlag/core/telemetry"
-	windowsplatform "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/measurement"
+	"github.com/buzzmean/veliq/core/telemetry"
+	windowsplatform "github.com/buzzmean/veliq/platform/windows"
 	"time"
 )
 

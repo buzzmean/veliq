@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/routing"
 	"net/netip"
 	"sync"
 )

@@ -7,8 +7,8 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"github.com/buzzmean/neexitlag/core/localstrategy"
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/localstrategy"
+	"github.com/buzzmean/veliq/core/routing"
 	"net"
 	"net/netip"
 	"os"
@@ -20,7 +20,7 @@ import (
 
 // Opt-in signed-driver lifecycle regression. This is NOT external TCP acceptance.
 func TestNativeCaptureHandlesStartStop(t *testing.T) {
-	dir := os.Getenv("NEEXITLAG_TEST_DRIVER_DIR")
+	dir := os.Getenv("VELIQ_TEST_DRIVER_DIR")
 	if dir == "" {
 		t.Skip("signed driver directory not configured")
 	}

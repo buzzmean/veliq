@@ -138,6 +138,6 @@ PID/creation time не менялись, user RefreshPolicy запрос при�
 мгновенный live uptake **не доказан**, нельзя обещать его этим браузерам.
 Chrome: CDP fixture не появилась за 10 секунд; это ошибка instrumentation, не
 доказательство отказа продуктового PAC. Причина запуска CDP ещё не установлена.
-Run: https://github.com/buzzmean/neexitlag/actions/runs/39474255693 .
+Run: https://github.com/buzzmean/veliq/actions/runs/39474255693 .
 Старый Edge HTTPS/mTLS шаг прошёл, новый общий acceptance не PASS. Upload artifacts
 также не прошёл из-за квоты. Эти данные не являются проверкой ISP владельца.

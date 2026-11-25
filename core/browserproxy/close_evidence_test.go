@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 )
 
 func TestFirstByteCloseReasonsDoNotConfuseCleanupPreconnectAndFailure(t *testing.T) {

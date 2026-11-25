@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/buzzmean/neexitlag/core/ipc"
-	windowsplatform "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/ipc"
+	windowsplatform "github.com/buzzmean/veliq/platform/windows"
 	"strings"
 	"testing"
 )

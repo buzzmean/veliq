@@ -3,7 +3,7 @@ package windowsplatform
 import (
 	"encoding/binary"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/protocol"
+	"github.com/buzzmean/veliq/core/protocol"
 	"net/netip"
 )
 

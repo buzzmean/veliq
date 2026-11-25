@@ -11,8 +11,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/clubhealth"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/clubhealth"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 type DiagnosticHTTPError struct{ Status int }

@@ -7,7 +7,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
-	"github.com/buzzmean/neexitlag/core/traffic"
+	"github.com/buzzmean/veliq/core/traffic"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"

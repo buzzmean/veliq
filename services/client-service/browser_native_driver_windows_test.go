@@ -17,17 +17,17 @@ import (
 // controller native opener and authenticated relay. No synthetic packet writer,
 // no PAC, no disabled firewall, no trust changes or production credentials.
 func TestWindowsNativeBrowserDriverHotAttach(t *testing.T) {
-	if os.Getenv("NEEXITLAG_TEST_NATIVE_BROWSER_DRIVER") != "1" {
+	if os.Getenv("VELIQ_TEST_NATIVE_BROWSER_DRIVER") != "1" {
 		t.Skip("explicit disposable Windows signed-driver fixture")
 	}
-	if os.Getenv("NEEXITLAG_TEST_DRIVER_DIR") == "" {
+	if os.Getenv("VELIQ_TEST_DRIVER_DIR") == "" {
 		t.Fatal("signed driver pins required, cannot claim PASS")
 	}
 	preflight := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop';if(Get-Service neexitlag -ErrorAction SilentlyContinue){throw 'DISPOSABLE_VM_REQUIRED: installed service must not be touched'}")
 	if output, err := preflight.CombinedOutput(); err != nil {
 		t.Fatal("fixture cannot run on an installed owner PC", err, string(output))
 	}
-	if os.Getenv("NEEXITLAG_NATIVE_BROWSER_DRIVER_CHILD") != "1" {
+	if os.Getenv("VELIQ_NATIVE_BROWSER_DRIVER_CHILD") != "1" {
 		// Use the exact application-name contract of the production firewall helper.
 		directory, err := os.MkdirTemp(t.TempDir(), "driver-service-")
 		if err != nil {
@@ -48,7 +48,7 @@ func TestWindowsNativeBrowserDriverHotAttach(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 150*time.Second)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, child, "-test.run=^TestWindowsNativeBrowserDriverHotAttach$", "-test.v")
-		cmd.Env = append(os.Environ(), "NEEXITLAG_NATIVE_BROWSER_DRIVER_CHILD=1")
+		cmd.Env = append(os.Environ(), "VELIQ_NATIVE_BROWSER_DRIVER_CHILD=1")
 		output, err := cmd.CombinedOutput()
 		t.Log(string(output))
 		if err != nil {

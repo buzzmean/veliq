@@ -9,7 +9,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/buzzmean/neexitlag/core/clubhealth"
+	"github.com/buzzmean/veliq/core/clubhealth"
 	"golang.org/x/sys/windows"
 )
 

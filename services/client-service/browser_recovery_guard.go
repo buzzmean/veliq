@@ -3,10 +3,10 @@ package clientservice
 import (
 	"encoding/json"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/profiles"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"os"
 	"path/filepath"
 )

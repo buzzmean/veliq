@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 
 public sealed record UpdateSnapshot
 {

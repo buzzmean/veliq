@@ -13,11 +13,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/profiles"
-	"github.com/buzzmean/neexitlag/core/routing"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/profiles"
+	"github.com/buzzmean/veliq/core/routing"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 var backgroundPolicyChanges = []string{"unchanged", "unrelated-profile", "optimize-off", "automatic-off", "profile-direct", "profile-rule", "network", "vpn"}

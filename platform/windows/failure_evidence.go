@@ -1,7 +1,7 @@
 package windowsplatform
 
 import (
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 	"time"
 )
 

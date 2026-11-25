@@ -8,7 +8,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"github.com/buzzmean/neexitlag/core/optimizer"
+	"github.com/buzzmean/veliq/core/optimizer"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,8 +19,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/controlclient"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/controlclient"
+	"github.com/buzzmean/veliq/core/security"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -97,9 +97,9 @@ func TestRevokedSnapshotCompleteOrError(t *testing.T) {
 
 func revocationStore(t *testing.T) (*Store, context.Context) {
 	t.Helper()
-	url := os.Getenv("NEEXITLAG_TEST_DATABASE_URL")
+	url := os.Getenv("VELIQ_TEST_DATABASE_URL")
 	if url == "" {
-		t.Skip("set NEEXITLAG_TEST_DATABASE_URL for PostgreSQL revocation integration")
+		t.Skip("set VELIQ_TEST_DATABASE_URL for PostgreSQL revocation integration")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	t.Cleanup(cancel)

@@ -6,8 +6,8 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
 )
 
 // Opaque flows previously bypassed ALL origin health machinery. TLS alert bytes

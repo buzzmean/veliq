@@ -17,8 +17,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/buzzmean/neexitlag/core/gameudp"
-	"github.com/buzzmean/neexitlag/core/routing"
+	"github.com/buzzmean/veliq/core/gameudp"
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 func cs2FlowEvent(id ProcessIdentity, t Tuple, endpoint uint64, ipv6 bool) [80]byte {
@@ -216,7 +216,7 @@ func TestCS2AutoNativeFreshSocketUsesLocalUDP(t *testing.T) {
 // The driver's actual FLOW metadata for a single ordinary loopback datagram.
 // SNIFF|RECV_ONLY cannot redirect, modify, drop or reinject any packet.
 func TestCS2AutoSignedDriverFlowTuple(t *testing.T) {
-	dir := os.Getenv("NEEXITLAG_TEST_DRIVER_DIR")
+	dir := os.Getenv("VELIQ_TEST_DRIVER_DIR")
 	if dir == "" {
 		t.Skip("requires signed driver on a native Windows runner")
 	}

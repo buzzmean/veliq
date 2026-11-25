@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public sealed partial class DesktopViewModel {
  // Unlike the ordinary button action, failure must propagate to Closing.
  public async Task DisableRoutingForExitAsync(CancellationToken ct = default) {

@@ -1,10 +1,10 @@
 {
-  "version": "20261107",
+  "version": "20261118",
   "currency": "RUB",
   "period_days": 30,
   "prices": {
     "player": 399,
-    "club": 199
+    "club": 299
   },
   "terms": [
     {
@@ -24,5 +24,23 @@
       "discount": 20
     }
   ],
-  "reminder_days": 7
+  "reminder_days": 7,
+  "club_terms": [
+    {
+      "months": 1,
+      "discount": 0
+    },
+    {
+      "months": 3,
+      "discount": 0
+    },
+    {
+      "months": 6,
+      "discount": 0
+    },
+    {
+      "months": 12,
+      "discount": 0
+    }
+  ]
 }

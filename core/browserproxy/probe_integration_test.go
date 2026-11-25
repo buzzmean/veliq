@@ -17,11 +17,11 @@ import (
 	"time"
 
 	"crypto/x509"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	"github.com/buzzmean/neexitlag/core/security"
-	"github.com/buzzmean/neexitlag/core/transport"
-	"github.com/buzzmean/neexitlag/services/relay"
-	"github.com/buzzmean/neexitlag/tools/labcert"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/security"
+	"github.com/buzzmean/veliq/core/transport"
+	"github.com/buzzmean/veliq/services/relay"
+	"github.com/buzzmean/veliq/tools/labcert"
 )
 
 // A real authenticated QUIC relay and an h2-only TLS origin. A TCP connection or

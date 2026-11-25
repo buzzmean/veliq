@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/release"
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/release"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 func updateFixture(t *testing.T, build uint64, signer ed25519.PrivateKey, setup []byte) *httptest.Server {

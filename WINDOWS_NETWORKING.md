@@ -1,14 +1,9 @@
-# Windows networking
+# Сетевая часть Windows
 
-ADR-001 remains authoritative: production WFP ALE/callout boundary, temporary
-WinDivert v2 integration. Source now implements process discovery, PID reuse
-protection, FLOW-to-NETWORK associations, IPv4 UDP interception/reinjection,
-SCM service hosting and authenticated owner-scoped named-pipe IPC.
+Служба использует закреплённый WinDivert v2. Реализованы определение процессов, защита от повторного использования PID, сопоставление потоков и пакетов, обработка IPv4 UDP/TCP, работа через SCM и IPC с проверкой владельца.
 
-It does not implement transparent TCP/IPv6 or the WFP kernel driver. Unsupported
-or unknown traffic stays DIRECT. No global route/adapter changes are made.
-Graceful stop drains and reinjects; abrupt service/driver fail-open still needs
-real Windows verification. Cross-compilation cannot establish driver safety.
+Неизвестное приложение и неподдерживаемый трафик не считаются автоматически заблокированными. Политики защищённых назначений сохраняют запрет на небезопасный прямой путь. VELIQ не меняет глобальный маршрут, сетевые адаптеры и таблицу маршрутизации ради переключения отдельного приложения.
 
-See [backend details](platform/windows/README.md), [IPC](docs/IPC.md),
-[install/run](README.md) and [runtime acceptance matrix](docs/BLOCKERS.md).
+При штатной остановке захват должен завершиться с обработкой накопленных пакетов. Поведение при аварии службы или драйвера требует отдельной проверки на целевой Windows. Сборка на другой ОС не доказывает безопасность драйвера. Полная поддержка IPv6 и собственный драйвер WFP не заявляются.
+
+Подробности: [реализация Windows](platform/windows/README.md), [IPC](docs/IPC.md), [матрица приёмки](docs/BLOCKERS.md), [сборка и установка](README.md).

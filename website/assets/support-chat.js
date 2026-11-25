@@ -1,4 +1,4 @@
-/* VELIQ support. No message content or access credentials in browser storage. */
+/* Поддержка VELIQ. Содержимое сообщений и данные доступа не сохраняются в хранилище браузера. */
 (function () {
   'use strict';
   if (document.getElementById('veliq-support')) return;
@@ -137,6 +137,8 @@
     var a=e.target.closest&&e.target.closest('a[data-support-open]');
     if(!a||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
     e.preventDefault();openFromLink(a.getAttribute('data-support-topic'));
+    var draft=a.getAttribute('data-support-draft');
+    if(draft&&!input.value.trim()){input.value=draft.slice(0,2000);fitInput();input.focus();}
   });
   function openFromHash(){if(location.hash==='#chat'||location.hash==='#chat-mobile')openFromLink(location.hash==='#chat-mobile'?'mobile':'');}
   window.addEventListener('hashchange',openFromHash);

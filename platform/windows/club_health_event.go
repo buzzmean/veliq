@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/clubhealth"
+	"github.com/buzzmean/veliq/core/clubhealth"
 )
 
 type clubHealthEventXML struct {

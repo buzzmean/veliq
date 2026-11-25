@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/buzzmean/neexitlag/core/browserproxy"
-	"github.com/buzzmean/neexitlag/core/flowpolicy"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	"github.com/buzzmean/veliq/core/browserproxy"
+	"github.com/buzzmean/veliq/core/flowpolicy"
+	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
 // Сначала подписка, затем snapshot: между чтением и ожиданием событие не теряется.

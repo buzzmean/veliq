@@ -1,4 +1,4 @@
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public static class ServiceConnectionText {
  public static string Describe(Snapshot s) {
   if(s.Connected && s.Optimizing && s.ConnectionReason is "" or "READY")return Text.Get("Connected");

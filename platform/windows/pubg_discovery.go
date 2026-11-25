@@ -2,7 +2,7 @@ package windowsplatform
 
 import (
 	"errors"
-	"github.com/buzzmean/neexitlag/core/gameudp"
+	"github.com/buzzmean/veliq/core/gameudp"
 	"os"
 	"path/filepath"
 	"regexp"

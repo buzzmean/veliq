@@ -53,7 +53,7 @@ try {
     & (Join-Path $PSScriptRoot 'test-windivert-filters.ps1') -TestExecutable $filterTests
 
     $executable=Join-Path $payload 'veliq-service.exe'
-    $ldflags='-X github.com/buzzmean/neexitlag/services/client-service.BuildSequence='+$sequence
+    $ldflags='-X github.com/buzzmean/veliq/services/client-service.BuildSequence='+$sequence
     & go build -trimpath -buildvcs=true -ldflags $ldflags -o $executable ./services/client-service/cmd/service
     if ($LASTEXITCODE -ne 0) { throw 'R1_PACKAGE_SERVICE_BUILD_FAILED' }
     # Inspect PE build metadata without executing the service entry point.

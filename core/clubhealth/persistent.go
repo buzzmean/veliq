@@ -9,7 +9,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/buzzmean/neexitlag/core/security"
+	"github.com/buzzmean/veliq/core/security"
 )
 
 const PersistentEndpoint = Endpoint + "/persistent"

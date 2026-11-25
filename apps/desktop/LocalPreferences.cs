@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Microsoft.Win32;
-namespace Neexitlag.Desktop;
+namespace Veliq.Desktop;
 public sealed class LocalPreferences
 {
     public bool StartMinimized

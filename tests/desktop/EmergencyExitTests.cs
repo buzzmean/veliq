@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Neexitlag.Desktop;
+using Veliq.Desktop;
 using Xunit;
 
 public class EmergencyExitTests

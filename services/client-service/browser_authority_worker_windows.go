@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	wp "github.com/buzzmean/neexitlag/platform/windows"
+	wp "github.com/buzzmean/veliq/platform/windows"
 	"golang.org/x/sys/windows"
 	"os"
 	"os/exec"

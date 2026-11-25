@@ -1,4 +1,4 @@
-module github.com/buzzmean/neexitlag
+module github.com/buzzmean/veliq
 
 go 1.25.0
 

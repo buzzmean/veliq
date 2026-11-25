@@ -3,7 +3,7 @@ package browserproxy
 import (
 	"context"
 	"errors"
-	"github.com/buzzmean/neexitlag/core/clubhealth"
+	"github.com/buzzmean/veliq/core/clubhealth"
 	"io"
 	"net"
 	"strings"

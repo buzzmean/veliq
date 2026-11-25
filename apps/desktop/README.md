@@ -35,7 +35,7 @@ WPF / .NET 8, Windows 10/11 x64. Основной интерфейс — отд�
 ```powershell
 dotnet build
 dotnet test
-dotnet publish apps/desktop/Neexitlag.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o bin/release
+dotnet publish apps/desktop/Veliq.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false -p:DebugType=None -p:DebugSymbols=false -o bin/release
 ```
 
 ## Работа интерфейса
@@ -114,7 +114,7 @@ Windows CI также выполняет `tests/windows-tools/desktop-smoke.ps1`
 На Windows запустите из корня репозитория:
 
 ```powershell
-dotnet run --project tests/desktop-native/NeExitLag.Desktop.NativeTests.csproj --configuration Release
+dotnet run --project tests/desktop-native/Veliq.Desktop.NativeTests.csproj --configuration Release
 ```
 
 Это отдельный STA runtime host: загружает production compiled BAML/resources,
