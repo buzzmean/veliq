@@ -15,6 +15,7 @@ func TestPersistentRepeatIngestionMonotonicAndReporter(t *testing.T) {
 	a, s, _ := accountAPI(t, true)
 	owner, device, key := persistentDeviceFixture(t, s, "PC13")
 	b := persistentFixtureBatch("PC13")
+	b.Events[0].RecordID = 90
 	// Впервом запросе — старый клиент без новых полей.
 	send := func(batch clubhealth.Batch) (int, clubhealth.Receipt) {
 		proof, err := security.NewProof(device, batch.Audience(), key, time.Now())
@@ -30,6 +31,15 @@ func TestPersistentRepeatIngestionMonotonicAndReporter(t *testing.T) {
 	}
 	if status, ack := send(b); status != 200 || !ack.Accepts(b) {
 		t.Fatalf("старый клиент: %d", status)
+	}
+	replay := b
+	replay.Events = append([]clubhealth.Diagnostic(nil), b.Events...)
+	replay.Events[0].Version = "0.3.799"
+	replay.Events[0].Source = "after-restart"
+	replay.Events[0].Session = "cccccccccccccccccccccccccccccccc"
+	replay.Events[0].ServicePID = 21
+	if status, ack := send(replay); status != 200 || !ack.Accepts(replay) {
+		t.Fatal("повтор записиWindows от новой службы отвергнут")
 	}
 	now := b.Events[0].At
 	b.Reporter = &clubhealth.Reporter{PC: "PC13", Version: "0.3.800", Source: "new-fixture", Session: b.Events[0].Session, ServicePID: 11}

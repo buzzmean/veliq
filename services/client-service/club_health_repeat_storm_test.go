@@ -174,3 +174,49 @@ func TestPersistentRepeatWorkerLegacyBacklogAndDurableSnapshots(t *testing.T) {
 		t.Fatalf("счётчик/восстановление/лимит записи: %d %v %d", count, recovery, writes.Load())
 	}
 }
+
+func TestPersistentRepeatProducerDoesNotWaitForBlockedDisk(t *testing.T) {
+	d := diagnosticRuntimeFixture()
+	d.done = make(chan struct{})
+	entered, release := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	first := true
+	d.write = func([]byte) error {
+		if first {
+			first = false
+			close(entered)
+			<-release
+		}
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() { releaseOnce.Do(func() { close(release) }); cancel(); <-d.done }()
+	path := filepath.Join(t.TempDir(), "journal.json")
+	go d.run(ctx, path, "device")
+	d.uploads <- diagnosticUpload{device: "device", reply: make(chan clubhealth.Batch, 1)}
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		t.Fatal("запись не началась")
+	}
+	c := &Controller{}
+	c.diagnostics.Store(d)
+	record := browserproxy.Record{Result: "UPSTREAM_OPEN_FAILED", ErrorOperation: "OPEN", ErrorCode: "OS_ERROR", NativeCode: 10061, Owner: browserproxy.Owner{PID: 20, Birth: 30, Exe: "steam.exe"}}
+	produced := make(chan struct{})
+	go func() {
+		defer close(produced)
+		for range 100000 {
+			c.observeProxyDiagnostic(record)
+		}
+	}()
+	select {
+	case <-produced:
+	case <-time.After(3 * time.Second):
+		t.Fatal("производитель ждёт заблокированный диск")
+	}
+	d.note("SERVICE", "SERVICE_LIFECYCLE", "observed", "SERVICE_STOP_REQUESTED", 0, "service")
+	if d.dropped.Load() != 0 || len(d.input) != 1 {
+		t.Fatal("шторм вытеснил событие службы")
+	}
+	releaseOnce.Do(func() { close(release) })
+}

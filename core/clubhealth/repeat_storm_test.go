@@ -146,3 +146,26 @@ func TestPersistentRepeatMetadataAndValidation(t *testing.T) {
 		t.Fatal("новый процесс смешан со старым")
 	}
 }
+
+func TestPersistentWindowsReplayAfterServiceRestartIsNotLoss(t *testing.T) {
+	now := time.Now().UTC()
+	first := diagnosticFixture(1, now)
+	first.State = "observed"
+	first.Observer = "WINDOWS_EVENT_LOG"
+	first.RecordID = 90
+	first.EventID = 36876
+	j := Journal{Format: 1, Device: "owner"}
+	j.Add(first, now)
+	replay := first
+	replay.Version = "0.3.800"
+	replay.Source = "new-fixture"
+	replay.Session = "cccccccccccccccccccccccccccccccc"
+	replay.ServicePID++
+	if j.Add(replay, now) || j.Lost != 0 || j.Rows[0].Event != first {
+		t.Fatalf("повтор записиWindows после смены службы изменил журнал: lost=%d", j.Lost)
+	}
+	replay.NativeCode++
+	if j.Add(replay, now) || j.Rows[0].Event != first {
+		t.Fatal("подменены исходные данные записиWindows")
+	}
+}

@@ -167,6 +167,15 @@ func (e Diagnostic) RepeatKey() Diagnostic {
 // Содержание события неизменно; обновляются только число наблюдений и их конец.
 func DiagnosticUpdate(old, next Diagnostic) (changed, compatible bool) {
 	a, b := old, next
+	// ID записиWindows переживает смену версии/процесса VELIQ. Первая
+	// интерпретация записи сохраняется, повторное чтение не создаёт потерю.
+	if old.Occurrences == 0 && next.Occurrences == 0 && old.RecordID != 0 && old.Observer == "WINDOWS_EVENT_LOG" {
+		a.PC, b.PC = "", ""
+		a.Version, b.Version = "", ""
+		a.Source, b.Source = "", ""
+		a.Session, b.Session = "", ""
+		a.ServicePID, b.ServicePID = 0, 0
+	}
 	a.Occurrences, b.Occurrences = 0, 0
 	a.LastAt, b.LastAt = time.Time{}, time.Time{}
 	if a != b {
