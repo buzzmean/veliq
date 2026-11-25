@@ -185,8 +185,8 @@
             <label>Название клуба <span aria-hidden="true">*</span><input name="club" autocomplete="organization" maxlength="80" placeholder="Например, VIONIX" required></label>
             <label>Город <span aria-hidden="true">*</span><input name="city" autocomplete="address-level2" maxlength="80" placeholder="Где находится клуб" required></label>
             <label>Количество ПК <span aria-hidden="true">*</span><input name="pcs" type="number" inputmode="numeric" min="1" max="2000" step="1" placeholder="36" required></label>
-            <label>Система управления <span aria-hidden="true">*</span><input name="management" maxlength="100" placeholder="Название или «пока выбираем»" required></label>
-            <label class="club-apply__wide">Как установлена Windows<select name="installation"><option value="Не указано">Выберите, если знаете</option><option>На диске каждого ПК</option><option>Бездисковая загрузка по сети</option><option>Смешанная схема</option><option>Пока не знаю</option></select></label>
+            <label>Система управления <span aria-hidden="true">*</span><select name="management" required><option value="" disabled selected>Выберите систему</option><option>LANGAME</option><option>SmartShell</option><option>GIZMO</option><option>Пока выбираем</option><option>Другая</option></select></label>
+            <label class="club-apply__wide">Как установлена Windows<select name="installation"><option value="Не указано">Выберите, если знаете</option><option>На диске каждого ПК</option><option>Бездисковая загрузка по сети</option><option>Гибрид</option><option>Пока не знаю</option></select></label>
           </div>
         </fieldset>
         <fieldset class="club-apply__fields"><legend>Как с вами связаться</legend>
