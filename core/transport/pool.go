@@ -56,6 +56,7 @@ func FailureReason(err error) string {
 
 type SessionFactory func(context.Context) (*Client, error)
 type PoolConfig struct {
+	FleetBudget                             *FleetBudget
 	MaxSessions, SessionFlows, MaxWaiters   int
 	ProbeReserve                            int
 	CreateTimeout, RotateAfter, IdleTimeout time.Duration
@@ -123,6 +124,7 @@ type PoolSnapshot struct {
 }
 type poolSession struct {
 	failed                       bool
+	releaseSlot                  func()
 	client                       *Client
 	id                           uint64
 	active                       int
@@ -145,6 +147,8 @@ type Pool struct {
 	changed          chan struct{}
 	done             chan struct{}
 	closed, creating bool
+	draining         bool
+	admissionEpoch   uint64
 	waiters          int
 	nextID           uint64
 	retryAfter       time.Time
@@ -202,11 +206,12 @@ func (p *Pool) reapLocked(now time.Time) {
 	remaining := len(p.sessions)
 	for _, s := range p.sessions {
 		live := alive(s.client)
-		if !live || s.active == 0 && (s.draining || remaining > 1 && now.Sub(s.lastUsed) > p.cfg.IdleTimeout) {
+		if !live || s.active == 0 && (s.draining || p.cfg.FleetBudget.overSessionLimit() || (remaining > 1 || p.cfg.FleetBudget.Enabled()) && now.Sub(s.lastUsed) > p.cfg.IdleTimeout) {
 			s.failed = !live
 			remaining--
 			mergeDrops(p.retiredDrops, s.client.LocalDrops.Snapshot())
 			s.client.Close()
+			s.releaseSlot()
 			if !live {
 				if len(p.stats.RecentSessionEnds) == 16 {
 					p.stats.RecentSessionEnds = append([]PoolSessionEnd(nil), p.stats.RecentSessionEnds[1:]...)
@@ -247,7 +252,7 @@ func (p *Pool) maintain() {
 		}
 	}
 }
-func (p *Pool) create(reason string, factory SessionFactory) {
+func (p *Pool) create(reason string, factory SessionFactory, epoch uint64, releaseSlot func()) {
 	defer p.wg.Done()
 	start := time.Now()
 	p.mu.Lock()
@@ -259,10 +264,11 @@ func (p *Pool) create(reason string, factory SessionFactory) {
 	p.mu.Lock()
 	p.creating = false
 	p.creation.finish(time.Now(), start, reason, c, err)
-	if p.closed || p.ctx.Err() != nil {
+	if p.closed || p.ctx.Err() != nil || p.draining || epoch != p.admissionEpoch {
 		if c != nil {
 			c.Close()
 		}
+		releaseSlot()
 		p.signalLocked()
 		p.mu.Unlock()
 		return
@@ -274,6 +280,7 @@ func (p *Pool) create(reason string, factory SessionFactory) {
 		if c != nil {
 			c.Close()
 		}
+		releaseSlot()
 		p.stats.CreationFailures++
 		p.createError = err
 		p.retryAfter = time.Now().Add(time.Second)
@@ -287,7 +294,7 @@ func (p *Pool) create(reason string, factory SessionFactory) {
 		return
 	}
 	p.nextID++
-	s := &poolSession{client: c, id: p.nextID, born: time.Now(), lastUsed: time.Now(), reason: reason}
+	s := &poolSession{client: c, id: p.nextID, born: time.Now(), lastUsed: time.Now(), reason: reason, releaseSlot: releaseSlot}
 	p.sessions = append(p.sessions, s)
 	p.retryAfter = time.Time{}
 	p.createError = nil
@@ -313,7 +320,11 @@ func (p *Pool) create(reason string, factory SessionFactory) {
 }
 func (p *Pool) acquire(ctx context.Context, probe bool) (*poolSession, error) {
 	waiting := false
+	var releaseWaiter func()
 	defer func() {
+		if releaseWaiter != nil {
+			releaseWaiter()
+		}
 		if waiting {
 			p.mu.Lock()
 			p.waiters--
@@ -331,6 +342,10 @@ func (p *Pool) acquire(ctx context.Context, probe bool) (*poolSession, error) {
 		if p.closed || p.ctx.Err() != nil {
 			p.mu.Unlock()
 			return nil, ErrClosed
+		}
+		if p.draining {
+			p.mu.Unlock()
+			return nil, &OpenError{"relay_draining", ErrCapacity}
 		}
 		now := time.Now()
 		p.reapLocked(now)
@@ -365,6 +380,14 @@ func (p *Pool) acquire(ctx context.Context, probe bool) (*poolSession, error) {
 		if !waiting && len(p.sessions) > 0 {
 			p.stats.SaturationEvents++
 		}
+		if releaseWaiter == nil {
+			var ok bool
+			releaseWaiter, ok = p.cfg.FleetBudget.reserve(fleetWaiter)
+			if !ok {
+				p.mu.Unlock()
+				return nil, &OpenError{"fleet_waiter_capacity", ErrCapacity}
+			}
+		}
 		if !p.creating && len(p.sessions) < p.cfg.MaxSessions {
 			if now.Before(p.retryAfter) {
 				err := p.createError
@@ -387,9 +410,14 @@ func (p *Pool) acquire(ctx context.Context, probe bool) (*poolSession, error) {
 					break
 				}
 			}
+			releaseSlot, ok := p.cfg.FleetBudget.reserve(fleetSession)
+			if !ok {
+				p.mu.Unlock()
+				return nil, &OpenError{"fleet_session_capacity", ErrCapacity}
+			}
 			p.creating = true
 			p.wg.Add(1)
-			go p.create(reason, p.factory)
+			go p.create(reason, p.factory, p.admissionEpoch, releaseSlot)
 		}
 		if !p.creating && !blocked {
 			p.mu.Unlock()
@@ -463,7 +491,7 @@ func (p *Pool) record(start time.Time, sid uint64, kind string, dst netip.AddrPo
 	}
 	p.stats.RecentOpens = append(p.stats.RecentOpens, event)
 }
-func (p *Pool) open(ctx context.Context, dst netip.AddrPort, tcp, probe bool) (net.Conn, routing.Datagram, error) {
+func (p *Pool) open(ctx context.Context, dst netip.AddrPort, tcp, probe, singleAttempt bool) (net.Conn, routing.Datagram, error) {
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -476,6 +504,21 @@ func (p *Pool) open(ctx context.Context, dst netip.AddrPort, tcp, probe bool) (n
 		kind = "tcp"
 	}
 	defer func() { p.record(start, sid, kind, dst, final, acquireTime, streamTime, age) }()
+	resource := fleetApplication
+	if probe {
+		resource = fleetProbe
+	}
+	releaseSlot, ok := p.cfg.FleetBudget.reserve(resource)
+	if !ok {
+		final = &OpenError{"fleet_stream_capacity", ErrCapacity}
+		return nil, nil, final
+	}
+	transferred := false
+	defer func() {
+		if !transferred {
+			releaseSlot()
+		}
+	}()
 	for {
 		acquireStart := time.Now()
 		s, err := p.acquire(ctx, probe)
@@ -496,10 +539,15 @@ func (p *Pool) open(ctx context.Context, dst netip.AddrPort, tcp, probe bool) (n
 		}
 		streamTime += time.Since(streamStart)
 		if err == nil {
-			if tcp {
-				return &pooledConn{Conn: conn, release: func() { p.release(s) }}, nil, nil
+			transferred = true
+			release := func() {
+				p.release(s)
+				releaseSlot()
 			}
-			return nil, &pooledDatagram{Datagram: dg, session: s.client, release: func() { p.release(s) }}, nil
+			if tcp {
+				return &pooledConn{Conn: conn, release: release}, nil, nil
+			}
+			return nil, &pooledDatagram{Datagram: dg, session: s.client, release: release}, nil
 		}
 		p.release(s)
 		if errors.Is(err, ErrCapacity) {
@@ -507,10 +555,14 @@ func (p *Pool) open(ctx context.Context, dst netip.AddrPort, tcp, probe bool) (n
 			p.stats.StreamCapacityEvents++
 			s.blockedUntil = time.Now().Add(100 * time.Millisecond)
 			p.mu.Unlock()
-			continue
+			if !singleAttempt && !p.cfg.FleetBudget.Enabled() {
+				continue
+			}
+			final = &OpenError{FailureReason(err), err}
+			return nil, nil, final
 		}
 		if s.client.conn.Context().Err() != nil {
-			if ctx.Err() == nil {
+			if ctx.Err() == nil && !singleAttempt && !p.cfg.FleetBudget.Enabled() {
 				continue
 			} // setup only: no application handle or bytes have been returned
 			if p.Healthy() {
@@ -530,13 +582,45 @@ func (p *Pool) open(ctx context.Context, dst netip.AddrPort, tcp, probe bool) (n
 	}
 }
 func (p *Pool) OpenTCP(ctx context.Context, dst netip.AddrPort) (net.Conn, error) {
-	c, _, e := p.open(ctx, dst, true, false)
+	c, _, e := p.open(ctx, dst, true, false, false)
 	return c, e
 }
 func (p *Pool) OpenDatagram(ctx context.Context, dst netip.AddrPort) (routing.Datagram, error) {
-	_, d, e := p.open(ctx, dst, false, false)
+	_, d, e := p.open(ctx, dst, false, false, false)
 	return d, e
 }
+
+// A fleet selector owns the retry budget across candidates. Each pool is
+// allowed a single upstream OPEN for that selection.
+func (p *Pool) OpenFleetTCP(ctx context.Context, dst netip.AddrPort) (net.Conn, error) {
+	conn, _, err := p.open(ctx, dst, true, false, true)
+	return conn, err
+}
+
+func (p *Pool) OpenFleetDatagram(ctx context.Context, dst netip.AddrPort) (routing.Datagram, error) {
+	_, datagram, err := p.open(ctx, dst, false, false, true)
+	return datagram, err
+}
+
+// SetDraining fences new pool admission before retiring idle sessions. A
+// factory that finishes after the transition cannot publish a new session.
+func (p *Pool) SetDraining(draining bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed || p.draining == draining {
+		return
+	}
+	p.draining = draining
+	p.admissionEpoch++
+	if draining {
+		for _, session := range p.sessions {
+			session.draining = true
+		}
+	}
+	p.reapLocked(time.Now())
+	p.signalLocked()
+}
+
 func (p *Pool) Snapshot() PoolSnapshot {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -599,6 +683,7 @@ func (p *Pool) Close() error {
 	p.mu.Unlock()
 	for _, s := range all {
 		s.client.Close()
+		s.releaseSlot()
 	}
 	p.wg.Wait()
 	close(p.done)
@@ -654,7 +739,7 @@ func (p *Pool) UpdateFactory(factory SessionFactory, drain bool) {
 // Probe failures are scoped to the actual session. A dead session must not poison
 // healthy peers; real missing replies on a live session retain normal loss rules.
 func (p *Pool) OpenProbeDatagram(ctx context.Context, dst netip.AddrPort) (routing.Datagram, error) {
-	_, d, err := p.open(ctx, dst, false, true)
+	_, d, err := p.open(ctx, dst, false, true, false)
 	if err != nil {
 		return nil, err
 	}
@@ -673,7 +758,12 @@ func (d *poolProbe) scoped(err error) error {
 	}
 	return err
 }
-func (d *poolProbe) Send(b []byte) error { return d.scoped(d.Datagram.Send(b)) }
+func (d *poolProbe) Send(b []byte) error {
+	if !d.pool.cfg.FleetBudget.allowEcho(time.Now()) {
+		return ErrCapacity
+	}
+	return d.scoped(d.Datagram.Send(b))
+}
 func (d *poolProbe) Receive(ctx context.Context) ([]byte, error) {
 	b, err := d.Datagram.Receive(ctx)
 	return b, d.scoped(err)
