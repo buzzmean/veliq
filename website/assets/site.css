@@ -210,7 +210,8 @@
 
 /* ---------- Тарифы ---------- */
 .plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line-strong); border-radius: var(--r-xl); overflow: hidden; }
-.plan { padding: clamp(22px, 3vw, 36px); display: grid; gap: var(--sp-4); align-content: start; background: var(--bg-raised); }
+.plan { padding: clamp(22px, 3vw, 36px); display: flex; flex-direction: column; gap: var(--sp-4); background: var(--bg-raised); }
+.plan > .btn { margin-top: auto; }
 .plan + .plan { border-left: 1px solid var(--line-strong); }
 .plan--main { background: var(--c-ink-950); color: var(--c-white); --text-muted: var(--c-ink-300); --text-faint: var(--c-ink-400); --line: var(--c-ink-800); --control: var(--c-white); --on-control: var(--c-ink-950); --control-hover: var(--c-ink-100); }
 .plan__price { font-size: var(--fs-4xl); font-weight: var(--fw-display); letter-spacing: var(--ls-display); line-height: 1; }
