@@ -1,0 +1,56 @@
+name: Оформление установщика
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/installer-design-20261125]
+  pull_request:
+    paths:
+      - 'installer/**'
+      - 'tests/windows-tools/installer-visual-checks.ps1'
+      - 'tests/windows-tools/installer-mode-checks.ps1'
+      - '.github/workflows/installer-appearance.yml'
+permissions:
+  contents: read
+jobs:
+  inert-windows:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Проверить закреплённый компилятор
+        shell: powershell
+        run: |
+          $download=Join-Path $env:RUNNER_TEMP 'innosetup-6.4.3.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-6_4_3/innosetup-6.4.3.exe' -OutFile $download
+          if ((Get-FileHash $download -Algorithm SHA256).Hash.ToLowerInvariant() -cne 'f3c42116542c4cc57263c5ba6c4feabfc49fe771f2f98a79d2f7628b8762723b') { throw 'INNO_COMPILER_HASH_MISMATCH' }
+          $signature=Get-AuthenticodeSignature -LiteralPath $download
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Jordan Russell|O=Pyrsys B\.V\.') { throw 'INNO_INSTALLER_SIGNATURE_INVALID' }
+          $compiler=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3'
+          $process=Start-Process $download -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',('/DIR="'+$compiler+'"')) -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw 'INNO_COMPILER_INSTALL_FAILED' }
+      - name: Правила и настоящий мастер — PowerShell 5.1
+        shell: powershell
+        run: |
+          $compiler=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3/ISCC.exe'
+          & ./tests/windows-tools/installer-session-policy-checks.ps1 -Compiler $compiler
+          & ./tests/windows-tools/installer-mode-checks.ps1 -Compiler $compiler
+          & ./tests/windows-tools/installer-visual-checks.ps1 -Compiler $compiler
+      - name: Правила и настоящий мастер — PowerShell 7
+        shell: pwsh
+        env:
+          VELIQ_INSTALLER_VISUAL_EXPORT: '1'
+        run: |
+          $compiler=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3/ISCC.exe'
+          & ./tests/windows-tools/installer-session-policy-checks.ps1 -Compiler $compiler
+          & ./tests/windows-tools/installer-mode-checks.ps1 -Compiler $compiler
+          & ./tests/windows-tools/installer-visual-checks.ps1 -Compiler $compiler
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: VELIQ-installer-native-appearance
+          path: bin/installer-visual/
+          if-no-files-found: warn
+          retention-days: 30

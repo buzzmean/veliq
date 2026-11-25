@@ -57,9 +57,9 @@ begin
  InitializeVeliqOperation;
  InitializeVeliqTheme;
  if WizardForm.Color<>$0B0A0A then begin Log('MODE_DARK_THEME_FAILED'); Abort; end;
- VeliqThemeChoice.ItemIndex := 1; VeliqThemeChanged(VeliqThemeChoice);
+ VeliqThemeChanged(VeliqThemeButton);
  if (WizardForm.Color<>clWhite) or (WizardForm.ReadyMemo.Font.Color<>$0B0A0A) then begin Log('MODE_LIGHT_THEME_FAILED'); Abort; end;
- VeliqThemeChoice.ItemIndex := 0; VeliqThemeChanged(VeliqThemeChoice);
+ VeliqThemeChanged(VeliqThemeButton);
  if (WizardForm.Color<>$0B0A0A) or (WizardForm.ReadyMemo.Font.Color<>clWhite) then begin Log('MODE_THEME_RESTORE_FAILED'); Abort; end;
  Expected := ExpandConstant('{param:EXPECT|}');
  if SelectedOperation<>Expected then begin Log('MODE_UNEXPECTED=' + SelectedOperation); Abort; end;

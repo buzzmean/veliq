@@ -26,6 +26,7 @@ OutputBaseFilename=VELIQ-Setup
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+WizardSizePercent=110,105
 ; Brand images: dark side panel like app-ui/installer.html; regenerate with installer/make-wizard-images.py.
 DisableWelcomePage=no
 WizardImageFile=assets\wizard-100.bmp,assets\wizard-125.bmp,assets\wizard-150.bmp,assets\wizard-175.bmp,assets\wizard-200.bmp,assets\wizard-225.bmp,assets\wizard-250.bmp
@@ -44,9 +45,14 @@ RestartApplications=no
 UninstallDisplayName=VELIQ
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
+[LangOptions]
+DialogFontName=Segoe UI
+DialogFontSize=10
+WelcomeFontName=Segoe UI
+WelcomeFontSize=22
 [Messages]
 WelcomeLabel1=Установка VELIQ
-WelcomeLabel2=VELIQ строит оптимальный маршрут для каждого соединения: заблокированное открывается, игры получают самый быстрый путь.%n%nWindows один раз попросит права администратора — для службы, которая строит маршруты.
+WelcomeLabel2=VELIQ подбирает маршруты для сайтов, приложений и игр.%n%nПосле установки подключите компьютер по коду или войдите в аккаунт.
 FinishedHeadingLabel=Готово
 FinishedLabelNoIcons=VELIQ установлен. Откройте программу, войдите в аккаунт и нажмите «Оптимизировать».
 FinishedLabel=VELIQ установлен. Откройте программу, войдите в аккаунт и нажмите «Оптимизировать».
@@ -205,6 +211,10 @@ procedure CurPageChanged(CurPageID: Integer);
 begin
  LockNoRestartChoice;
  ApplyVeliqTheme;
+ if (CurPageID=wpWelcome) and ExistingInstall then begin
+   WizardForm.WelcomeLabel1.Caption := 'Обновление VELIQ';
+   WizardForm.WelcomeLabel2.Caption := 'Установщик обновит файлы программы. Активация, настройки и профили сохранятся.';
+ end;
  if OperationPage<>nil then
    if CurPageID=OperationPage.ID then
      WizardForm.NextButton.Enabled := (UpdateOption>=0) or (ReinstallOption>=0);
