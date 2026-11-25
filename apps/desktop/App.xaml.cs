@@ -50,19 +50,17 @@ public partial class App : System.Windows.Application
         }
         var freshReport = FreshPCSetupArguments(e.Args);
         var preferences = LocalPreferences.Load();
-        bool automatic = freshReport is null && e.Args.Contains("--autostart", StringComparer.OrdinalIgnoreCase);
-        bool quiet = automatic && preferences.StartMinimized;
+        bool automatic = DesktopStartup.IsAutomatic(e.Args, freshReport is not null);
         WelcomeWindow? welcome = null;
         welcome = new WelcomeWindow(() => {
             var window = new MainWindow(preferences, freshReport is null, true);
             MainWindow = window;
-            window.Start(quiet && !welcome!.ForegroundRequested,
-                automatic && preferences.StartMinimized && !welcome!.ForegroundRequested);
+            window.Start(DesktopStartup.StayInTray(automatic, welcome!.ForegroundRequested));
             if (freshReport is not null) _ = window.RunFreshPCSetupAsync(freshReport);
         });
         MainWindow = welcome;
         _ = ListenForActivation(lifetime.Token);
-        await welcome.StartAsync(quiet);
+        await welcome.StartAsync(automatic);
     }
     async Task ListenForActivation(CancellationToken ct)
     {

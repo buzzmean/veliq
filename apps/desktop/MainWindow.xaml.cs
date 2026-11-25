@@ -31,7 +31,6 @@ public partial class MainWindow : Window
                 BrowserNativePolicy.RequestRefresh(); // owner-user GP, also when SCM/IPC disappears
         };
         Launch.IsChecked = LocalPreferences.AutoStart;
-        StartMinimized.IsChecked = preferences.StartMinimized;
         ApplyTechnical(preferences.ShowTechnical);
         Channel.ItemsSource = new[] { new Choice("stable", Text.Get("Stable")), new Choice("preview", Text.Get("Preview")) };
         Channel.SelectedValue = "stable";
@@ -385,7 +384,7 @@ public partial class MainWindow : Window
             }, lifetime.Token))
                 return;
             LocalPreferences.SetAutoStart(Launch.IsChecked == true);
-            SaveLocalPreferences(StartMinimized.IsChecked == true, preferences.MinimizeToTray);
+            SaveLocalPreferences(preferences.StartMinimized, preferences.MinimizeToTray);
             ShowMessage(model.Available ? "SettingsSaved" : "LocalSettingsSaved");
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }

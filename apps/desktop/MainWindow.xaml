@@ -279,7 +279,6 @@
      <TextBlock Text="{ui:Tr SetStart}" Style="{StaticResource GroupTitle}"/>
      <Border Style="{StaticResource PanelBox}" Margin="0,0,0,18"><StackPanel>
       <Border Style="{StaticResource SetRow}"><CheckBox x:Name="Launch" Content="{ui:Tr AutoStart}" Margin="0"/></Border>
-      <Border Style="{StaticResource SetRow}"><CheckBox x:Name="StartMinimized" Content="{ui:Tr StartMinimized}" Margin="0"/></Border>
       <Border Style="{StaticResource SetRow}" BorderThickness="0"><CheckBox x:Name="Automatic" Content="{ui:Tr AutoOptimization}" IsEnabled="{Binding Available}" Margin="0"/></Border>
      </StackPanel></Border>
      <TextBlock Text="{ui:Tr SetNetwork}" Style="{StaticResource GroupTitle}"/>

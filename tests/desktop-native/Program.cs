@@ -112,6 +112,18 @@ internal static partial class Program
         var manual = Window(new() { StartMinimized = true, MinimizeToTray = true });
         manual.Start(false); Pump(); Require(manual.IsVisible && manual.WindowState == WindowState.Normal, "Manual start must open the desktop");
         manual.Exit(); Pump();
+        foreach (bool savedStart in new[] { false, true }) foreach (bool savedTray in new[] { false, true })
+        {
+            var automatic = DesktopStartup.IsAutomatic(["--autostart"], false);
+            var autoWindow = Window(new() { StartMinimized = savedStart, MinimizeToTray = savedTray });
+            int shown = 0; autoWindow.IsVisibleChanged += (_, _) => { if (autoWindow.IsVisible) shown++; };
+            autoWindow.Start(DesktopStartup.StayInTray(automatic, false)); Pump();
+            Require(shown == 0 && autoWindow.TrayVisible, "Windows autostart must ignore legacy window flags and remain in tray");
+            autoWindow.ShowFromTray(); Pump();
+            Require(autoWindow.IsVisible && autoWindow.WindowState == WindowState.Normal, "Tray must open after quiet autostart with legacy flags");
+            autoWindow.Exit(); Pump();
+        }
+        Pass("Windows autostart with all four legacy preference combinations");
         foreach (bool start in new[] { false, true }) foreach (bool tray in new[] { false, true })
         {
             var prefs = new LocalPreferences { StartMinimized = start, MinimizeToTray = tray };
