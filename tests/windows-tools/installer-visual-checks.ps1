@@ -136,6 +136,7 @@ public static class InertWizardCapture {
  [StructLayout(LayoutKind.Sequential)] public struct Rect {public int Left,Top,Right,Bottom;}
  [StructLayout(LayoutKind.Sequential)] public struct Point {public int X,Y;}
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
+ [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h,uint attribute,out Rect r,int size);
  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h,ref Point p);
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint id);
  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
@@ -161,6 +162,8 @@ function Save-Shot([object]$State,[string]$Name){
  if([InertWizardCapture]::GetForegroundWindow() -ne [IntPtr]([long]$State.window)){throw 'VISUAL_OWN_FOREGROUND_REQUIRED'}
  $rect=New-Object InertWizardCapture+Rect
  if(![InertWizardCapture]::GetWindowRect([IntPtr]([long]$State.window),[ref]$rect)){throw 'VISUAL_WINDOW_UNAVAILABLE'}
+ $frame=New-Object InertWizardCapture+Rect
+ if([InertWizardCapture]::DwmGetWindowAttribute([IntPtr]([long]$State.window),9,[ref]$frame,16) -eq 0){$rect=$frame}
  # GDI не записывает alpha. RGB исключает прозрачные пропуски на настоящих снимках.
  $bitmap=New-Object Drawing.Bitmap ($rect.Right-$rect.Left),($rect.Bottom-$rect.Top),([Drawing.Imaging.PixelFormat]::Format24bppRgb)
  try{
@@ -168,6 +171,10 @@ function Save-Shot([object]$State,[string]$Name){
   # Снимается только собственное окно стенда на переднем плане, включая графические дочерние элементы.
   try{$graphics.CopyFromScreen($rect.Left,$rect.Top,0,0,$bitmap.Size)}finally{$graphics.Dispose()}
   $path=Join-Path $output ($Name+'.png');$bitmap.Save($path,[Drawing.Imaging.ImageFormat]::Png);$shots.Add($path)
+  if($env:VELIQ_INSTALLER_VISUAL_EXPORT -ceq '1' -and $Name -in @('update-welcome-dark','update-welcome-light','update-ready-dark','update-ready-light')){
+   $encoded=[Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+   for($n=0;$n -lt $encoded.Length;$n+=3000){Write-Host ('VELIQ_VISUAL_PNG raw-'+$Name+' '+[int]($n/3000)+' '+$encoded.Substring($n,[math]::Min(3000,$encoded.Length-$n)))}
+  }
   if($State.stage -in @('welcome','finished')){
    $origin=New-Object InertWizardCapture+Point
    if(![InertWizardCapture]::ClientToScreen([IntPtr]([long]$State.window),[ref]$origin)){throw 'VISUAL_CLIENT_UNAVAILABLE'}
@@ -231,7 +238,7 @@ try{
     try{
      for($i=0;$i -lt $chosen.Count;$i++){
       $img=[Drawing.Image]::FromFile((Join-Path $output ($chosen[$i]+'-'+$flavor+'.png')))
-      try{$x=($i%2)*$tileWidth;$y=[math]::Floor($i/2)*$tileHeight;$g.DrawString(('Инертный стенд: '+$chosen[$i]),$font,[Drawing.Brushes]::White,[single]($x+8),[single]($y+4));$ratio=[math]::Min(($tileWidth-16)/$img.Width,($tileHeight-30)/$img.Height);$g.DrawImage($img,[single]($x+8),[single]($y+26),[single]($img.Width*$ratio),[single]($img.Height*$ratio))}finally{$img.Dispose()}
+      try{$x=($i%2)*$tileWidth;$y=[math]::Floor($i/2)*$tileHeight;$g.DrawString(('Инертный стенд: '+$chosen[$i]),$font,[Drawing.Brushes]::White,[single]($x+8),[single]($y+4));$ratio=[math]::Min(($tileWidth-16)/$img.Width,($tileHeight-30)/$img.Height);$g.DrawImage($img,[single]($x+8),[single]($y+26),[single]($img.Width*$ratio),[single]($img.Height*$ratio));$g.Flush([Drawing.Drawing2D.FlushIntention]::Sync)}finally{$img.Dispose()}
      }
     }finally{$font.Dispose();$g.Dispose()}
     $sheetFile=Join-Path $output ('contact-'+$flavor+'.png');$sheet.Save($sheetFile,[Drawing.Imaging.ImageFormat]::Png)
