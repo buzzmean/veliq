@@ -2,7 +2,7 @@ name: Оформление установщика
 on:
   workflow_dispatch:
   push:
-    branches: [fix/installer-design-20261125]
+    branches: [fix/installer-design-20261125, fix/setup-gui-race-20261125]
   pull_request:
     paths:
       - 'installer/**'

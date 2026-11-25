@@ -18,11 +18,41 @@ function Get-OwnedServiceState([string]$Name='VELIQ'){
 }
 foreach($name in @('VELIQ','neexitlag')){if((Get-OwnedServiceState $name) -ne 'ABSENT'){throw 'EXISTING_SERVICE_PRESERVED'}}
 foreach($path in @($installed,$app,(Join-Path $env:ProgramData 'neexitlag'),(Join-Path $env:ProgramFiles 'VELIQ Setup'))){if(Test-Path -LiteralPath $path){throw 'EXISTING_INSTALLATION_PRESERVED'}}
-function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage,[switch]$AccountImage,[switch]$OmitNoRestart,[switch]$UpdateMode,[string]$InstallerAction=''){
+function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage,[switch]$AccountImage,[switch]$OmitNoRestart,[switch]$UpdateMode,[string]$InstallerAction='',
+ [string]$LateGuiPath='',[string]$LateGuiArguments='',[string]$LateGuiReady=''){
  # Inno's uninstaller delegates to _unins.tmp. Process.WaitForExit waits only
  # for the launcher; PowerShell Start-Process -Wait waits for its process tree.
  # A worker job preserves that behavior and bounds it without killing browsers.
  $log=Join-Path $env:RUNNER_TEMP ('beta-inno-'+$Stage+'-'+[guid]::NewGuid().ToString('N')+'.log')
+ $lateWorker=$null
+ if($LateGuiPath){
+  $lateWorker=Start-Job -ScriptBlock {
+   param($LogFile,$Executable,$Arguments,$ReadyFile)
+   $ErrorActionPreference='Stop';$process=$null
+   try{
+    $deadline=[DateTime]::UtcNow.AddSeconds(90)
+    $prepared=$false
+    while(!$prepared){
+     if(Test-Path -LiteralPath $LogFile){
+      $stream=[IO.File]::Open($LogFile,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::ReadWrite)
+      $reader=[IO.StreamReader]::new($stream)
+      try{$prepared=$reader.ReadToEnd() -match 'VELIQ_GUI_RACE_TEST_WINDOW'}finally{$reader.Dispose()}
+     }
+     if($prepared){break}
+     if([DateTime]::UtcNow -ge $deadline){throw 'LATE_GUI_PREPARE_WINDOW_MISSING'}
+     Start-Sleep -Milliseconds 10
+    }
+    $process=Start-Process -FilePath $Executable -ArgumentList $Arguments -WindowStyle Hidden -PassThru
+    $null=$process.Handle
+    $deadline=[DateTime]::UtcNow.AddSeconds(10)
+    while(!(Test-Path -LiteralPath $ReadyFile) -and !$process.HasExited -and [DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 25}
+    if(!(Test-Path -LiteralPath $ReadyFile)){throw 'LATE_GUI_NOT_READY'}
+    if(!$process.WaitForExit(120000)){throw 'LATE_GUI_NOT_CLOSED'}
+    if($null -eq $process.ExitCode){throw 'LATE_GUI_EXIT_UNAVAILABLE'}
+    [pscustomobject]@{pid=$process.Id;exit_code=[int]$process.ExitCode;ready=$true}
+   }finally{if($process){if(!$process.HasExited){$process.Kill();$process.WaitForExit()};$process.Dispose()}}
+  } -ArgumentList $log,$LateGuiPath,$LateGuiArguments,$LateGuiReady
+ }
  Write-Output ('BETA_INSTALLER_START stage='+$Stage)
  if([IO.Path]::GetFileName($Path) -eq 'unins000.exe'){
   # Read-only diagnostics for a refusal, without registry values or user paths.
@@ -76,10 +106,21 @@ function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0
   if($codes.Count -ne 1 -or $codes[0] -ne $ExpectedExit){throw ('OWNED_INSTALLER_EXIT_FAILED stage='+$Stage+' expected='+$ExpectedExit+' actual='+($codes -join ','))}
   if($InstallerAction -and $ExpectedExit -eq 0 -and (Get-Content -Raw -LiteralPath $log) -notmatch ('VELIQ_OPERATION='+[regex]::Escape($InstallerAction)+';')){throw 'INSTALLER_SELECTED_ACTION_NOT_EXECUTED'}
   if($Stage -like 'locked-gui*' -and (Get-Content -Raw -LiteralPath $log) -notmatch 'VELIQ_PREPARE_FAILED code=INSTALL_FILE_IN_USE_OR_NOT_WRITABLE'){throw 'INSTALLER_LOCKED_FILE_REASON_MISSING'}
+  if($lateWorker){
+   if(!(Wait-Job -Job $lateWorker -Timeout 15) -or $lateWorker.State -ne 'Completed'){throw 'LATE_GUI_WORKER_INCOMPLETE'}
+   $late=@(Receive-Job -Job $lateWorker -ErrorAction Stop)
+   if($late.Count -ne 1 -or $late[0].exit_code -ne 0 -or !$late[0].ready){throw 'LATE_GUI_NOT_GRACEFULLY_CLOSED'}
+   $content=[IO.File]::ReadAllText($log)
+   $sha=[Security.Cryptography.SHA256]::Create()
+   try{$key=([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::Unicode.GetBytes($app.TrimEnd('\').ToLowerInvariant())))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
+   if(!$content.Contains('VELIQ_GUI_BARRIER_ACQUIRED name=Global\VELIQ-GUI-Update-'+$key) -or !$content.Contains('VELIQ transaction ReplaceGui exit=0') -or !$content.Contains('VELIQ_GUI_BARRIER_RELEASED')){throw 'LATE_GUI_BARRIER_COPY_EVIDENCE_MISSING'}
+   Write-Output ('BETA_LATE_LEGACY_GUI_PASS pid='+$late[0].pid+' after Prepare; first Setup exit0; exclusive verified copy; scoped barrier released')
+  }
   Write-Output ('BETA_INSTALLER_FINISHED stage='+$Stage)
  }finally{
   if($worker.State -in @('Running','NotStarted')){Stop-Job -Job $worker}
   Remove-Job -Job $worker -Force
+  if($lateWorker){if($lateWorker.State -in @('Running','NotStarted')){Stop-Job -Job $lateWorker};Remove-Job -Job $lateWorker -Force}
  }
 }
 function Write-PreflightEnvironmentProbe {
@@ -157,7 +198,7 @@ func main(){
  if os.WriteFile(os.Args[4]+".ready",[]byte("ready"),0600)!=nil{os.Exit(42)}
  c,e:=l.Accept();if e!=nil{os.Exit(43)};defer c.Close();b:=make([]byte,1);if _,e=io.ReadFull(c,b);e!=nil||b[0]!=2{os.Exit(44)}
  raw,e:=os.ReadFile(os.Args[3]);var state struct{Primary string};if e!=nil||json.Unmarshal(raw,&state)!=nil||state.Primary!=os.Args[5]{os.WriteFile(os.Args[4],[]byte("ADDRESS_NOT_PERSISTED"),0600);os.Exit(45)}
- if os.Remove(os.Args[2])!=nil{os.Exit(46)};os.WriteFile(os.Args[4],[]byte("PERSISTED_BEFORE_GUI_CLOSE"),0600)
+ if e:=os.Remove(os.Args[2]);e!=nil&&!os.IsNotExist(e){os.Exit(46)};os.WriteFile(os.Args[4],[]byte("PERSISTED_BEFORE_GUI_CLOSE"),0600)
 }
 '@
  [IO.File]::WriteAllText($guiSource,$guiCode,[Text.UTF8Encoding]::new($false))
@@ -180,7 +221,16 @@ func main(){
   $deadline=[DateTime]::UtcNow.AddSeconds(10)
   while(!(Test-Path -LiteralPath ($guiMarker+'.ready')) -and [DateTime]::UtcNow -lt $deadline){Start-Sleep -Milliseconds 100}
   if(!(Test-Path -LiteralPath ($guiMarker+'.ready'))){throw 'OWNER_GUI_FIXTURE_NOT_READY'}
-  Invoke-OwnedInstaller $setup 'legacy-gui-endpoint-update'
+  $raceStage=Join-Path $env:RUNNER_TEMP ('beta-late-gui-'+[guid]::NewGuid().ToString('N'))
+  New-Item -ItemType Directory -Path $raceStage|Out-Null
+  $compiler=Join-Path $env:RUNNER_TEMP 'veliq-inno-6.4.3/ISCC.exe'
+  $fixtureVersion=[Diagnostics.FileVersionInfo]::GetVersionInfo((Join-Path $payload 'gui/VELIQ.exe')).FileVersion
+  & $compiler /Q ('/DStageRoot='+(Split-Path $payload -Parent)) ('/DAppVersion='+$fixtureVersion) /DVeliqGuiRaceFixture=1 ('/O'+$raceStage) (Join-Path $PSScriptRoot '../../installer/setup.iss')
+  if($LASTEXITCODE){throw 'LATE_GUI_FIXTURE_COMPILE_FAILED'}
+  $lateMarker=Join-Path $guiStage 'late-closed.txt'
+  $lateArgs='"'+$pipe+'" "'+$leasePath+'" "'+$endpointPath+'" "'+$lateMarker+'" "'+$address+'"'
+  Invoke-OwnedInstaller (Join-Path $raceStage 'VELIQ-Setup.exe') 'legacy-gui-endpoint-update' -LateGuiPath (Join-Path $app 'VELIQ.exe') -LateGuiArguments $lateArgs -LateGuiReady ($lateMarker+'.ready')
+  if([IO.File]::ReadAllText($lateMarker) -cne 'PERSISTED_BEFORE_GUI_CLOSE'){throw 'LATE_GUI_CLOSE_NOT_CONFIRMED'}
   if(!$fakeGui.WaitForExit(1000) -or [IO.File]::ReadAllText($guiMarker) -cne 'PERSISTED_BEFORE_GUI_CLOSE'){throw 'OWNER_ADDRESS_SAVED_AFTER_GUI_CLOSE'}
   $remembered=Get-Content -Raw -LiteralPath $endpointPath|ConvertFrom-Json
   if($remembered.primary -cne $address){throw 'OWNER_ADDRESS_CHANGED_DURING_SETUP'}

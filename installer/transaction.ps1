@@ -1,7 +1,8 @@
 [CmdletBinding()]
-param([ValidateSet('Prepare','Rollback','Commit')][string]$Action,
+param([ValidateSet('Prepare','ReplaceGui','Rollback','Commit','ResumeCommit','ResumeRollback')][string]$Action,
  [string]$AppDirectory,[string]$TransactionDirectory,[string]$DiagnosticFile,[string]$ErrorFile='',
- [string]$IncomingService='',[string]$OwnerProxyHelper='')
+ [string]$IncomingService='',[string]$OwnerProxyHelper='',
+ [string]$IncomingGui='',[string]$IncomingGuiSha256='',[switch]$DeferGuiResume)
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 if($PSVersionTable.PSEdition -eq 'Desktop'){
  $env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')+';'+[Environment]::GetEnvironmentVariable('PSModulePath','Machine')
@@ -50,13 +51,14 @@ function Stop-OwnedGui {
  $paths=@((Join-Path $app 'VELIQ.exe'))
  if($env:LOCALAPPDATA){$paths+=Join-Path $env:LOCALAPPDATA 'Programs\VELIQ\VELIQ.exe'}
  $owners=@{}
+ foreach($known in @($record.gui)){$owners[$known.sid+'-'+$known.session]=$known}
  foreach($process in @(Get-CimInstance Win32_Process -Filter "Name='VELIQ.exe' OR Name='NeExitLag.exe'" -OperationTimeoutSec 5)){
   if([string]$process.ExecutablePath -notin $paths){continue}
   $owner=Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid
   if($owner.ReturnValue -ne 0 -or !$owner.Sid){throw 'INSTALL_GUI_OWNER_UNAVAILABLE'}
   $key=$owner.Sid+'-'+$process.SessionId
   $owners[$key]=@{sid=$owner.Sid;session=$process.SessionId;path=$process.ExecutablePath}
-  if($Action -eq 'Prepare'){$record.gui=@($owners.Values);$record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8}
+  $record.gui=@($owners.Values);$record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
   $pipe=[IO.Pipes.NamedPipeClientStream]::new('.','NeExitLag-activate-'+$key,[IO.Pipes.PipeDirection]::Out)
   try{$pipe.Connect(1500);$pipe.WriteByte(2)}catch{throw 'INSTALL_GUI_GRACEFUL_CLOSE_FAILED'}finally{$pipe.Dispose()}
   try{
@@ -78,6 +80,44 @@ function Stop-OwnedGui {
   }finally{$process.Dispose()}
  }
  return @($owners.Values)
+}
+function Replace-OwnedGui {
+ if(!$IncomingGui -or $IncomingGuiSha256 -cnotmatch '^[a-f0-9]{64}$'){throw 'INSTALL_GUI_SOURCE_INVALID'}
+ Assert-TransactionParents $IncomingGui
+ Assert-TransactionTree $IncomingGui
+ $target=Join-Path $app 'VELIQ.exe'
+ Assert-TransactionTree $target
+ [void][IO.Directory]::CreateDirectory($app)
+ $source=[IO.File]::Open($IncomingGui,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+ $destination=$null;$sha=[Security.Cryptography.SHA256]::Create()
+ try{
+  $actual=([BitConverter]::ToString($sha.ComputeHash($source))).Replace('-','').ToLowerInvariant()
+  if($actual -cne $IncomingGuiSha256){throw 'INSTALL_GUI_SOURCE_HASH_MISMATCH'}
+  $source.Position=0
+  $deadline=[DateTime]::UtcNow.AddSeconds(30);$attempts=0
+  while(!$destination){
+   try{$null=Stop-OwnedGui}
+   catch{
+    if($_.Exception.Message -cne 'INSTALL_GUI_GRACEFUL_CLOSE_FAILED' -or [DateTime]::UtcNow -ge $deadline){throw}
+    Start-Sleep -Milliseconds 100;continue
+   }
+   try{$destination=[IO.File]::Open($target,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)}
+   catch{
+    $native=$_.Exception.HResult -band 65535
+    Write-VeliqInstallDiagnostic 'GUI_COPY_WAIT' @{native_code=$native;attempt=$attempts}
+    if($native -notin @(5,32,33) -or [DateTime]::UtcNow -ge $deadline){throw 'INSTALL_GUI_COPY_BUSY_OR_DENIED'}
+    $attempts++;Start-Sleep -Milliseconds 100
+   }
+  }
+  # Проверка и запись идут через один эксклюзивный дескриптор: новое
+  # отображение старого/частично записанного EXE в этот момент невозможно.
+  $destination.SetLength(0);$source.CopyTo($destination);$destination.Flush($true);$destination.Position=0
+  $actual=([BitConverter]::ToString($sha.ComputeHash($destination))).Replace('-','').ToLowerInvariant()
+  if($actual -cne $IncomingGuiSha256){throw 'INSTALL_GUI_COPY_HASH_MISMATCH'}
+  Write-VeliqInstallDiagnostic 'GUI_REPLACED_EXCLUSIVE' @{sha256=$actual;attempts=$attempts}
+ }finally{
+  if($destination){$destination.Dispose()};$source.Dispose();$sha.Dispose()
+ }
 }
 function Resume-OwnedGui($Record) {
  foreach($gui in @($Record.gui)){
@@ -174,6 +214,10 @@ try{
   }
   $record.phase='PREPARED';$record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
   Write-VeliqInstallDiagnostic 'TRANSACTION_PREPARED' @{service_existed=$record.service_existed;gui_count=$record.gui.Count}
+ }elseif($Action -eq 'ReplaceGui'){
+  $record=Get-Content -Raw -LiteralPath $recordPath|ConvertFrom-Json
+  if($record.app -ine $app -or $record.phase -cne 'PREPARED'){throw 'INSTALL_TRANSACTION_TARGET_MISMATCH'}
+  Replace-OwnedGui
  }elseif($Action -eq 'Rollback'){
   if(!(Test-Path -LiteralPath $recordPath)){exit 0}
   $record=Get-Content -Raw -LiteralPath $recordPath|ConvertFrom-Json
@@ -251,14 +295,26 @@ try{
    }
   }
   Remove-Item -LiteralPath (Join-Path $app 'install-success.json') -Force -ErrorAction SilentlyContinue
-  Resume-OwnedGui $record
+  if(!$DeferGuiResume){Resume-OwnedGui $record}
   Write-VeliqInstallDiagnostic 'TRANSACTION_ROLLED_BACK' @{payload_restored=($record.phase -eq 'PREPARED');service_restored=[bool]$record.service_existed}
  }elseif($Action -eq 'Commit'){
   if(!(Test-Path -LiteralPath (Join-Path $app 'install-success.json'))){throw 'INSTALL_TRANSACTION_SUCCESS_MISSING'}
   $record=Get-Content -Raw -LiteralPath $recordPath|ConvertFrom-Json
+  if(!$DeferGuiResume){
+   Resume-OwnedGui $record
+   $record.phase='COMMITTED';$record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
+   Write-VeliqInstallDiagnostic 'TRANSACTION_COMMITTED' @{result='COMPLETED'}
+  }
+ }elseif($Action -in @('ResumeCommit','ResumeRollback')){
+  if(!(Test-Path -LiteralPath $recordPath)){exit 0}
+  $record=Get-Content -Raw -LiteralPath $recordPath|ConvertFrom-Json
+  if($record.app -ine $app){throw 'INSTALL_TRANSACTION_TARGET_MISMATCH'}
+  if($Action -eq 'ResumeCommit' -and (!(Test-Path -LiteralPath (Join-Path $app 'install-success.json')) -or $record.phase -cne 'PREPARED')){throw 'INSTALL_TRANSACTION_SUCCESS_MISSING'}
   Resume-OwnedGui $record
-  $record.phase='COMMITTED';$record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
-  Write-VeliqInstallDiagnostic 'TRANSACTION_COMMITTED' @{result='COMPLETED'}
+  if($Action -eq 'ResumeCommit'){
+   $record.phase='COMMITTED';$record|ConvertTo-Json -Depth 5|Set-Content -LiteralPath $recordPath -Encoding UTF8
+   Write-VeliqInstallDiagnostic 'TRANSACTION_COMMITTED' @{result='COMPLETED'}
+  }
  }
  exit 0
 }catch{

@@ -8,6 +8,8 @@ public partial class App : System.Windows.Application
     Mutex? instance; bool ownsMutex; readonly CancellationTokenSource lifetime = new(); string activationPipe = "";
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // Запуск из ярлыка/автозапуска не должен занимать EXE во время замены.
+        if (SetupUpdateBarrier.IsActive(AppContext.BaseDirectory)) { Shutdown(); return; }
         CultureInfo.DefaultThreadCurrentCulture = Text.Russian;
         CultureInfo.DefaultThreadCurrentUICulture = Text.Russian;
         base.OnStartup(e);

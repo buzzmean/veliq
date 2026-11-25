@@ -19,11 +19,20 @@ try{
  [IO.File]::WriteAllText((Join-Path $app 'unins000.dat'),'old uninstall bytes')
  & $hostExe -NoProfile -File $script -Action Prepare -AppDirectory $app -TransactionDirectory $backup -DiagnosticFile $log
  if($LASTEXITCODE){if(Test-Path -LiteralPath $log){Get-Content -LiteralPath $log -Tail 4|Write-Output};throw 'FILES_PREPARE_FAILED'}
+ $incoming=Join-Path $fixture 'incoming.exe'
+ [IO.File]::WriteAllText($incoming,'verified candidate GUI bytes')
+ $incomingHash=(Get-FileHash -LiteralPath $incoming -Algorithm SHA256).Hash.ToLowerInvariant()
+ & $hostExe -NoProfile -File $script -Action ReplaceGui -AppDirectory $app -TransactionDirectory $backup -DiagnosticFile $log -IncomingGui $incoming -IncomingGuiSha256 ('0'*64)
+ if($LASTEXITCODE -ne 1 -or [IO.File]::ReadAllText((Join-Path $app 'VELIQ.exe')) -cne 'old GUI bytes'){throw 'FILES_GUI_INVALID_SOURCE_CHANGED_TARGET'}
+ & $hostExe -NoProfile -File $script -Action ReplaceGui -AppDirectory $app -TransactionDirectory $backup -DiagnosticFile $log -IncomingGui $incoming -IncomingGuiSha256 $incomingHash
+ if($LASTEXITCODE -ne 0 -or (Get-FileHash -LiteralPath (Join-Path $app 'VELIQ.exe')).Hash.ToLowerInvariant() -cne $incomingHash){throw 'FILES_GUI_EXCLUSIVE_COPY_FAILED'}
  [IO.File]::WriteAllText((Join-Path $app 'VELIQ.exe'),'new failed GUI bytes')
  [void][IO.Directory]::CreateDirectory((Join-Path $app 'service'))
  [IO.File]::WriteAllText((Join-Path $app 'service/new.exe'),'new payload')
- & $hostExe -NoProfile -File $script -Action Rollback -AppDirectory $app -TransactionDirectory $backup -DiagnosticFile $log
+ & $hostExe -NoProfile -File $script -Action Rollback -AppDirectory $app -TransactionDirectory $backup -DiagnosticFile $log -DeferGuiResume
  if($LASTEXITCODE){if(Test-Path -LiteralPath $log){Get-Content -LiteralPath $log -Tail 4|Write-Output};throw 'FILES_ROLLBACK_FAILED'}
+ & $hostExe -NoProfile -File $script -Action ResumeRollback -AppDirectory $app -TransactionDirectory $backup -DiagnosticFile $log
+ if($LASTEXITCODE){throw 'FILES_ROLLBACK_RESUME_FAILED'}
  foreach($pair in @(@('VELIQ.exe','old GUI bytes'),@('gui/data.dll','old library bytes'),@('unins000.dat','old uninstall bytes'))){
   if([IO.File]::ReadAllText((Join-Path $app $pair[0])) -cne $pair[1]){throw 'FILES_PREVIOUS_BYTES_NOT_RESTORED'}
  }

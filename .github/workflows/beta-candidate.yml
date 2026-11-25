@@ -2,7 +2,7 @@ name: Beta candidate kit (no deployment)
 on:
   workflow_dispatch:
   push:
-    branches: [feat/game-stun687-release-20261124, feat/installer-modes-20261124]
+    branches: [feat/game-stun687-release-20261124, feat/installer-modes-20261124, fix/setup-gui-race-20261125]
   pull_request:
     paths:
       - '.github/workflows/beta-candidate.yml'

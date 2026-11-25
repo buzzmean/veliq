@@ -37,7 +37,8 @@ AlwaysRestart=no
 SetupLogging=yes
 SetupMutex=Global\VELIQ-Install-Transaction
 UninstallRestartComputer=no
-; A busy GUI is a preflight failure. Never defer replacement to a later boot.
+; Собственные окна закрываются штатно; чужая блокировка остаётся отказом.
+; Замена никогда не переносится на следующую загрузку Windows.
 ; Interactive Setup selects and locks "do not restart" itself. Automation and
 ; uninstall retain /NORESTART because they do not use the wizard's choice.
 CloseApplications=no
@@ -76,17 +77,21 @@ Source: "{#StageRoot}\payload\installer\install-safety.ps1"; Flags: dontcopy
 Source: "{#StageRoot}\payload\installer\install-scope.ps1"; Flags: dontcopy
 Source: "{#StageRoot}\payload\service\veliq-service.exe"; DestName: "veliq-owner-endpoints.exe"; Flags: dontcopy
 Source: "{#StageRoot}\payload\tools\windows\owner-proxy-endpoints.ps1"; Flags: dontcopy
+Source: "{#StageRoot}\payload\gui\VELIQ.exe"; DestName: "veliq-incoming-gui.exe"; Flags: dontcopy
 Source: "{#StageRoot}\payload\installer\install-safety.ps1"; DestName: "veliq-install-preflight.ps1"; Flags: dontcopy
-Source: "{#StageRoot}\payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#StageRoot}\payload\gui\VELIQ.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#StageRoot}\payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; BeforeInstall: InstallGui
+Source: "{#StageRoot}\payload\gui\VELIQ.exe"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 [Run]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""& '{app}\installer\install-package.ps1' -DiagnosticFile '{code:DiagnosticFile}' -TransactionDirectory '{code:JournalTransactionDirectory}' -ClubCodeFile '{code:ClubCodeFile}' {code:ClubImageArgument} {code:UpdateArgument}"""; Flags: runhidden waituntilterminated; StatusMsg: "Устанавливаем VELIQ…"; BeforeInstall: ClearInstallMarker; AfterInstall: CheckInstall
 Filename: "{app}\VELIQ.exe"; Description: "{code:LaunchDescription}"; Flags: runasoriginaluser nowait postinstall skipifsilent; Check: ShowAccountSetup
 [Icons]
 Name: "{autoprograms}\VELIQ"; Filename: "{app}\VELIQ.exe"
 Name: "{autodesktop}\VELIQ"; Filename: "{app}\VELIQ.exe"; Tasks: desktopicon; Check: NotClubImage
+[UninstallDelete]
+Type: files; Name: "{app}\VELIQ.exe"
 [Code]
-var TransactionPrepared, PackageCompleted: Boolean;
+var TransactionPrepared, PackageCompleted, GuiInstalled: Boolean;
+    GuiBarrierHandle: LongWord;
     DiagnosticPath, TransactionPath: String;
     TransactionAttempt: Integer;
     ExistingInstall, ExistingManifest: Boolean;
@@ -97,6 +102,43 @@ var TransactionPrepared, PackageCompleted: Boolean;
 #include "setup-mode.iss"
 #include "setup-theme.iss"
 
+function OpenGuiBarrier(Attributes: LongWord; ManualReset, Signaled: Boolean; Name: String): LongWord;
+ external 'CreateEventW@kernel32.dll stdcall';
+function SignalGuiBarrier(Handle: LongWord): Boolean;
+ external 'SetEvent@kernel32.dll stdcall';
+function ResetGuiBarrier(Handle: LongWord): Boolean;
+ external 'ResetEvent@kernel32.dll stdcall';
+function CloseGuiBarrierHandle(Handle: LongWord): Boolean;
+ external 'CloseHandle@kernel32.dll stdcall';
+function BeginGuiUpdateBarrier(): Boolean;
+var Name: String; Error: LongWord;
+begin
+ Result := True;
+ if GuiBarrierHandle<>0 then Exit;
+ Name := 'Global\VELIQ-GUI-Update-' + Lowercase(GetSHA256OfUnicodeString(Lowercase(RemoveBackslashUnlessRoot(ExpandConstant('{app}')))));
+ GuiBarrierHandle := OpenGuiBarrier(0, True, False, Name);
+ Error := DLLGetLastError;
+ if GuiBarrierHandle<>0 then begin
+   if SignalGuiBarrier(GuiBarrierHandle) then begin
+     Log('VELIQ_GUI_BARRIER_ACQUIRED name=' + Name);
+     Exit;
+   end;
+   Error := DLLGetLastError;
+ end;
+ if GuiBarrierHandle<>0 then CloseGuiBarrierHandle(GuiBarrierHandle);
+ GuiBarrierHandle := 0;
+ Log('VELIQ_GUI_BARRIER_FAILED native=' + IntToStr(Error));
+ Result := False;
+end;
+procedure EndGuiUpdateBarrier;
+begin
+ if GuiBarrierHandle<>0 then begin
+   ResetGuiBarrier(GuiBarrierHandle);
+   CloseGuiBarrierHandle(GuiBarrierHandle);
+   GuiBarrierHandle := 0;
+   Log('VELIQ_GUI_BARRIER_RELEASED');
+ end;
+end;
 function JournalTransactionDirectory(Param: String): String;
 begin
  Result := TransactionPath;
@@ -111,8 +153,22 @@ begin
   TransactionPath + '.' + Action + '.error"';
  if Action='Prepare' then Command := Command + ' -IncomingService "' + ExpandConstant('{tmp}\veliq-owner-endpoints.exe') +
   '" -OwnerProxyHelper "' + ExpandConstant('{tmp}\owner-proxy-endpoints.ps1') + '"';
+ if Action='ReplaceGui' then Command := Command + ' -IncomingGui "' + ExpandConstant('{tmp}\veliq-incoming-gui.exe') +
+  '" -IncomingGuiSha256 "' + Lowercase(GetSHA256OfFile(ExpandConstant('{tmp}\veliq-incoming-gui.exe'))) + '"';
+ if (Action='Commit') or (Action='Rollback') then Command := Command + ' -DeferGuiResume';
  if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Command, '', SW_HIDE, ewWaitUntilTerminated, Code) then Result := Code;
  Log('VELIQ transaction ' + Action + ' exit=' + IntToStr(Result));
+end;
+function RollbackAndResume(): Integer;
+begin
+ Result := 1;
+ if not BeginGuiUpdateBarrier() then Exit;
+ try
+   Result := RunTransaction('Rollback');
+ finally
+   EndGuiUpdateBarrier;
+ end;
+ if Result=0 then Result := RunTransaction('ResumeRollback');
 end;
 function SafeSessionArguments(RequireNoRestart: Boolean): Boolean;
 var I, Separator: Integer; Arg: String; NoRestart: Boolean;
@@ -307,6 +363,14 @@ begin
    if IsVeliqErrorCode(Trim(String(Value))) then Result := Trim(String(Value));
 end;
 
+procedure InstallGui;
+begin
+ if GuiInstalled then Exit;
+ if not TransactionPrepared then RaiseException('INSTALL_TRANSACTION_NOT_PREPARED');
+ if RunTransaction('ReplaceGui')<>0 then RaiseException(TransactionErrorCode('ReplaceGui'));
+ GuiInstalled := True;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var Code: Integer; FailureCode, Operation: String;
 begin
@@ -336,6 +400,12 @@ begin
  ExtractTemporaryFile('install-scope.ps1');
  ExtractTemporaryFile('veliq-owner-endpoints.exe');
  ExtractTemporaryFile('owner-proxy-endpoints.ps1');
+ ExtractTemporaryFile('veliq-incoming-gui.exe');
+ if not BeginGuiUpdateBarrier() then begin
+   Result := 'Не удалось подготовить обновление VELIQ. Код: INSTALL_GUI_UPDATE_BARRIER_UNAVAILABLE';
+   Exit;
+ end;
+ GuiInstalled := False;
  Code := RunTransaction('Prepare');
  if Code<>0 then begin
    FailureCode := TransactionErrorCode('Prepare');
@@ -345,11 +415,17 @@ begin
  end;
  if Result<>'' then
  begin
-   if RunTransaction('Rollback')<>0 then
+   if RollbackAndResume()<>0 then
      Result := Result + #13#10 + 'Восстановление состояния: ' + TransactionErrorCode('Rollback');
    Result := Result + #13#10 + 'Диагностика: ' + DiagnosticPath + #13#10 + 'Журнал Setup: ' + ExpandConstant('{log}');
  end
- else TransactionPrepared := True;
+ else begin
+   TransactionPrepared := True;
+   #ifdef VeliqGuiRaceFixture
+   Log('VELIQ_GUI_RACE_TEST_WINDOW');
+   Sleep(3000);
+   #endif
+ end;
 end;
 function NotClubImage(): Boolean;
 begin
@@ -393,25 +469,32 @@ procedure CheckInstall;
 begin
  if not FileExists(ExpandConstant('{app}\install-success.json')) then
  begin
-   if RunTransaction('Rollback')=0 then TransactionPrepared := False;
+   if RollbackAndResume()=0 then TransactionPrepared := False;
    Log('VELIQ_INSTALL_FAILED; diagnostics=' + DiagnosticPath);
    if not WizardSilent then MsgBox('Установка VELIQ не завершена. Диагностика: ' + DiagnosticPath + '. Журнал: ' + ExpandConstant('{log}'), mbError, MB_OK);
    Exit;
  end;
- if RunTransaction('Commit')<>0 then begin
-   if RunTransaction('Rollback')=0 then TransactionPrepared := False;
-   Log('VELIQ_COMMIT_FAILED; diagnostics=' + DiagnosticPath);
-   if not WizardSilent then MsgBox('Не удалось подтвердить завершение VELIQ. Диагностика: ' + DiagnosticPath, mbError, MB_OK);
-   Exit;
+ if RunTransaction('Commit')=0 then begin
+   EndGuiUpdateBarrier;
+   if RunTransaction('ResumeCommit')=0 then begin
+     PackageCompleted := True;
+     Exit;
+   end;
  end;
- PackageCompleted := True;
+ if RollbackAndResume()=0 then TransactionPrepared := False;
+ Log('VELIQ_COMMIT_FAILED; diagnostics=' + DiagnosticPath);
+ if not WizardSilent then MsgBox('Не удалось подтвердить завершение VELIQ. Диагностика: ' + DiagnosticPath, mbError, MB_OK);
 end;
 
 procedure DeinitializeSetup;
 begin
- if TransactionPrepared and not PackageCompleted then begin
-   if RunTransaction('Rollback')<>0 then
-     Log('VELIQ ROLLBACK_FAILED; backup retained at ' + TransactionPath);
+ try
+   if TransactionPrepared and not PackageCompleted then begin
+     if RollbackAndResume()<>0 then
+       Log('VELIQ ROLLBACK_FAILED; backup retained at ' + TransactionPath);
+   end;
+ finally
+   EndGuiUpdateBarrier;
  end;
 end;
 
