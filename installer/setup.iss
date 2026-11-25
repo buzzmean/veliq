@@ -212,7 +212,8 @@ begin
  LockNoRestartChoice;
  ApplyVeliqTheme;
  if (CurPageID=wpWelcome) and ExistingInstall then begin
-   WizardForm.WelcomeLabel1.Caption := 'Обновление VELIQ';
+   if SelectedOperation='REINSTALL' then WizardForm.WelcomeLabel1.Caption := 'Переустановка VELIQ'
+   else WizardForm.WelcomeLabel1.Caption := 'Обновление VELIQ';
    WizardForm.WelcomeLabel2.Caption := 'Установщик обновит файлы программы. Активация, настройки и профили сохранятся.';
  end;
  if OperationPage<>nil then

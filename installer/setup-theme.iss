@@ -16,9 +16,7 @@ begin
  if Control is TPanel then begin
    TPanel(Control).Color := VeliqBackground;
    TPanel(Control).Font.Color := VeliqText;
- end else if Control is TNewNotebook then
-   TNewNotebook(Control).Color := VeliqBackground
- else if Control is TNewNotebookPage then
+ end else if Control is TNewNotebookPage then
    TNewNotebookPage(Control).Color := VeliqBackground
  else if Control is TBitmapImage then
    TBitmapImage(Control).BackColor := VeliqBackground
