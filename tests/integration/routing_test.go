@@ -59,6 +59,10 @@ func TestSimultaneousDirectRelayPinning(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+	// Ответ может прийти раньше обновления счётчика после отправки UDP-пакета.
+	for r.Metrics.UDPPackets.Load() < 20 && ctx.Err() == nil {
+		time.Sleep(time.Millisecond)
+	}
 	if r.Metrics.UDPPackets.Load() != 20 {
 		t.Fatalf("relay got %d packets, expected only selected flow", r.Metrics.UDPPackets.Load())
 	}

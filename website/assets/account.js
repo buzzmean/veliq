@@ -28,7 +28,7 @@
     MAIL_NOT_CONFIGURED: 'Вход временно недоступен. Напишите нам — поможем.',
     MAIL_UNAVAILABLE: 'Не удалось отправить письмо. Попробуйте ещё раз через минуту.',
     ACCOUNT_NOT_CONFIGURED: 'Личный кабинет временно недоступен. Обратитесь в поддержку.',
-    PAYMENT_NOT_CONFIGURED: 'Онлайн-оплата пока не подключена. Для подключения или продления обратитесь в поддержку.',
+    PAYMENT_NOT_CONFIGURED: 'Сейчас не удаётся открыть оплату. Попробуйте позже или обратитесь в поддержку.',
     PAYMENT_PERIOD_INVALID: 'Выберите срок 1, 3, 6 или 12 месяцев.',
     PAYMENT_PRICE_CHANGED: 'Условия оплаты изменились. Проверьте новый расчёт.',
     PAYMENT_UNAVAILABLE: 'Не удалось создать оплату. Если деньги уже списаны, не платите повторно: проверьте статус или обратитесь в поддержку.',
@@ -324,8 +324,8 @@
     if(!s.lifetime){card.appendChild(durationLabel);card.appendChild(quote);if(paymentsOn)card.appendChild(promo);}
     function showPaymentConfirmation(refreshed) {
       if(checking||pay.disabled)return;
-      if(!paymentsOn){say(err,'Онлайн-оплата пока не подключена. Для оформления или продления обратитесь в поддержку.');return;}
-      var expected=window.veliqPricing&&window.veliqPricing.prices[s.kind];if(expected&&p.price_per_seat_rub!==expected){say(err,'Для оформления по актуальному тарифу обратитесь в поддержку. Онлайн-оплата пока недоступна.');return;}
+      if(!paymentsOn){say(err,MESSAGES.PAYMENT_NOT_CONFIGURED);return;}
+      var expected=window.veliqPricing&&window.veliqPricing.prices[s.kind];if(expected&&p.price_per_seat_rub!==expected){say(err,'Цена изменилась. Обновите кабинет и проверьте расчёт. Если сумма остаётся неверной, обратитесь в поддержку.');return;}
       if(!terms.length || p.period_days!==30 || !quotedAmount()){say(err,'Тариф временно недоступен для онлайн-оплаты. Обратитесь в поддержку.');return;}
       busy(pay, true); say(err, ''); duration.disabled=true;promoInput.disabled=true;apply.disabled=true;remove.disabled=true;
       function unlock(){busy(pay,false);duration.disabled=false;promoInput.disabled=false;apply.disabled=false;remove.disabled=false;}
@@ -379,7 +379,7 @@
     if (s.club_verification && s.club_verification !== 'verified') {
       card.appendChild(el('p', 'muted acc-small', s.club_verification === 'pending' ? MESSAGES.CLUB_VERIFICATION_PENDING : s.club_verification === 'expired' ? MESSAGES.SUBSCRIPTION_EXPIRED : MESSAGES.CLUB_PAYMENT_REQUIRED));
     }
-    if (!paymentsOn && !s.lifetime) card.appendChild(el('p', 'muted acc-small', 'Онлайн-оплата пока не подключена. Для подключения или продления обратитесь в поддержку.'));
+    if (!paymentsOn && !s.lifetime) card.appendChild(el('p', 'muted acc-small', MESSAGES.PAYMENT_NOT_CONFIGURED));
     if (paymentsOn && autoRenewAvailable && !s.lifetime) {
       var auto = el('label', 'acc-auto'); var box = el('input'); box.type = 'checkbox'; box.checked = s.auto_renew;
       box.addEventListener('change', function () { call('POST', '/subscriptions/' + s.id + '/auto-renew', { enabled: box.checked }).catch(function (x) { box.checked = !box.checked; say(err, message(x.message)); }); });
