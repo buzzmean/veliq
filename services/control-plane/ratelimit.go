@@ -107,3 +107,8 @@ func newLoginLimiter(now time.Time) *limiter {
 	l.ipBr = 10
 	return l
 }
+
+func newFleetTicketLimiter(now time.Time) *limiter {
+	return &limiter{global: bucket{tokens: 40, last: now}, perIP: make(map[string]*bucket),
+		globalRate: 20, globalBr: 40, ipRate: 2, ipBr: 4, maxIPs: 64}
+}

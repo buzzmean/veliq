@@ -109,6 +109,17 @@ func main() {
 		}
 		adminToken = strings.TrimSpace(string(b))
 	}
+	fleetRegistryToken := ""
+	if path := os.Getenv("VELIQ_FLEET_REGISTRY_TOKEN_FILE"); path != "" {
+		raw, err := os.ReadFile(path)
+		if err != nil || len(raw) > 257 {
+			fail(fmt.Errorf("fleet registry credential unavailable"))
+		}
+		fleetRegistryToken = strings.TrimSpace(string(raw))
+		if fleetRegistryToken == "" {
+			fail(fmt.Errorf("fleet registry credential empty"))
+		}
+	}
 	var clubVerificationToken string
 	if *clubVerificationTokenFile != "" {
 		b, e := os.ReadFile(*clubVerificationTokenFile)
@@ -214,7 +225,7 @@ func main() {
 	if *accountOrigin != "" && (!strings.HasPrefix(*accountOrigin, "https://") || strings.Count(*accountOrigin, "/") != 2) {
 		fail(fmt.Errorf("account origin must look like https://host"))
 	}
-	api, e := controlplane.New(store, controlplane.Settings{LocalCatalogFile: *localCatalogFile, LocalLearningFile: *localLearningFile, RelayTrafficFile: *relayTrafficFile, EnrollmentProbeToken: enrollProbeToken, AdminToken: adminToken, KeyID: *kid, SigningKey: key, CA: cert, CAKey: cak, ServerCertificate: serverLeaf,
+	api, e := controlplane.New(store, controlplane.Settings{LocalCatalogFile: *localCatalogFile, LocalLearningFile: *localLearningFile, RelayTrafficFile: *relayTrafficFile, EnrollmentProbeToken: enrollProbeToken, AdminToken: adminToken, FleetRegistryToken: fleetRegistryToken, KeyID: *kid, SigningKey: key, CA: cert, CAKey: cak, ServerCertificate: serverLeaf,
 		AccountOrigin: *accountOrigin, Mailer: mailer, Plans: plans, Payments: payments, EnforceSubscription: *enforce, PersonalTrials: *personalTrials, ClubVerificationToken: clubVerificationToken})
 	if e != nil {
 		fail(e)

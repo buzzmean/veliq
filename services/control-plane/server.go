@@ -35,6 +35,7 @@ type Settings struct {
 	LocalLearningFile    string
 	EnrollmentProbeToken string
 	AdminToken           string
+	FleetRegistryToken   string
 	KeyID                string
 	SigningKey           ed25519.PrivateKey
 	CA                   *x509.Certificate
@@ -63,6 +64,7 @@ type API struct {
 	limit                                     *limiter
 	enrollIP, enrollCode                      *limiter
 	loginIP                                   *limiter
+	fleetTickets                              *limiter
 	loginDeliveries                           chan struct{}
 }
 
@@ -73,7 +75,12 @@ func New(s *Store, c Settings) (*API, error) {
 	if c.ClubVerificationToken != "" && (len(c.ClubVerificationToken) < 32 || c.ClubVerificationToken == c.AdminToken || c.ClubVerificationToken == c.EnrollmentProbeToken || strings.ContainsAny(c.ClubVerificationToken, " \t\r\n")) {
 		return nil, errors.New("distinct club verification token of at least 32 characters required")
 	}
-	return &API{Store: s, Settings: c, limit: newLimiter(time.Now()), enrollIP: newEnrollmentLimiter(time.Now()), enrollCode: newEnrollmentLimiter(time.Now()), loginIP: newLoginLimiter(time.Now()), loginDeliveries: make(chan struct{}, 2)}, nil
+	if token := c.FleetRegistryToken; token != "" &&
+		(len(token) < 24 || len(token) > 256 || strings.ContainsAny(token, " \r\n\t") ||
+			subtle.ConstantTimeCompare([]byte(token), []byte(c.AdminToken)) == 1) {
+		return nil, errors.New("invalid fleet registry credential")
+	}
+	return &API{Store: s, Settings: c, limit: newLimiter(time.Now()), enrollIP: newEnrollmentLimiter(time.Now()), enrollCode: newEnrollmentLimiter(time.Now()), loginIP: newLoginLimiter(time.Now()), fleetTickets: newFleetTicketLimiter(time.Now()), loginDeliveries: make(chan struct{}, 2)}, nil
 }
 func (a *API) publish(ctx context.Context) ([]byte, error) {
 	pub := a.Settings.SigningKey.Public().(ed25519.PublicKey)
@@ -144,6 +151,10 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("POST /api/v1/devices/renew", a.renewCertificate)
 	m.HandleFunc("/api/v1/relays", a.relays)
 	m.HandleFunc("POST /api/v1/relays/heartbeat", a.heartbeat)
+	m.HandleFunc("POST /api/v1/fleet/config", a.fleetConfig)
+	m.HandleFunc("POST /api/v1/fleet/heartbeat", a.fleetHeartbeat)
+	m.HandleFunc("GET /api/v1/fleet/registry", a.fleetRegistry)
+	m.HandleFunc("POST /api/v1/fleet/registry", a.fleetRegistry)
 	m.HandleFunc("/api/v1/apps", a.apps)
 	m.HandleFunc("POST /api/v1/telemetry", a.telemetry)
 	m.HandleFunc("POST /api/v1/subscription/status", a.subscriptionStatus)
@@ -176,6 +187,9 @@ func (a *API) Handler() http.Handler {
 		// Liveness probes cost one ping and must work even when clients are throttled.
 		allowed := r.URL.Path == "/healthz" || a.limit.allow(time.Now(), sourceKey(r))
 		if !allowed {
+			if strings.HasPrefix(r.URL.Path, "/api/v1/fleet/") {
+				w.Header().Set("Retry-After", "1")
+			}
 			a.fail(w, 429, "rate limit")
 			return
 		}
@@ -223,8 +237,24 @@ func (a *API) auth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !exists {
-		a.fail(w, 400, "unknown relay")
-		return
+		allowed, err := a.Store.fleetTicket(r.Context(), p.RelayID, d.ID)
+		if err != nil {
+			a.fail(w, 503, "fleet registry unavailable")
+			return
+		}
+		if !allowed {
+			a.fail(w, 400, "unknown relay")
+			return
+		}
+		if !ent.Active(time.Now()) {
+			a.fail(w, 402, "SUBSCRIPTION_EXPIRED")
+			return
+		}
+		if !a.fleetTickets.allow(time.Now(), d.ID) {
+			w.Header().Set("Retry-After", "1")
+			a.fail(w, 429, "fleet ticket rate limit")
+			return
+		}
 	}
 	if e = a.Store.ConsumeProof(r.Context(), p); e != nil {
 		a.AuthFailures.Add(1)

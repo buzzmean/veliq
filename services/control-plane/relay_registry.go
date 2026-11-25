@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/buzzmean/veliq/core/optimizer"
+	"github.com/buzzmean/veliq/core/security"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -23,7 +25,7 @@ type FleetRelayState struct {
 func (s *Store) FleetRelay(ctx context.Context, id string) (FleetRelayState, error) {
 	var state FleetRelayState
 	var raw []byte
-	err := s.DB.QueryRow(ctx, "SELECT metadata,heartbeat_token_hash,healthy,heartbeat_at FROM relay_nodes WHERE id=$1", id).Scan(&raw, &state.HeartbeatHash, &state.Healthy, &state.HeartbeatAt)
+	err := s.DB.QueryRow(ctx, "SELECT metadata,heartbeat_token_hash,healthy,heartbeat_at FROM relay_nodes WHERE id=$1 AND "+legacyRelayFilter, id).Scan(&raw, &state.HeartbeatHash, &state.Healthy, &state.HeartbeatAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return state, nil
 	}
@@ -38,6 +40,9 @@ func (s *Store) FleetRelay(ctx context.Context, id string) (FleetRelayState, err
 // Compare-and-publish is atomic. Rollback means a NEW signed config containing
 // the previous relay row, never restoration of DB/security records or versions.
 func (s *Store) ChangeFleetRelay(ctx context.Context, id, expectedAddress string, next FleetRelayState, kid string, key []byte, public map[string]string, expectedHash []byte) error {
+	if strings.EqualFold(id, security.FleetProofAudience) {
+		return ErrFleetRegistryConflict
+	}
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
 		return err
@@ -47,8 +52,14 @@ func (s *Store) ChangeFleetRelay(ctx context.Context, id, expectedAddress string
 		return err
 	}
 	var raw, hash []byte
+	var preserved *fleetRegistryMeta
 	err = tx.QueryRow(ctx, "SELECT metadata,heartbeat_token_hash FROM relay_nodes WHERE id=$1 FOR UPDATE", id).Scan(&raw, &hash)
 	if err == nil {
+		row, decodeErr := decodeFleetRow(raw)
+		if decodeErr != nil || row.Fleet != nil && (row.Fleet.Managed || !next.Exists) {
+			return ErrFleetRegistryConflict
+		}
+		preserved = row.Fleet
 		var old optimizer.RelayCandidate
 		if json.Unmarshal(raw, &old) != nil || old.Address != expectedAddress || !bytes.Equal(hash, expectedHash) {
 			return errors.New("RELAY_REGISTRY_CONCURRENT_CHANGE")
@@ -60,7 +71,10 @@ func (s *Store) ChangeFleetRelay(ctx context.Context, id, expectedAddress string
 		if next.Node.ID != id {
 			return errors.New("RELAY_REGISTRY_ID_MISMATCH")
 		}
-		raw, err = json.Marshal(next.Node)
+		raw, err = json.Marshal(struct {
+			optimizer.RelayCandidate
+			Fleet *fleetRegistryMeta `json:"fleet,omitempty"`
+		}{next.Node, preserved})
 		if err != nil {
 			return err
 		}
@@ -76,7 +90,7 @@ func (s *Store) ChangeFleetRelay(ctx context.Context, id, expectedAddress string
 		return err
 	}
 	var count int
-	if err = tx.QueryRow(ctx, "SELECT count(*) FROM relay_nodes").Scan(&count); err != nil {
+	if err = tx.QueryRow(ctx, "SELECT count(*) FROM relay_nodes WHERE "+legacyRelayFilter).Scan(&count); err != nil {
 		return err
 	}
 	if count != len(rows) || count > 32 {
