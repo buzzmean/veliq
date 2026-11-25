@@ -48,6 +48,18 @@ func DialWithTicketPathMigration(ctx context.Context, addr string, t *tls.Config
 	return c, nil
 }
 
+type ticketNetworkError struct{ cause error }
+
+func (e *ticketNetworkError) Error() string { return e.cause.Error() }
+func (e *ticketNetworkError) Unwrap() error { return e.cause }
+
+// TicketNetworkFailure marks a definitive network failure before the initial
+// ticket is written. Certificate and ticket errors stay terminal.
+func TicketNetworkFailure(err error) bool {
+	var network *ticketNetworkError
+	return errors.As(err, &network)
+}
+
 func dialWithTicket(ctx context.Context, addr string, t *tls.Config, ticket []byte, pathDial func(context.Context, *tls.Config) (*quic.Conn, error)) (*Client, error) {
 	cfg := t.Clone()
 	cfg.NextProtos = []string{protocol.LeaseALPN, protocol.TicketALPN}
@@ -60,6 +72,11 @@ func dialWithTicket(ctx context.Context, addr string, t *tls.Config, ticket []by
 		conn, e = pathDial(ctx, cfg)
 	}
 	if e != nil {
+		var timeout net.Error
+		var dns *net.DNSError
+		if errors.As(e, &timeout) && timeout.Timeout() || errors.As(e, &dns) {
+			return nil, &ticketNetworkError{e}
+		}
 		return nil, e
 	}
 	handshakeMS := float64(time.Since(start)) / float64(time.Millisecond)

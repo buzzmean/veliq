@@ -1,6 +1,7 @@
 package clientservice
 
 import (
+	"github.com/buzzmean/veliq/core/flowpolicy"
 	"github.com/buzzmean/veliq/core/profiles"
 )
 
@@ -9,6 +10,11 @@ import (
 // MANUAL and explicit per-flow rules remain deliberate operator choices.
 func automaticRelayAllowed(p profiles.Profile) bool {
 	return browserAuto(p) || relayFirstPreset(presetFor(p)) || presetFor(p) == "discord"
+}
+
+// An explicit profile or rule retains its operator-selected relay.
+func implicitRelay(p profiles.Profile, r flowpolicy.Result) bool {
+	return p.Mode == profiles.Auto && p.RelayID == "" && r.RuleID == "" && r.Source != "rule"
 }
 
 func (c *Controller) applicationAutomaticRelayAllowed(id string) bool {

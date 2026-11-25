@@ -24,6 +24,7 @@ type RouteMeasurement struct {
 	RouteAddress        string         `json:"-"`
 	Network             string         `json:"-"`
 	AuthenticatedTarget bool           `json:"-"`
+	FleetProbe          bool           `json:"-"`
 	RouteID             string         `json:"route_id"`
 	RTT                 time.Duration  `json:"rtt"`
 	Jitter              time.Duration  `json:"jitter"`

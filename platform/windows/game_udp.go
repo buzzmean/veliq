@@ -176,7 +176,8 @@ func BindGameUDP(d Decision, id ProcessIdentity, t Tuple, now time.Time) (Decisi
 		if qualified {
 			d.Policy.Reason = gameudp.MeasuredRelaySelection
 		}
-		d.Flow.PinnedPolicy = &routing.Policy{Route: d.Route, BlockOnFailure: true, ExactRelay: qualified, RelayAddress: d.GameQualityRelayAddress}
+		implicit := d.Flow.PinnedPolicy != nil && d.Flow.PinnedPolicy.ImplicitRelay
+		d.Flow.PinnedPolicy = &routing.Policy{Route: d.Route, BlockOnFailure: true, ExactRelay: qualified, RelayAddress: d.GameQualityRelayAddress, ImplicitRelay: implicit && !qualified}
 	}
 	return d, f, nil
 }

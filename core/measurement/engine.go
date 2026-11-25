@@ -23,6 +23,11 @@ type Candidate struct {
 	Open          Opener
 	Load          float64
 	Authenticated bool
+	// SerialRelay keeps the two fleet candidates from contending for the
+	// client's single relay probe slot within a round.
+	SerialRelay bool
+	// Eligible is checked before opening a probe flow.
+	Eligible func() bool
 }
 type Settings struct {
 	ActiveInterval, IdleInterval, Timeout, Spacing time.Duration
@@ -96,8 +101,19 @@ func (e *Engine) round(ctx context.Context, observe func(optimizer.RouteMeasurem
 	out := make([]optimizer.RouteMeasurement, len(all))
 	sem := make(chan struct{}, e.Settings.Concurrency)
 	var wg sync.WaitGroup
+	var serial []int
+	run := func(i int, c Candidate) {
+		out[i] = e.Probe(ctx, c)
+		if observe != nil && out[i].RouteID != "" {
+			observe(out[i])
+		}
+	}
 launch:
 	for i, c := range all {
+		if c.SerialRelay {
+			serial = append(serial, i)
+			continue
+		}
 		select {
 		case <-ctx.Done():
 			break launch
@@ -107,20 +123,34 @@ launch:
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			out[i] = e.Probe(ctx, c)
-			if observe != nil && out[i].RouteID != "" {
-				observe(out[i])
-			}
+			run(i, c)
 		}()
+	}
+	for _, i := range serial {
+		if ctx.Err() != nil {
+			break
+		}
+		run(i, all[i])
 	}
 	wg.Wait()
 	return out
 }
+func (e *Engine) hasFleetProbe() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, candidate := range e.candidates {
+		if candidate.SerialRelay {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) Run(ctx context.Context, observe func(optimizer.RouteMeasurement)) {
 	for {
 		e.round(ctx, observe)
 		interval := e.Settings.IdleInterval
-		if e.Active.Load() {
+		if e.Active.Load() || e.hasFleetProbe() {
 			interval = e.Settings.ActiveInterval
 		}
 		t := time.NewTimer(interval)
@@ -139,9 +169,12 @@ func (e *Engine) Probe(ctx context.Context, c Candidate) optimizer.RouteMeasurem
 	case <-ctx.Done():
 		return optimizer.RouteMeasurement{}
 	}
-	m := optimizer.RouteMeasurement{RouteID: c.Metadata.ID, RouteAddress: c.Metadata.Address, Target: c.Target, AuthenticatedTarget: c.Authenticated, Load: c.Load, ObservedAt: time.Now(), Stability: 1}
+	m := optimizer.RouteMeasurement{RouteID: c.Metadata.ID, RouteAddress: c.Metadata.Address, Target: c.Target, AuthenticatedTarget: c.Authenticated, FleetProbe: c.SerialRelay, Load: c.Load, ObservedAt: time.Now(), Stability: 1}
 	if e.Network != nil {
 		m.Network = e.Network()
+	}
+	if c.Eligible != nil && !c.Eligible() {
+		return optimizer.RouteMeasurement{}
 	}
 	if c.Open == nil || !c.Target.IsValid() {
 		m.FailureRate = 1
@@ -157,7 +190,7 @@ func (e *Engine) Probe(ctx context.Context, c Candidate) optimizer.RouteMeasurem
 		}
 		m.FailureRate = 1
 		m.TransportError = "open_failed"
-		if e.OnFailure != nil && !telemetry.IsLocal(err) && ctx.Err() == nil {
+		if e.OnFailure != nil && !c.SerialRelay && !telemetry.IsLocal(err) && ctx.Err() == nil {
 			e.OnFailure(c.Metadata.ID, "transport_open_failed", time.Now())
 		}
 		return m
@@ -232,7 +265,7 @@ func (e *Engine) Probe(ctx context.Context, c Candidate) optimizer.RouteMeasurem
 				sample.Outcome = optimizer.TransportFailure
 				m.TransportError = "transport_io_failed"
 			}
-			if e.OnFailure != nil && ctx.Err() == nil && (m.ConsecutiveLoss >= 3 || sample.Outcome == optimizer.TransportFailure) {
+			if e.OnFailure != nil && !c.SerialRelay && ctx.Err() == nil && (m.ConsecutiveLoss >= 3 || sample.Outcome == optimizer.TransportFailure) {
 				e.OnFailure(c.Metadata.ID, "probe_unresponsive", time.Now())
 			}
 			if sample.Outcome != optimizer.Timeout {

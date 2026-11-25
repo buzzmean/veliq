@@ -3,6 +3,7 @@ package routing
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/buzzmean/veliq/core/protocol"
 	"io"
 	"net"
@@ -13,6 +14,18 @@ import (
 
 var ErrFlowExists = errors.New("flow already pinned")
 var ErrLimit = errors.New("flow limit reached")
+var ErrFleetPolicy = errors.New("fleet relay admission failed")
+
+type existingFlowKey struct{}
+
+func WithExistingFlow(ctx context.Context) context.Context {
+	return context.WithValue(ctx, existingFlowKey{}, true)
+}
+
+func ExistingFlow(ctx context.Context) bool {
+	replay, _ := ctx.Value(existingFlowKey{}).(bool)
+	return replay
+}
 
 type Datagram interface {
 	Send([]byte) error
@@ -23,6 +36,11 @@ type Relay interface {
 	OpenDatagram(context.Context, netip.AddrPort) (Datagram, error)
 	OpenTCP(context.Context, netip.AddrPort) (net.Conn, error)
 }
+type FleetRelay interface {
+	Enabled() bool
+	OpenTCP(context.Context, Flow) (net.Conn, string, error)
+	OpenDatagram(context.Context, Flow) (Datagram, string, error)
+}
 type Policy struct {
 	Route          Route
 	BlockOnFailure bool
@@ -31,6 +49,8 @@ type Policy struct {
 	Backups        []Route
 	ExactRelay     bool // This route was measured against a specific physical relay.
 	RelayAddress   string
+	ImplicitRelay  bool
+	fleet          FleetRelay
 }
 type Key struct {
 	Protocol            string
@@ -38,16 +58,19 @@ type Key struct {
 	PID                 uint32
 }
 type Engine struct {
-	healthMu     sync.Mutex
-	health       map[udpHealthKey]udpHealth
-	mu           sync.Mutex
-	policies     map[string]Policy
-	relays       map[string]Relay
-	exactRelays  map[string]exactRelay
-	flows        map[Key]Flow
-	limit        int
-	selectPolicy func(Flow) Policy
-	onBytes      func(Flow, uint64, uint64)
+	healthMu       sync.Mutex
+	health         map[udpHealthKey]udpHealth
+	mu             sync.Mutex
+	policies       map[string]Policy
+	relays         map[string]Relay
+	fleet          FleetRelay
+	exactRelays    map[string]exactRelay
+	flows          map[Key]Flow
+	legacyImplicit int
+	fleetImplicit  int
+	limit          int
+	selectPolicy   func(Flow) Policy
+	onBytes        func(Flow, uint64, uint64)
 }
 
 type exactRelay struct {
@@ -79,6 +102,11 @@ func (e *Engine) SetRelay(id string, r Relay) {
 	} else {
 		e.relays[id] = r
 	}
+}
+func (e *Engine) SetFleetRelay(relay FleetRelay) {
+	e.mu.Lock()
+	e.fleet = relay
+	e.mu.Unlock()
 }
 func (e *Engine) SetExactRelay(id, address string, r Relay) {
 	e.mu.Lock()
@@ -114,15 +142,34 @@ func (e *Engine) reserve(f Flow) (Key, Policy, Relay, error) {
 	} else if p.Auto && e.selectPolicy != nil {
 		selected := e.selectPolicy(f)
 		selected.BlockOnFailure = p.BlockOnFailure
+		selected.ImplicitRelay = p.ImplicitRelay
 		p = selected
 	}
 	if p.Block {
 		return k, p, nil, errors.New("application blocked by policy")
 	}
+	implicit := p.ImplicitRelay && !p.ExactRelay && !p.Route.Direct() && f.Destination.Port() != 53 && !LocalDestination(f.Destination.Addr())
+	if implicit && e.fleet != nil && e.fleet.Enabled() {
+		if e.legacyImplicit > 0 {
+			return k, p, nil, fmt.Errorf("%w: previous implicit relay flows still bound", ErrFleetPolicy)
+		}
+		p.fleet = e.fleet
+		f.FleetBound = true
+		e.fleetImplicit++
+	} else if implicit {
+		if e.fleetImplicit > 0 {
+			return k, p, nil, fmt.Errorf("%w: previous fleet relay flows still bound", ErrFleetPolicy)
+		}
+		f.legacyImplicit = true
+		e.legacyImplicit++
+	}
 	f.Route = p.Route
 	f.CreatedAt = time.Now()
 	f.LastActivity = f.CreatedAt
 	e.flows[k] = f
+	if p.fleet != nil {
+		return k, p, nil, nil
+	}
 	if p.ExactRelay {
 		node := e.exactRelays[p.Route.RelayID]
 		if p.RelayAddress == "" || p.RelayAddress != node.address {
@@ -132,7 +179,25 @@ func (e *Engine) reserve(f Flow) (Key, Policy, Relay, error) {
 	}
 	return k, p, e.relays[p.Route.RelayID], nil
 }
-func (e *Engine) remove(k Key) { e.mu.Lock(); delete(e.flows, k); e.mu.Unlock() }
+func (e *Engine) flowRoute(f Flow) (Route, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	active, ok := e.flows[key(f)]
+	return active.Route, ok
+}
+
+func (e *Engine) remove(k Key) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	f := e.flows[k]
+	if f.legacyImplicit {
+		e.legacyImplicit--
+	}
+	if f.FleetBound {
+		e.fleetImplicit--
+	}
+	delete(e.flows, k)
+}
 
 // Observer runs AFTER releasing the engine lock; accounting cannot reenter or
 // stall routing while holding its critical section. It never chooses a route.
@@ -158,16 +223,16 @@ func (e *Engine) account(k Key, tx, rx uint64) {
 func (e *Engine) pinRoute(k Key, r Route) {
 	e.mu.Lock()
 	f := e.flows[k]
+	if f.legacyImplicit && r.Direct() {
+		f.legacyImplicit = false
+		e.legacyImplicit--
+	}
 	f.Route = r
 	e.flows[k] = f
 	e.mu.Unlock()
 }
 func (e *Engine) direct(k Key) {
-	e.mu.Lock()
-	f := e.flows[k]
-	f.Route = Route{}
-	e.flows[k] = f
-	e.mu.Unlock()
+	e.pinRoute(k, Route{})
 }
 func (e *Engine) Snapshot() []Flow {
 	e.mu.Lock()
@@ -197,6 +262,25 @@ func (e *Engine) openUDP(ctx context.Context, f Flow, payloadLimit int) (Datagra
 	k, p, r, err := e.reserve(f)
 	if err != nil {
 		return nil, err
+	}
+	if p.fleet != nil {
+		if ExistingFlow(ctx) {
+			e.remove(k)
+			return nil, fmt.Errorf("%w: fleet requires a new application flow", ErrFleetPolicy)
+		}
+		d, id, err := p.fleet.OpenDatagram(ctx, f)
+		if err != nil || d == nil || id == "" {
+			if d != nil {
+				_ = d.Close()
+			}
+			e.remove(k)
+			if err == nil {
+				err = errors.New("fleet relay returned no datagram or identity")
+			}
+			return nil, fmt.Errorf("%w: %w", ErrFleetPolicy, err)
+		}
+		e.pinRoute(k, Route{RelayID: id})
+		return &trackedUDP{Datagram: d, e: e, k: k}, nil
 	}
 	var d Datagram
 	if !p.Route.Direct() {
@@ -268,6 +352,25 @@ func (e *Engine) OpenTCP(ctx context.Context, f Flow) (net.Conn, error) {
 	k, p, r, err := e.reserve(f)
 	if err != nil {
 		return nil, err
+	}
+	if p.fleet != nil {
+		if ExistingFlow(ctx) {
+			e.remove(k)
+			return nil, fmt.Errorf("%w: fleet requires a new application flow", ErrFleetPolicy)
+		}
+		conn, id, err := p.fleet.OpenTCP(ctx, f)
+		if err != nil || conn == nil || id == "" {
+			if conn != nil {
+				_ = conn.Close()
+			}
+			e.remove(k)
+			if err == nil {
+				err = errors.New("fleet relay returned no connection or identity")
+			}
+			return nil, fmt.Errorf("%w: %w", ErrFleetPolicy, err)
+		}
+		e.pinRoute(k, Route{RelayID: id})
+		return &trackedTCP{Conn: conn, e: e, k: k, fleetBound: true}, nil
 	}
 	var c net.Conn
 	if !p.Route.Direct() {
@@ -401,10 +504,13 @@ func (f *directUDP) Close() error { return f.c.Close() }
 
 type trackedTCP struct {
 	net.Conn
-	e    *Engine
-	k    Key
-	once sync.Once
+	e          *Engine
+	k          Key
+	once       sync.Once
+	fleetBound bool
 }
+
+func (f *trackedTCP) FleetRelayBound() bool { return f.fleetBound }
 
 func (f *trackedTCP) Read(b []byte) (int, error) {
 	n, err := f.Conn.Read(b)

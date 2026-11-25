@@ -34,11 +34,13 @@ func (r Route) Type() RouteKind {
 func (r Route) Direct() bool { return r.RelayID == "" }
 
 type Flow struct {
-	OriginDomain  string  `json:"origin_domain,omitempty"`
-	OriginService string  `json:"origin_service,omitempty"`
-	OriginReason  string  `json:"origin_reason,omitempty"`
-	Network       string  `json:"network_fingerprint,omitempty"`
-	PinnedPolicy  *Policy `json:"-"`
+	OriginDomain   string  `json:"origin_domain,omitempty"`
+	OriginService  string  `json:"origin_service,omitempty"`
+	OriginReason   string  `json:"origin_reason,omitempty"`
+	Network        string  `json:"network_fingerprint,omitempty"`
+	PinnedPolicy   *Policy `json:"-"`
+	FleetBound     bool    `json:"-"`
+	legacyImplicit bool
 	// UDPFakePrelude asks the adaptive DIRECT path to send this many fake
 	// datagrams before each of the first UDPFakeCutoff real ones (Discord voice).
 	UDPFakePrelude, UDPFakeCutoff uint8 `json:"-"`

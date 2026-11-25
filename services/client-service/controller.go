@@ -89,7 +89,7 @@ type Snapshot struct {
 	ActiveAppExecutables map[string]string             `json:"active_app_executables,omitempty"`
 }
 type Controller struct {
-	diagnostics atomic.Pointer[persistentDiagnostics]
+	diagnostics      atomic.Pointer[persistentDiagnostics]
 	emergencyHandler func(context.Context, string, json.RawMessage) (any, error)
 	emergencyStopped atomic.Bool
 	emergencyClosed  atomic.Bool
@@ -106,6 +106,7 @@ type Controller struct {
 	subscription     subscriptionRuntime
 	remoteDone       chan struct{}
 	remoteMu         sync.Mutex
+	fleet            *relayFleet
 	remoteCancel     context.CancelFunc
 	selfExecutable   string
 	isLanGameProcess func(windowsplatform.ProcessIdentity) bool
@@ -177,6 +178,8 @@ func New(ctx context.Context) *Controller {
 	c.Selector.SetFlapGuard(optimizer.DefaultFlapGuard())
 	c.Measurements.OnFailure = c.Selector.ReportProbeFailure
 	c.Measurements.Network = c.gameMeasurementNetwork
+	c.fleet = newRelayFleet(c.gameMeasurementNetwork)
+	c.Engine.SetFleetRelay(c.fleet)
 	c.Engine.SetAutoSelector(func(f routing.Flow) routing.Policy {
 		c.mu.Lock()
 		automatic := c.settings.Automatic
@@ -214,6 +217,7 @@ func (c *Controller) syncPolicies() {
 		switch p.Mode {
 		case profiles.Auto:
 			policy.Auto = automaticRelayAllowed(p)
+			policy.ImplicitRelay = implicitRelay(p, flowpolicy.Result{})
 		case profiles.DirectPlus:
 			policy.Route = routing.Route{Kind: routing.DirectPlusRoute}
 		case profiles.Manual:
@@ -263,6 +267,10 @@ func (c *Controller) Start() {
 	go func() {
 		defer c.wg.Done()
 		c.Measurements.Run(c.ctx, func(m optimizer.RouteMeasurement) {
+			if m.FleetProbe {
+				c.fleet.observe(m)
+				return
+			}
 			c.Selector.Observe(m)
 			c.games.quality.Observe(m)
 		})
@@ -307,9 +315,13 @@ func (c *Controller) closeResources() {
 		c.Backend.Stop()
 	}
 	c.wg.Wait()
-	if d:=c.diagnostics.Load();d!=nil && d.done!=nil {
-		timer:=time.NewTimer(2*time.Second)
-		select{case <-d.done:timer.Stop();case <-timer.C:}
+	if d := c.diagnostics.Load(); d != nil && d.done != nil {
+		timer := time.NewTimer(2 * time.Second)
+		select {
+		case <-d.done:
+			timer.Stop()
+		case <-timer.C:
+		}
 	}
 	_ = c.traffic.Flush()
 }
@@ -640,7 +652,10 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		if err != nil {
 			if d := c.diagnostics.Load(); d != nil {
 				code, native := clubhealth.ErrorCode(err)
-				switch err.Error() {case "ACTIVATION_REQUIRED","CLUB_ADMIN_MANAGED","CAPTURE_START_FAILED","EMERGENCY_STOP_IN_PROGRESS":code=err.Error()}
+				switch err.Error() {
+				case "ACTIVATION_REQUIRED", "CLUB_ADMIN_MANAGED", "CAPTURE_START_FAILED", "EMERGENCY_STOP_IN_PROGRESS":
+					code = err.Error()
+				}
 				d.note("IPC", "SERVICE_HANDLER", "observed", code, native, "")
 			}
 		}
@@ -802,7 +817,7 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 		return c.handleBrowser(method, raw)
 	case "local.presets", "local.preset.apply", "local.get", "local.set", "local.metrics", "local.network", "local.record", "local.recommend", "local.compare":
 		return c.handleLocal(method, raw)
-	case "acceptance.readiness", "relay.primary.status", "relay.pool.diagnostics", "quality.diagnostics":
+	case "acceptance.readiness", "relay.primary.status", "relay.pool.diagnostics", "relay.fleet.status", "quality.diagnostics":
 		return c.handleRelayDiagnostics(ctx, method, raw)
 	case "capture.changes.marker", "capture.changes", "capture.marker", "capture.diagnostics":
 		return c.handleCapture(ctx, method, raw)
@@ -811,8 +826,10 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 	case "status":
 		return c.Snapshot(), nil
 	case "diagnostics.status":
-		if d := c.diagnostics.Load(); d != nil { return d.status.Load(), nil }
-		return diagnosticStatus{Storage:"NOT_CONFIGURED"}, nil
+		if d := c.diagnostics.Load(); d != nil {
+			return d.status.Load(), nil
+		}
+		return diagnosticStatus{Storage: "NOT_CONFIGURED"}, nil
 	case "profiles":
 		return c.Profiles.List(), nil
 	case "profiles.routing":
@@ -918,7 +935,11 @@ func (c *Controller) Diagnostics(ctx context.Context) []Check {
 		if m.RouteID == "" {
 			continue
 		}
-		c.Selector.Observe(m)
+		if m.FleetProbe {
+			c.fleet.observe(m)
+		} else {
+			c.Selector.Observe(m)
+		}
 		status := "unavailable"
 		if m.Available {
 			status = "healthy"

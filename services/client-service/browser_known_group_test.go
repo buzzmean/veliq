@@ -3,6 +3,7 @@ package clientservice
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/buzzmean/veliq/core/transport"
 	"io"
 	"net"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/buzzmean/veliq/core/browserproxy"
 	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/routing"
 	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
@@ -40,6 +42,13 @@ func TestBrowserKnownGroupsRelayFirstWithoutColdDirectOrFallback(t *testing.T) {
 	// Do not spread YouTube cache keys or local strategy eligibility to other groups.
 	if flowpolicy.DirectTimeoutHost("web.telegram.org") == "youtube.com" || youtubeRelayDomain("claude.ai") || youtubeDomain("claude.ai") {
 		t.Fatal("family policy cross-contamination")
+	}
+}
+
+func TestBrowserFleetOpenDoesNotRestartOriginAfterItsRetryBudget(t *testing.T) {
+	err := fmt.Errorf("%w: %w", routing.ErrFleetPolicy, &transport.OpenError{Reason: "upstream_dial_failed"})
+	if recoverableKnownOriginOpen(err) {
+		t.Fatal("legacy origin recovery would start a fresh chain of fleet OPENs")
 	}
 }
 func TestBrowserKnownGroupsExactScopeDNSAndOrdinaryRoutes(t *testing.T) {

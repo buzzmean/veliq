@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"flag"
 	"github.com/buzzmean/veliq/core/controlclient"
 	"github.com/buzzmean/veliq/core/protocol"
@@ -40,6 +41,8 @@ func main() {
 	heartbeatFile := flag.String("heartbeat-token-file", "", "relay-specific heartbeat token")
 	allowHTTP := flag.Bool("allow-http-development", false, "allow HTTP on isolated development network")
 	cpCA := flag.String("control-plane-ca", "", "explicit private TLS CA for control plane")
+	fleetMode := flag.Bool("fleet-admission", false, "require signed fleet admission before accepting new sessions or streams")
+	fleetObserve := flag.Bool("fleet-observe-only", false, "report scoped measurements without changing legacy admission")
 	version := flag.Bool("version-json", false, "print build and upgrade capabilities without opening credentials or listeners")
 	flag.Parse()
 	if *version {
@@ -64,6 +67,7 @@ func main() {
 		}
 	}
 	var verifier *security.TicketVerifier
+	var fleetGate *relay.FleetAdmission
 	var cp *controlclient.Client
 	var heartbeat string
 	if *relayID != "" {
@@ -82,6 +86,12 @@ func main() {
 				fail(e)
 			}
 			keys[id] = k
+		}
+		if *fleetMode {
+			fleetGate, e = relay.NewFleetAdmission(*relayID, keys)
+			if e != nil {
+				fail(e)
+			}
 		}
 		verifier, e = security.NewPersistentTicketVerifier(keys, *relayID, *replayFile)
 		if e != nil {
@@ -106,12 +116,45 @@ func main() {
 		}
 		heartbeat = strings.TrimSpace(string(raw))
 	}
-	r, e := relay.Listen(*addr, relay.Config{TLS: t, Allow: prefixes, TicketVerifier: verifier})
+	if (*fleetMode || *fleetObserve) && (*relayID == "" || cp == nil || *cpCA == "" ||
+		!strings.HasPrefix(*cpURL, "https://") || len(heartbeat) != 32) {
+		fail(errors.New("fleet requires relay audience, pinned HTTPS control plane, and node-specific heartbeat credential"))
+	}
+	r, e := relay.Listen(*addr, relay.Config{TLS: t, Allow: prefixes, TicketVerifier: verifier,
+		Fleet: fleetGate, FleetObserve: *fleetObserve})
 	if e != nil {
 		fail(e)
 	}
 	background, cancelBackground := context.WithCancel(context.Background())
 	defer cancelBackground()
+	if fleetGate != nil || *fleetObserve {
+		go func() {
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+			for {
+				now := time.Now().UTC()
+				sampled, valid := r.FleetSample(now)
+				var applied uint64
+				if fleetGate != nil {
+					applied = fleetGate.Version()
+				}
+				req, cancel := context.WithTimeout(background, 5*time.Second)
+				raw, err := cp.FleetHeartbeat(req, security.FleetHeartbeat{
+					ID: *relayID, Sequence: uint64(now.UnixNano()), AppliedVersion: applied,
+					Sampled: valid, Used: sampled, ObserveOnly: *fleetObserve,
+				}, heartbeat)
+				cancel()
+				if err == nil && fleetGate != nil {
+					_ = fleetGate.Apply(raw, time.Now())
+				}
+				select {
+				case <-background.Done():
+					return
+				case <-ticker.C:
+				}
+			}
+		}()
+	}
 	var latestTraffic atomic.Pointer[traffic.Observation]
 	if *trafficState != "" {
 		tally, err := traffic.NewMonth(*trafficState)
@@ -161,7 +204,9 @@ func main() {
 					verifier.Update(keys, cfg.RevokedDevices)
 				}
 				if heartbeat != "" {
-					_ = cp.Heartbeat(request, *relayID, heartbeat, float64(r.Metrics.Sessions.Load())/128)
+					if fleetGate == nil {
+						_ = cp.Heartbeat(request, *relayID, heartbeat, float64(r.Metrics.Sessions.Load())/128)
+					}
 					if o := latestTraffic.Load(); o != nil {
 						_ = cp.RelayTraffic(request, heartbeat, *o)
 					}

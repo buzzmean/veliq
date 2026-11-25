@@ -114,7 +114,7 @@ func connect(ctx context.Context, path, id, address string) (*transport.Client, 
 	return c, m, nil
 }
 
-func probe(ctx context.Context, c *transport.Client, m manifest) error {
+func probeEcho(ctx context.Context, c *transport.Client, m manifest) error {
 	key, e := e2eprobe.Token(m.ProbeTokenFile)
 	if e != nil {
 		return errors.New("UDP_PROBE_TOKEN_UNAVAILABLE")
@@ -136,6 +136,13 @@ func probe(ctx context.Context, c *transport.Client, m manifest) error {
 	got, e := flow.Receive(ctx)
 	if e != nil || !bytes.Equal(got, p) {
 		return errors.New("UDP_AUTHENTICATED_ECHO_FAILED")
+	}
+	return nil
+}
+
+func probe(ctx context.Context, c *transport.Client, m manifest) error {
+	if err := probeEcho(ctx, c, m); err != nil {
+		return err
 	}
 	raw, e := c.OpenTCP(ctx, netip.MustParseAddrPort("1.1.1.1:443"))
 	if e != nil {
@@ -173,7 +180,8 @@ func probe(ctx context.Context, c *transport.Client, m manifest) error {
 func run() error {
 	f := flag.NewFlagSet("relay-client", flag.ContinueOnError)
 	f.SetOutput(io.Discard)
-	mode := f.String("mode", "probe", "probe/status")
+	mode := f.String("mode", "probe", "probe/status/fleet-staged")
+	target := f.String("probe-target", "", "exact staged echo target, required for fleet-staged")
 	id := f.String("relay-id", "VPS-01", "signed relay identity")
 	address := f.String("address", "", "literal IPv4:4433")
 	manifestPath := f.String("manifest", filepath.Join(os.Getenv("ProgramData"), "neexitlag", "service.json"), "installed manifest")
@@ -185,7 +193,21 @@ func run() error {
 		return cachedStatus(*manifestPath)
 	}
 	a, e := netip.ParseAddrPort(*address)
-	if e != nil || !a.Addr().Is4() || !a.Addr().IsGlobalUnicast() || a.Addr().IsPrivate() || (a.Port() != 4433 && a.Port() != 4434) {
+	if *mode == "fleet-staged" {
+		explicit := false
+		f.Visit(func(opt *flag.Flag) {
+			if opt.Name == "manifest" {
+				explicit = true
+			}
+		})
+		if e != nil || a.Port() == 0 || !security.FleetNodeID(*id) || !explicit || *target == "" {
+			return errors.New("EXPLICIT_STAGE_MANIFEST_ADDRESS_AND_PROBE_REQUIRED")
+		}
+		staged, e := clientconfig.Load(*manifestPath)
+		if e != nil || staged.ProbeTarget != *target {
+			return errors.New("STAGED_PROBE_TARGET_MISMATCH")
+		}
+	} else if *mode != "probe" || *target != "" || e != nil || !a.Addr().Is4() || !a.Addr().IsGlobalUnicast() || a.Addr().IsPrivate() || (a.Port() != 4433 && a.Port() != 4434) {
 		return errors.New("EXPLICIT_PUBLIC_RELAY_REQUIRED")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*seconds)*time.Second)
@@ -197,6 +219,18 @@ func run() error {
 	}
 	defer c.Close()
 	setupMS := float64(time.Since(start)) / float64(time.Millisecond)
+	if *mode == "fleet-staged" {
+		if m.ProbeTarget != *target {
+			return errors.New("STAGED_PROBE_TARGET_MISMATCH")
+		}
+		if e = probeEcho(ctx, c, m); e != nil {
+			return e
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]any{
+			"pass": true, "relay_id": *id, "address": *address, "probe_target": *target,
+			"proof": "verified_mtls_audience_authenticated_udp_echo",
+		})
+	}
 	if *mode == "probe" {
 		if e = probe(ctx, c, m); e != nil {
 			return e
