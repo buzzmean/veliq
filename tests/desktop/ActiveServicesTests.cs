@@ -22,7 +22,8 @@ public sealed class ActiveServicesTests
         Assert.Equal("local", Assert.Single(vm.ServiceApplications).Name);
         Assert.Equal(3, vm.Applications.Count);
         vm.ShowTechnical = true;
-        Assert.Equal(3, vm.ServiceApplications.Count());
+        Assert.Equal("local", Assert.Single(vm.ServiceApplications).Name);
+        Assert.Equal(3, vm.Applications.Count);
     }
 
     [Fact]

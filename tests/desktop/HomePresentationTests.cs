@@ -6,7 +6,7 @@ public sealed class HomePresentationTests {
   var vm=new DesktopViewModel(new PickerService());
   vm.Apply(new(){Connected=true,Optimizing=true,Primary="DIRECT",Routes=[new(){Id="DIRECT",Status="healthy",RttMs=68.3,ObservedAt=DateTimeOffset.UtcNow},new(){Id="hel-01",Status="healthy",RttMs=71.9,ObservedAt=DateTimeOffset.UtcNow}]},[]);
   Assert.Equal("hel-01",vm.Server);Assert.Equal("hel-01, 71,9 мс",vm.GoSub);
-  Assert.StartsWith("Маршруты построены",vm.HomeLead);
+  Assert.Equal("VELIQ подбирает маршрут для активных соединений.",vm.HomeLead);
   vm.Apply(new(){Optimizing=false},[]);
   Assert.Equal("выключено",vm.GoSub);Assert.StartsWith("Нажмите кнопку",vm.HomeLead);
  }

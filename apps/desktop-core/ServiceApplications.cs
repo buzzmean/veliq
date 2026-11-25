@@ -5,7 +5,7 @@ namespace Veliq.Desktop;
 public sealed partial class DesktopViewModel
 {
     public ObservableCollection<ApplicationRow> ActiveServices { get; } = [];
-    public IEnumerable<ApplicationRow> ServiceApplications => ShowTechnical ? Applications : ActiveServices;
+    public IEnumerable<ApplicationRow> ServiceApplications => ActiveServices;
     public bool HasVisibleServices => ServiceApplications.Any();
     public bool NoActiveServices => !HasVisibleServices;
 
