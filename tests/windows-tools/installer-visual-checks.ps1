@@ -44,6 +44,7 @@ DisableDirPage=yes
 DisableProgramGroupPage=yes
 OutputDir=.
 OutputBaseFilename=visual
+SetupIconFile={ICON}
 {APPEARANCE}
 [Languages]
 Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
@@ -125,7 +126,7 @@ begin
  if CurStep=ssPostInstall then PackageCompleted := True;
 end;
 '@
-$fixture=$fixture.Replace('{BUILD}',$build).Replace('{APPEARANCE}',$appearance).Replace('{LANG}',(Section 'LangOptions')).Replace('{MESSAGES}',(Section 'Messages')).Replace('{POLICY}',$policy).Replace('{THEME}',$theme).Replace('{HANDLERS}',$handlers)
+$fixture=$fixture.Replace('{BUILD}',$build).Replace('{ICON}',(Join-Path $repo 'brand/icons/app-icon.ico')).Replace('{APPEARANCE}',$appearance).Replace('{LANG}',(Section 'LangOptions')).Replace('{MESSAGES}',(Section 'Messages')).Replace('{POLICY}',$policy).Replace('{THEME}',$theme).Replace('{HANDLERS}',$handlers)
 [IO.File]::WriteAllText((Join-Path $directory 'visual.iss'),$fixture,[Text.UTF8Encoding]::new($true))
 Add-Type -AssemblyName System.Drawing
 Add-Type -TypeDefinition @'
@@ -157,7 +158,8 @@ function Save-Shot([object]$State,[string]$Name){
  Start-Sleep -Milliseconds 250
  $rect=New-Object InertWizardCapture+Rect
  if(![InertWizardCapture]::GetWindowRect([IntPtr]([long]$State.window),[ref]$rect)){throw 'VISUAL_WINDOW_UNAVAILABLE'}
- $bitmap=New-Object Drawing.Bitmap ($rect.Right-$rect.Left),($rect.Bottom-$rect.Top)
+ # GDI не записывает alpha. RGB исключает прозрачные пропуски на настоящих снимках.
+ $bitmap=New-Object Drawing.Bitmap ($rect.Right-$rect.Left),($rect.Bottom-$rect.Top),([Drawing.Imaging.PixelFormat]::Format24bppRgb)
  try{
   $graphics=[Drawing.Graphics]::FromImage($bitmap);$dc=$graphics.GetHdc()
   try{if(![InertWizardCapture]::PrintWindow([IntPtr]([long]$State.window),$dc,2)){throw 'VISUAL_PRINT_WINDOW_FAILED'}}finally{$graphics.ReleaseHdc($dc);$graphics.Dispose()}

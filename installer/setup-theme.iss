@@ -107,7 +107,7 @@ begin
  { Фон изображения рисуется отдельно от родителя. Он и давал белую рамку. }
  WizardForm.WizardBitmapImage.BackColor := $0B0A0A;
  WizardForm.WizardBitmapImage2.BackColor := $0B0A0A;
- WizardForm.ReadyMemo.Color := VeliqSurface;
+ WizardForm.ReadyMemo.Color := VeliqBackground;
  WizardForm.ReadyMemo.Font.Color := VeliqText;
  WizardForm.ReadyMemo.BorderStyle := bsNone;
  WizardForm.ReadyMemo.ScrollBars := ssNone;
