@@ -169,3 +169,74 @@ func TestPersistentWindowsReplayAfterServiceRestartIsNotLoss(t *testing.T) {
 		t.Fatal("подменены исходные данные записиWindows")
 	}
 }
+
+func TestPersistentSchannelReplayKeepsOriginalProcessEvidence(t *testing.T) {
+	now := time.Now().UTC()
+	first := diagnosticFixture(1, now)
+	first.Observer = "WINDOWS_EVENT_LOG"
+	first.RecordID = 90
+	first.EventID = 36876
+	first.Component = "TLS"
+	first.State = "observed"
+	first.PID = 42
+	first.App = "steam.exe"
+	first.Birth = 123
+	first.ProcessVerified = true
+	j := Journal{Format: 1, Device: "owner"}
+	j.Add(first, now)
+	replay := first
+	replay.Version = "0.3.800"
+	replay.Session = "cccccccccccccccccccccccccccccccc"
+	replay.ServicePID++
+	replay.App = ""
+	replay.Birth = 0
+	replay.ProcessVerified = false
+	if j.Add(replay, now) || j.Lost != 0 || j.Rows[0].Event != first {
+		t.Fatal("выход процесса уничтожил прежнее подтверждение записи")
+	}
+	contradictory := first
+	contradictory.Birth++
+	if _, ok := DiagnosticUpdate(first, contradictory); ok {
+		t.Fatal("две разные проверенные личности смешаны")
+	}
+	replay.PID++
+	if _, ok := DiagnosticUpdate(first, replay); ok {
+		t.Fatal("изменённый сырой PID принят")
+	}
+}
+
+func TestPersistentCrashAndRecoverySurviveTLSLogFlood(t *testing.T) {
+	now := time.Now().UTC()
+	j := Journal{Format: 1, Device: "owner"}
+	for n := 1; n <= JournalEvents; n++ {
+		e := diagnosticFixture(n, now)
+		e.State = "observed"
+		e.Component = "TLS"
+		e.Observer = "WINDOWS_EVENT_LOG"
+		e.RecordID = uint64(n)
+		j.Add(e, now)
+	}
+	crash := diagnosticFixture(10001, now)
+	crash.State = "observed"
+	crash.Component = "WINDOWS"
+	crash.Observer = "WINDOWS_EVENT_LOG"
+	crash.Code = "BUGCHECK"
+	crash.RecordID = 10001
+	recovered := diagnosticFixture(10002, now)
+	recovered.State = "recovered"
+	recovered.Component = "CAPTURE"
+	recovered.Code = "CAPTURE_READY"
+	j.Add(crash, now)
+	j.Add(recovered, now)
+	for n := 11000; n < 12000; n++ {
+		e := diagnosticFixture(n, now)
+		e.State = "observed"
+		e.Component = "JOURNAL"
+		e.Code = "EVENTS_LOST"
+		j.Add(e, now)
+	}
+	b := j.Batch()
+	if len(b.Events) < 2 || b.Events[0].ID != crash.ID || b.Events[1].ID != recovered.ID {
+		t.Fatal("TLS/журнал вытеснил аварийные события")
+	}
+}

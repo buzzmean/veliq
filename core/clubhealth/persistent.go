@@ -175,6 +175,16 @@ func DiagnosticUpdate(old, next Diagnostic) (changed, compatible bool) {
 		a.Source, b.Source = "", ""
 		a.Session, b.Session = "", ""
 		a.ServicePID, b.ServicePID = 0, 0
+		// Живой lookup может исчезнуть после выхода процесса. Данные самого
+		// события не меняются; две противоречивые проверенные личности запрещены.
+		if old.Component == "TLS" && next.Component == "TLS" {
+			if old.ProcessVerified && next.ProcessVerified && (old.Birth != next.Birth || old.App != next.App) {
+				return false, false
+			}
+			a.Birth, b.Birth = 0, 0
+			a.App, b.App = "", ""
+			a.ProcessVerified, b.ProcessVerified = false, false
+		}
 	}
 	a.Occurrences, b.Occurrences = 0, 0
 	a.LastAt, b.LastAt = time.Time{}, time.Time{}

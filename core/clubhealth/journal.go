@@ -138,8 +138,14 @@ func (j *Journal) Trim(now time.Time) {
 		j.drop(true)
 	}
 }
-func important(e Diagnostic) bool {
-	return e.State != "observed" || e.Component == "SERVICE" || e.Component == "JOURNAL"
+func diagnosticPriority(e Diagnostic) int {
+	if e.State != "observed" || e.Component == "SERVICE" || e.Observer == "WINDOWS_EVENT_LOG" && e.Component != "TLS" {
+		return 2
+	}
+	if e.Component == "JOURNAL" || e.Observer == "WINDOWS_EVENT_LOG" {
+		return 1
+	}
+	return 0
 }
 
 // Сначала убирается доставленный шум; жизненный цикл и восстановление — последними.
@@ -148,15 +154,12 @@ func (j *Journal) drop(history bool) {
 	if history {
 		queues = []*[]JournalRow{&j.History, &j.Rows}
 	}
-	bestRank := 5
+	bestRank := 7
 	var selected *[]JournalRow
 	index := 0
 	for _, q := range queues {
 		for i, row := range *q {
-			rank := 0
-			if important(row.Event) {
-				rank += 2
-			}
+			rank := diagnosticPriority(row.Event) * 2
 			if !row.Acked {
 				rank++
 			}
@@ -190,21 +193,23 @@ func (j *Journal) Save(write func([]byte) error) error {
 // Половина пакета зарезервирована для backlog, когда есть новые наблюдения.
 func (j *Journal) Batch() Batch {
 	b := Batch{Protocol: 1, Events: []Diagnostic{}}
-	add := func(rows []JournalRow, critical bool, limit int) {
+	add := func(rows []JournalRow, priority int, limit int) {
 		for _, row := range rows {
 			if len(b.Events) >= limit {
 				return
 			}
-			if !row.Acked && important(row.Event) == critical {
+			if !row.Acked && diagnosticPriority(row.Event) == priority {
 				b.Events = append(b.Events, row.Event)
 			}
 		}
 	}
-	add(j.Rows, true, MaxEvents)
-	add(j.History, true, MaxEvents)
+	for _, priority := range []int{2, 1} {
+		add(j.Rows, priority, MaxEvents)
+		add(j.History, priority, MaxEvents)
+	}
 	activeEnd := min(MaxEvents, len(b.Events)+MaxEvents/2)
-	add(j.Rows, false, activeEnd)
-	add(j.History, false, MaxEvents)
+	add(j.Rows, 0, activeEnd)
+	add(j.History, 0, MaxEvents)
 	// Если backlog не занял резерв, оставшиеся активные записи тоже доставляются.
 	if len(b.Events) < MaxEvents {
 		seen := map[string]bool{}
