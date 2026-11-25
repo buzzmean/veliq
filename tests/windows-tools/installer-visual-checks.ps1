@@ -138,7 +138,8 @@ public static class InertWizardCapture {
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h,ref Point p);
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint id);
- [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);
+ [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+ [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
 }
 '@
@@ -155,14 +156,17 @@ function Click-Own([object]$State,[string]$Control){
  [void][InertWizardCapture]::SendMessage([IntPtr]([long]$State.$Control),0xF5,[IntPtr]::Zero,[IntPtr]::Zero)
 }
 function Save-Shot([object]$State,[string]$Name){
+ [void][InertWizardCapture]::SetForegroundWindow([IntPtr]([long]$State.window))
  Start-Sleep -Milliseconds 250
+ if([InertWizardCapture]::GetForegroundWindow() -ne [IntPtr]([long]$State.window)){throw 'VISUAL_OWN_FOREGROUND_REQUIRED'}
  $rect=New-Object InertWizardCapture+Rect
  if(![InertWizardCapture]::GetWindowRect([IntPtr]([long]$State.window),[ref]$rect)){throw 'VISUAL_WINDOW_UNAVAILABLE'}
  # GDI не записывает alpha. RGB исключает прозрачные пропуски на настоящих снимках.
  $bitmap=New-Object Drawing.Bitmap ($rect.Right-$rect.Left),($rect.Bottom-$rect.Top),([Drawing.Imaging.PixelFormat]::Format24bppRgb)
  try{
-  $graphics=[Drawing.Graphics]::FromImage($bitmap);$dc=$graphics.GetHdc()
-  try{if(![InertWizardCapture]::PrintWindow([IntPtr]([long]$State.window),$dc,2)){throw 'VISUAL_PRINT_WINDOW_FAILED'}}finally{$graphics.ReleaseHdc($dc);$graphics.Dispose()}
+  $graphics=[Drawing.Graphics]::FromImage($bitmap)
+  # Снимается только собственное окно стенда на переднем плане, включая графические дочерние элементы.
+  try{$graphics.CopyFromScreen($rect.Left,$rect.Top,0,0,$bitmap.Size)}finally{$graphics.Dispose()}
   $path=Join-Path $output ($Name+'.png');$bitmap.Save($path,[Drawing.Imaging.ImageFormat]::Png);$shots.Add($path)
   if($State.stage -in @('welcome','finished')){
    $origin=New-Object InertWizardCapture+Point
@@ -173,6 +177,7 @@ function Save-Shot([object]$State,[string]$Name){
     if($color.R -gt 210 -and $color.G -gt 210 -and $color.B -gt 210){$white++}
     if($color.R -gt 180 -and $color.G -gt 30 -and $color.G -lt 180 -and $color.B -lt 100){$orange++}
    }}
+   Write-Host ('VISUAL_BRAND '+$Name+' width='+$State.brand_width+' height='+$State.brand_height+' bitmap='+$State.brand_bitmap_width+' offset='+$dx+','+$dy+' white='+$white+' orange='+$orange)
    if($white -lt 40 -or $orange -lt 2){
     $encoded=[Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
     for($n=0;$n -lt $encoded.Length;$n+=3000){Write-Host ('VELIQ_VISUAL_PNG failure '+[int]($n/3000)+' '+$encoded.Substring($n,[math]::Min(3000,$encoded.Length-$n)))}
