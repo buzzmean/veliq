@@ -18,8 +18,11 @@ begin
    TPanel(Control).Font.Color := VeliqText;
  end else if Control is TNewNotebookPage then
    TNewNotebookPage(Control).Color := VeliqBackground
- else if Control is TBitmapImage then
-   TBitmapImage(Control).BackColor := VeliqBackground
+ else if Control is TBitmapImage then begin
+   if (Control=WizardForm.WizardBitmapImage) or (Control=WizardForm.WizardBitmapImage2) then
+     TBitmapImage(Control).BackColor := $0B0A0A
+   else TBitmapImage(Control).BackColor := VeliqBackground;
+ end
  else if Control is TNewStaticText then begin
    TNewStaticText(Control).Color := VeliqBackground;
    TNewStaticText(Control).Font.Color := VeliqText;
@@ -107,7 +110,7 @@ begin
  WizardForm.ReadyMemo.Color := VeliqSurface;
  WizardForm.ReadyMemo.Font.Color := VeliqText;
  WizardForm.ReadyMemo.BorderStyle := bsNone;
- WizardForm.ReadyMemo.ScrollBars := ssVertical;
+ WizardForm.ReadyMemo.ScrollBars := ssNone;
  WizardForm.PageDescriptionLabel.Font.Color := VeliqMuted;
  WizardForm.WelcomeLabel2.Font.Color := VeliqMuted;
  WizardForm.FinishedLabel.Font.Color := VeliqMuted;
@@ -129,6 +132,8 @@ begin
    Log('VELIQ_THEME_CAPTION_UNAVAILABLE');
  end;
  WizardForm.Refresh;
+ WizardForm.WizardBitmapImage.Refresh;
+ WizardForm.WizardBitmapImage2.Refresh;
 end;
 
 procedure VeliqThemeChanged(Sender: TObject);

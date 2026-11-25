@@ -89,6 +89,9 @@ begin
    ',"window":'+IntToStr(WizardForm.Handle)+',"next":'+IntToStr(WizardForm.NextButton.Handle)+
    ',"theme":'+IntToStr(VeliqThemeButton.Handle)+',"choice":'+IntToStr(Choice)+
    ',"width":'+IntToStr(WizardForm.ClientWidth)+',"height":'+IntToStr(WizardForm.ClientHeight)+
+   ',"brand_width":'+IntToStr(WizardForm.WizardBitmapImage.Width)+
+   ',"brand_height":'+IntToStr(WizardForm.WizardBitmapImage.Height)+
+   ',"brand_bitmap_width":'+IntToStr(WizardForm.WizardBitmapImage.Bitmap.Width)+
    ',"bitmap_background":'+IntToStr(WizardForm.WizardBitmapImage.BackColor)+
    ',"memo_background":'+IntToStr(WizardForm.ReadyMemo.Color)+'}';
  SaveStringToFile(ExpandConstant('{param:STATE}'),S,False);
@@ -130,7 +133,9 @@ using System;
 using System.Runtime.InteropServices;
 public static class InertWizardCapture {
  [StructLayout(LayoutKind.Sequential)] public struct Rect {public int Left,Top,Right,Bottom;}
+ [StructLayout(LayoutKind.Sequential)] public struct Point {public int X,Y;}
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h,out Rect r);
+ [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h,ref Point p);
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h,out uint id);
  [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h,IntPtr dc,uint flags);
  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
@@ -157,6 +162,21 @@ function Save-Shot([object]$State,[string]$Name){
   $graphics=[Drawing.Graphics]::FromImage($bitmap);$dc=$graphics.GetHdc()
   try{if(![InertWizardCapture]::PrintWindow([IntPtr]([long]$State.window),$dc,2)){throw 'VISUAL_PRINT_WINDOW_FAILED'}}finally{$graphics.ReleaseHdc($dc);$graphics.Dispose()}
   $path=Join-Path $output ($Name+'.png');$bitmap.Save($path,[Drawing.Imaging.ImageFormat]::Png);$shots.Add($path)
+  if($State.stage -in @('welcome','finished')){
+   $origin=New-Object InertWizardCapture+Point
+   if(![InertWizardCapture]::ClientToScreen([IntPtr]([long]$State.window),[ref]$origin)){throw 'VISUAL_CLIENT_UNAVAILABLE'}
+   $white=0;$orange=0;$dx=$origin.X-$rect.Left;$dy=$origin.Y-$rect.Top
+   for($y=2;$y -lt $State.brand_height-2;$y+=2){for($x=2;$x -lt $State.brand_width-2;$x+=2){
+    $color=$bitmap.GetPixel($dx+$x,$dy+$y)
+    if($color.R -gt 210 -and $color.G -gt 210 -and $color.B -gt 210){$white++}
+    if($color.R -gt 180 -and $color.G -gt 30 -and $color.G -lt 180 -and $color.B -lt 100){$orange++}
+   }}
+   if($white -lt 40 -or $orange -lt 2){
+    $encoded=[Convert]::ToBase64String([IO.File]::ReadAllBytes($path))
+    for($n=0;$n -lt $encoded.Length;$n+=3000){Write-Host ('VELIQ_VISUAL_PNG failure '+[int]($n/3000)+' '+$encoded.Substring($n,[math]::Min(3000,$encoded.Length-$n)))}
+    throw ('VISUAL_BRAND_MISSING '+$Name+' white='+$white+' orange='+$orange)
+   }
+  }
  }finally{$bitmap.Dispose()}
  [IO.File]::WriteAllText((Join-Path $output ($Name+'.json')),($State|ConvertTo-Json),[Text.UTF8Encoding]::new($false))
 }

@@ -70,6 +70,8 @@ begin
  if ExpandConstant('{param:SELECTREINSTALL|0}')='1' then begin
    OperationPage.SelectedValueIndex := ReinstallOption;
    if not NextButtonClick(OperationPage.ID) or (SelectedOperation<>'REINSTALL') then begin Log('MODE_REINSTALL_SELECTION_FAILED'); Abort; end;
+   VeliqThemeChanged(VeliqThemeButton); VeliqThemeChanged(VeliqThemeButton);
+   if (OperationPage.SelectedValueIndex<>ReinstallOption) or (SelectedOperation<>'REINSTALL') then begin Log('MODE_THEME_REINSTALL_CHANGED'); Abort; end;
  end;
  if (SelectedOperation='UPDATE') or (SelectedOperation='REINSTALL') then begin
    if UpdateArgument('')<>'-Update' then begin Log('MODE_OWNER_PRESERVATION_FAILED'); Abort; end;

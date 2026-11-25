@@ -51,6 +51,7 @@ DialogFontSize=10
 WelcomeFontName=Segoe UI
 WelcomeFontSize=22
 [Messages]
+ClickNext=
 WelcomeLabel1=Установка VELIQ
 WelcomeLabel2=VELIQ подбирает маршруты для сайтов, приложений и игр.%n%nПосле установки подключите компьютер по коду или войдите в аккаунт.
 FinishedHeadingLabel=Готово
@@ -219,7 +220,16 @@ begin
  if OperationPage<>nil then
    if CurPageID=OperationPage.ID then
      WizardForm.NextButton.Enabled := (UpdateOption>=0) or (ReinstallOption>=0);
- if CurPageID=wpReady then WizardForm.NextButton.Caption := VeliqOperationCaption(SelectedOperation);
+ if CurPageID=wpReady then begin
+   WizardForm.NextButton.Caption := VeliqOperationCaption(SelectedOperation);
+   if SelectedOperation='UPDATE' then WizardForm.PageNameLabel.Caption := 'Готово к обновлению'
+   else if SelectedOperation='REINSTALL' then WizardForm.PageNameLabel.Caption := 'Готово к переустановке'
+   else WizardForm.PageNameLabel.Caption := 'Готово к установке';
+   WizardForm.PageDescriptionLabel.Caption := 'Проверьте выбранное действие и параметры.';
+   WizardForm.ReadyLabel.Visible := False;
+   WizardForm.ReadyMemo.Top := 0;
+   WizardForm.ReadyMemo.Height := WizardForm.ReadyPage.Height;
+ end;
  if (CurPageID=wpFinished) and PackageCompleted then begin
    if SelectedOperation='UPDATE' then WizardForm.FinishedLabel.Caption := 'VELIQ обновлён до {#AppVersion}. Активация и настройки сохранены.'
    else if SelectedOperation='REINSTALL' then WizardForm.FinishedLabel.Caption := 'VELIQ {#AppVersion} переустановлен. Активация и настройки сохранены.';
@@ -256,7 +266,6 @@ function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoType
 begin
  Result := VeliqOperationCaption(SelectedOperation) + ' VELIQ {#AppVersion}' + NewLine;
  if ExistingInstall then Result := Result + 'Активация, настройки и профили сохранятся.' + NewLine;
- Result := Result + NewLine + MemoDirInfo;
  if MemoTasksInfo<>'' then Result := Result + NewLine + NewLine + MemoTasksInfo;
 end;
 
