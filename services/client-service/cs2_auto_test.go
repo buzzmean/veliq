@@ -19,6 +19,8 @@ func cs2GameFixture(t *testing.T) (*Controller, wp.ProcessIdentity, profiles.Pro
 	path := `D:\Steam\steamapps\common\Counter-Strike Global Offensive\game\bin\win64\cs2.exe`
 	p := profiles.Profile{ID: "cs2", Name: "Counter-Strike 2", Executables: []string{path}, Mode: profiles.Direct, AppPreset: "game-udp-cs2"}
 	c := policyController(t, p)
+	// This fixture uses explicit process images; the host's Steam library must not override them.
+	c.steamGameDiscovery = func(string, gameudp.Preset) wp.PUBGInstallation { return wp.PUBGInstallation{} }
 	c.customPath = filepath.Join(t.TempDir(), "profiles.json")
 	c.Backend = &gameGuardFixture{hotBackendFixture: hotBackendFixture{ready: true}, guard: wp.GameUDPGuardStatus{Ready: true}}
 	c.network.Store(&wp.NetworkContext{Fingerprint: strings.Repeat("a", 64), ObservedAt: time.Now()})

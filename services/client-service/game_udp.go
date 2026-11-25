@@ -252,7 +252,7 @@ func (c *Controller) discoverGames() {
 		if p.SteamID == "" {
 			continue
 		}
-		if found := wp.DiscoverSteamGame(c.BrowserOwnerSID, p); found.Path != "" {
+		if found := c.steamGameDiscovery(c.BrowserOwnerSID, p); found.Path != "" {
 			c.registerGame(p, found.Path)
 		}
 	}

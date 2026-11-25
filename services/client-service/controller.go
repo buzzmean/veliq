@@ -129,6 +129,7 @@ type Controller struct {
 	groupAt                   time.Time
 	groupAll                  []profiles.Identity
 	discovery                 windowsplatform.Discovery
+	steamGameDiscovery        func(string, gameudp.Preset) windowsplatform.PUBGInstallation
 	Learned                   *localstrategy.Cache
 	network                   atomic.Pointer[windowsplatform.NetworkContext]
 	conflicts                 atomic.Pointer[windowsplatform.ConflictScan]
@@ -168,6 +169,7 @@ func New(ctx context.Context) *Controller {
 	c.games.budget = &gameudp.Budget{}
 	c.selfExecutable, _ = os.Executable()
 	c.isLanGameProcess = windowsplatform.IsLanGameServiceProcess
+	c.steamGameDiscovery = windowsplatform.DiscoverSteamGame
 	c.Local.Guard = func(m localstrategy.Metadata) bool {
 		if c.autoCandidateQuarantined(m) {
 			return false
