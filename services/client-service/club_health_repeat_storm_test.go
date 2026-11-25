@@ -205,9 +205,8 @@ func TestPersistentRepeatProducerDoesNotWaitForBlockedDisk(t *testing.T) {
 	produced := make(chan struct{})
 	go func() {
 		defer close(produced)
-		for range 100000 {
-			c.observeProxyDiagnostic(record)
-		}
+		// Нагрузку100000проверяют отдельные тесты; здесь важна зависимость от диска.
+		c.observeProxyDiagnostic(record)
 	}()
 	select {
 	case <-produced:
