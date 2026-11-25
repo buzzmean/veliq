@@ -56,7 +56,7 @@ SetupWindowTitle=VELIQ — проверка оформления
 [Tasks]
 Name: "desktopicon"; Description: "Создать ярлык на рабочем столе"; GroupDescription: "Ярлыки:"
 [Run]
-Filename: "{cmd}"; Parameters: "/d /c exit 0"; Description: "Открыть VELIQ"; Flags: postinstall unchecked
+Filename: "{cmd}"; Parameters: "/d /c exit 0"; Description: "{code:LaunchDescription}"; Flags: postinstall unchecked
 [Code]
 var ExistingInstall, ExistingManifest, PackageCompleted: Boolean;
     InstalledVersion, SelectedOperation, InstallScanDirectory, DiagnosticPath: String;

@@ -55,8 +55,8 @@ ClickNext=
 WelcomeLabel1=Установка VELIQ
 WelcomeLabel2=VELIQ подбирает маршруты для сайтов, приложений и игр.%n%nПосле установки подключите компьютер по коду или войдите в аккаунт.
 FinishedHeadingLabel=Готово
-FinishedLabelNoIcons=VELIQ установлен. Откройте программу, войдите в аккаунт и нажмите «Оптимизировать».
-FinishedLabel=VELIQ установлен. Откройте программу, войдите в аккаунт и нажмите «Оптимизировать».
+FinishedLabelNoIcons=Установка VELIQ завершена.
+FinishedLabel=Установка VELIQ завершена.
 [InstallDelete]
 ; Pre-rebrand installs used "VELIQ Setup"; its payload is superseded by {app}.
 Type: filesandordirs; Name: "{autopf}\VELIQ Setup"
@@ -271,7 +271,7 @@ end;
 
 function LaunchDescription(Param: String): String;
 begin
- if ExistingInstall then Result := 'Открыть VELIQ' else Result := 'Открыть VELIQ и подключить аккаунт';
+ Result := 'Открыть VELIQ';
 end;
 
 function DiagnosticFile(Param: String): String;
