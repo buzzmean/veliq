@@ -1,49 +1,48 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:Veliq.Desktop" x:Class="Veliq.Desktop.MainWindow" Title="VELIQ" Icon="Assets/VELIQ.ico" Width="1180" Height="780" MinWidth="960" MinHeight="640" Background="{StaticResource Bg}" Foreground="{StaticResource Text}" FontFamily="{StaticResource VeliqFont}" FontSize="14" Language="ru-RU" WindowStartupLocation="CenterScreen" TextOptions.TextFormattingMode="Display" UseLayoutRounding="True">
  <!-- Layout and states follow app-ui/index.html: rail + screens, activation overlay on top. -->
- <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="208"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-  <Border Background="{StaticResource BgSunken}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
+ <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="272"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+  <Border x:Name="SidebarRail" Background="{StaticResource BgSunken}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
    <DockPanel Margin="10,14,10,14">
     <Grid x:Name="SidebarHeader" DockPanel.Dock="Top" Height="48" Margin="0,-6,0,8">
-     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
      <Image Source="{StaticResource VeliqWordmark}" Height="48" MaxWidth="142" HorizontalAlignment="Left" Margin="2,0,0,0" AutomationProperties.Name="VELIQ"/>
-     <Button x:Name="InstallUpdateButton" Grid.Column="1" Width="28" Height="28" Padding="0" Margin="8,0,2,0" VerticalAlignment="Center" Click="InstallUpdate" Visibility="{Binding ShowUpdate, Converter={StaticResource BoolToVisible}}" IsEnabled="{Binding CanUpdate}" ToolTip="{Binding UpdateTooltip}" AutomationProperties.Name="{Binding UpdateTooltip}">
-      <Button.Template><ControlTemplate TargetType="Button"><Border x:Name="UpdateSurface" CornerRadius="8" Background="Transparent" BorderBrush="Transparent" BorderThickness="1"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border><ControlTemplate.Triggers><Trigger Property="IsMouseOver" Value="True"><Setter TargetName="UpdateSurface" Property="Background" Value="{StaticResource BgRaised}"/><Setter TargetName="UpdateSurface" Property="BorderBrush" Value="{StaticResource Line}"/></Trigger><Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="UpdateSurface" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger><Trigger Property="IsEnabled" Value="False"><Setter TargetName="UpdateSurface" Property="Opacity" Value="0.55"/></Trigger></ControlTemplate.Triggers></ControlTemplate></Button.Template>
-      <Grid Width="20" Height="20">
-       <Path Data="M 10,3 L 10,16 M 5,11 L 10,16 L 15,11" Stroke="{StaticResource Text}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-       <Viewbox Visibility="{Binding UpdateDownloading, Converter={StaticResource BoolToVisible}}"><Grid Width="36" Height="36"><Path Data="{Binding UpdateArc}" Stroke="{StaticResource Accent}" StrokeThickness="2"/></Grid></Viewbox>
-      </Grid>
-     </Button>
     </Grid>
     <StackPanel x:Name="NavTop" DockPanel.Dock="Top">
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Home}" Tag="Home" Click="Navigate" ui:Nav.Icon="{StaticResource IconHome}" ui:Nav.IsCurrent="True"/>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr NavServices}" Tag="Applications" Click="Navigate" ui:Nav.Icon="{StaticResource IconServices}"/>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Games}" Tag="Games" Click="Navigate" ui:Nav.Icon="{StaticResource IconGames}"/>
-     <Border x:Name="PlannedGameOptimization" Margin="0,2" Opacity="0.6" AutomationProperties.Name="{ui:Tr OptimizeGamesPlanned}">
-      <Grid Margin="16,7,10,7"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <Border x:Name="PlannedGameOptimization" Style="{StaticResource PlannedNavItem}" AutomationProperties.Name="{ui:Tr OptimizeGamesPlanned}">
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
        <Path Data="{StaticResource IconGames}" Stretch="Uniform" Width="18" Height="18" Stroke="{StaticResource Text}" StrokeThickness="1.5" VerticalAlignment="Center"/>
-       <TextBlock Grid.Column="1" Text="{ui:Tr OptimizeGamesPlanned}" FontSize="12" TextWrapping="Wrap" Margin="10,0,6,0" VerticalAlignment="Center"/>
-       <Border Grid.Column="2" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="5,2" VerticalAlignment="Center"><TextBlock Text="{ui:Tr ComingSoon}" FontSize="10"/></Border>
+       <TextBlock x:Name="PlannedGameLabel" Grid.Column="1" Text="{ui:Tr OptimizeGamesPlanned}" Style="{StaticResource PlannedNavLabel}"/>
+       <Border x:Name="PlannedGameBadge" Grid.Column="2" Style="{StaticResource ComingSoonBadge}"><TextBlock Text="{ui:Tr ComingSoon}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
       </Grid>
      </Border>
-     <Border x:Name="PlannedSystemOptimization" Margin="0,2" Opacity="0.6" AutomationProperties.Name="{ui:Tr OptimizeSystemPlanned}">
-      <Grid Margin="16,7,10,7"><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <Border x:Name="PlannedSystemOptimization" Style="{StaticResource PlannedNavItem}" AutomationProperties.Name="{ui:Tr OptimizeSystemPlanned}">
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
        <Path Data="{StaticResource IconSettings}" Stretch="Uniform" Width="18" Height="18" Stroke="{StaticResource Text}" StrokeThickness="1.5" VerticalAlignment="Center"/>
-       <TextBlock Grid.Column="1" Text="{ui:Tr OptimizeSystemPlanned}" FontSize="12" TextWrapping="Wrap" Margin="10,0,6,0" VerticalAlignment="Center"/>
-       <Border Grid.Column="2" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="7" Padding="5,2" VerticalAlignment="Center"><TextBlock Text="{ui:Tr ComingSoon}" FontSize="10"/></Border>
+       <TextBlock x:Name="PlannedSystemLabel" Grid.Column="1" Text="{ui:Tr OptimizeSystemPlanned}" Style="{StaticResource PlannedNavLabel}"/>
+       <Border x:Name="PlannedSystemBadge" Grid.Column="2" Style="{StaticResource ComingSoonBadge}"><TextBlock Text="{ui:Tr ComingSoon}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
       </Grid>
      </Border>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Diagnostics}" Tag="Diagnostics" Click="Navigate" ui:Nav.Icon="{StaticResource IconDiagnostics}"/>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Settings}" Tag="Settings" Click="Navigate" ui:Nav.Icon="{StaticResource IconSettings}"/>
     </StackPanel>
-    <Border DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="6,14,6,2" Margin="0,8,0,0">
+    <Border x:Name="SidebarStatus" DockPanel.Dock="Bottom" BorderBrush="{StaticResource Line}" BorderThickness="0,1,0,0" Padding="6,14,6,2" Margin="0,8,0,0">
      <StackPanel>
       <StackPanel Orientation="Horizontal"><Border Style="{StaticResource StatusMark}" VerticalAlignment="Center" Margin="0,0,8,0"><Grid><Rectangle Height="2.5" VerticalAlignment="Top" Margin="0,5.4,0,0" Fill="{StaticResource Accent}" Visibility="{Binding Optimizing, Converter={StaticResource BoolToVisible}}"/></Grid></Border><TextBlock Text="{Binding OptimizationStatus}" FontWeight="Medium" FontSize="13" VerticalAlignment="Center"/></StackPanel>
       <TextBlock Text="{Binding GoSub}" Style="{StaticResource Caption}" TextWrapping="Wrap" Margin="0,6,0,0"/>
      </StackPanel>
     </Border>
-    <StackPanel x:Name="NavBottom" DockPanel.Dock="Bottom">
-     <Button Style="{StaticResource NavButton}" Content="{ui:Tr NavAbout}" Tag="About" Click="Navigate" ui:Nav.Icon="{StaticResource IconInfo}"/>
-    </StackPanel>
+    <Grid x:Name="SidebarFooterActions" DockPanel.Dock="Bottom">
+     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+     <StackPanel x:Name="NavBottom"><Button Style="{StaticResource NavButton}" Content="{ui:Tr NavAbout}" Tag="About" Click="Navigate" ui:Nav.Icon="{StaticResource IconInfo}"/></StackPanel>
+     <Button x:Name="InstallUpdateButton" Grid.Column="1" Style="{StaticResource SidebarUpdateButton}" Margin="8,0,6,2" Click="InstallUpdate" Visibility="{Binding ShowUpdate, Converter={StaticResource BoolToVisible}}" IsEnabled="{Binding CanUpdate}" ToolTip="{Binding UpdateTooltip}" AutomationProperties.Name="{Binding UpdateTooltip}" ToolTipService.ShowOnDisabled="True" ToolTipService.Placement="Top">
+      <Grid Width="20" Height="20">
+       <Path Data="M 10,4 L 10,13 M 6,9 L 10,13 L 14,9 M 5,15 L 15,15" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+       <Viewbox Width="24" Height="24" Margin="-2" Visibility="{Binding UpdateDownloading, Converter={StaticResource BoolToVisible}}"><Grid Width="36" Height="36"><Path Data="{Binding UpdateArc}" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="2"/></Grid></Viewbox>
+      </Grid>
+     </Button>
+    </Grid>
     <Border/>
    </DockPanel>
   </Border>

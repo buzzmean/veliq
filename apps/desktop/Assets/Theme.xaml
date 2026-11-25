@@ -135,6 +135,37 @@
    </Setter.Value>
   </Setter>
  </Style>
+ <Style x:Key="PlannedNavItem" TargetType="Border">
+  <Setter Property="Height" Value="40"/><Setter Property="Margin" Value="0,0,0,2"/>
+  <Setter Property="Padding" Value="13,0,10,0"/><Setter Property="Opacity" Value="0.65"/>
+ </Style>
+ <Style x:Key="PlannedNavLabel" TargetType="TextBlock">
+  <Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="Medium"/>
+  <Setter Property="Foreground" Value="{StaticResource TextMuted}"/><Setter Property="VerticalAlignment" Value="Center"/>
+  <Setter Property="Margin" Value="12,0,8,0"/><Setter Property="TextWrapping" Value="NoWrap"/>
+ </Style>
+ <Style x:Key="ComingSoonBadge" TargetType="Border">
+  <Setter Property="Width" Value="42"/><Setter Property="Height" Value="20"/>
+  <Setter Property="BorderBrush" Value="{StaticResource LineStrong}"/><Setter Property="BorderThickness" Value="1"/>
+  <Setter Property="CornerRadius" Value="6"/><Setter Property="Padding" Value="4,1"/>
+  <Setter Property="HorizontalAlignment" Value="Right"/><Setter Property="VerticalAlignment" Value="Center"/>
+ </Style>
+ <Style x:Key="SidebarUpdateButton" TargetType="Button">
+  <Setter Property="Width" Value="28"/><Setter Property="Height" Value="28"/>
+  <Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/>
+  <Setter Property="Padding" Value="0"/><Setter Property="VerticalAlignment" Value="Center"/>
+  <Setter Property="Background" Value="{StaticResource Control}"/><Setter Property="Foreground" Value="{StaticResource OnControl}"/>
+  <Setter Property="Cursor" Value="Hand"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+   <Border x:Name="UpdateSurface" CornerRadius="14" Background="{TemplateBinding Background}" BorderBrush="Transparent" BorderThickness="2"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+   <ControlTemplate.Triggers>
+    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="UpdateSurface" Property="Background" Value="{StaticResource ControlHover}"/></Trigger>
+    <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="UpdateSurface" Property="BorderBrush" Value="{StaticResource Accent}"/></Trigger>
+    <Trigger Property="IsPressed" Value="True"><Setter TargetName="UpdateSurface" Property="Opacity" Value="0.85"/></Trigger>
+    <Trigger Property="IsEnabled" Value="False"><Setter TargetName="UpdateSurface" Property="Opacity" Value="0.6"/></Trigger>
+   </ControlTemplate.Triggers>
+  </ControlTemplate></Setter.Value></Setter>
+ </Style>
  <!-- Segmented control item (.seg button). -->
  <Style x:Key="SegButton" TargetType="Button">
   <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
