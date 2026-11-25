@@ -3,6 +3,14 @@ on: [push, pull_request]
 permissions:
   contents: read
 jobs:
+  frontend-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Проверить версию и ссылку установщика на сайте
+        run: node tests/frontend/release_metadata_test.mjs
   core:
     runs-on: ubuntu-latest
     services:
