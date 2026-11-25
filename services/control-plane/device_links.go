@@ -87,21 +87,33 @@ type accountSubscription struct {
 
 func accountSubscriptionTx(ctx context.Context, tx pgx.Tx, account, subscription string, enforce bool) (accountSubscription, error) {
 	var out accountSubscription
-	var paid *time.Time
+	var paid, trial *time.Time
 	var expires time.Time
-	var revoked, disabled bool
-	e := tx.QueryRow(ctx, `SELECT sub.id,sub.kind,sub.seats,sub.paid_until,ac.email,ac.display_name,ac.disabled,c.id,c.revoked,c.expires_at FROM subscriptions sub JOIN accounts ac ON ac.id=sub.account_id JOIN activation_codes c ON c.subscription_id=sub.id WHERE sub.id=$1 AND sub.account_id=$2 FOR UPDATE OF sub,ac,c`, subscription, account).Scan(&out.Binding.Subscription, &out.Binding.Kind, &out.Limit, &paid, &out.Binding.Email, &out.Binding.Name, &disabled, &out.Code, &revoked, &expires)
+	var revoked, disabled, lifetime bool
+	if _, e := tx.Exec(ctx, "SELECT id FROM accounts WHERE id=$1 FOR NO KEY UPDATE", account); e != nil {
+		return out, e
+	}
+	e := tx.QueryRow(ctx, `SELECT sub.id,sub.kind,sub.seats,sub.paid_until,ac.email,ac.display_name,ac.disabled,c.id,c.revoked,c.expires_at,sub.lifetime,sub.trial_until FROM subscriptions sub JOIN accounts ac ON ac.id=sub.account_id JOIN activation_codes c ON c.subscription_id=sub.id WHERE sub.id=$1 AND sub.account_id=$2 FOR UPDATE OF sub,c`, subscription, account).Scan(&out.Binding.Subscription, &out.Binding.Kind, &out.Limit, &paid, &out.Binding.Email, &out.Binding.Name, &disabled, &out.Code, &revoked, &expires, &lifetime, &trial)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return out, errors.New("ACCOUNT_SUBSCRIPTION_REQUIRED")
 	}
 	if e != nil {
 		return out, e
 	}
-	if disabled || revoked || !expires.After(time.Now()) {
+	if disabled || revoked || (!lifetime && !expires.After(time.Now())) {
 		return out, errors.New("ACCOUNT_SUBSCRIPTION_REQUIRED")
 	}
-	if enforce && (paid == nil || !paid.Add(SubscriptionGrace).After(time.Now())) {
+	if _, e = checkClubVerification(ctx, tx, subscription); e != nil {
+		return out, e
+	}
+	now := time.Now()
+	trialActive := trial != nil && now.Before(*trial)
+	paidActive := paid != nil && now.Before(paid.Add(SubscriptionGrace))
+	if (enforce || trial != nil) && !lifetime && !paidActive && !trialActive {
 		return out, errors.New("SUBSCRIPTION_EXPIRED")
+	}
+	if trialActive && !lifetime && !paidActive {
+		out.Binding.TrialUntil = trial
 	}
 	if out.Binding.Name == "" {
 		if out.Binding.Kind == "club" {
@@ -298,7 +310,7 @@ func (a *API) deviceTrust() map[string]string {
 func (a *API) deviceLinkFailure(w http.ResponseWriter, e error) {
 	code, status := "ACCOUNT_LINK_UNAVAILABLE", 503
 	switch e.Error() {
-	case "ACCOUNT_LINK_INVALID", "ACCOUNT_LINK_EXPIRED", "ACCOUNT_SUBSCRIPTION_REQUIRED", "ACCOUNT_DEVICE_ALREADY_OWNED", "ACCOUNT_IMAGE_REVOKED", "SUBSCRIPTION_EXPIRED", "ACTIVATION_LIMIT", "MACHINE_DISABLED", "ACTIVATION_IDENTITY_CONFLICT":
+	case "ACCOUNT_LINK_INVALID", "ACCOUNT_LINK_EXPIRED", "ACCOUNT_SUBSCRIPTION_REQUIRED", "ACCOUNT_DEVICE_ALREADY_OWNED", "ACCOUNT_IMAGE_REVOKED", "SUBSCRIPTION_EXPIRED", "ACTIVATION_LIMIT", "MACHINE_DISABLED", "ACTIVATION_IDENTITY_CONFLICT", "CLUB_PAYMENT_REQUIRED", "CLUB_VERIFICATION_PENDING":
 		code = e.Error()
 		status = 403
 	case "ACTIVATION_RATE_LIMIT":

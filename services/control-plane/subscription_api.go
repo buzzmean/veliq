@@ -27,7 +27,11 @@ func (a *API) trust() map[string]string {
 
 func statusFor(ent Entitlement, enforced bool, now time.Time) SubscriptionStatus {
 	out := SubscriptionStatus{Managed: ent.Managed, Enforced: enforced, Active: !enforced || ent.Active(now)}
-	if ent.Managed {
+	if !ent.TrialUntil.IsZero() && !ent.paidActive(now) {
+		until := ent.TrialUntil.UTC()
+		// For trial-only access there is a hard cutoff and no paid period.
+		out.GraceUntil = &until
+	} else if ent.Managed && !ent.Lifetime {
 		until, grace := ent.Until.UTC(), ent.Until.Add(SubscriptionGrace).UTC()
 		out.PaidUntil, out.GraceUntil = &until, &grace
 	}
@@ -63,12 +67,7 @@ func (a *API) subscriptionStatus(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 503, "SUBSCRIPTION_UNAVAILABLE")
 		return
 	}
-	managed, e := a.Store.DeviceAccountManaged(r.Context(), d.ID)
-	if e != nil {
-		a.fail(w, 503, "SUBSCRIPTION_UNAVAILABLE")
-		return
-	}
-	respond(w, 200, statusFor(ent, a.Settings.EnforceSubscription || managed, time.Now()))
+	respond(w, 200, statusFor(ent, a.Settings.EnforceSubscription || ent.AccountBound, time.Now()))
 }
 
 // adminSubscriptions: GET list, GET ?cutoff=1 preview of devices enforcement
@@ -107,6 +106,8 @@ func (a *API) adminSubscriptions(w http.ResponseWriter, r *http.Request) {
 		until, extended, e := a.Store.RecordPayment(r.Context(), q.Subscription, "manual", q.Reference, q.Amount, q.PeriodDays, "succeeded", q.Reference, "admin", time.Now())
 		if e != nil {
 			switch e.Error() {
+			case "PROMO_RECONCILIATION_REQUIRED":
+				a.fail(w, 409, e.Error())
 			case "PAYMENT_INVALID":
 				a.fail(w, 400, e.Error())
 			case "SUBSCRIPTION_NOT_FOUND":

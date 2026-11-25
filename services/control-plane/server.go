@@ -42,11 +42,13 @@ type Settings struct {
 	ServerCertificate    *x509.Certificate
 	// Accounts and subscriptions. The cabinet API stays off until AccountOrigin
 	// is set; subscription periods are only enforced with EnforceSubscription.
-	AccountOrigin       string
-	Mailer              Mailer
-	Plans               []Plan
-	Payments            PaymentProvider
-	EnforceSubscription bool
+	AccountOrigin         string
+	Mailer                Mailer
+	Plans                 []Plan
+	Payments              PaymentProvider
+	EnforceSubscription   bool
+	PersonalTrials        bool
+	ClubVerificationToken string
 }
 type API struct {
 	relayTrafficMu                            sync.Mutex
@@ -67,6 +69,9 @@ type API struct {
 func New(s *Store, c Settings) (*API, error) {
 	if len(c.AdminToken) < 24 || len(c.SigningKey) != ed25519.PrivateKeySize || c.KeyID == "" || c.CA == nil || c.CAKey == nil {
 		return nil, errors.New("admin token, signing key and device CA required")
+	}
+	if c.ClubVerificationToken != "" && (len(c.ClubVerificationToken) < 32 || c.ClubVerificationToken == c.AdminToken || c.ClubVerificationToken == c.EnrollmentProbeToken || strings.ContainsAny(c.ClubVerificationToken, " \t\r\n")) {
+		return nil, errors.New("distinct club verification token of at least 32 characters required")
 	}
 	return &API{Store: s, Settings: c, limit: newLimiter(time.Now()), enrollIP: newEnrollmentLimiter(time.Now()), enrollCode: newEnrollmentLimiter(time.Now()), loginIP: newLoginLimiter(time.Now()), loginDeliveries: make(chan struct{}, 2)}, nil
 }
@@ -142,16 +147,28 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("/api/v1/apps", a.apps)
 	m.HandleFunc("POST /api/v1/telemetry", a.telemetry)
 	m.HandleFunc("POST /api/v1/subscription/status", a.subscriptionStatus)
+	m.HandleFunc("GET /api/v1/device/details", func(w http.ResponseWriter, r *http.Request) { respond(w, 200, map[string]bool{"supported": true}) })
+	m.HandleFunc("POST /api/v1/device/details", a.deviceDetails)
+	m.HandleFunc("POST /api/v1/club/health/persistent", a.persistentClubHealth)
+	m.HandleFunc("GET /api/v1/account/diagnostics", a.accountDiagnostics)
+	m.HandleFunc("GET /api/v1/account/diagnostics/view", a.accountDiagnostics)
 	m.HandleFunc("POST /api/v1/account/login/start", a.loginStart)
 	m.HandleFunc("POST /api/v1/account/login/verify", a.loginVerify)
 	m.HandleFunc("POST /api/v1/account/logout", a.logout)
 	m.HandleFunc("GET /api/v1/account", a.accountView)
+	m.HandleFunc("GET /api/v1/account/trial", a.trialAvailability)
+	m.HandleFunc("POST /api/v1/account/trial/activate", a.trialActivate)
 	m.HandleFunc("POST /api/v1/account/subscriptions", a.subscriptionCreate)
 	m.HandleFunc("POST /api/v1/account/subscriptions/", a.subscriptionAction)
 	m.HandleFunc("POST /api/v1/payments/webhook", a.paymentWebhook)
+	m.HandleFunc("POST /api/v1/account/payments/{id}/refresh", a.paymentRefresh)
 	m.HandleFunc("GET /api/v1/admin/subscriptions", a.adminSubscriptions)
 	m.HandleFunc("GET /api/v1/admin/subscriptions/cutoff", a.adminSubscriptions)
 	m.HandleFunc("POST /api/v1/admin/subscriptions/payments", a.adminSubscriptions)
+	m.HandleFunc("POST /api/v1/admin/promotions/reconcile", a.reconcilePromotion)
+	m.HandleFunc("GET /api/v1/club-verifications", a.clubVerificationQueue)
+	m.HandleFunc("POST /api/v1/club-verifications/{id}/notified", a.clubVerificationNotified)
+	m.HandleFunc("POST /api/v1/club-verifications/{id}/approve", a.clubVerificationApprove)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		defer func() { a.LatencyNS.Add(uint64(time.Since(start))) }()
@@ -185,22 +202,14 @@ func (a *API) auth(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 401, "invalid device proof")
 		return
 	}
-	accountManaged, manageError := a.Store.DeviceAccountManaged(r.Context(), p.DeviceID)
-	if manageError != nil {
-		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
+	ent, e := a.Store.DeviceEntitlement(r.Context(), d.ID)
+	if e != nil {
+		a.fail(w, 503, "SUBSCRIPTION_UNAVAILABLE")
 		return
 	}
-	if a.Settings.EnforceSubscription || accountManaged {
-		ent, err := a.Store.DeviceEntitlement(r.Context(), d.ID)
-		if err != nil {
-			a.fail(w, 503, "SUBSCRIPTION_UNAVAILABLE")
-			return
-		}
-		// The device keeps its identity and seat: paying again restores access.
-		if !ent.Active(time.Now()) {
-			a.fail(w, 402, "SUBSCRIPTION_EXPIRED")
-			return
-		}
+	if (a.Settings.EnforceSubscription || ent.AccountBound) && !ent.Active(time.Now()) {
+		a.fail(w, 402, "SUBSCRIPTION_EXPIRED")
+		return
 	}
 	relays, e := a.Store.Relays(r.Context())
 	if e != nil {
@@ -229,6 +238,16 @@ func (a *API) auth(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	ticket := security.Ticket{ID: id, DeviceID: d.ID, DeviceKey: security.Fingerprint(key), RelayID: p.RelayID, IssuedAt: now, ExpiresAt: now.Add(2 * time.Minute)}
+	if !ent.TrialUntil.IsZero() && !ent.paidActive(now) {
+		if !now.Before(ent.TrialUntil) {
+			a.fail(w, 402, "SUBSCRIPTION_EXPIRED")
+			return
+		}
+		ticket.TrialUntil = &ent.TrialUntil
+		if ent.TrialUntil.Before(ticket.ExpiresAt) {
+			ticket.ExpiresAt = ent.TrialUntil
+		}
+	}
 	raw, e := security.Sign("ticket", a.Settings.KeyID, a.Settings.SigningKey, ticket)
 	if e != nil {
 		a.fail(w, 500, "signing failed")

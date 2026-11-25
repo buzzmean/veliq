@@ -175,15 +175,15 @@ func TestPilotMigration004PreservesSchema3IdentityAndCertificate(t *testing.T) {
 	before := snapshot()
 	for i := 0; i < 2; i++ {
 		if err = s.Migrate(ctx); err != nil {
-			t.Fatal("schema3 -> schema5 / repeat", err)
+			t.Fatal("schema3 -> schema10 / repeat", err)
 		}
 		if snapshot() != before {
 			t.Fatal("migration changed existing identity/security state (values suppressed)")
 		}
 	}
 	var version int
-	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 5 {
-		t.Fatal("schema5 missing", err, version)
+	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 13 {
+		t.Fatal("Миграция до схемы 13 не применена", err, version)
 	}
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(after, der) {
@@ -297,6 +297,11 @@ func mustPilotPublicKey(t *testing.T, encoded string) ed25519.PublicKey {
 
 func TestPilotConcurrentPlategaWebhookCreditsOnce(t *testing.T) {
 	a, s, mailer := accountAPI(t, false)
+	for i := range a.Settings.Plans {
+		if a.Settings.Plans[i].Kind == "club" {
+			a.Settings.Plans[i].PricePerSeatRub = 299
+		}
+	}
 	mock := newMockPlatega(t) // BaseURL is loopback; no real provider or credentials.
 	a.Settings.Payments = mock.provider()
 	c := &call{api: a}
@@ -306,10 +311,10 @@ func TestPilotConcurrentPlategaWebhookCreditsOnce(t *testing.T) {
 		t.Fatal("subscription create", status)
 	}
 	sub := out["id"].(string)
-	if status, _ = c.do(t, "POST", "/api/v1/account/subscriptions/"+sub+"/pay", map[string]any{}); status != 200 {
+	if status, _ = c.do(t, "POST", "/api/v1/account/subscriptions/"+sub+"/pay", confirmedPayRequest(t, c, sub, map[string]any{})); status != 200 {
 		t.Fatal("mock payment create", status)
 	}
-	body, _ := json.Marshal(map[string]any{"id": mock.nextTx.Load().(string), "amount": 400, "currency": "RUB", "status": "CONFIRMED", "payload": plategaPayloadPrefix + sub})
+	body, _ := json.Marshal(map[string]any{"id": mock.nextTx.Load().(string), "amount": 598, "currency": "RUB", "status": "CONFIRMED", "payload": plategaPayloadPrefix + sub})
 	const parallel = 32
 	start, results := make(chan struct{}), make(chan int, parallel)
 	for i := 0; i < parallel; i++ {

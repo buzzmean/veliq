@@ -141,6 +141,13 @@ func TestSchema2RemainsCompatibleWithBaselineMigrationPostgres(t *testing.T) {
 	if e = store.Migrate(ctx); e != nil {
 		t.Fatal(e)
 	}
+	var initialVersion int
+	if e = db.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&initialVersion); e != nil {
+		t.Fatal(e)
+	}
+	if initialVersion < 7 {
+		t.Fatalf("expected at least schema 7 before replay, got %d", initialVersion)
+	}
 	var salt []byte
 	if e = db.QueryRow(ctx, "SELECT hardware_salt FROM activation_policy").Scan(&salt); e != nil {
 		t.Fatal(e)
@@ -185,7 +192,7 @@ func TestSchema2RemainsCompatibleWithBaselineMigrationPostgres(t *testing.T) {
 	if e = db.QueryRow(ctx, "SELECT hardware_salt FROM activation_policy").Scan(&after); e != nil {
 		t.Fatal(e)
 	}
-	if version != 5 || count != 3 || !revoked || string(salt) != string(after) {
+	if version != initialVersion || count != 3 || !revoked || string(salt) != string(after) {
 		t.Fatal("schema3 additive downgrade/retry lost security state")
 	}
 }

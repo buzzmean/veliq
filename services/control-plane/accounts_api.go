@@ -3,6 +3,7 @@ package controlplane
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -20,6 +21,10 @@ type PaymentProvider interface {
 	CreatePayment(ctx context.Context, q PaymentRequest) (redirectURL, providerID string, err error)
 	HandleWebhook(r *http.Request) (PaymentEvent, error)
 }
+type PaymentStatusProvider interface {
+	CheckPayment(context.Context, string) (PaymentEvent, error)
+}
+
 type PaymentRequest struct {
 	Subscription  string
 	AmountKopecks int64
@@ -31,11 +36,15 @@ type PaymentRequest struct {
 	SaveMethod    bool
 }
 type PaymentEvent struct {
-	ProviderID    string
-	Subscription  string
-	AmountKopecks int64
-	PeriodDays    int
-	Status        string
+	ProviderStatus  string
+	RefundID        string
+	RefundStatus    string
+	RefundedKopecks int64
+	ProviderID      string
+	Subscription    string
+	AmountKopecks   int64
+	PeriodDays      int
+	Status          string
 }
 
 func normalizeEmail(raw string) (string, bool) {
@@ -206,15 +215,28 @@ func (a *API) accountView(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		return
 	}
-	for i := range subs {
-		subs[i].CanConnect = subs[i].PaidUntil != nil && subs[i].PaidUntil.Add(SubscriptionGrace).After(time.Now())
+	orders, e := a.Store.AccountClubOrders(r.Context(), acc)
+	if e != nil {
+		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
+		return
 	}
 	var kind, name string
 	if e = a.Store.DB.QueryRow(r.Context(), "SELECT account_type,display_name FROM accounts WHERE id=$1", acc.ID).Scan(&kind, &name); e != nil {
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		return
 	}
-	respond(w, 200, map[string]any{"email": acc.Email, "kind": kind, "name": name, "subscriptions": subs, "payments": pays, "plans": a.Settings.Plans, "payments_enabled": a.Settings.Payments != nil, "auto_renew_available": false, "subscription_enforced": a.Settings.EnforceSubscription})
+	out := map[string]any{"server_time": time.Now(), "email": acc.Email, "kind": kind, "name": name, "subscriptions": subs, "payments": pays, "club_orders": orders, "plans": a.Settings.Plans, "payment_terms": paymentTermsFor(kind), "payments_enabled": a.Settings.Payments != nil, "auto_renew_available": false, "subscription_enforced": a.Settings.EnforceSubscription}
+	if _, available := a.personalTrialPlan(); kind == "player" && available {
+		code, err := a.Store.trialOffer(r.Context(), acc)
+		if err != nil {
+			a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
+			return
+		}
+		if code != "" {
+			out["trial_code"] = code
+		}
+	}
+	respond(w, 200, out)
 }
 
 func (a *API) subscriptionCreate(w http.ResponseWriter, r *http.Request) {
@@ -238,11 +260,13 @@ func (a *API) subscriptionCreate(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 400, "SUBSCRIPTION_INVALID")
 		return
 	}
-	id, e := a.Store.CreateSubscription(r.Context(), acc, p, q.Seats)
+	id, e := a.Store.createSubscription(r.Context(), acc, p, q.Seats, a.Settings.ClubVerificationToken != "")
 	if e != nil {
 		switch e.Error() {
 		case "SUBSCRIPTION_INVALID", "SUBSCRIPTION_LIMIT":
 			a.fail(w, 400, e.Error())
+		case "PERSONAL_SUBSCRIPTION_CONFLICT", "PERSONAL_SEAT_CHANGE_NOT_AVAILABLE":
+			a.fail(w, http.StatusConflict, e.Error())
 		default:
 			a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		}
@@ -282,11 +306,28 @@ func (a *API) subscriptionAction(w http.ResponseWriter, r *http.Request) {
 			a.fail(w, 400, "SUBSCRIPTION_INVALID")
 			return
 		}
+		if q.Enabled {
+			a.fail(w, 409, "PAYMENT_AUTORENEW_UNAVAILABLE")
+			return
+		}
 		if e := a.Store.SetAutoRenew(r.Context(), acc, id, q.Enabled); e != nil {
 			a.storeFail(w, e)
 			return
 		}
 		respond(w, 200, map[string]bool{"auto_renew": q.Enabled})
+	case len(parts) == 4 && parts[1] == "devices" && parts[3] == "label":
+		var q struct {
+			Label string `json:"label"`
+		}
+		if body(r, &q) != nil || len(parts[2]) < 12 || len(parts[2]) > 64 || !validDeviceLabel(q.Label) {
+			a.fail(w, 400, "DEVICE_LABEL_INVALID")
+			return
+		}
+		if err := a.Store.SetDeviceLabel(r.Context(), acc, id, parts[2], q.Label); err != nil {
+			a.storeFail(w, err)
+			return
+		}
+		respond(w, 200, map[string]string{"status": "saved"})
 	case len(parts) == 4 && parts[1] == "devices" && parts[3] == "release":
 		if e := a.Store.ReleaseSeat(r.Context(), acc, id, parts[2], a.Settings.KeyID, a.Settings.SigningKey, a.trust()); e != nil {
 			a.storeFail(w, e)
@@ -294,7 +335,9 @@ func (a *API) subscriptionAction(w http.ResponseWriter, r *http.Request) {
 		}
 		respond(w, 200, map[string]string{"status": "released"})
 	case len(parts) == 2 && parts[1] == "pay":
-		a.pay(w, r, acc, id)
+		a.pay(w, r, acc, id, false)
+	case len(parts) == 2 && parts[1] == "quote":
+		a.pay(w, r, acc, id, true)
 	default:
 		a.fail(w, 404, "SUBSCRIPTION_NOT_FOUND")
 	}
@@ -304,12 +347,14 @@ func (a *API) storeFail(w http.ResponseWriter, e error) {
 	switch e.Error() {
 	case "SUBSCRIPTION_NOT_FOUND", "SEAT_NOT_FOUND":
 		a.fail(w, 404, e.Error())
+	case "CLUB_PAYMENT_REQUIRED", "CLUB_VERIFICATION_PENDING", "SUBSCRIPTION_EXPIRED":
+		a.fail(w, http.StatusConflict, e.Error())
 	default:
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 	}
 }
 
-func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string) {
+func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string, quoteOnly bool) {
 	if a.Settings.Payments == nil {
 		a.fail(w, 503, "PAYMENT_NOT_CONFIGURED")
 		return
@@ -329,34 +374,91 @@ func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string
 		a.fail(w, 404, "SUBSCRIPTION_NOT_FOUND")
 		return
 	}
+	if sub.Lifetime {
+		a.fail(w, 409, "PAYMENT_NOT_REQUIRED")
+		return
+	}
 	p, found := a.plan(sub.PlanID)
 	if !found || p.PricePerSeatRub == 0 {
 		a.fail(w, 409, "PRICE_NOT_SET")
 		return
 	}
 	var q struct {
-		AutoRenew bool `json:"auto_renew"`
-		Months    *int `json:"months"`
+		AutoRenew      bool   `json:"auto_renew"`
+		Months         *int   `json:"months"`
+		ExpectedAmount *int64 `json:"expected_amount_kopecks"`
+		PromoCode      string `json:"promo_code"`
+		QuoteVersion   string `json:"quote_version"`
+		IdempotencyKey string `json:"idempotency_key"`
 	}
 	if body(r, &q) != nil {
-		a.fail(w, 400, "PAYMENT_REQUEST_INVALID")
+		a.fail(w, 400, "PAYMENT_INVALID")
 		return
 	}
 	if q.AutoRenew {
 		a.fail(w, 409, "PAYMENT_AUTORENEW_UNAVAILABLE")
 		return
 	}
-	months := 1
+	months := 1 // Backward-compatible one-off request from an older cabinet.
 	if q.Months != nil {
 		months = *q.Months
 	}
-	amount, days, available := p.checkoutTerm(sub.Seats, months)
-	if !available {
-		a.fail(w, 409, "PAYMENT_TERM_UNAVAILABLE")
+	if sub.Kind == "club" {
+		a.payClub(w, r, acc, *sub, p, months, q.PromoCode, q.ExpectedAmount, q.QuoteVersion, q.IdempotencyKey, quoteOnly)
 		return
 	}
-	redirect, providerID, e := a.Settings.Payments.CreatePayment(r.Context(), PaymentRequest{Subscription: id, AmountKopecks: amount, PeriodDays: days, Description: "Подписка VELIQ «" + p.Title + "»", Email: acc.Email, AccountID: acc.ID, ReturnURL: a.Settings.AccountOrigin + "/account.html"})
+	amount, term, err := p.QuotePayment(sub.Seats, months)
+	if err != nil {
+		a.fail(w, 409, err.Error())
+		return
+	}
+	var reservation string
+	if !quoteOnly && q.PromoCode == "" {
+		var held bool
+		if err = a.Store.DB.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM promotion_reservations WHERE account_id=$1 AND state='reserved')", acc.ID).Scan(&held); err != nil {
+			a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
+			return
+		}
+		if held {
+			a.fail(w, 409, "PROMO_RECONCILIATION_REQUIRED")
+			return
+		}
+	}
+	if q.PromoCode != "" || quoteOnly {
+		var quote PaymentQuote
+		if quoteOnly {
+			quote, err = a.Store.QuotePromotion(r.Context(), acc, *sub, p, months, q.PromoCode)
+		} else {
+			reservation, quote, err = a.Store.ReservePromotion(r.Context(), acc, *sub, p, months, q.PromoCode, q.ExpectedAmount, a.Settings.Payments.Name())
+		}
+		if err != nil {
+			a.promoFail(w, err)
+			return
+		}
+		amount = quote.Amount
+		term.Discount = quote.Discount
+		if quoteOnly {
+			respond(w, 200, quote)
+			return
+		}
+	}
+	if q.ExpectedAmount != nil && *q.ExpectedAmount != amount {
+		a.fail(w, 409, "PAYMENT_PRICE_CHANGED")
+		return
+	}
+	if reservation == "" && sub.Kind == "club" {
+		reservation, err = a.Store.ReserveClubPurchase(r.Context(), acc, *sub, p, months, q.ExpectedAmount, a.Settings.Payments.Name())
+		if err != nil {
+			a.promoFail(w, err)
+			return
+		}
+	}
+	redirect, providerID, e := a.Settings.Payments.CreatePayment(r.Context(), PaymentRequest{Subscription: id, AmountKopecks: amount, PeriodDays: term.Days, Description: "Подписка VELIQ «" + p.Title + "»", Email: acc.Email, AccountID: acc.ID, ReturnURL: a.Settings.AccountOrigin + "/account.html?payment=return", SaveMethod: q.AutoRenew})
 	if e != nil {
+		if reservation != "" {
+			a.fail(w, 409, "PROMO_RECONCILIATION_REQUIRED")
+			return
+		}
 		if errors.Is(e, ErrAutoRenewUnavailable) {
 			a.fail(w, 409, "PAYMENT_AUTORENEW_UNAVAILABLE")
 			return
@@ -364,7 +466,18 @@ func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string
 		a.fail(w, 502, "PAYMENT_UNAVAILABLE")
 		return
 	}
-	if _, _, e = a.Store.RecordPayment(r.Context(), id, a.Settings.Payments.Name(), providerID, amount, days, "pending", "", "account:"+acc.ID, time.Now()); e != nil {
+	if reservation != "" {
+		// Persist a known provider id even if the browser disconnected meanwhile.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
+		defer cancel()
+		if e = a.Store.AttachPromotionPayment(ctx, reservation, a.Settings.Payments.Name(), providerID); e != nil {
+			a.fail(w, 503, "PROMO_RECONCILIATION_REQUIRED")
+			return
+		}
+		respond(w, 200, map[string]string{"redirect": redirect})
+		return
+	}
+	if _, _, e = a.Store.RecordPayment(r.Context(), id, a.Settings.Payments.Name(), providerID, amount, term.Days, "pending", fmt.Sprintf("months=%d;discount=%d;seats=%d;base_rub=%d", term.Months, term.Discount, sub.Seats, p.PricePerSeatRub), "account:"+acc.ID, time.Now()); e != nil {
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		return
 	}
@@ -390,7 +503,7 @@ func (a *API) paymentWebhook(w http.ResponseWriter, r *http.Request) {
 	// The store credits against the pending row created at payment time: an
 	// unknown provider id, mismatched amount or subscription is rejected,
 	// and the row itself decides the credited sum and period.
-	_, _, e = a.Store.RecordProviderPayment(r.Context(), a.Settings.Payments.Name(), ev.ProviderID, ev.Subscription, ev.AmountKopecks, ev.Status, "payment:"+a.Settings.Payments.Name(), time.Now())
+	_, _, e = a.Store.RecordProviderPayment(r.Context(), a.Settings.Payments.Name(), ev.ProviderID, ev.Subscription, ev.AmountKopecks, ev.Status, "payment:"+a.Settings.Payments.Name(), time.Now(), ev)
 	if e != nil {
 		switch e.Error() {
 		case "PAYMENT_UNKNOWN", "PAYMENT_MISMATCH", "PAYMENT_INVALID":

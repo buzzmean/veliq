@@ -19,6 +19,10 @@ import (
 func TestPostgresLearningDeviceProofBindingReplayRevocationAndNoSchemaChange(t *testing.T) {
 	s := codeStore(t)
 	ctx := context.Background()
+	var initialVersion int
+	if err := s.DB.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&initialVersion); err != nil {
+		t.Fatal(err)
+	}
 	pub, key, _ := ed25519.GenerateKey(rand.Reader)
 	_, signer, _ := ed25519.GenerateKey(rand.Reader)
 	if _, e := s.DB.Exec(ctx, "INSERT INTO users(id,name) VALUES('learning-user','fixture')"); e != nil {
@@ -82,7 +86,7 @@ func TestPostgresLearningDeviceProofBindingReplayRevocationAndNoSchemaChange(t *
 		t.Fatal("revoked contributor accepted", w.Code)
 	}
 	var version int
-	if e = s.DB.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); e != nil || version != 5 {
+	if e = s.DB.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); e != nil || version != initialVersion {
 		t.Fatal("unexpected schema", version, e)
 	}
 }

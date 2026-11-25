@@ -381,7 +381,7 @@ func accountSubscriptionLimitConcurrentCreation(t *testing.T, isolation string) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := a.Settings.Plans[0]
+	p := a.Settings.Plans[1]
 	for i := 0; i < 19; i++ {
 		if _, err = s.CreateSubscription(ctx, account, p, 1); err != nil {
 			t.Fatal(err)

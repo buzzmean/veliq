@@ -14,7 +14,7 @@ func TestTicketDeviceBindingReplayExpiryAndRevoke(t *testing.T) {
 	pub, key, _ := ed25519.GenerateKey(rand.Reader)
 	device, _, _ := ed25519.GenerateKey(rand.Reader)
 	now := time.Now()
-	ticket := Ticket{"nonce", "device", Fingerprint(device), "FRA", now, now.Add(time.Minute)}
+	ticket := Ticket{ID: "nonce", DeviceID: "device", DeviceKey: Fingerprint(device), RelayID: "FRA", IssuedAt: now, ExpiresAt: now.Add(time.Minute)}
 	raw, _ := Sign("ticket", "key", key, ticket)
 	v := NewTicketVerifier(map[string]ed25519.PublicKey{"key": pub}, "FRA")
 	if _, e := v.Accept(raw, device, now); e != nil {
@@ -97,7 +97,7 @@ func FuzzTicket(f *testing.F) {
 	key := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
 	pub := key.Public().(ed25519.PublicKey)
 	now := time.Unix(1800000000, 0)
-	raw, _ := Sign("ticket", "key", key, Ticket{"id", "device", Fingerprint(pub), "FRA", now, now.Add(time.Minute)})
+	raw, _ := Sign("ticket", "key", key, Ticket{ID: "id", DeviceID: "device", DeviceKey: Fingerprint(pub), RelayID: "FRA", IssuedAt: now, ExpiresAt: now.Add(time.Minute)})
 	f.Add(raw)
 	var env Envelope
 	if e := Parse(raw, &env); e != nil {

@@ -34,41 +34,58 @@ type Account struct {
 	Email string `json:"email"`
 }
 type Subscription struct {
-	CanConnect bool       `json:"can_connect"`
-	ID         string     `json:"id"`
-	PlanID     string     `json:"plan_id"`
-	Kind       string     `json:"kind"`
-	Seats      int        `json:"seats"`
-	PaidUntil  *time.Time `json:"paid_until"`
-	AutoRenew  bool       `json:"auto_renew"`
-	Active     bool       `json:"active"`
-	Used       int        `json:"used_seats"`
-	Devices    []SeatInfo `json:"devices"`
+	Lifetime         bool       `json:"lifetime"`
+	CanConnect       bool       `json:"can_connect"`
+	ID               string     `json:"id"`
+	PlanID           string     `json:"plan_id"`
+	Kind             string     `json:"kind"`
+	Seats            int        `json:"seats"`
+	PaidUntil        *time.Time `json:"paid_until"`
+	TrialUntil       *time.Time `json:"trial_until,omitempty"`
+	AutoRenew        bool       `json:"auto_renew"`
+	Active           bool       `json:"active"`
+	Used             int        `json:"used_seats"`
+	Devices          []SeatInfo `json:"devices"`
+	ClubVerification string     `json:"club_verification,omitempty"`
 }
 type SeatInfo struct {
-	Name     string     `json:"name"`
-	Machine  string     `json:"machine"`
-	LastSeen *time.Time `json:"last_seen"`
+	Name       string     `json:"name"`
+	Label      string     `json:"label,omitempty"`
+	Version    string     `json:"version,omitempty"`
+	Connection string     `json:"connection_state"`
+	Machine    string     `json:"machine"`
+	LastSeen   *time.Time `json:"last_seen"`
+	Heartbeat  *time.Time `json:"heartbeat_at,omitempty"`
+	Disabled   bool       `json:"disabled,omitempty"`
 }
+
 type Payment struct {
-	ID         string    `json:"id"`
-	Subscribed string    `json:"subscription_id"`
-	Provider   string    `json:"provider"`
-	Amount     int64     `json:"amount_kopecks"`
-	PeriodDays int       `json:"period_days"`
-	Status     string    `json:"status"`
-	Created    time.Time `json:"created_at"`
+	ReviewRequired bool      `json:"review_required"`
+	ID             string    `json:"id"`
+	Subscribed     string    `json:"subscription_id"`
+	Provider       string    `json:"provider"`
+	Amount         int64     `json:"amount_kopecks"`
+	PeriodDays     int       `json:"period_days"`
+	Status         string    `json:"status"`
+	Created        time.Time `json:"created_at"`
 }
 
 // Entitlement is the access decision for one device. Unmanaged devices (no
 // activation slot, e.g. registered by the operator) are never limited.
 type Entitlement struct {
-	Managed bool
-	Until   time.Time
+	Managed      bool
+	AccountBound bool
+	Lifetime     bool
+	Until        time.Time
+	TrialUntil   time.Time
+}
+
+func (e Entitlement) paidActive(now time.Time) bool {
+	return e.Lifetime || (!e.Until.IsZero() && now.Before(e.Until.Add(SubscriptionGrace)))
 }
 
 func (e Entitlement) Active(now time.Time) bool {
-	return !e.Managed || now.Before(e.Until.Add(SubscriptionGrace))
+	return !e.Managed || e.paidActive(now) || now.Before(e.TrialUntil)
 }
 
 func loginHash(email, code string) []byte {
@@ -186,6 +203,15 @@ func (s *Store) FinishLogin(ctx context.Context, email, code string, now time.Ti
 	if disabled {
 		return Account{}, "", errors.New("ACCOUNT_DISABLED")
 	}
+	if a.ID == id {
+		offerCode, err := security.NewID()
+		if err != nil {
+			return Account{}, "", err
+		}
+		if _, err = tx.Exec(ctx, "INSERT INTO account_trial_offers(account_id,code) VALUES ($1,$2)", a.ID, offerCode); err != nil {
+			return Account{}, "", err
+		}
+	}
 	raw := make([]byte, 32)
 	if _, e = rand.Read(raw); e != nil {
 		return Account{}, "", e
@@ -213,10 +239,14 @@ func (s *Store) EndSession(ctx context.Context, token string) error {
 	return e
 }
 
-// CreateSubscription adds an unpaid subscription with its activation code row.
+// CreateSubscription reuses a single existing personal subscription or adds an unpaid one with its activation code row.
 // The code value itself is issued separately (IssueSubscriptionCode).
 func (s *Store) CreateSubscription(ctx context.Context, account Account, p Plan, seats int) (string, error) {
-	if seats < 1 || seats > p.MaxSeats {
+	return s.createSubscription(ctx, account, p, seats, false)
+}
+
+func (s *Store) createSubscription(ctx context.Context, account Account, p Plan, seats int, requireClubVerification bool) (string, error) {
+	if !p.supportsSeats(seats) {
 		return "", errors.New("SUBSCRIPTION_INVALID")
 	}
 	// The count must get a fresh snapshot after waiting for the account lock,
@@ -226,8 +256,7 @@ func (s *Store) CreateSubscription(ctx context.Context, account Account, p Plan,
 		return "", e
 	}
 	defer tx.Rollback(ctx)
-	// Serialize count + insert for this account. NO KEY UPDATE does not conflict
-	// with foreign-key KEY SHARE locks, unlike an unnecessarily strong UPDATE lock.
+	// Serialize count + insert using the same account lock as payment and trial activation.
 	var lockedAccount, accountKind string
 	if e = tx.QueryRow(ctx, "SELECT id,account_type FROM accounts WHERE id=$1 FOR NO KEY UPDATE", account.ID).Scan(&lockedAccount, &accountKind); e != nil {
 		return "", e
@@ -235,11 +264,42 @@ func (s *Store) CreateSubscription(ctx context.Context, account Account, p Plan,
 	if accountKind != "" && accountKind != p.Kind {
 		return "", errors.New("SUBSCRIPTION_INVALID")
 	}
-	var n int
-	if e = tx.QueryRow(ctx, "SELECT count(*) FROM subscriptions WHERE account_id=$1", account.ID).Scan(&n); e != nil {
+	id, e := subscriptionForAccountTx(ctx, tx, account, p, seats)
+	if e != nil {
 		return "", e
 	}
-	if n >= maxAccountSubscriptions {
+	if requireClubVerification && p.Kind == "club" {
+		if _, e = tx.Exec(ctx, "INSERT INTO club_verifications(subscription_id) VALUES($1)", id); e != nil {
+			return "", e
+		}
+	}
+	return id, tx.Commit(ctx)
+}
+
+// The caller holds the account lock.
+func subscriptionForAccountTx(ctx context.Context, tx pgx.Tx, account Account, p Plan, seats int) (string, error) {
+	var total, personalCount, personalSeats int
+	var personalID string
+	if e := tx.QueryRow(ctx, `
+SELECT count(*), count(*) FILTER (WHERE kind='player'),
+       coalesce(min(id) FILTER (WHERE kind='player'), ''),
+       coalesce(min(seats) FILTER (WHERE kind='player'), 0)
+FROM subscriptions
+WHERE account_id=$1`, account.ID).Scan(&total, &personalCount, &personalID, &personalSeats); e != nil {
+		return "", e
+	}
+	if p.Kind == "player" {
+		if personalCount > 1 {
+			return "", errors.New("PERSONAL_SUBSCRIPTION_CONFLICT")
+		}
+		if personalCount == 1 {
+			if personalSeats != seats {
+				return "", errors.New("PERSONAL_SEAT_CHANGE_NOT_AVAILABLE")
+			}
+			return personalID, nil
+		}
+	}
+	if total >= maxAccountSubscriptions {
 		return "", errors.New("SUBSCRIPTION_LIMIT")
 	}
 	id, e := security.NewID()
@@ -272,7 +332,7 @@ func (s *Store) CreateSubscription(ctx context.Context, account Account, p Plan,
 	if _, e = tx.Exec(ctx, "INSERT INTO audit_log(actor,action,entity_id) VALUES($1,'subscription.create',$2)", "account:"+account.ID, id); e != nil {
 		return "", e
 	}
-	return id, tx.Commit(ctx)
+	return id, nil
 }
 
 // IssueSubscriptionCode replaces the code value of a subscription. Computers
@@ -286,15 +346,41 @@ func (s *Store) IssueSubscriptionCode(ctx context.Context, account Account, subs
 	if e != nil {
 		return "", e
 	}
-	tag, e := s.DB.Exec(ctx, "UPDATE activation_codes SET code_hash=$1 WHERE revoked=false AND subscription_id=(SELECT id FROM subscriptions WHERE id=$2 AND account_id=$3)", hash, subscription, account.ID)
+	tx, e := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if e != nil {
+		return "", e
+	}
+	defer tx.Rollback(ctx)
+	var owner, id string
+	if e = tx.QueryRow(ctx, "SELECT id FROM accounts WHERE id=$1 AND NOT disabled FOR NO KEY UPDATE", account.ID).Scan(&owner); errors.Is(e, pgx.ErrNoRows) {
+		return "", errors.New("SUBSCRIPTION_NOT_FOUND")
+	} else if e != nil {
+		return "", e
+	}
+	if e = tx.QueryRow(ctx, "SELECT id FROM subscriptions WHERE id=$1 AND account_id=$2", subscription, owner).Scan(&id); errors.Is(e, pgx.ErrNoRows) {
+		return "", errors.New("SUBSCRIPTION_NOT_FOUND")
+	} else if e != nil {
+		return "", e
+	}
+	if _, e = checkClubVerification(ctx, tx, id); e != nil {
+		return "", e
+	}
+	// Trial access is attached through the signed-in client. Raw activation
+	// codes cannot carry its hard deadline to the local service.
+	tag, e := tx.Exec(ctx, `UPDATE activation_codes SET code_hash=$1
+		WHERE NOT revoked AND subscription_id=(SELECT id FROM subscriptions WHERE id=$2
+			AND account_id=$3 AND (trial_until IS NULL OR lifetime OR paid_until + $4::interval > now()))`,
+		hash, subscription, account.ID, SubscriptionGrace)
 	if e != nil {
 		return "", e
 	}
 	if tag.RowsAffected() != 1 {
 		return "", errors.New("SUBSCRIPTION_NOT_FOUND")
 	}
-	_, e = s.DB.Exec(ctx, "INSERT INTO audit_log(actor,action,entity_id) VALUES($1,'subscription.code',$2)", "account:"+account.ID, subscription)
-	return code, e
+	if _, e = tx.Exec(ctx, "INSERT INTO audit_log(actor,action,entity_id) VALUES($1,'subscription.code',$2)", "account:"+account.ID, subscription); e != nil {
+		return "", e
+	}
+	return code, tx.Commit(ctx)
 }
 
 // ReleaseSeat frees one computer of the subscription and revokes its device.
@@ -358,18 +444,25 @@ func (s *Store) SetAutoRenew(ctx context.Context, account Account, subscription 
 }
 
 func (s *Store) AccountSubscriptions(ctx context.Context, account Account, now time.Time) ([]Subscription, error) {
-	rows, e := s.DB.Query(ctx, "SELECT id,plan_id,kind,seats,paid_until,auto_renew FROM subscriptions WHERE account_id=$1 ORDER BY created_at", account.ID)
+	rows, e := s.DB.Query(ctx, `SELECT s.id,s.plan_id,s.kind,s.seats,s.paid_until,s.auto_renew,s.lifetime,s.trial_until,coalesce(v.state,'')
+		FROM subscriptions s LEFT JOIN club_verification_status v ON v.subscription_id=s.id
+		WHERE s.account_id=$1 ORDER BY s.created_at`, account.ID)
 	if e != nil {
 		return nil, e
 	}
 	out := []Subscription{}
 	for rows.Next() {
 		var sub Subscription
-		if e = rows.Scan(&sub.ID, &sub.PlanID, &sub.Kind, &sub.Seats, &sub.PaidUntil, &sub.AutoRenew); e != nil {
+		if e = rows.Scan(&sub.ID, &sub.PlanID, &sub.Kind, &sub.Seats, &sub.PaidUntil, &sub.AutoRenew, &sub.Lifetime, &sub.TrialUntil, &sub.ClubVerification); e != nil {
 			rows.Close()
 			return nil, e
 		}
-		sub.Active = sub.PaidUntil != nil && now.Before(*sub.PaidUntil)
+		trialActive := sub.TrialUntil != nil && now.Before(*sub.TrialUntil)
+		sub.Active = sub.Lifetime || (sub.PaidUntil != nil && now.Before(*sub.PaidUntil)) || trialActive
+		sub.CanConnect = sub.Active || (sub.PaidUntil != nil && now.Before(sub.PaidUntil.Add(SubscriptionGrace)))
+		if sub.ClubVerification != "" {
+			sub.CanConnect = sub.ClubVerification == "verified"
+		}
 		sub.Devices = []SeatInfo{}
 		out = append(out, sub)
 	}
@@ -378,16 +471,22 @@ func (s *Store) AccountSubscriptions(ctx context.Context, account Account, now t
 		return nil, e
 	}
 	for i := range out {
-		seats, e := s.DB.Query(ctx, "SELECT sl.machine_hash,d.last_authenticated_at,d.name FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id JOIN devices d ON d.id=sl.device_id WHERE c.subscription_id=$1 AND NOT sl.disabled ORDER BY sl.updated_at LIMIT 10001", out[i].ID)
+		seats, e := s.DB.Query(ctx, `SELECT sl.machine_hash,greatest(md.observed_at,d.last_authenticated_at),coalesce(md.computer_name,d.name),
+ coalesce(md.software_version,''),md.observed_at,coalesce(lbl.label,''),d.revoked
+ FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id JOIN devices d ON d.id=sl.device_id
+ LEFT JOIN device_details md ON md.device_id=d.id
+ LEFT JOIN account_device_labels lbl ON lbl.account_id=$2 AND lbl.machine_hash=sl.machine_hash
+ WHERE c.subscription_id=$1 AND NOT sl.disabled ORDER BY sl.updated_at LIMIT 10001`, out[i].ID, account.ID)
 		if e != nil {
 			return nil, e
 		}
 		for seats.Next() {
 			var info SeatInfo
-			if e = seats.Scan(&info.Machine, &info.LastSeen, &info.Name); e != nil {
+			if e = seats.Scan(&info.Machine, &info.LastSeen, &info.Name, &info.Version, &info.Heartbeat, &info.Label, &info.Disabled); e != nil {
 				seats.Close()
 				return nil, e
 			}
+			info.Connection = deviceConnection(info.LastSeen, info.Heartbeat, info.Disabled, now)
 			// A prefix is enough to tell computers apart and to release a seat.
 			info.Machine = info.Machine[:12]
 			out[i].Devices = append(out[i].Devices, info)
@@ -402,7 +501,7 @@ func (s *Store) AccountSubscriptions(ctx context.Context, account Account, now t
 }
 
 func (s *Store) AccountPayments(ctx context.Context, account Account) ([]Payment, error) {
-	rows, e := s.DB.Query(ctx, "SELECT p.id,p.subscription_id,p.provider,p.amount_kopecks,p.period_days,p.status,p.created_at FROM payments p JOIN subscriptions sub ON sub.id=p.subscription_id WHERE sub.account_id=$1 ORDER BY p.created_at DESC LIMIT 100", account.ID)
+	rows, e := s.DB.Query(ctx, "SELECT p.id,p.subscription_id,p.provider,p.amount_kopecks,p.period_days,p.status,p.created_at,EXISTS(SELECT 1 FROM payment_review_events e WHERE e.payment_id=p.id) FROM payments p JOIN subscriptions sub ON sub.id=p.subscription_id WHERE sub.account_id=$1 ORDER BY p.created_at DESC LIMIT 100", account.ID)
 	if e != nil {
 		return nil, e
 	}
@@ -410,7 +509,7 @@ func (s *Store) AccountPayments(ctx context.Context, account Account) ([]Payment
 	out := []Payment{}
 	for rows.Next() {
 		var p Payment
-		if e = rows.Scan(&p.ID, &p.Subscribed, &p.Provider, &p.Amount, &p.PeriodDays, &p.Status, &p.Created); e != nil {
+		if e = rows.Scan(&p.ID, &p.Subscribed, &p.Provider, &p.Amount, &p.PeriodDays, &p.Status, &p.Created, &p.ReviewRequired); e != nil {
 			return nil, e
 		}
 		out = append(out, p)
@@ -425,11 +524,32 @@ func (s *Store) RecordPayment(ctx context.Context, subscription, provider, provi
 	if provider == "" || len(provider) > 32 || providerID == "" || len(providerID) > 128 || len(reference) > 256 || amount < 0 || days < 1 || days > 400 || (status != "pending" && status != "succeeded" && status != "canceled") {
 		return time.Time{}, false, errors.New("PAYMENT_INVALID")
 	}
+	// Existing v2 club orders always use the authenticated transition and frozen terms.
+	var clubOrder bool
+	if e := s.DB.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM club_payment_orders o JOIN payments p ON p.id=o.payment_id WHERE p.provider=$1 AND p.provider_payment_id=$2)", provider, providerID).Scan(&clubOrder); e != nil {
+		return time.Time{}, false, e
+	}
+	if clubOrder {
+		var storedDays int
+		if e := s.DB.QueryRow(ctx, "SELECT period_days FROM payments WHERE provider=$1 AND provider_payment_id=$2", provider, providerID).Scan(&storedDays); e != nil {
+			return time.Time{}, false, e
+		}
+		if days != storedDays {
+			return time.Time{}, false, errors.New("PAYMENT_MISMATCH")
+		}
+		return s.RecordProviderPayment(ctx, provider, providerID, subscription, amount, status, actor, now)
+	}
 	tx, e := s.DB.Begin(ctx)
 	if e != nil {
 		return time.Time{}, false, e
 	}
 	defer tx.Rollback(ctx)
+	var paymentAccount, paymentKind string
+	if e = tx.QueryRow(ctx, "SELECT a.id,a.account_type FROM accounts a JOIN subscriptions s ON s.account_id=a.id WHERE s.id=$1 FOR NO KEY UPDATE OF a", subscription).Scan(&paymentAccount, &paymentKind); errors.Is(e, pgx.ErrNoRows) {
+		return time.Time{}, false, errors.New("SUBSCRIPTION_NOT_FOUND")
+	} else if e != nil {
+		return time.Time{}, false, e
+	}
 	var paid *time.Time
 	if e = tx.QueryRow(ctx, "SELECT paid_until FROM subscriptions WHERE id=$1 FOR UPDATE", subscription).Scan(&paid); errors.Is(e, pgx.ErrNoRows) {
 		return time.Time{}, false, errors.New("SUBSCRIPTION_NOT_FOUND")
@@ -440,6 +560,15 @@ func (s *Store) RecordPayment(ctx context.Context, subscription, provider, provi
 	e = tx.QueryRow(ctx, "SELECT status FROM payments WHERE provider=$1 AND provider_payment_id=$2 FOR UPDATE", provider, providerID).Scan(&old)
 	switch {
 	case errors.Is(e, pgx.ErrNoRows):
+		if paymentKind == "club" {
+			var reserved bool
+			if e = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM promotion_reservations WHERE account_id=$1 AND state='reserved') OR EXISTS(SELECT 1 FROM club_payment_orders WHERE account_id=$1 AND entitlement_account_id IS NOT NULL AND state='open')", paymentAccount).Scan(&reserved); e != nil {
+				return time.Time{}, false, e
+			}
+			if reserved {
+				return time.Time{}, false, errors.New("PROMO_RECONCILIATION_REQUIRED")
+			}
+		}
 		id, err := security.NewID()
 		if err != nil {
 			return time.Time{}, false, err
@@ -491,8 +620,8 @@ func (s *Store) RecordPayment(ctx context.Context, subscription, provider, provi
 // Platega validates and supplies it from its required payload. Repeats and
 // out-of-order deliveries are harmless: the same status is a no-op, and a
 // payment that already succeeded is never reopened by a later event.
-func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID, expectedSubscription string, amount int64, status, actor string, now time.Time) (time.Time, bool, error) {
-	if provider == "" || len(provider) > 32 || providerID == "" || len(providerID) > 128 || amount < 0 || (status != "succeeded" && status != "canceled") {
+func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID, expectedSubscription string, amount int64, status, actor string, now time.Time, events ...PaymentEvent) (time.Time, bool, error) {
+	if provider == "" || len(provider) > 32 || providerID == "" || len(providerID) > 128 || amount < 0 || (status != "succeeded" && status != "canceled" && status != "review" && status != "pending") {
 		return time.Time{}, false, errors.New("PAYMENT_INVALID")
 	}
 	tx, e := s.DB.Begin(ctx)
@@ -500,6 +629,22 @@ func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID,
 		return time.Time{}, false, e
 	}
 	defer tx.Rollback(ctx)
+	// All writers use account -> subscription -> payment. Do not lock payment first.
+	var lockedAccount, lockedSubscription string
+	e = tx.QueryRow(ctx, "SELECT s.account_id,s.id FROM payments p JOIN subscriptions s ON s.id=p.subscription_id WHERE p.provider=$1 AND p.provider_payment_id=$2", provider, providerID).Scan(&lockedAccount, &lockedSubscription)
+	if errors.Is(e, pgx.ErrNoRows) {
+		return time.Time{}, false, errors.New("PAYMENT_UNKNOWN")
+	}
+	if e != nil {
+		return time.Time{}, false, e
+	}
+	if _, e = tx.Exec(ctx, "SELECT id FROM accounts WHERE id=$1 FOR NO KEY UPDATE", lockedAccount); e != nil {
+		return time.Time{}, false, e
+	}
+	if _, e = tx.Exec(ctx, "SELECT id FROM subscriptions WHERE id=$1 FOR UPDATE", lockedSubscription); e != nil {
+		return time.Time{}, false, e
+	}
+
 	var subscription, old string
 	var storedAmount int64
 	var days int
@@ -521,7 +666,25 @@ func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID,
 	if paid != nil {
 		until = *paid
 	}
-	if old == "succeeded" || old == status {
+	if status == "review" {
+		if len(events) != 1 {
+			return time.Time{}, false, errors.New("PAYMENT_INVALID")
+		}
+		ev := events[0]
+		if ev.ProviderStatus != "DISPUTED" && ev.ProviderStatus != "CHARGEBACKED" && ev.ProviderStatus != "PARTIALLY_REFUNDED" {
+			return time.Time{}, false, errors.New("PAYMENT_INVALID")
+		}
+		if _, e = tx.Exec(ctx, `INSERT INTO payment_review_events(payment_id,provider_status,refund_id,refund_status,refunded_kopecks)
+            SELECT id,$3,$4,$5,$6 FROM payments WHERE provider=$1 AND provider_payment_id=$2 ON CONFLICT DO NOTHING`, provider, providerID, ev.ProviderStatus, ev.RefundID, ev.RefundStatus, ev.RefundedKopecks); e != nil {
+			return time.Time{}, false, e
+		}
+		return until, false, tx.Commit(ctx)
+	}
+	var review bool
+	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payment_review_events e JOIN payments p ON p.id=e.payment_id WHERE p.provider=$1 AND p.provider_payment_id=$2)`, provider, providerID).Scan(&review); e != nil {
+		return time.Time{}, false, e
+	}
+	if old == "succeeded" || old == status || status == "pending" || review {
 		return until, false, tx.Commit(ctx)
 	}
 	if _, e = tx.Exec(ctx, "UPDATE payments SET status=$3 WHERE provider=$1 AND provider_payment_id=$2", provider, providerID, status); e != nil {
@@ -532,9 +695,15 @@ func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID,
 		if until.Before(now) {
 			until = now
 		}
+		if e = consumeClubOrder(ctx, tx, provider, providerID, until); e != nil {
+			return time.Time{}, false, e
+		}
 		// PostgreSQL keeps microseconds; returning the stored value keeps answers stable.
 		until = until.Add(time.Duration(days) * 24 * time.Hour).Truncate(time.Microsecond)
 		extended = true
+		if e = redeemPromotion(ctx, tx, provider, providerID, now); e != nil {
+			return time.Time{}, false, e
+		}
 		if _, e = tx.Exec(ctx, "UPDATE subscriptions SET paid_until=$2 WHERE id=$1", subscription, until); e != nil {
 			return time.Time{}, false, e
 		}
@@ -545,37 +714,53 @@ func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID,
 	return until, extended, tx.Commit(ctx)
 }
 
-// DeviceEntitlement finds the latest paid-until across every slot of the device.
+// DeviceEntitlement checks the account binding first, then legacy activation slots.
 func (s *Store) DeviceEntitlement(ctx context.Context, device string) (Entitlement, error) {
-	if managed, e := s.DeviceAccountManaged(ctx, device); e != nil {
-		return Entitlement{}, e
-	} else if managed {
-		var paid *time.Time
-		var blocked bool
-		e = s.DB.QueryRow(ctx, "SELECT sub.paid_until,(ac.disabled OR c.revoked OR c.expires_at<=now()) FROM account_device_bindings b JOIN subscriptions sub ON sub.id=b.subscription_id JOIN accounts ac ON ac.id=sub.account_id JOIN activation_codes c ON c.subscription_id=sub.id WHERE b.device_id=$1", device).Scan(&paid, &blocked)
-		if e != nil {
-			return Entitlement{}, e
-		}
-		out := Entitlement{Managed: true}
+	var paid, trial *time.Time
+	var blocked, lifetime bool
+	e := s.DB.QueryRow(ctx, `SELECT sub.paid_until,sub.trial_until,
+		(ac.disabled OR c.id IS NULL OR c.revoked OR (NOT sub.lifetime AND c.expires_at<=now())),sub.lifetime
+		FROM account_device_bindings b JOIN subscriptions sub ON sub.id=b.subscription_id
+		JOIN accounts ac ON ac.id=sub.account_id LEFT JOIN activation_codes c ON c.subscription_id=sub.id
+		WHERE b.device_id=$1`, device).Scan(&paid, &trial, &blocked, &lifetime)
+	if e == nil {
+		out := Entitlement{Managed: true, AccountBound: true, Lifetime: lifetime && !blocked}
 		if paid != nil && !blocked {
 			out.Until = *paid
 		}
+		if trial != nil && !blocked {
+			out.TrialUntil = *trial
+		}
 		return out, nil
 	}
-	rows, e := s.DB.Query(ctx, "SELECT c.subscription_id IS NOT NULL,c.expires_at,sub.paid_until FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id LEFT JOIN subscriptions sub ON sub.id=c.subscription_id WHERE sl.device_id=$1 AND NOT sl.disabled AND NOT c.revoked", device)
+	if !errors.Is(e, pgx.ErrNoRows) {
+		return Entitlement{}, e
+	}
+	rows, e := s.DB.Query(ctx, `SELECT c.subscription_id IS NOT NULL,c.expires_at,sub.paid_until,
+		coalesce(sub.lifetime AND NOT ac.disabled,false),sub.trial_until,coalesce(ac.disabled,false)
+		FROM activation_slots sl JOIN activation_codes c ON c.id=sl.code_id
+		LEFT JOIN subscriptions sub ON sub.id=c.subscription_id LEFT JOIN accounts ac ON ac.id=sub.account_id
+		WHERE sl.device_id=$1 AND NOT sl.disabled AND NOT c.revoked`, device)
 	if e != nil {
 		return Entitlement{}, e
 	}
 	defer rows.Close()
 	var out Entitlement
 	for rows.Next() {
-		var withSub bool
+		var withSub, lifetime, disabled bool
 		var expires time.Time
-		var paid *time.Time
-		if e = rows.Scan(&withSub, &expires, &paid); e != nil {
+		var paid, trial *time.Time
+		if e = rows.Scan(&withSub, &expires, &paid, &lifetime, &trial, &disabled); e != nil {
 			return Entitlement{}, e
 		}
 		out.Managed = true
+		out.Lifetime = out.Lifetime || lifetime
+		if trial != nil {
+			out.AccountBound = true
+			if !disabled && expires.After(time.Now()) && trial.After(out.TrialUntil) {
+				out.TrialUntil = *trial
+			}
+		}
 		until := expires
 		if withSub {
 			until = time.Time{}
@@ -600,9 +785,9 @@ type CutoffDevice struct {
 // SubscriptionCutoff lists active devices that enforcement would stop right now,
 // so the operator can review them before switching enforcement on.
 func (s *Store) SubscriptionCutoff(ctx context.Context, now time.Time) ([]CutoffDevice, error) {
-	rows, e := s.DB.Query(ctx, `SELECT d.id, max(c.name), max(CASE WHEN c.subscription_id IS NULL THEN c.expires_at ELSE coalesce(sub.paid_until,'epoch'::timestamptz) END) AS until, d.last_authenticated_at
+	rows, e := s.DB.Query(ctx, `SELECT d.id, max(c.name), greatest(max(CASE WHEN c.subscription_id IS NULL THEN c.expires_at ELSE coalesce(sub.paid_until,'epoch'::timestamptz) END),max(sub.trial_until)) AS until, d.last_authenticated_at
 FROM devices d JOIN activation_slots sl ON sl.device_id=d.id AND NOT sl.disabled JOIN activation_codes c ON c.id=sl.code_id AND NOT c.revoked LEFT JOIN subscriptions sub ON sub.id=c.subscription_id
-WHERE NOT d.revoked GROUP BY d.id, d.last_authenticated_at HAVING max(CASE WHEN c.subscription_id IS NULL THEN c.expires_at ELSE coalesce(sub.paid_until,'epoch'::timestamptz) END) + $1::interval <= $2 ORDER BY d.id LIMIT 1000`, fmt.Sprintf("%d seconds", int(SubscriptionGrace.Seconds())), now)
+WHERE NOT d.revoked GROUP BY d.id, d.last_authenticated_at HAVING NOT bool_or(coalesce(sub.lifetime,false)) AND max(CASE WHEN c.subscription_id IS NULL THEN c.expires_at ELSE coalesce(sub.paid_until,'epoch'::timestamptz) END) + $1::interval <= $2 AND coalesce(max(sub.trial_until),'epoch'::timestamptz) <= $2 ORDER BY d.id LIMIT 1000`, fmt.Sprintf("%d seconds", int(SubscriptionGrace.Seconds())), now)
 	if e != nil {
 		return nil, e
 	}
@@ -619,6 +804,7 @@ WHERE NOT d.revoked GROUP BY d.id, d.last_authenticated_at HAVING max(CASE WHEN 
 }
 
 type AdminSubscription struct {
+	Lifetime  bool       `json:"lifetime"`
 	ID        string     `json:"id"`
 	Email     string     `json:"email"`
 	PlanID    string     `json:"plan_id"`
@@ -627,7 +813,7 @@ type AdminSubscription struct {
 }
 
 func (s *Store) AdminSubscriptions(ctx context.Context) ([]AdminSubscription, error) {
-	rows, e := s.DB.Query(ctx, "SELECT sub.id,a.email,sub.plan_id,sub.seats,sub.paid_until FROM subscriptions sub JOIN accounts a ON a.id=sub.account_id ORDER BY sub.created_at DESC LIMIT 1000")
+	rows, e := s.DB.Query(ctx, "SELECT sub.id,a.email,sub.plan_id,sub.seats,sub.paid_until,sub.lifetime FROM subscriptions sub JOIN accounts a ON a.id=sub.account_id ORDER BY sub.created_at DESC LIMIT 1000")
 	if e != nil {
 		return nil, e
 	}
@@ -635,16 +821,10 @@ func (s *Store) AdminSubscriptions(ctx context.Context) ([]AdminSubscription, er
 	out := []AdminSubscription{}
 	for rows.Next() {
 		var x AdminSubscription
-		if e = rows.Scan(&x.ID, &x.Email, &x.PlanID, &x.Seats, &x.PaidUntil); e != nil {
+		if e = rows.Scan(&x.ID, &x.Email, &x.PlanID, &x.Seats, &x.PaidUntil, &x.Lifetime); e != nil {
 			return nil, e
 		}
 		out = append(out, x)
 	}
 	return out, rows.Err()
-}
-
-func (s *Store) DeviceAccountManaged(ctx context.Context, device string) (bool, error) {
-	var managed bool
-	e := s.DB.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM account_device_bindings WHERE device_id=$1)", device).Scan(&managed)
-	return managed, e
 }
