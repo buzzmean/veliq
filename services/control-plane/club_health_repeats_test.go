@@ -33,6 +33,9 @@ func TestPersistentRepeatIngestionMonotonicAndReporter(t *testing.T) {
 	}
 	now := b.Events[0].At
 	b.Reporter = &clubhealth.Reporter{PC: "PC13", Version: "0.3.800", Source: "new-fixture", Session: b.Events[0].Session, ServicePID: 11}
+	if _, err := s.DB.Exec(context.Background(), "UPDATE club_health_persistent_events SET received_at=now()-interval '1 day' WHERE device_id=$1", device); err != nil {
+		t.Fatal(err)
+	}
 	b.Events[0].Occurrences = 5
 	b.Events[0].LastAt = now.Add(time.Millisecond)
 	if status, ack := send(b); status != 200 || !ack.Accepts(b) {
@@ -48,6 +51,10 @@ func TestPersistentRepeatIngestionMonotonicAndReporter(t *testing.T) {
 			t.Fatal(err)
 		}
 		return e
+	}
+	var recentlyReceived bool
+	if err := s.DB.QueryRow(context.Background(), "SELECT received_at>now()-interval '1 minute' FROM club_health_persistent_events WHERE device_id=$1 AND event_id=$2", device, b.Events[0].ID).Scan(&recentlyReceived); err != nil || !recentlyReceived {
+		t.Fatal("обновлённый счётчик не виден среди последних событий", err)
 	}
 	if read().Occurrences != 5 {
 		t.Fatal("монотонный счётчик не сохранён")

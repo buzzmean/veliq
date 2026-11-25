@@ -161,7 +161,7 @@ func storeDiagnosticEvent(ctx context.Context, tx pgx.Tx, device, owner string, 
 		return errDiagnosticConflict
 	}
 	if changed {
-		_, err = tx.Exec(ctx, `UPDATE club_health_persistent_events SET summary=$3 WHERE device_id=$1 AND event_id=$2`, device, e.ID, raw)
+		_, err = tx.Exec(ctx, `UPDATE club_health_persistent_events SET summary=$3,received_at=now() WHERE device_id=$1 AND event_id=$2`, device, e.ID, raw)
 	}
 	return err
 }

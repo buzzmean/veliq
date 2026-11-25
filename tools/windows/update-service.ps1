@@ -115,10 +115,11 @@ try{
  Write-Host 'Only service executable ACL changed: owner RX, SYSTEM/admins F. Identity, credentials, driver and state ACLs preserved.'
 }catch{
  $failure=$_.Exception.Message
+ $failureCode='SERVICE_UPDATE_FAILED';if($failure -cmatch '^([A-Z][A-Z0-9_]{3,80})(;|$)'){$failureCode=$Matches[1]}
  if(Get-Command Write-VeliqInstallDiagnostic -ErrorAction SilentlyContinue){
   try{
    $failedState=Get-CimInstance Win32_Service -Filter "Name='VELIQ'" -OperationTimeoutSec 5
-   Write-VeliqInstallDiagnostic 'SERVICE_UPDATE_ERROR' @{scm_state=[string]$failedState.State;scm_exit_code=[int]$failedState.ExitCode;binary_replaced=$replaced}
+   Write-VeliqInstallDiagnostic 'SERVICE_UPDATE_ERROR' @{scm_state=[string]$failedState.State;scm_exit_code=[int]$failedState.ExitCode;binary_replaced=$replaced;code=$failureCode}
   }catch{Write-Host 'INSTALL_SERVICE_ERROR_DIAGNOSTICS_UNAVAILABLE; rollback continues'}
  }
  try{if($null -eq $ownedWatchdog){Remove-VeliqPolicyWatchdog $InstallDirectory}else{Stop-ScheduledTask -TaskName 'VELIQ-BrowserPolicyWatchdog' -ErrorAction SilentlyContinue}}catch{Write-Host 'WATCHDOG_ROLLBACK_CLEANUP_FAILED; task/backup preserved for review'}
@@ -127,7 +128,7 @@ try{
  if(!$replaced){
   Restore-VeliqServiceStartup $oldStartMode
   if($stopped){try{Restore-VeliqOwnerProxyLease $proxyLeaseBackup;if($oldStartMode -eq 'Disabled'){Set-Service VELIQ -StartupType Manual};Start-Service VELIQ;$service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30));Restore-VeliqServiceStartup $oldStartMode}catch{throw "Executable was not replaced; previous service could not restart. Backup: $backup"}}
-  throw "Windows update refused before replacement; previous binary/ACL retained: $failure. Backup: $backup"
+  throw "$failureCode; Windows update refused before replacement; previous binary/ACL retained: $failure. Backup: $backup"
  }
  try{
   $failedService=Get-CimInstance -ClassName Win32_Service -Filter "Name='VELIQ'" -OperationTimeoutSec 5

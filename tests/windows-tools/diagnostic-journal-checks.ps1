@@ -39,6 +39,17 @@ try{
  $old.lost=25166;[IO.File]::WriteAllText($path,($old|ConvertTo-Json -Depth 12 -Compress),[Text.UTF8Encoding]::new($false))
  $null=Restore-VeliqDiagnosticJournal $manifest $backup
  if((Get-Content -LiteralPath $path -Raw|ConvertFrom-Json).lost -ne 25166){throw 'JOURNAL_ROLLBACK_RESET_LOSS'}
+ # До активации строкаdevice пуста, но журнал всё равно корректен.
+ $pending=Join-Path $root 'pending.json';$old.device='';$old.lost=0
+ [IO.File]::WriteAllText($pending,($old|ConvertTo-Json -Depth 12 -Compress),[Text.UTF8Encoding]::new($false))
+ $pendingRead=Read-VeliqDiagnosticJournal $pending
+ if($pendingRead.value.device -cne ''){throw 'JOURNAL_PENDING_ACTIVATION_REJECTED'}
+ foreach($invalid in @($null,7,@{unexpected=$true})){
+  $old.device=$invalid
+  [IO.File]::WriteAllText($pending,($old|ConvertTo-Json -Depth 12 -Compress),[Text.UTF8Encoding]::new($false))
+  $rejected=$false;try{$null=Read-VeliqDiagnosticJournal $pending}catch{$rejected=$true}
+  if(!$rejected){throw 'JOURNAL_INVALID_DEVICE_ACCEPTED'}
+ }
  # Подменённый снимок отвергается до записи в рабочий файл.
  [IO.File]::AppendAllText((Join-Path $backup 'diagnostic-journal.json'),' ')
  $rejected=$false;try{$null=Restore-VeliqDiagnosticJournal $manifest $backup}catch{$rejected=$true}

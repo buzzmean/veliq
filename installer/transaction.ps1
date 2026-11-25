@@ -227,7 +227,10 @@ try{
      if((Get-FileHash -LiteralPath $savedHelper).Hash -cne $record.proxy_helper_sha256){throw 'OWNER_PROXY_ROLLBACK_HELPER_CHANGED'}
      . $savedHelper
      Restore-VeliqOwnerProxyLease (Get-Content -Raw -LiteralPath $proxySnapshotPath|ConvertFrom-Json)
-     if(Get-Command Restore-VeliqDiagnosticJournal -ErrorAction SilentlyContinue){Restore-VeliqDiagnosticJournal (Join-Path $serviceRoot 'service.json') $transaction}
+     if(Test-Path -LiteralPath (Join-Path $transaction 'diagnostic-journal-snapshot.json')){
+      if(!(Get-Command Restore-VeliqDiagnosticJournal -ErrorAction SilentlyContinue)){throw 'JOURNAL_ROLLBACK_HELPER_UNAVAILABLE'}
+      Restore-VeliqDiagnosticJournal (Join-Path $serviceRoot 'service.json') $transaction
+     }
      Write-VeliqInstallDiagnostic 'OWNER_PROXY_LEASE_RESTORED' @{before_service_start=$true}
     }
     $mode=switch($record.start_mode){'Auto'{'Automatic'}'Manual'{'Manual'}'Disabled'{'Disabled'}default{throw 'INSTALL_ROLLBACK_START_MODE_INVALID'}}

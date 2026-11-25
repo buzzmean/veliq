@@ -78,7 +78,7 @@ function Read-VeliqDiagnosticJournal([string]$Path) {
  $bytes=[IO.File]::ReadAllBytes($item.FullName)
  if($bytes.Length -gt 4194304){throw 'JOURNAL_SNAPSHOT_INVALID'}
  $value=[Text.Encoding]::UTF8.GetString($bytes)|ConvertFrom-Json
- if($value.format -ne 1 -or !$value.device -or @($value.rows).Count -gt 4096){throw 'JOURNAL_SNAPSHOT_INVALID'}
+ if($value.format -ne 1 -or !$value.PSObject.Properties['device'] -or $value.device -isnot [string] -or @($value.rows).Count -gt 4096){throw 'JOURNAL_SNAPSHOT_INVALID'}
  $rows=@();if($null -ne $value.rows){$rows=@($value.rows)}
  $history=@();if($value.PSObject.Properties['history'] -and $null -ne $value.history){$history=@($value.history)}
  if($history.Count -gt 4096){throw 'JOURNAL_SNAPSHOT_INVALID'}
