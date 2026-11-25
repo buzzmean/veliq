@@ -1,4 +1,4 @@
-; Build dependency only. Runtime uses Windows PowerShell 5.1, no SDK/Git/Go.
+﻿; Build dependency only. Runtime uses Windows PowerShell 5.1, no SDK/Git/Go.
 #ifndef StageRoot
  #define StageRoot "..\bin\installer"
 #endif
@@ -80,7 +80,7 @@ Source: "{#StageRoot}\payload\installer\install-safety.ps1"; DestName: "veliq-in
 Source: "{#StageRoot}\payload\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#StageRoot}\payload\gui\VELIQ.exe"; DestDir: "{app}"; Flags: ignoreversion
 [Run]
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""& '{app}\installer\install-package.ps1' -DiagnosticFile '{code:DiagnosticFile}' -ClubCodeFile '{code:ClubCodeFile}' {code:ClubImageArgument} {code:UpdateArgument}"""; Flags: runhidden waituntilterminated; StatusMsg: "Устанавливаем VELIQ…"; BeforeInstall: ClearInstallMarker; AfterInstall: CheckInstall
+Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ""& '{app}\installer\install-package.ps1' -DiagnosticFile '{code:DiagnosticFile}' -TransactionDirectory '{code:JournalTransactionDirectory}' -ClubCodeFile '{code:ClubCodeFile}' {code:ClubImageArgument} {code:UpdateArgument}"""; Flags: runhidden waituntilterminated; StatusMsg: "Устанавливаем VELIQ…"; BeforeInstall: ClearInstallMarker; AfterInstall: CheckInstall
 Filename: "{app}\VELIQ.exe"; Description: "{code:LaunchDescription}"; Flags: runasoriginaluser nowait postinstall skipifsilent; Check: ShowAccountSetup
 [Icons]
 Name: "{autoprograms}\VELIQ"; Filename: "{app}\VELIQ.exe"
@@ -97,6 +97,10 @@ var TransactionPrepared, PackageCompleted: Boolean;
 #include "setup-mode.iss"
 #include "setup-theme.iss"
 
+function JournalTransactionDirectory(Param: String): String;
+begin
+ Result := TransactionPath;
+end;
 function RunTransaction(Action: String): Integer;
 var Code: Integer; Command: String;
 begin

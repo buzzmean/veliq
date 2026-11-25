@@ -80,6 +80,7 @@ jobs:
           & ./tests/windows-tools/installer-scope-checks.ps1
           & ./tests/windows-tools/installer-transaction-files-checks.ps1
           & ./tests/windows-tools/installer-package-checks.ps1
+          & ./tests/windows-tools/diagnostic-journal-checks.ps1
           & python -m unittest discover -s tests/installer -v
           if ($LASTEXITCODE) { throw 'INSTALLER_CONTRACTS_FAILED' }
       - name: Safe runtime evidence (PowerShell 7)
@@ -90,6 +91,7 @@ jobs:
           & ./tests/windows-tools/installer-scope-checks.ps1
           & ./tests/windows-tools/installer-transaction-files-checks.ps1
           & ./tests/windows-tools/installer-package-checks.ps1
+          & ./tests/windows-tools/diagnostic-journal-checks.ps1
       - uses: actions/download-artifact@v4
         with:
           name: beta-published-public-trust

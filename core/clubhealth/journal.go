@@ -18,12 +18,11 @@ type Journal struct {
 	Format      int          `json:"format"`
 	Device      string       `json:"device"`
 	Rows        []JournalRow `json:"rows"`
-	Lost        uint64       `json:"lost"`
+	// Сохранённый backlog прежней версии; общий файл по-прежнему не более4MiB.
+	History []JournalRow `json:"history,omitempty"`
+	Lost    uint64       `json:"lost"`
 }
 
-// Journal is owned by one worker. No disk I/O runs under a routing/IPC lock.
-// It is both the rotated local history and the durable pending queue, so a
-// crash cannot orphan a second queue file. At most 4 MiB + atomic replacement.
 func LoadJournal(path, device string, now time.Time) Journal {
 	j := Journal{Format: 1, Device: device}
 	f, err := os.Open(path)
@@ -42,70 +41,140 @@ func LoadJournal(path, device string, now time.Time) Journal {
 	}
 	b, err := io.ReadAll(io.LimitReader(f, JournalBytes+1))
 	var old Journal
-	if err != nil || len(b) > JournalBytes || json.Unmarshal(b, &old) != nil ||
-		old.Format != 1 || old.Device != device || len(old.Rows) > JournalEvents {
+	if err != nil || len(b) > JournalBytes || json.Unmarshal(b, &old) != nil || old.Format != 1 || old.Device != device || len(old.Rows) > JournalEvents || len(old.History) > JournalEvents {
 		j.Lost++
 		return j
 	}
-	j.Lost = old.Lost
-	j.Open = old.Open
+	j.Lost, j.Open = old.Lost, old.Open
 	if len(old.Transitions.Active) <= 64 && len(old.Transitions.Previous) <= 64 {
 		j.Transitions = old.Transitions
 	}
-	for _, row := range old.Rows {
-		if row.Event.Valid(now) {
-			j.Rows = append(j.Rows, row)
-		} else if !row.Acked {
-			j.Lost++
+	seen := map[string]bool{}
+	load := func(rows []JournalRow) []JournalRow {
+		out := make([]JournalRow, 0, len(rows))
+		for _, row := range rows {
+			if row.Event.Valid(now) && !seen[row.Event.ID] {
+				out = append(out, row)
+				seen[row.Event.ID] = true
+			} else if !row.Acked {
+				j.Lost++
+			}
+		}
+		return out
+	}
+	j.Rows = load(old.Rows)
+	j.History = load(old.History)
+	return j
+}
+
+// Перенос не меняет старыеID, данные илиACK и не обнуляет потери.
+func (j *Journal) PreserveBacklog(version string) bool {
+	if len(j.Rows) < JournalEvents/2 || len(j.History) != 0 {
+		return false
+	}
+	for _, row := range j.Rows {
+		if row.Event.Version != version {
+			j.History, j.Rows = j.Rows, nil
+			return true
 		}
 	}
-	return j
+	return false
 }
 func (j *Journal) Add(e Diagnostic, now time.Time) bool {
 	if !e.Valid(now) {
 		j.Lost++
 		return false
 	}
-	for _, row := range j.Rows {
-		if row.Event.ID == e.ID {
-			return false
+	for _, rows := range [][]JournalRow{j.Rows, j.History} {
+		for i := range rows {
+			if rows[i].Event.ID != e.ID {
+				continue
+			}
+			changed, ok := DiagnosticUpdate(rows[i].Event, e)
+			if !ok {
+				j.Lost++
+				return false
+			}
+			if changed {
+				rows[i].Event = e
+				rows[i].Acked = false
+			}
+			return changed
 		}
 	}
 	j.Rows = append(j.Rows, JournalRow{Event: e})
 	for len(j.Rows) > JournalEvents {
-		j.drop()
+		j.drop(false)
 	}
 	return true
 }
 func (j *Journal) Trim(now time.Time) {
-	kept := j.Rows[:0]
-	for _, row := range j.Rows {
-		if row.Event.At.Before(now.Add(-Retention)) {
-			if !row.Acked {
-				j.Lost++
+	trim := func(rows []JournalRow) []JournalRow {
+		kept := rows[:0]
+		for _, row := range rows {
+			if row.Event.At.Before(now.Add(-Retention)) {
+				if !row.Acked {
+					j.Lost++
+				}
+			} else {
+				kept = append(kept, row)
 			}
-		} else {
-			kept = append(kept, row)
 		}
+		return kept
 	}
-	j.Rows = kept
+	j.Rows = trim(j.Rows)
+	j.History = trim(j.History)
 	for len(j.Rows) > JournalEvents {
-		j.drop()
+		j.drop(false)
 	}
-	// A bounded snapshot avoids unlimited disk growth even during a long outage.
-	for len(j.Rows) > 0 {
+	for len(j.History) > JournalEvents {
+		j.drop(true)
+	}
+	for len(j.Rows)+len(j.History) > 0 {
 		raw, _ := json.Marshal(j)
 		if len(raw) <= JournalBytes {
 			break
 		}
-		j.drop()
+		j.drop(true)
 	}
 }
-func (j *Journal) drop() {
-	if !j.Rows[0].Acked {
+func important(e Diagnostic) bool {
+	return e.State != "observed" || e.Component == "SERVICE" || e.Component == "JOURNAL"
+}
+
+// Сначала убирается доставленный шум; жизненный цикл и восстановление — последними.
+func (j *Journal) drop(history bool) {
+	queues := []*[]JournalRow{&j.Rows}
+	if history {
+		queues = []*[]JournalRow{&j.History, &j.Rows}
+	}
+	bestRank := 5
+	var selected *[]JournalRow
+	index := 0
+	for _, q := range queues {
+		for i, row := range *q {
+			rank := 0
+			if important(row.Event) {
+				rank += 2
+			}
+			if !row.Acked {
+				rank++
+			}
+			if rank < bestRank {
+				bestRank, selected, index = rank, q, i
+			}
+		}
+	}
+	if selected == nil {
+		return
+	}
+	rows := *selected
+	if !rows[index].Acked {
 		j.Lost++
 	}
-	j.Rows = j.Rows[1:]
+	copy(rows[index:], rows[index+1:])
+	rows[len(rows)-1] = JournalRow{}
+	*selected = rows[:len(rows)-1]
 }
 func (j *Journal) Save(write func([]byte) error) error {
 	b, err := json.Marshal(j)
@@ -117,14 +186,39 @@ func (j *Journal) Save(write func([]byte) error) error {
 	}
 	return write(b)
 }
+
+// Половина пакета зарезервирована для backlog, когда есть новые наблюдения.
 func (j *Journal) Batch() Batch {
 	b := Batch{Protocol: 1, Events: []Diagnostic{}}
-	for _, row := range j.Rows {
-		if !row.Acked {
-			b.Events = append(b.Events, row.Event)
+	add := func(rows []JournalRow, critical bool, limit int) {
+		for _, row := range rows {
+			if len(b.Events) >= limit {
+				return
+			}
+			if !row.Acked && important(row.Event) == critical {
+				b.Events = append(b.Events, row.Event)
+			}
 		}
-		if len(b.Events) == MaxEvents {
-			break
+	}
+	add(j.Rows, true, MaxEvents)
+	add(j.History, true, MaxEvents)
+	activeEnd := min(MaxEvents, len(b.Events)+MaxEvents/2)
+	add(j.Rows, false, activeEnd)
+	add(j.History, false, MaxEvents)
+	// Если backlog не занял резерв, оставшиеся активные записи тоже доставляются.
+	if len(b.Events) < MaxEvents {
+		seen := map[string]bool{}
+		for _, e := range b.Events {
+			seen[e.ID] = true
+		}
+		for _, row := range j.Rows {
+			if len(b.Events) == MaxEvents {
+				break
+			}
+			if !row.Acked && !seen[row.Event.ID] {
+				b.Events = append(b.Events, row.Event)
+				seen[row.Event.ID] = true
+			}
 		}
 	}
 	return b
@@ -133,16 +227,23 @@ func (j *Journal) Ack(b Batch, receipt Receipt) bool {
 	if !receipt.Accepts(b) {
 		return false
 	}
-	ids := map[string]bool{}
-	changed := false
+	sent := map[string]Diagnostic{}
 	for _, e := range b.Events {
-		ids[e.ID] = true
+		sent[e.ID] = e
 	}
-	for i := range j.Rows {
-		if ids[j.Rows[i].Event.ID] && !j.Rows[i].Acked {
-			j.Rows[i].Acked = true
-			changed = true
+	changed := false
+	for _, rows := range [][]JournalRow{j.Rows, j.History} {
+		for i := range rows {
+			e, ok := sent[rows[i].Event.ID]
+			//ACK старого счётчика не подтверждает повтор, возникший после отправки.
+			if ok && rows[i].Event == e && !rows[i].Acked {
+				rows[i].Acked = true
+				changed = true
+			}
 		}
 	}
 	return changed
+}
+func (j *Journal) Snapshot() Journal {
+	return Journal{Format: j.Format, Device: j.Device, Rows: append([]JournalRow(nil), j.Rows...), History: append([]JournalRow(nil), j.History...)}
 }

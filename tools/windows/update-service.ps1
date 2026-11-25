@@ -2,7 +2,8 @@
 param(
  [string]$ServiceExecutable=(Join-Path $PSScriptRoot '..\..\bin\windows-e2e\veliq-service.exe'),
  [string]$InstallDirectory="$env:ProgramData\VELIQ",
- [switch]$NativeTcpFirewall=$true
+ [switch]$NativeTcpFirewall=$true,
+ [string]$JournalBackupDirectory=''
 )
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
@@ -56,6 +57,8 @@ $oldAcl=Get-Acl -LiteralPath $target
 $oldAcl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::All)|Set-Content -LiteralPath (Join-Path $backup 'binary.sddl') -Encoding ASCII
 Copy-Item -LiteralPath $target -Destination (Join-Path $backup 'veliq-service.exe')
 $proxyLeaseBackup=Save-VeliqOwnerProxyLease $manifestFile $backup
+$journalBackup=if($JournalBackupDirectory){[IO.Path]::GetFullPath($JournalBackupDirectory)}else{$backup}
+$null=Get-VeliqDiagnosticJournalPath $manifestFile
 function Set-BinaryOwnerReadExecute([string]$Path,[string]$OwnerSid){
  $binaryOwner=[Security.Principal.SecurityIdentifier]::new($OwnerSid)
  $acl=[Security.AccessControl.FileSecurity]::new();$acl.SetAccessRuleProtection($true,$false)
@@ -88,6 +91,7 @@ try{
  $stopped=$true
  $service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
  if($serviceProcess -gt 0){try{$process=[Diagnostics.Process]::GetProcessById($serviceProcess);if(!$process.WaitForExit(30000)){throw 'Stopped service process did not exit; executable not replaced'}}catch [ArgumentException]{} }
+ $null=Save-VeliqDiagnosticJournal $manifestFile $journalBackup
  [IO.File]::Replace($pending,$target,[NullString]::Value)
  $replaced=$true
  Set-BinaryOwnerReadExecute $target $owner.Value
@@ -135,6 +139,7 @@ try{
   Restore-VeliqServiceStartup $oldStartMode
   Set-Service -Name VELIQ -DisplayName $oldDisplayName
   Restore-VeliqOwnerProxyLease $proxyLeaseBackup
+  Restore-VeliqDiagnosticJournal $manifestFile $journalBackup
   Start-Service VELIQ
   $service.WaitForStatus('Running',[TimeSpan]::FromSeconds(30))
  }catch{throw "Windows update failed ($failure); automatic binary rollback failed. Backup retained: $backup"}

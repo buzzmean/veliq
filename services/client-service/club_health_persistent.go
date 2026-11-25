@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -53,14 +54,16 @@ func (c *Controller) observeProxyDiagnostic(r browserproxy.Record) {
 		e.App = name
 		e.ProcessVerified = e.PID != 0 && e.Birth != 0
 	}
-	d.offer(e, "")
+	d.offerRepeated(e)
 }
 
 // ObserveDiagnosticError only accepts an internal fixed operation label.
 func (c *Controller) ObserveDiagnosticError(operation string, err error) {
 	if d := c.diagnostics.Load(); d != nil && err != nil {
 		code, native := clubhealth.ErrorCode(err)
-		d.note(operation, "SERVICE_OPERATION", "observed", code, native, "")
+		e := d.event(operation, "SERVICE_OPERATION", "observed", code)
+		e.NativeCode = native
+		d.offerRepeated(e)
 	}
 }
 
@@ -81,14 +84,16 @@ type diagnosticStatus struct {
 	Events        []clubhealth.Diagnostic `json:"events"`
 }
 type persistentDiagnostics struct {
-	done    chan struct{}
-	write   func([]byte) error // Isolated fixture only; never configured through IPC.
-	input   chan diagnosticInput
-	uploads chan diagnosticUpload
-	dropped atomic.Uint64
-	cp      atomic.Pointer[controlclient.Client]
-	status  atomic.Pointer[diagnosticStatus]
-	base    clubhealth.Diagnostic
+	repeatMu sync.Mutex
+	repeats  map[clubhealth.Diagnostic]diagnosticRepeat
+	done     chan struct{}
+	write    func([]byte) error // Isolated fixture only; never configured through IPC.
+	input    chan diagnosticInput
+	uploads  chan diagnosticUpload
+	dropped  atomic.Uint64
+	cp       atomic.Pointer[controlclient.Client]
+	status   atomic.Pointer[diagnosticStatus]
+	base     clubhealth.Diagnostic
 }
 
 func (d *persistentDiagnostics) event(component, observer, state, code string) clubhealth.Diagnostic {
@@ -151,6 +156,10 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 		defer close(d.done)
 	}
 	j := clubhealth.LoadJournal(path, device, time.Now())
+	j.PreserveBacklog(d.base.Version)
+	durable := clubhealth.Journal{}
+	var savedAt time.Time
+	recoveryPending := false
 	if j.Lost > 0 {
 		e := d.event("JOURNAL", "JOURNAL_READ", "observed", "PREVIOUS_EVENTS_LOST")
 		e.Lost = j.Lost
@@ -169,7 +178,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 	}
 	publish := func() {
 		s := &diagnosticStatus{PC: d.base.PC, Version: d.base.Version, Lost: j.Lost, Storage: storage, RetentionDays: 14, MaxBytes: clubhealth.JournalBytes}
-		for _, row := range j.Rows {
+		for _, row := range append(append([]clubhealth.JournalRow(nil), j.History...), j.Rows...) {
 			if !row.Acked {
 				s.Pending++
 			}
@@ -179,11 +188,15 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 		}
 		d.status.Store(s)
 	}
-	flush := func() bool {
-		before, lost := len(j.Rows), j.Lost
+	flush := func(force bool) bool {
+		before, lost := len(j.Rows)+len(j.History), j.Lost
 		j.Trim(time.Now())
-		dirty = dirty || before != len(j.Rows) || lost != j.Lost
+		dirty = dirty || before != len(j.Rows)+len(j.History) || lost != j.Lost
 		if !dirty && storage == "OK" {
+			publish()
+			return true
+		}
+		if !force && !recoveryPending && storage == "OK" && time.Since(savedAt) < diagnosticWriteInterval {
 			publish()
 			return true
 		}
@@ -199,10 +212,14 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 			return false
 		}
 		dirty = false
+		durable = j.Snapshot()
+		savedAt = time.Now()
+		recoveryPending = false
 		if storage == "WRITE_FAILED" {
 			e, _ := transitions.Observe("journal-write", d.event("JOURNAL", "JOURNAL_WRITE", "ready", "WRITE_OK"))
 			j.Add(e, time.Now())
 			dirty = true
+			recoveryPending = true
 		}
 		storage = "OK"
 		publish()
@@ -211,13 +228,34 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 	lastLost := j.Lost
+	collectRepeats := func() {
+		for _, e := range d.takeRepeats() {
+			if j.Add(e, time.Now()) {
+				dirty = true
+			}
+		}
+	}
+	observe := func(in diagnosticInput) {
+		e := in.event
+		if in.key != "" {
+			var changed bool
+			e, changed = transitions.Observe(in.key, e)
+			if !changed {
+				return
+			}
+		}
+		if j.Add(e, time.Now()) {
+			dirty = true
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
+			collectRepeats()
 			for draining := true; draining; {
 				select {
 				case in := <-d.input:
-					j.Add(in.event, time.Now())
+					observe(in)
 				default:
 					draining = false
 				}
@@ -226,21 +264,12 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 			j.Add(d.event("SERVICE", "SERVICE_LIFECYCLE", "observed", "SERVICE_STOP_REQUESTED"), time.Now())
 			j.Open = false
 			dirty = true
-			flush()
+			flush(true)
 			return
 		case in := <-d.input:
-			e := in.event
-			if in.key != "" {
-				var ok bool
-				e, ok = transitions.Observe(in.key, e)
-				if !ok {
-					continue
-				}
-			}
-			if j.Add(e, time.Now()) {
-				dirty = true
-			}
+			observe(in)
 		case request := <-d.uploads:
+			collectRepeats()
 			if request.device != "" && j.Device == "" {
 				j.Device = request.device
 				dirty = true
@@ -252,12 +281,15 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 					continue
 				}
 				lost := j.Lost
-				for _, row := range j.Rows {
+				for _, row := range append(append([]clubhealth.JournalRow(nil), j.History...), j.Rows...) {
 					if !row.Acked {
 						lost++
 					}
 				}
 				j = clubhealth.Journal{Format: 1, Device: request.device, Lost: lost, Open: true}
+				durable = clubhealth.Journal{}
+				storage = "PENDING"
+				d.resetRepeats()
 				transitions = &j.Transitions
 				e := d.event("JOURNAL", "DEVICE_BINDING", "observed", "DEVICE_IDENTITY_CHANGED")
 				e.Lost = lost
@@ -265,23 +297,28 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 				dirty = true
 			}
 			if request.reply != nil {
-				if flush() {
-					request.reply <- j.Batch()
+				if flush(false) {
+					b := durable.Batch()
+					b.Reporter = &clubhealth.Reporter{PC: d.base.PC, Version: d.base.Version, Source: d.base.Source, Session: d.base.Session, ServicePID: d.base.ServicePID}
+					request.reply <- b
 				} else {
 					request.reply <- clubhealth.Batch{}
 				}
-			} else if j.Ack(request.batch, request.receipt) {
-				dirty = true
-				flush()
+			} else {
+				if j.Ack(request.batch, request.receipt) {
+					dirty = true
+				}
+				durable.Ack(request.batch, request.receipt)
 			}
 		case <-ticker.C:
+			collectRepeats()
 			if lost := d.dropped.Swap(0); lost > 0 {
 				j.Lost += lost
 				dirty = true
 			}
-			before := len(j.Rows)
+			before := len(j.Rows) + len(j.History)
 			j.Trim(time.Now())
-			dirty = dirty || before != len(j.Rows)
+			dirty = dirty || before != len(j.Rows)+len(j.History)
 			if j.Lost != lastLost {
 				e := d.event("JOURNAL", "BOUNDED_QUEUE", "observed", "EVENTS_LOST")
 				e.Lost = j.Lost
@@ -290,7 +327,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 				dirty = true
 			}
 			if dirty {
-				flush()
+				flush(false)
 			} else {
 				publish()
 			}
@@ -303,6 +340,9 @@ func (d *persistentDiagnostics) upload(ctx context.Context) {
 	for {
 		// Session-specific deterministic jitter avoids a club-wide retry burst.
 		jitter := time.Duration(d.base.Session[0]%11) * time.Second
+		if delay < 30*time.Second {
+			jitter = 0
+		}
 		timer := time.NewTimer(delay + jitter)
 		select {
 		case <-ctx.Done():
@@ -359,7 +399,7 @@ func (d *persistentDiagnostics) upload(ctx context.Context) {
 		}
 		delay = 30 * time.Second
 		if len(b.Events) == clubhealth.MaxEvents {
-			delay = 5 * time.Second
+			delay = time.Second
 		}
 	}
 }

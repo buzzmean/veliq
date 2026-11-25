@@ -47,9 +47,15 @@ type Diagnostic struct {
 	ProcessVerified bool      `json:"process_verified,omitempty"`
 	Port            uint16    `json:"port,omitempty"`
 	Lost            uint64    `json:"lost,omitempty"`
+	Occurrences     uint64    `json:"occurrences,omitempty"`
+	LastAt          time.Time `json:"last_at,omitzero"`
 }
 
 func (e Diagnostic) Valid(now time.Time) bool {
+	if e.Occurrences > 1<<63-1 || (e.Occurrences == 0) != e.LastAt.IsZero() ||
+		e.Occurrences > 0 && (e.LastAt.Before(e.At) || e.LastAt.After(now.Add(time.Minute)) || e.Occurrences == 1 && !e.LastAt.Equal(e.At)) {
+		return false
+	}
 	if !eventID.MatchString(e.ID) || !eventID.MatchString(e.Session) ||
 		!label.MatchString(e.PC) || !buildID.MatchString(e.Version) || !buildID.MatchString(e.Source) ||
 		!symbol.MatchString(e.Observer) || !symbol.MatchString(e.Component) || !symbol.MatchString(e.Code) ||
@@ -66,7 +72,21 @@ func (e Diagnostic) Valid(now time.Time) bool {
 	return false
 }
 
+// Reporter описывает отправляющую службу, а не версию старых событий backlog.
+type Reporter struct {
+	PC         string `json:"pc"`
+	Version    string `json:"version"`
+	Source     string `json:"source"`
+	Session    string `json:"session"`
+	ServicePID uint32 `json:"service_pid"`
+}
+
+func (r Reporter) Valid() bool {
+	return label.MatchString(r.PC) && buildID.MatchString(r.Version) && buildID.MatchString(r.Source) && eventID.MatchString(r.Session) && r.ServicePID != 0
+}
+
 type Batch struct {
+	Reporter *Reporter    `json:"reporter,omitempty"`
 	Protocol int          `json:"protocol"`
 	Events   []Diagnostic `json:"events"`
 }
@@ -89,7 +109,7 @@ func (b Batch) Audience() string {
 	return "club-health-persistent-v1:" + hex.EncodeToString(sum[:])
 }
 func (b Batch) Validate(now time.Time) error {
-	if b.Protocol != 1 || len(b.Events) > MaxEvents {
+	if b.Protocol != 1 || len(b.Events) > MaxEvents || b.Reporter != nil && !b.Reporter.Valid() {
 		return errors.New("invalid diagnostic batch")
 	}
 	seen := map[string]bool{}
@@ -134,4 +154,37 @@ func (t *Transitions) Observe(key string, e Diagnostic) (Diagnostic, bool) {
 		delete(t.Active, key)
 	}
 	return e, true
+}
+
+// Повтор объединяется только при совпадении всех исходных метаданных.
+func (e Diagnostic) RepeatKey() Diagnostic {
+	e.ID = ""
+	e.At, e.LastAt = time.Time{}, time.Time{}
+	e.Occurrences = 0
+	return e
+}
+
+// Содержание события неизменно; обновляются только число наблюдений и их конец.
+func DiagnosticUpdate(old, next Diagnostic) (changed, compatible bool) {
+	a, b := old, next
+	a.Occurrences, b.Occurrences = 0, 0
+	a.LastAt, b.LastAt = time.Time{}, time.Time{}
+	if a != b {
+		return false, false
+	}
+	oldCount, nextCount := max(uint64(1), old.Occurrences), max(uint64(1), next.Occurrences)
+	oldAt, nextAt := old.LastAt, next.LastAt
+	if oldAt.IsZero() {
+		oldAt = old.At
+	}
+	if nextAt.IsZero() {
+		nextAt = next.At
+	}
+	if nextCount <= oldCount && !nextAt.After(oldAt) {
+		return false, true
+	}
+	if nextCount > oldCount && !nextAt.Before(oldAt) {
+		return true, true
+	}
+	return false, false
 }

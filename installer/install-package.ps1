@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$ClubCodeFile='',[switch]$ClubImage,[switch]$Remove,[switch]$Update,[string]$DiagnosticFile='')
+param([string]$ClubCodeFile='',[switch]$ClubImage,[switch]$Remove,[switch]$Update,[string]$DiagnosticFile='',[string]$TransactionDirectory='')
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 $root=Split-Path $PSScriptRoot -Parent
 $result=Join-Path $root 'install-result.json';$success=Join-Path $root 'install-success.json'
@@ -74,7 +74,13 @@ try{
   $pins=Get-Content -Raw -LiteralPath (Join-Path $root 'driver\pins.json')|ConvertFrom-Json
   . (Join-Path $scripts 'migrate-legacy-install.ps1');[void](Move-VeliqLegacyInstall -Start);Update-VeliqClubTaskPaths
   if(Get-Service VELIQ -ErrorAction SilentlyContinue){
-   & (Join-Path $scripts 'update-service.ps1') -ServiceExecutable (Join-Path $root 'service\veliq-service.exe') -InstallDirectory $installed
+   $journalArgs=@{}
+   if($TransactionDirectory){
+    $tx=Get-Content -Raw -LiteralPath (Join-Path $TransactionDirectory 'transaction.json')|ConvertFrom-Json
+    if($tx.phase -cne 'PREPARED' -or [string]$tx.app -ine $root){throw 'JOURNAL_TRANSACTION_TARGET_INVALID'}
+    $journalArgs.JournalBackupDirectory=$TransactionDirectory
+   }
+   & (Join-Path $scripts 'update-service.ps1') -ServiceExecutable (Join-Path $root 'service\veliq-service.exe') -InstallDirectory $installed @journalArgs
   }else{
    $serviceArgs=@{ServiceExecutable=(Join-Path $root 'service\veliq-service.exe');OwnerSid=$owner;ActivationOnly=$true;TrustDirectory=(Join-Path $root 'public');DriverDirectory=(Join-Path $root 'driver');DllSha256=$pins.dll_sha256;DriverSha256=$pins.driver_sha256;ControlPlaneUrl=$config.control_plane_url;ProbeTarget=$config.probe_target;TCPProbeTarget=$config.tcp_probe_target;InstallDirectory=$installed}
    if(Test-Path $manifest){$serviceArgs.Reinstall=$true}

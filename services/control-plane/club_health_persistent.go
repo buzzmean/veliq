@@ -18,6 +18,7 @@ import (
 
 var errDiagnosticProof = errors.New("DIAGNOSTIC_PROOF_REJECTED")
 var errDiagnosticOwner = errors.New("DIAGNOSTIC_OWNER_REQUIRED")
+var errDiagnosticConflict = errors.New("DIAGNOSTIC_EVENT_CONFLICT")
 
 func (a *API) persistentClubHealth(w http.ResponseWriter, r *http.Request) {
 	var q clubhealth.PersistentRequest
@@ -39,6 +40,8 @@ func (a *API) persistentClubHealth(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 401, "DIAGNOSTIC_PROOF_REJECTED")
 	case errors.Is(err, errDiagnosticOwner):
 		a.fail(w, 403, "DIAGNOSTIC_OWNER_REQUIRED")
+	case errors.Is(err, errDiagnosticConflict):
+		a.fail(w, 409, "DIAGNOSTIC_EVENT_CONFLICT")
 	case err != nil:
 		a.fail(w, 503, "DIAGNOSTIC_STORAGE_UNAVAILABLE")
 	default:
@@ -79,7 +82,9 @@ func (s *Store) RecordPersistentDiagnostics(ctx context.Context, q clubhealth.Pe
 		return err
 	}
 	pc, version, source := "", "", ""
-	if len(q.Batch.Events) > 0 {
+	if q.Batch.Reporter != nil {
+		pc, version, source = q.Batch.Reporter.PC, q.Batch.Reporter.Version, q.Batch.Reporter.Source
+	} else if len(q.Batch.Events) > 0 {
 		last := q.Batch.Events[len(q.Batch.Events)-1]
 		pc, version, source = last.PC, last.Version, last.Source
 	}
@@ -102,8 +107,7 @@ func (s *Store) RecordPersistentDiagnostics(ctx context.Context, q clubhealth.Pe
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO club_health_persistent_events(device_id,event_id,account_id,observed_at,summary)
-			VALUES($1,$2,$3,$4,$5) ON CONFLICT(device_id,event_id) DO NOTHING`, q.Proof.DeviceID, e.ID, owner, e.At, raw)
+		err = storeDiagnosticEvent(ctx, tx, q.Proof.DeviceID, owner, e, raw)
 		if err != nil {
 			return err
 		}
@@ -133,6 +137,33 @@ func (s *Store) RecordPersistentDiagnostics(ctx context.Context, q clubhealth.Pe
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// Подписан весь снимок. Под тем жеID разрешено лишь монотонное увеличение
+// счётчика той же ошибки; старыйACK не подтверждает будущие наблюдения.
+func storeDiagnosticEvent(ctx context.Context, tx pgx.Tx, device, owner string, e clubhealth.Diagnostic, raw []byte) error {
+	tag, err := tx.Exec(ctx, `INSERT INTO club_health_persistent_events(device_id,event_id,account_id,observed_at,summary)
+ VALUES($1,$2,$3,$4,$5) ON CONFLICT(device_id,event_id) DO NOTHING`, device, e.ID, owner, e.At, raw)
+	if err != nil || tag.RowsAffected() == 1 {
+		return err
+	}
+	var previous []byte
+	var previousOwner string
+	if err = tx.QueryRow(ctx, `SELECT summary,account_id FROM club_health_persistent_events WHERE device_id=$1 AND event_id=$2 FOR UPDATE`, device, e.ID).Scan(&previous, &previousOwner); err != nil {
+		return err
+	}
+	var old clubhealth.Diagnostic
+	if previousOwner != owner || json.Unmarshal(previous, &old) != nil {
+		return errDiagnosticConflict
+	}
+	changed, compatible := clubhealth.DiagnosticUpdate(old, e)
+	if !compatible {
+		return errDiagnosticConflict
+	}
+	if changed {
+		_, err = tx.Exec(ctx, `UPDATE club_health_persistent_events SET summary=$3 WHERE device_id=$1 AND event_id=$2`, device, e.ID, raw)
+	}
+	return err
 }
 
 const diagnosticOwnerSQL = `WITH owners AS (
@@ -217,9 +248,9 @@ var diagnosticView = template.Must(template.New("diagnostics").Funcs(template.Fu
 <form><label>Компьютер <input name="pc" maxlength="80" placeholder="PC13"></label><button>Показать</button></form>
 <table><thead><tr><th>ПК</th><th>Версия VELIQ</th><th>Доставка</th><th>Удалено по лимиту</th></tr></thead><tbody>
 {{range .Devices}}<tr><td>{{.PC}}</td><td>{{.Version}}</td><td>{{.State}}</td><td>{{.Discarded}}</td></tr>{{end}}</tbody></table>
-<h2>Последние события</h2><table><thead><tr><th>UTC</th><th>ПК / версия</th><th>Источник</th><th>Состояние</th><th>Код</th><th>Процесс</th></tr></thead><tbody>
+<h2>Последние события</h2><table><thead><tr><th>UTC</th><th>ПК / версия</th><th>Источник</th><th>Состояние</th><th>Код</th><th>Наблюдения</th><th>Процесс</th></tr></thead><tbody>
 {{range .Events}}{{with .Summary}}<tr><td>{{.At}}</td><td>{{.PC}} / {{.Version}}</td><td>{{.Component}} / {{.Observer}}</td><td>{{.State}}</td>
-<td>{{.Code}} {{hex .NativeCode}}; операция {{.Operation}}; состояние провайдера {{.ProviderState}}; EventID {{.EventID}}</td><td>{{.App}} PID {{.PID}}; поколение {{.Birth}}; подтверждено {{.ProcessVerified}}</td></tr>{{end}}{{end}}
+<td>{{.Code}} {{hex .NativeCode}}; операция {{.Operation}}; состояние провайдера {{.ProviderState}}; EventID {{.EventID}}</td><td>{{if .Occurrences}}{{.Occurrences}}; последнее {{.LastAt}}{{else}}1{{end}}</td><td>{{.App}} PID {{.PID}}; поколение {{.Birth}}; подтверждено {{.ProcessVerified}}</td></tr>{{end}}{{end}}
 </tbody></table><p>Показано до 300 событий. Журнал не содержит HTTPS-содержимое, ключи или коды активации.</p></html>`))
 
 func (s *Store) PersistentDiagnosticsView(ctx context.Context, owner, pc string) (json.RawMessage, error) {
