@@ -686,6 +686,13 @@ func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID,
 	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payment_review_events e JOIN payments p ON p.id=e.payment_id WHERE p.provider=$1 AND p.provider_payment_id=$2)`, provider, providerID).Scan(&review); e != nil {
 		return time.Time{}, false, e
 	}
+	// An older server may have credited this known payment without knowing the
+	// durable personal order. Complete only its tracking state, never the credit.
+	if old == "succeeded" && !review {
+		if e = consumePersonalOrder(ctx, tx, provider, providerID); e != nil {
+			return time.Time{}, false, e
+		}
+	}
 	if old == "succeeded" || old == status || status == "pending" || review {
 		return until, false, tx.Commit(ctx)
 	}

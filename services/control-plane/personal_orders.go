@@ -143,6 +143,12 @@ func (s *Store) ReservePersonalOrder(ctx context.Context, acc Account, subID str
 // in READ COMMITTED. Historical canceled links can confirm late; an existing
 // order/refund must never be classified as synthetic or silently released.
 func unresolvedPersonalPayment(ctx context.Context, tx pgx.Tx, account string) (bool, error) {
+	// A successful callback handled by an older server may never be replayed.
+	// The caller's account lock serializes this tracking-only reconciliation
+	// with callbacks and reservations; no money or subscription terms change.
+	if _, err := tx.Exec(ctx, consumeSucceededPersonalOrderSQL+" AND o.account_id=$1", account); err != nil {
+		return false, err
+	}
 	var unresolved bool
 	err := tx.QueryRow(ctx, `SELECT
  EXISTS(SELECT 1 FROM personal_payment_orders WHERE account_id=$1 AND state='open') OR
@@ -208,9 +214,17 @@ func (s *Store) AttachPersonalPayment(ctx context.Context, id, provider, provide
 	return tx.Commit(ctx)
 }
 
+// Only a known, owner-bound successful payment without a review can complete
+// an order. Pending, canceled and ambiguous creation claims remain unresolved.
+const consumeSucceededPersonalOrderSQL = `UPDATE personal_payment_orders o SET state='consumed'
+ FROM payments p JOIN subscriptions s ON s.id=p.subscription_id
+ WHERE p.id=o.payment_id AND s.account_id=o.account_id AND o.state='open'
+ AND p.status='succeeded' AND p.provider<>'' AND p.provider_payment_id<>''
+ AND p.provider_payment_id NOT LIKE 'reservation:%'
+ AND NOT EXISTS(SELECT 1 FROM payment_review_events e WHERE e.payment_id=p.id)`
+
 func consumePersonalOrder(ctx context.Context, tx pgx.Tx, provider, providerID string) error {
-	_, err := tx.Exec(ctx, `UPDATE personal_payment_orders o SET state='consumed' FROM payments p
- WHERE p.id=o.payment_id AND p.provider=$1 AND p.provider_payment_id=$2 AND o.state='open'`, provider, providerID)
+	_, err := tx.Exec(ctx, consumeSucceededPersonalOrderSQL+" AND p.provider=$1 AND p.provider_payment_id=$2", provider, providerID)
 	return err
 }
 
