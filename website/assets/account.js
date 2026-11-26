@@ -51,6 +51,12 @@
     SUBSCRIPTION_EXPIRED: 'Сначала продлите подписку.',
     CLUB_PAYMENT_REQUIRED: 'Дождитесь подтверждения оплаты. Затем клубную подписку проверит оператор.',
     CLUB_VERIFICATION_PENDING: 'Оплата подтверждена. Клубная подписка ожидает проверки.',
+    CLUB_INVITE_INVALID: 'Проверьте код приглашения от другого клуба.',
+    CLUB_INVITE_ALREADY_CLAIMED: 'В этом кабинете уже принято приглашение.',
+    CLUB_INVITE_TOO_LATE: 'Код приглашения нужно ввести до оформления первого заказа.',
+    CLUB_INVITE_NOT_ELIGIBLE: 'Код приглашения доступен клубам после оплаты и проверки.',
+    CLUB_REFERRAL_MONTH_ONLY: 'Промокод действует на продление на 30 дней.',
+    CLUB_REFERRAL_PROMO_CONFLICT: 'В этом заказе уже есть скидка. Сохраните промокод для следующего продления.',
     PERSONAL_SEAT_CHANGE_NOT_AVAILABLE: 'Число ПК в существующей подписке можно уточнить в поддержке.',
     ACTIVATION_LIMIT: 'Нет свободного места. Освободите компьютер или увеличьте число мест.',
     SEAT_NOT_FOUND: 'Этот компьютер уже освобождён.'
@@ -125,6 +131,80 @@
   });
 
   function planOf(id) { for (var i = 0; i < state.plans.length; i++) if (state.plans[i].id === id) return state.plans[i]; return null; }
+
+  function renderClubReferrals(referrals) {
+    var panel = $('[data-club-referrals]');
+    var content = $('[data-club-referral-content]');
+    var error = $('[data-club-referral-error]');
+    if (!panel) return;
+    content.textContent = '';
+    say(error, '');
+    panel.hidden = !referrals;
+    if (!referrals) return;
+    function submit(btn, action, data) {
+      busy(btn, true);
+      say(error, '');
+      call('POST', '/club-invitations/' + action, data).then(load).catch(function (err) {
+        say(error, message(err.message));
+      }).then(function () { busy(btn, false); });
+    }
+    function codeRow(title, value) {
+      var row = el('p', 'acc-actions');
+      row.appendChild(el('span', null, title));
+      var code = el('code', null, value);
+      code.style.overflowWrap = 'anywhere';
+      row.appendChild(code);
+      if (navigator.clipboard) {
+        var copy = el('button', 'btn btn--sm btn--quiet', 'Копировать');
+        copy.type = 'button';
+        copy.addEventListener('click', function () {
+          navigator.clipboard.writeText(value).then(function () { copy.textContent = 'Скопировано'; })
+            .catch(function () { say(error, 'Выделите и скопируйте код вручную.'); });
+        });
+        row.appendChild(copy);
+      }
+      content.appendChild(row);
+    }
+    if (referrals.can_invite) {
+      if (referrals.invitation_code) {
+        codeRow('Код для другого клуба', referrals.invitation_code);
+      } else {
+        var create = el('button', 'btn btn--sm', 'Получить код приглашения');
+        create.type = 'button';
+        create.addEventListener('click', function () { submit(create, 'link', {}); });
+        content.appendChild(create);
+      }
+    }
+    if (referrals.can_claim) {
+      var form = el('form', 'acc-promo__form');
+      var label = el('label', 'field');
+      label.appendChild(el('span', null, 'Код приглашения от другого клуба'));
+      var input = el('input', 'input');
+      input.type = 'text'; input.required = true; input.maxLength = 35;
+      input.autocomplete = 'off'; input.spellcheck = false;
+      label.appendChild(input);
+      form.appendChild(label);
+      var claim = el('button', 'btn btn--sm', 'Принять приглашение');
+      claim.type = 'submit';
+      form.appendChild(claim);
+      form.addEventListener('submit', function (event) {
+        event.preventDefault();
+        submit(claim, 'claim', {code: input.value.trim()});
+      });
+      content.appendChild(form);
+    } else if (referrals.claimed && !referrals.claim_earned) {
+      content.appendChild(el('p', 'muted', 'Приглашение принято. Скидка появится после оплаты и подтверждения клуба.'));
+    }
+    (referrals.credits || []).forEach(function (credit) {
+      if (credit.state === 'available') {
+        codeRow('Промокод на продление −30%', credit.code);
+      } else {
+        var status = {reserved: 'Скидка закреплена за заказом', redeemed: 'Скидка использована', held: 'Скидка приостановлена до проверки оплаты'};
+        if (status[credit.state]) content.appendChild(el('p', 'muted', status[credit.state]));
+      }
+    });
+  }
+  $('[data-logout]').addEventListener('click', function () { renderClubReferrals(null); });
 
   function renderPlans(target) {
     target.textContent = '';
@@ -319,7 +399,7 @@
       call('POST','/subscriptions/'+s.id+'/quote',{months:Number(duration.value),promo_code:code}).then(function(result){
         if(version!==quoteVersion)return;
         if(!Number.isSafeInteger(result.amount_kopecks)||result.amount_kopecks<1)throw new Error('PAYMENT_UNAVAILABLE');
-        appliedCode=code;appliedQuote=result;remove.hidden=false;showQuote();say(promoNote,'Расчёт получен. Льгота: '+rub((result.base_amount_kopecks-result.amount_kopecks)/100)+(result.eligible_seconds!=null?' на '+result.eligible_seats+' первоначальных мест, '+(result.eligible_seconds/86400).toLocaleString('ru-RU',{maximumFractionDigits:6})+' дней.':'.'));
+        appliedCode=code;appliedQuote=result;remove.hidden=false;showQuote();say(promoNote,'Расчёт получен. Скидка: '+rub((result.base_amount_kopecks-result.amount_kopecks)/100)+(!result.referral_discount&&result.eligible_seconds!=null?' на '+result.eligible_seats+' первоначальных мест, '+(result.eligible_seconds/86400).toLocaleString('ru-RU',{maximumFractionDigits:6})+' дней.':'.'));
       }).catch(function(x){if(version===quoteVersion)say(promoNote,message(x.message));}).then(function(){if(version===quoteVersion){checking=false;busy(apply,false);busy(pay,false);}});
     });
     showQuote();
@@ -339,25 +419,32 @@
         if(refreshed){var changeNote=el('p','acc-small',message('PAYMENT_PRICE_CHANGED'));changeNote.setAttribute('role','status');dialog.appendChild(changeNote);}
         var operation=(frozen.operation || (s.paid_until?'renewal':'purchase'))==='renewal'?'Продление':'Первая покупка';
         [ (state.name || 'Мой аккаунт')+(frozen.club_reference?' · Клуб '+frozen.club_reference:''), 'Подписка: '+s.id, operation+' · '+p.title, 'Компьютеров: '+s.seats+'. Срок: '+frozen.days+' дней.', 'Базовая сумма: '+rub(frozen.base_amount_kopecks/100), 'Скидка: '+rub((frozen.base_amount_kopecks-frozen.amount_kopecks)/100), 'К оплате: '+rub(frozen.amount_kopecks/100)+'. Комиссия для вас: 0 ₽.' ].forEach(function(line){dialog.appendChild(el('p',null,line));});
-        if(frozen.eligible_seconds!=null)dialog.appendChild(el('p',null,'По текущему расчёту скидка 30% действует на '+frozen.eligible_seats+' первоначальных мест и '+(frozen.eligible_seconds/86400).toLocaleString('ru-RU',{maximumFractionDigits:6})+' дней льготного периода. Остальной срок — по полной цене.'));
-        if(frozen.window_end)dialog.appendChild(el('p',null,'Льготное окно заканчивается '+new Date(frozen.window_end).toLocaleString('ru-RU')+'. Оно не начинается заново при продлении.'));
+        if(frozen.referral_discount)dialog.appendChild(el('p',null,'Клубное приглашение даёт скидку 30% на это продление на 30 дней.'));
+        else if(frozen.eligible_seconds>0)dialog.appendChild(el('p',null,'По текущему расчёту скидка 30% действует на '+frozen.eligible_seats+' первоначальных мест и '+(frozen.eligible_seconds/86400).toLocaleString('ru-RU',{maximumFractionDigits:6})+' дней льготного периода. Остальной срок — по полной цене.'));
+        if(!frozen.referral_discount&&frozen.window_end)dialog.appendChild(el('p',null,'Льготное окно заканчивается '+new Date(frozen.window_end).toLocaleString('ru-RU')+'. Оно не начинается заново при продлении.'));
         dialog.appendChild(el('p',null,'После подтверждения оплаты эта подписка получит '+frozen.days+' дней'+(frozen.expected_start?' (ожидаемо с '+new Date(frozen.expected_start).toLocaleString('ru-RU')+' до '+new Date(frozen.expected_end).toLocaleString('ru-RU')+')':'')+'. При поздней оплате полный срок сохраняется; новая льгота не возникает. Автосписаний нет.'));
         var confirm=el('button','btn','Подтвердить и перейти к оплате'),cancel=el('button','btn btn--quiet','Вернуться к выбору');confirm.type=cancel.type='button';dialog.appendChild(confirm);dialog.appendChild(cancel);root.appendChild(dialog);
-        function close(){dialog.close();dialog.remove();unlock();pay.focus();}
+        var sending=false;
+        function close(){if(sending)return;dialog.close();dialog.remove();unlock();pay.focus();}
         cancel.addEventListener('click',close);dialog.addEventListener('cancel',function(e){e.preventDefault();close();});
         confirm.addEventListener('click',function(){
-          busy(confirm,true);cancel.disabled=true;
           request.expected_amount_kopecks=frozen.amount_kopecks;
           request.idempotency_key=crypto.randomUUID();
           if(s.kind==='club')request.quote_version=frozen.quote_version;
           // При неопределённом ответе сохраняем запрос и ключ: сервер вернёт
           // прежний заказ или результат сверки без новой оплаты.
           function send(){
+            if(sending||!dialog.open)return;
+            sending=true;busy(confirm,true);cancel.disabled=true;
             call('POST','/subscriptions/'+s.id+'/pay',request).then(function(result){
+              sending=false;
+              if(!dialog.open)return;
+              if(result.review_required)throw new Error('PAYMENT_RECONCILIATION_REQUIRED');
               if(result.status==='succeeded'&&!result.review_required){close();return load();}
               if(!result.redirect)throw new Error(s.kind==='club'||appliedCode?'PROMO_RECONCILIATION_REQUIRED':'PAYMENT_RECONCILIATION_REQUIRED');
               location.href=result.redirect;
             }).catch(function(x){
+              sending=false;
               if(!dialog.open)return;
               if(x.message==='PAYMENT_PRICE_CHANGED'){
                 close();
@@ -372,7 +459,7 @@
           }
           send();
           // Повторное нажатие использует прежний запрос и тот же ключ.
-          confirm.onclick=function(e){e.stopImmediatePropagation();busy(confirm,true);send();};
+          confirm.onclick=function(e){e.stopImmediatePropagation();send();};
         },{once:true});
         dialog.showModal();cancel.focus();
       }).catch(function(x){say(err,message(x.message));unlock();});
@@ -502,6 +589,7 @@
         subs.appendChild(history);
       }
       $('[data-subs-empty]').hidden = (data.subscriptions || []).length > 0;
+      renderClubReferrals(data.club_referrals);
       renderPlans($('[data-plans]'));
       var params=new URLSearchParams(location.search);
       renderPayments(data.payments || [],params);

@@ -25,6 +25,7 @@ with sync_playwright() as p:
             result = dict(status='pending',review_required=False)
             create_success = dict(enabled=False)
             confirmed_without_redirect = dict(enabled=False)
+            delayed = dict(enabled=False, pending=[])
             hosted_url = 'https://pay.platega.io/?id=synthetic-hosted-choice'
             def route(r):
                 if r.request.url == hosted_url:
@@ -42,6 +43,9 @@ with sync_playwright() as p:
                         operation='renewal' if sub['paid_until'] else 'purchase'))
                 elif path.endswith('/pay'):
                     requests.append(r.request.post_data_json)
+                    if delayed['enabled']:
+                        delayed['pending'].append(r)
+                        return
                     if confirmed_without_redirect['enabled']:
                         sub.update(active=True,paid_until='2027-03-17T12:00:00Z')
                         r.fulfill(json=dict(id='b'*32,status='succeeded',review_required=False))
@@ -89,6 +93,33 @@ with sync_playwright() as p:
                 assert len(requests)==before+1 and requests[-1]==previous, requests
                 dialog.get_by_role('button',name='Вернуться к выбору').click()
                 cases+=1
+            # Escape/cancel and rapid retry cannot abandon a pending request and
+            # let its late response navigate from an unrelated payment dialog.
+            delayed['enabled']=True
+            page.locator('.acc-sub').get_by_role('button',name='Оплатить',exact=True).click()
+            dialog=page.get_by_role('dialog')
+            confirm=dialog.get_by_role('button',name='Подтвердить и перейти к оплате')
+            cancel=dialog.get_by_role('button',name='Вернуться к выбору')
+            before=len(requests)
+            confirm.click()
+            assert len(delayed['pending'])==1 and cancel.is_disabled()
+            page.keyboard.press('Escape')
+            assert dialog.is_visible()
+            confirm.evaluate("b=>b.dispatchEvent(new MouseEvent('click',{bubbles:true}))")
+            assert len(requests)==before+1
+            first_request=dict(requests[-1])
+            delayed['pending'].pop(0).fulfill(status=502,json=dict(error='PAYMENT_UNAVAILABLE'))
+            page.wait_for_function('!document.querySelector("dialog button").disabled')
+            confirm.click()
+            assert len(delayed['pending'])==1 and cancel.is_disabled()
+            page.keyboard.press('Escape')
+            assert dialog.is_visible() and requests[-1]==first_request
+            delayed['pending'].pop(0).fulfill(json=dict(status='pending',review_required=True,redirect=hosted_url))
+            page.get_by_text('Предыдущий заказ сохранён,',exact=False).wait_for()
+            assert page.url.startswith('https://cabinet.test/')
+            delayed['enabled']=False
+            cancel.click()
+            cases+=2
             assert '1\xa0137,15' in page.locator('[data-payments]').inner_text()
             page.get_by_role('button',name='Проверить оплату',exact=True).click()
             page.get_by_text('Подтверждение ещё не получено.',exact=False).wait_for()
