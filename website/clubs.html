@@ -27,7 +27,7 @@
   <link rel="preload" href="assets/fonts/Onest-var.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/tokens.css">
   <link rel="stylesheet" href="assets/components.css">
-  <link rel="stylesheet" href="assets/site.css?v=public-20261108">
+  <link rel="stylesheet" href="assets/site.css?v=d597281e7e2b">
   <link rel="stylesheet" href="assets/header-account.css?v=20261105-1">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 <link rel="stylesheet" href="/assets/club-application.css?v=d925cadcc80e">
@@ -147,7 +147,7 @@
     <div class="calc__row"><label for="c-load">Средняя загрузка, %</label><input class="input" id="c-load" data-k="load" inputmode="numeric" value="50"><input type="range" data-k="load" min="5" max="100" step="1" value="50" aria-label="Средняя загрузка"></div>
     <div class="calc__row"><label for="c-price">Цена часа, ₽</label><input class="input" id="c-price" data-k="price" inputmode="numeric" value="150"><input type="range" data-k="price" min="40" max="500" step="10" value="150" aria-label="Цена часа"></div>
     <div class="calc__row"><label for="c-lost">Часов теряете из-за лагов и обрывов, %</label><input class="input" id="c-lost" data-k="lost" inputmode="decimal" value="3"><input type="range" data-k="lost" min="0" max="20" step="0.5" value="3" aria-label="Потерянные часы"><small>Гости, которые ушли или не пришли из-за лагов, высокого пинга или нестабильной связи.</small></div>
-    <div class="calc__row"><label for="c-cost">VELIQ за ПК в месяц, ₽</label><input class="input" id="c-cost" data-k="cost" inputmode="numeric" value="199"><input type="range" data-k="cost" min="0" max="1000" step="1" value="199" aria-label="Стоимость VELIQ"><small>Тестовый тариф — 199 ₽ за ПК в месяц. Для 36 ПК — 7 164 ₽ в месяц.</small></div>
+    <div class="calc__row"><label for="c-cost">VELIQ за ПК в месяц, ₽</label><input class="input" id="c-cost" data-k="cost" inputmode="numeric" value="299"><input type="range" data-k="cost" min="0" max="1000" step="1" value="299" aria-label="Стоимость VELIQ"><small>Тариф «Клуб» — 299 ₽ за ПК в месяц. Для 36 ПК — 10 764 ₽ в месяц.</small></div>
   </div>
   <div class="calc__out" aria-live="polite">
     <div><div style="color:var(--c-ink-300);margin-bottom:10px">Возвращённая выручка в месяц</div><div class="calc__big" data-out="net">—</div></div>
@@ -178,15 +178,15 @@
       <p class="club-apply__aside">Регистрация и оплата для отправки заявки не нужны. <a href="/pricing">Посмотреть тарифы →</a></p>
     </div>
     <div class="club-apply__card">
-      <div class="club-apply__card-head"><h3>Заявка на подключение</h3><p>Около двух минут. Поля со звёздочкой обязательны.</p></div>
       <form id="club-application" aria-label="Заявка на подключение клуба">
+        <div class="club-apply__card-head"><h3>Заявка на подключение</h3><p>Поля со звёздочкой обязательны.</p></div>
         <fieldset class="club-apply__fields"><legend>О клубе</legend>
           <div class="club-apply__grid">
             <label>Название клуба <span aria-hidden="true">*</span><input name="club" autocomplete="organization" maxlength="80" placeholder="Например, VIONIX" required></label>
             <label>Город <span aria-hidden="true">*</span><input name="city" autocomplete="address-level2" maxlength="80" placeholder="Где находится клуб" required></label>
             <label>Количество ПК <span aria-hidden="true">*</span><input name="pcs" type="number" inputmode="numeric" min="1" max="2000" step="1" placeholder="36" required></label>
-            <label>Система управления <span aria-hidden="true">*</span><input name="management" maxlength="100" placeholder="Название или «пока выбираем»" required></label>
-            <label class="club-apply__wide">Как установлена Windows<select name="installation"><option value="Не указано">Выберите, если знаете</option><option>На диске каждого ПК</option><option>Бездисковая загрузка по сети</option><option>Смешанная схема</option><option>Пока не знаю</option></select></label>
+            <label>Система управления <span aria-hidden="true">*</span><select name="management" required><option value="" disabled selected>Выберите систему</option><option>LANGAME</option><option>SmartShell</option><option>GIZMO</option><option>Пока выбираем</option><option>Другая</option></select></label>
+            <label class="club-apply__wide">Как установлена Windows<select name="installation"><option value="Не указано">Выберите, если знаете</option><option>На диске каждого ПК</option><option>Бездисковая загрузка по сети</option><option>Гибрид</option><option>Пока не знаю</option></select></label>
           </div>
         </fieldset>
         <fieldset class="club-apply__fields"><legend>Как с вами связаться</legend>
@@ -205,7 +205,7 @@
         <p class="club-apply__footnote">Ответим по выбранному контакту. Переписка также будет доступна в чате поддержки на сайте.</p>
       </form>
       <div id="club-application-success" class="club-apply__success" role="status" tabindex="-1" hidden>
-        <div class="club-apply__check" aria-hidden="true">✓</div><h3>Заявка принята</h3><p>Номер <strong data-application-reference></strong></p><p>Данные сохранены. Команда VELIQ свяжется с вами по указанному контакту.</p><p class="club-apply__footnote">Если хотите что-то добавить, напишите в чат. На общем компьютере после разговора завершите сессию поддержки.</p><button class="btn btn--lg" type="button" data-application-chat>Открыть переписку</button><p data-chat-error role="alert" hidden></p>
+        <div class="club-apply__check" aria-hidden="true">✓</div><h3>Заявка принята</h3><p>Номер <strong data-application-reference></strong></p><p>Данные сохранены. Команда VELIQ свяжется с вами по указанному контакту.</p><button class="btn btn--lg" type="button" data-application-chat>Открыть переписку</button><p data-chat-error role="alert" hidden></p>
       </div>
       <noscript><p>Для отправки заявки включите JavaScript. Также можно написать на <a href="mailto:support@veliqapp.ru">support@veliqapp.ru</a>.</p></noscript>
     </div>
@@ -218,7 +218,7 @@
     <div class="faq"><details><summary>Нужно ли что-то делать гостю?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Нет. Гостю ничего настраивать не нужно.</p></div></details>
 <details><summary>Как VELIQ влияет на пинг в играх?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>VELIQ выбирает самый быстрый путь до игрового сервера. Если обычный путь быстрее, маршрут не меняется.</p></div></details>
 <details><summary>Подходит ли VELIQ для моей системы управления клубом?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Напишите нам, подскажем.</p></div></details>
-<details><summary>Сколько это стоит?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Тариф «Клуб» — 199 ₽ за ПК в месяц. Для 36 ПК — 7 164 ₽ в месяц. <a href="/pricing">Подробнее о тарифах</a>. Условия подключения и оплаты уточняйте в <a href="/support#chat" data-support-open>онлайн-поддержке</a>. Выгоду можно прикинуть <a href="#calc">в калькуляторе</a>.</p></div></details></div>
+<details><summary>Сколько это стоит?<svg class="i" aria-hidden="true"><use href="#i-chevron-down"/></svg></summary><div class="a"><p>Тариф «Клуб» — 299 ₽ за ПК в месяц. Для 36 ПК — 10 764 ₽ в месяц. <a href="/pricing">Подробнее о тарифах</a>. Условия подключения и оплаты уточняйте в <a href="/support#chat" data-support-open>онлайн-поддержке</a>. Выгоду можно прикинуть <a href="#calc">в калькуляторе</a>.</p></div></details></div>
   </div>
 </section>
 
