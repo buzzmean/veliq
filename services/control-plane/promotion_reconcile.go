@@ -30,7 +30,12 @@ func (a *API) reconcilePromotion(w http.ResponseWriter, r *http.Request) {
 	}
 	var sub, provider, old string
 	var amount int64
-	e := a.Store.DB.QueryRow(r.Context(), `SELECT p.subscription_id,p.provider,p.provider_payment_id,p.amount_kopecks FROM payments p LEFT JOIN promotion_reservations r ON r.payment_id=p.id WHERE p.id=$1 AND (r.id IS NOT NULL OR p.reference LIKE 'club-order;%' OR EXISTS(SELECT 1 FROM club_payment_orders o WHERE o.payment_id=p.id))`, q.PaymentID).Scan(&sub, &provider, &old, &amount)
+	var personal bool
+	e := a.Store.DB.QueryRow(r.Context(), `SELECT p.subscription_id,p.provider,p.provider_payment_id,p.amount_kopecks,
+ EXISTS(SELECT 1 FROM personal_payment_orders o WHERE o.payment_id=p.id)
+ FROM payments p LEFT JOIN promotion_reservations r ON r.payment_id=p.id WHERE p.id=$1 AND
+ (r.id IS NOT NULL OR p.reference LIKE 'club-order;%' OR EXISTS(SELECT 1 FROM club_payment_orders o WHERE o.payment_id=p.id)
+ OR EXISTS(SELECT 1 FROM personal_payment_orders o WHERE o.payment_id=p.id))`, q.PaymentID).Scan(&sub, &provider, &old, &amount, &personal)
 	if e != nil || provider != a.Settings.Payments.Name() || (old != "reservation:"+q.PaymentID && old != q.ProviderID) {
 		a.fail(w, 409, "PAYMENT_MISMATCH")
 		return
@@ -45,7 +50,12 @@ func (a *API) reconcilePromotion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if old != q.ProviderID {
-		if e = a.Store.AttachPromotionPayment(r.Context(), q.PaymentID, provider, q.ProviderID); e != nil {
+		if personal {
+			e = a.Store.AttachPersonalPayment(r.Context(), q.PaymentID, provider, q.ProviderID, "")
+		} else {
+			e = a.Store.AttachPromotionPayment(r.Context(), q.PaymentID, provider, q.ProviderID)
+		}
+		if e != nil {
 			a.fail(w, 409, "PAYMENT_MISMATCH")
 			return
 		}

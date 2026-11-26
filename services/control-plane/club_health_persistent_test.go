@@ -125,7 +125,7 @@ func TestPersistentIngestionProofDedupOwnershipAndRetention(t *testing.T) {
 		t.Fatal("revoked device", status)
 	}
 }
-func TestPersistentMigration8To13PreservesIdentity(t *testing.T) {
+func TestPersistentMigration8To14PreservesIdentity(t *testing.T) {
 	base := codeStore(t)
 	ctx := context.Background()
 	id, _ := security.NewID()
@@ -164,11 +164,11 @@ func TestPersistentMigration8To13PreservesIdentity(t *testing.T) {
 	}
 	for range 2 {
 		if err = store.Migrate(ctx); err != nil {
-			t.Fatal("8 to 13", err)
+			t.Fatal("8 to 14", err)
 		}
 	}
 	var version int
-	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 13 {
+	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 14 {
 		t.Fatal(version, err)
 	}
 	d, err := store.Device(ctx, id)

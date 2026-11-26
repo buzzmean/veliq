@@ -379,10 +379,6 @@ func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string
 		return
 	}
 	p, found := a.plan(sub.PlanID)
-	if !found || p.PricePerSeatRub == 0 {
-		a.fail(w, 409, "PRICE_NOT_SET")
-		return
-	}
 	var q struct {
 		AutoRenew      bool   `json:"auto_renew"`
 		Months         *int   `json:"months"`
@@ -403,8 +399,27 @@ func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string
 	if q.Months != nil {
 		months = *q.Months
 	}
+	// A personal retry reads its frozen order before consulting today's price
+	// configuration. A removed/repriced plan must not create another charge.
+	if (!found || p.PricePerSeatRub == 0) && (sub.Kind != "player" || quoteOnly || q.PromoCode != "") {
+		a.fail(w, 409, "PRICE_NOT_SET")
+		return
+	}
 	if sub.Kind == "club" {
 		a.payClub(w, r, acc, *sub, p, months, q.PromoCode, q.ExpectedAmount, q.QuoteVersion, q.IdempotencyKey, quoteOnly)
+		return
+	}
+	if !quoteOnly && q.PromoCode == "" {
+		var held bool
+		if err := a.Store.DB.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM promotion_reservations WHERE account_id=$1 AND state='reserved')", acc.ID).Scan(&held); err != nil {
+			a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
+			return
+		}
+		if held {
+			a.fail(w, 409, "PROMO_RECONCILIATION_REQUIRED")
+			return
+		}
+		a.payPersonal(w, r, acc, *sub, p, months, q.ExpectedAmount, q.IdempotencyKey)
 		return
 	}
 	amount, term, err := p.QuotePayment(sub.Seats, months)
@@ -413,17 +428,6 @@ func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string
 		return
 	}
 	var reservation string
-	if !quoteOnly && q.PromoCode == "" {
-		var held bool
-		if err = a.Store.DB.QueryRow(r.Context(), "SELECT EXISTS(SELECT 1 FROM promotion_reservations WHERE account_id=$1 AND state='reserved')", acc.ID).Scan(&held); err != nil {
-			a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
-			return
-		}
-		if held {
-			a.fail(w, 409, "PROMO_RECONCILIATION_REQUIRED")
-			return
-		}
-	}
 	if q.PromoCode != "" || quoteOnly {
 		var quote PaymentQuote
 		if quoteOnly {

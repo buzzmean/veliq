@@ -524,12 +524,14 @@ func (s *Store) RecordPayment(ctx context.Context, subscription, provider, provi
 	if provider == "" || len(provider) > 32 || providerID == "" || len(providerID) > 128 || len(reference) > 256 || amount < 0 || days < 1 || days > 400 || (status != "pending" && status != "succeeded" && status != "canceled") {
 		return time.Time{}, false, errors.New("PAYMENT_INVALID")
 	}
-	// Existing v2 club orders always use the authenticated transition and frozen terms.
-	var clubOrder bool
-	if e := s.DB.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM club_payment_orders o JOIN payments p ON p.id=o.payment_id WHERE p.provider=$1 AND p.provider_payment_id=$2)", provider, providerID).Scan(&clubOrder); e != nil {
+	// Durable orders always use the authenticated transition and frozen terms.
+	var frozenOrder bool
+	if e := s.DB.QueryRow(ctx, `SELECT
+ EXISTS(SELECT 1 FROM club_payment_orders o JOIN payments p ON p.id=o.payment_id WHERE p.provider=$1 AND p.provider_payment_id=$2) OR
+ EXISTS(SELECT 1 FROM personal_payment_orders o JOIN payments p ON p.id=o.payment_id WHERE p.provider=$1 AND p.provider_payment_id=$2)`, provider, providerID).Scan(&frozenOrder); e != nil {
 		return time.Time{}, false, e
 	}
-	if clubOrder {
+	if frozenOrder {
 		var storedDays int
 		if e := s.DB.QueryRow(ctx, "SELECT period_days FROM payments WHERE provider=$1 AND provider_payment_id=$2", provider, providerID).Scan(&storedDays); e != nil {
 			return time.Time{}, false, e
@@ -696,6 +698,9 @@ func (s *Store) RecordProviderPayment(ctx context.Context, provider, providerID,
 			until = now
 		}
 		if e = consumeClubOrder(ctx, tx, provider, providerID, until); e != nil {
+			return time.Time{}, false, e
+		}
+		if e = consumePersonalOrder(ctx, tx, provider, providerID); e != nil {
 			return time.Time{}, false, e
 		}
 		// PostgreSQL keeps microseconds; returning the stored value keeps answers stable.

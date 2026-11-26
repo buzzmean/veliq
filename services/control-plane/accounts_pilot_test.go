@@ -182,8 +182,8 @@ func TestPilotMigration004PreservesSchema3IdentityAndCertificate(t *testing.T) {
 		}
 	}
 	var version int
-	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 13 {
-		t.Fatal("Миграция до схемы 13 не применена", err, version)
+	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 14 {
+		t.Fatal("Миграция до схемы 14 не применена", err, version)
 	}
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(after, der) {

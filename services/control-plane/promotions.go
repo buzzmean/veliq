@@ -201,7 +201,7 @@ func (s *Store) ReservePromotion(ctx context.Context, acc Account, sub Subscript
 		o, e := s.ReserveClubOrder(ctx, acc, sub, p, months, code, expected, "", key, provider, time.Now())
 		return o.ID, o.Quote.PaymentQuote, e
 	}
-	tx, e := s.DB.Begin(ctx)
+	tx, e := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if e != nil {
 		return "", PaymentQuote{}, e
 	}
@@ -212,6 +212,17 @@ func (s *Store) ReservePromotion(ctx context.Context, acc Account, sub Subscript
 	}
 	if q.PromotionID == "" {
 		return "", q, errors.New("PROMO_INVALID")
+	}
+	if sub.Kind == "player" {
+		// promoQuote still holds the account lock. The reciprocal check keeps
+		// an owner-test promotion from bypassing an unresolved ordinary order.
+		unresolved, err := unresolvedPersonalPayment(ctx, tx, acc.ID)
+		if err != nil {
+			return "", q, err
+		}
+		if unresolved {
+			return "", q, errors.New("PAYMENT_IN_PROGRESS")
+		}
 	}
 	if expected != nil && *expected != q.Amount {
 		return "", q, errors.New("PAYMENT_PRICE_CHANGED")
@@ -259,7 +270,7 @@ func redeemPromotion(ctx context.Context, tx pgx.Tx, provider, providerID string
 
 func (a *API) promoFail(w http.ResponseWriter, err error) {
 	switch err.Error() {
-	case "PROMO_REVIEW_REQUIRED", "PAYMENT_CONFIRMATION_REQUIRED", "PAYMENT_IDEMPOTENCY_REQUIRED", "PAYMENT_IDEMPOTENCY_CONFLICT", "SUBSCRIPTION_NOT_FOUND", "PROMO_INVALID", "PROMO_USED", "PROMO_RESERVED", "PROMO_EXHAUSTED", "PROMO_FIRST_PURCHASE_ONLY", "PROMO_RECONCILIATION_REQUIRED", "PAYMENT_PRICE_CHANGED", "PAYMENT_INVALID", "PAYMENT_PERIOD_INVALID", "PRICE_NOT_SET":
+	case "PROMO_REVIEW_REQUIRED", "PAYMENT_CONFIRMATION_REQUIRED", "PAYMENT_IDEMPOTENCY_REQUIRED", "PAYMENT_IDEMPOTENCY_CONFLICT", "SUBSCRIPTION_NOT_FOUND", "PROMO_INVALID", "PROMO_USED", "PROMO_RESERVED", "PROMO_EXHAUSTED", "PROMO_FIRST_PURCHASE_ONLY", "PROMO_RECONCILIATION_REQUIRED", "PAYMENT_PRICE_CHANGED", "PAYMENT_INVALID", "PAYMENT_PERIOD_INVALID", "PRICE_NOT_SET", "PAYMENT_IN_PROGRESS":
 		a.fail(w, 409, err.Error())
 	default:
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")

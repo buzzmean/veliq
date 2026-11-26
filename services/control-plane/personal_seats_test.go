@@ -43,7 +43,7 @@ func TestPersonalCheckoutUsesConfiguredSeatCount(t *testing.T) {
 			if st != 200 || quote["amount_kopecks"] != float64(amount) {
 				t.Fatal("seat quote", st, quote)
 			}
-			if st, out := customer.do(t, "POST", path+"/pay", map[string]any{"months": 1, "expected_amount_kopecks": amount}); st != 200 || out["redirect"] == "" {
+			if st, out := customer.do(t, "POST", path+"/pay", map[string]any{"months": 1, "expected_amount_kopecks": amount, "idempotency_key": "personal-seats-fixture-key"}); st != 200 || out["redirect"] == "" {
 				t.Fatal("checkout", st, out)
 			}
 			var ordered int64
