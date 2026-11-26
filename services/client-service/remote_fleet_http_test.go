@@ -74,7 +74,7 @@ func TestRemoteFleetOffLegacyCPAndSignedRollback(t *testing.T) {
 	if c.fleet.Enabled() || s.fleet != nil || calls.Load() != 0 {
 		t.Fatal("feature-off client unexpectedly attempted fleet")
 	}
-	if err := os.WriteFile(filepath.Join(dir, fleetOptInFile), nil, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, fleetOptInFile), []byte(`{"scope":"all"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	s.initFleet(trust, device, dir)

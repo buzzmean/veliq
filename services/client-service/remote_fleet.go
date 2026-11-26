@@ -1,13 +1,17 @@
 package clientservice
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/buzzmean/veliq/core/controlclient"
@@ -20,6 +24,35 @@ import (
 
 const fleetOptInFile = "fleet-opt-in.json"
 const fleetCacheFile = "fleet-policy.json"
+
+// Empty and malformed markers cannot opt an entire machine into fleet.
+// The all-app scope is explicit for a later, separately approved rollout.
+func parseFleetOptIn(raw []byte) (string, error) {
+	var marker struct {
+		Scope         string `json:"scope"`
+		ApplicationID string `json:"application_id,omitempty"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&marker); err != nil {
+		return "", err
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return "", errors.New("fleet opt-in has trailing data")
+	}
+	switch marker.Scope {
+	case "all":
+		if marker.ApplicationID == "" {
+			return "", nil
+		}
+	case "application":
+		id := marker.ApplicationID
+		if len(id) > 0 && len(id) <= 128 && strings.TrimSpace(id) == id && !strings.ContainsAny(id, " \t\r\n") {
+			return id, nil
+		}
+	}
+	return "", errors.New("invalid fleet opt-in scope")
+}
 
 type remoteFleetPool struct {
 	address string
@@ -43,14 +76,22 @@ func (s *remoteState) initFleet(keys map[string]ed25519.PublicKey, device, state
 	if stateDir == "" {
 		return
 	}
-	_, markerErr := os.Stat(filepath.Join(stateDir, fleetOptInFile))
+	marker, markerErr := os.ReadFile(filepath.Join(stateDir, fleetOptInFile))
 	cache := security.NewFleetCache(keys, device, filepath.Join(stateDir, fleetCacheFile))
 	_, cacheErr := cache.Load(time.Now())
 	if errors.Is(markerErr, os.ErrNotExist) && errors.Is(cacheErr, os.ErrNotExist) && !s.controller.fleet.Enabled() {
 		return
 	}
-	s.fleet = &remoteFleet{cache: cache, floorUnknown: cacheErr != nil && !errors.Is(cacheErr, os.ErrNotExist),
+	application := ""
+	invalidMarker := markerErr != nil
+	if !invalidMarker {
+		var err error
+		application, err = parseFleetOptIn(marker)
+		invalidMarker = err != nil
+	}
+	s.fleet = &remoteFleet{cache: cache, floorUnknown: invalidMarker || cacheErr != nil && !errors.Is(cacheErr, os.ErrNotExist),
 		device: device, pools: make(map[string]remoteFleetPool)}
+	s.controller.fleet.setScope(application)
 	s.controller.fleet.arm(device)
 	s.controller.fleet.suspend()
 }

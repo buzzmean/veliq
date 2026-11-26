@@ -149,14 +149,18 @@ func (e *Engine) reserve(f Flow) (Key, Policy, Relay, error) {
 		return k, p, nil, errors.New("application blocked by policy")
 	}
 	implicit := p.ImplicitRelay && !p.ExactRelay && !p.Route.Direct() && f.Destination.Port() != 53 && !LocalDestination(f.Destination.Addr())
-	if implicit && e.fleet != nil && e.fleet.Enabled() {
+	managedImplicit := implicit
+	if scoped, ok := e.fleet.(interface{ ManagesFlow(Flow) bool }); ok {
+		managedImplicit = implicit && scoped.ManagesFlow(f)
+	}
+	if managedImplicit && e.fleet != nil && e.fleet.Enabled() {
 		if e.legacyImplicit > 0 {
 			return k, p, nil, fmt.Errorf("%w: previous implicit relay flows still bound", ErrFleetPolicy)
 		}
 		p.fleet = e.fleet
 		f.FleetBound = true
 		e.fleetImplicit++
-	} else if implicit {
+	} else if managedImplicit {
 		if e.fleetImplicit > 0 {
 			return k, p, nil, fmt.Errorf("%w: previous fleet relay flows still bound", ErrFleetPolicy)
 		}

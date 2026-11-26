@@ -10,12 +10,16 @@ import (
 )
 
 type fleetRouteFixture struct {
-	enabled bool
-	calls   int
-	failure error
+	enabled     bool
+	calls       int
+	failure     error
+	application string
 }
 
 func (f *fleetRouteFixture) Enabled() bool { return f.enabled }
+func (f *fleetRouteFixture) ManagesFlow(flow Flow) bool {
+	return f.application == "" || flow.ApplicationID == f.application
+}
 
 func (f *fleetRouteFixture) OpenTCP(context.Context, Flow) (net.Conn, string, error) {
 	f.calls++
@@ -106,6 +110,75 @@ func TestFleetRoutingThroughEngine(t *testing.T) {
 	if counts["legacy"] != 1 || counts["fleet-a"] != 1 {
 		t.Fatalf("actual routes changed or a reservation leaked: %v", counts)
 	}
+}
+
+func TestScopedFleetLeavesOtherApplicationsOnLegacy(t *testing.T) {
+	engine := New(16)
+	fleet := &fleetRouteFixture{enabled: true, application: "!v2-fi-canary"}
+	legacy := &fleetRouteLegacy{}
+	engine.SetFleetRelay(fleet)
+	engine.SetRelay("legacy", legacy)
+	flow := Flow{PID: 71, ProcessPath: "chatgpt.exe", ApplicationID: "chatgpt-desktop",
+		Source: netip.MustParseAddrPort("127.0.0.1:50501"), Destination: netip.MustParseAddrPort("198.51.100.7:443"),
+		PinnedPolicy: &Policy{Route: Route{RelayID: "legacy"}, ImplicitRelay: true, BlockOnFailure: true}}
+	chat, err := engine.OpenTCP(context.Background(), flow)
+	if err != nil || legacy.calls != 1 || fleet.calls != 0 {
+		t.Fatalf("legacy app changed route: %v / %d / %d", err, legacy.calls, fleet.calls)
+	}
+	defer chat.Close()
+	flow.ApplicationID = "!v2-fi-canary"
+	flow.ProcessPath = "veliq-fi-canary.exe"
+	flow.PID = 72
+	flow.Source = netip.MustParseAddrPort("127.0.0.1:50502")
+	probe, err := engine.OpenTCP(context.Background(), flow)
+	if err != nil || fleet.calls != 1 {
+		t.Fatalf("scoped canary could not coexist with legacy app: %v / %d", err, fleet.calls)
+	}
+	defer probe.Close()
+	flow.ApplicationID = "chatgpt-desktop"
+	flow.ProcessPath = "chatgpt.exe"
+	flow.PID = 71
+	flow.Source = netip.MustParseAddrPort("127.0.0.1:50503")
+	other, err := engine.OpenTCP(context.Background(), flow)
+	if err != nil || legacy.calls != 2 || fleet.calls != 1 {
+		t.Fatalf("second legacy app flow changed route: %v / %d / %d", err, legacy.calls, fleet.calls)
+	}
+	defer other.Close()
+	flow.ApplicationID = "!v2-fi-canary"
+	flow.ProcessPath = "veliq-fi-canary.exe"
+	flow.PID = 72
+	flow.Source = netip.MustParseAddrPort("127.0.0.1:50504")
+	if next, err := engine.OpenTCP(context.Background(), flow); next == nil || err != nil {
+		t.Fatalf("additional scoped flow failed: %v", err)
+	} else {
+		_ = next.Close()
+	}
+}
+
+func TestScopedFleetWaitsForOldFlowOfSelectedApplication(t *testing.T) {
+	engine := New(16)
+	fleet := &fleetRouteFixture{application: "!v2-fi-canary"}
+	legacy := &fleetRouteLegacy{}
+	engine.SetFleetRelay(fleet)
+	engine.SetRelay("legacy", legacy)
+	flow := Flow{PID: 72, ProcessPath: "veliq-fi-canary.exe", ApplicationID: "!v2-fi-canary",
+		Source: netip.MustParseAddrPort("127.0.0.1:50501"), Destination: netip.MustParseAddrPort("198.51.100.7:443"),
+		PinnedPolicy: &Policy{Route: Route{RelayID: "legacy"}, ImplicitRelay: true, BlockOnFailure: true}}
+	old, err := engine.OpenTCP(context.Background(), flow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fleet.enabled = true
+	flow.Source = netip.MustParseAddrPort("127.0.0.1:50502")
+	if next, err := engine.OpenTCP(context.Background(), flow); next != nil || !errors.Is(err, ErrFleetPolicy) || fleet.calls != 0 {
+		t.Fatalf("selected application changed egress while old flow remained: %v / %d", err, fleet.calls)
+	}
+	_ = old.Close()
+	next, err := engine.OpenTCP(context.Background(), flow)
+	if err != nil || fleet.calls != 1 {
+		t.Fatalf("selected application could not enter fleet after old flow closed: %v / %d", err, fleet.calls)
+	}
+	_ = next.Close()
 }
 
 func TestFleetAdaptiveUDPWaitsForNewFlowAfterDirectFailure(t *testing.T) {

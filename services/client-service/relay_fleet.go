@@ -71,6 +71,7 @@ type relayFleet struct {
 	samples                           int
 	lastNode, reason                  string
 	emptyReason                       string
+	scopeApplication                  string
 }
 
 func newRelayFleet(network func() string) *relayFleet {
@@ -84,6 +85,20 @@ func newRelayFleet(network func() string) *relayFleet {
 }
 
 func (f *relayFleet) Enabled() bool { return f.budget.Enabled() }
+
+// A scoped canary keeps unrelated implicit relay applications on their
+// existing provider. The empty scope retains the normal device-wide policy.
+func (f *relayFleet) ManagesFlow(flow routing.Flow) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.scopeApplication == "" || flow.ApplicationID == f.scopeApplication
+}
+
+func (f *relayFleet) setScope(application string) {
+	f.mu.Lock()
+	f.scopeApplication = application
+	f.mu.Unlock()
+}
 
 // arm runs before a configured client's pools can Warm. Until verified policy
 // arrives, the fleet provider rejects new implicit relay opens.
