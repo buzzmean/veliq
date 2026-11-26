@@ -32,7 +32,7 @@ for name in leaf.FILES:
     leaf.atomic(p,(cert_stage/Path(name).name).read_bytes(),{'mode':st.st_mode&0o777,'uid':st.st_uid,'gid':st.st_gid})
 leaf.command(['systemctl','restart','neexitlag-control-plane','neexitlag-relay'])
 isolated_environment.wait_fixture_health(load('production-upgrade.py'))
-# Apply from the owner's partially migrated schema 2, with all previous revoked
+# Apply against the runner's reviewed schema 15, with all previous revoked
 # fixtures and temporary rows intact. Exercise genuine cert backup/replace/probe.
 stage=root/'activation';stage.mkdir()
 for name in ('activation-diagnostics.py','inspect-activation.py','deploy-activation.py','fresh-vps-upgrade.py','renew-server-cert.py','veliq-certificate-renewal.service','veliq-certificate-renewal.timer','92-veliq-activation.conf'):
@@ -76,19 +76,19 @@ try:
     else:raise AssertionError('outer injection accepted')
 finally:release.diagnostics.run_process=real_run
 assert Path('/etc/neexitlag/control/server.pem').read_bytes()==before_outer
-assert sql('SELECT max(version) FROM schema_migrations')=='13'  # rollback preserves additive account/payment/diagnostic migrations
+assert sql('SELECT max(version) FROM schema_migrations')=='15'  # rollback preserves reviewed additive financial/diagnostic migrations
 assert sql("SELECT count(*) FROM devices WHERE name='CA rotation health probe' AND NOT revoked")=='0'
 assert release.PROGRESS.rollback=='COMPLETE_SECURITY_STATE_PRESERVED'
 release.apply(stage,commit,'ACTIVATE-CODES-2.56.177.4')
 assert Path('/etc/neexitlag/control/ca.pem').read_bytes()==ca_before
 assert int(sql('SELECT count(*) FROM devices WHERE revoked'))>=revoked_before+2
-assert sql('SELECT max(version) FROM schema_migrations')=='13'
+assert sql('SELECT max(version) FROM schema_migrations')=='15'
 assert sql("SELECT count(*) FROM devices WHERE name='CA rotation health probe' AND NOT revoked")=='0'
 for name in ('neexitlag-control-plane','neexitlag-relay','veliq-certificate-renewal.timer'):
     leaf.command(['systemctl','is-active','--quiet',name])
 assert leaf.command(['systemctl','show','--value','--property=Result','veliq-certificate-renewal.service']).strip()=='success'
 assert leaf.command(['systemctl','show','--value','--property=ExecMainStatus','veliq-certificate-renewal.service']).strip()=='0'
-# Re-run from an already installed release (schema 13): idempotent preflight and
+# Re-run from an already installed release (schema 15): idempotent preflight and
 # real service due=false path, no forced user/device/certificate replacement.
 leaf.command(['systemctl','start','veliq-certificate-renewal.service'])
 leaf.validate_helper(stage/'fresh-pc')
@@ -97,5 +97,5 @@ assert not leaf.command(['systemctl','list-units','--state=active','--no-legend'
 status=release.final_snapshot(stage)
 assert status['certificates']['leaf_remaining_seconds']>29*86400
 assert status['certificates']['leaf_matches_relay']
-(root/'activation-proof.json').write_text(json.dumps({'pass':True,'schema':13,'renewal_service':'success','temporary_identities_revoked':True,'rollback_injection':True,'ca_unchanged':True}))
-print('PASS isolated actual activation + leaf renewal + service sandbox + schema2 retry + revoked probes + no leftover active timers')
+(root/'activation-proof.json').write_text(json.dumps({'pass':True,'schema':15,'renewal_service':'success','temporary_identities_revoked':True,'rollback_injection':True,'ca_unchanged':True}))
+print('PASS isolated actual activation + leaf renewal + service sandbox + schema15 retry + revoked probes + no leftover active timers')

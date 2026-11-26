@@ -95,5 +95,5 @@ fi
 echo 'PASS: isolated real systemd + PostgreSQL, permanent dump restored into a separate DB, 5000 revocations >64 KiB, real /3 TCP/UDP two renewals, injected bad binary rolled back without reverting DB/replay.'
 
 if [[ ${NEEXITLAG_ISOLATED_CA_LAYOUT:-legacy} == fresh-credential ]]; then
- python3 tests/deployment/isolated-activation.py > "$private/activation.log" 2>&1
+ python3 tests/deployment/isolated_environment.py --activation
 fi
