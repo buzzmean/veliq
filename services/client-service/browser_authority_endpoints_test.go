@@ -87,13 +87,13 @@ func TestAuthorityEndpointsSurviveReleaseRestartAndLegacyLease(t *testing.T) {
 
 func TestAuthorityCompatibilityPreservesPrimaryAndForeignPort(t *testing.T) {
 	dir := t.TempDir()
-	primary := endpointAddress(t)
 	foreign, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer foreign.Close()
 	compat := foreign.Addr().String()
+	primary := endpointAddress(t)
 	leasePath := filepath.Join(dir, "browser-owner-proxy.json")
 	endpointLease(t, leasePath, "owner", primary)
 	previous := filepath.Join(t.TempDir(), "old.json")
