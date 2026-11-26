@@ -13,6 +13,7 @@ using Neexitlag.Desktop;
 using Application = System.Windows.Application;
 using ComboBox = System.Windows.Controls.ComboBox;
 using Point = System.Windows.Point;
+using Size = System.Windows.Size;
 
 internal static class Program
 {
@@ -168,6 +169,55 @@ internal static class Program
         toggle.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent)); Pump();
         Require(((DesktopViewModel)main.DataContext).ShowTechnical == enabled, "Technical preference did not reach bindings");
         Require(LocalPreferences.Load(settings).ShowTechnical == enabled, "Technical preference was not persisted");
+    }
+    static void ServicesLayout()
+    {
+        var main = Window(new() { MinimizeToTray = false, ShowTechnical = true });
+        main.Show(); main.ShowPage("Applications"); Pump();
+        var model = (DesktopViewModel)main.DataContext;
+        var status = new Snapshot {
+            Connected = true, Optimizing = true, Primary = "VPS-PRIMARY",
+            Backend = new() { Ready = true, Capabilities = new() { Tcp = true } },
+            Routes = [new() { Id = "VPS-PRIMARY", Status = "healthy", ObservedAt = DateTimeOffset.UtcNow }],
+            Profiles = Enumerable.Range(0, 12).Select(i => new Profile {
+                Id = "layout-" + i, Name = "Application " + i, Executables = [@"C:\Apps\app" + i + ".exe"], Mode = "AUTO"
+            }).ToArray()
+        };
+        model.Apply(status); Pump();
+        var grid = (DataGrid)main.FindName("AppGrid");
+        var page = (ScrollViewer)main.FindName("Applications");
+        var selected = grid.Items[0]; grid.SelectedItem = selected;
+        foreach (var size in new[] { new Size(1180, 780), new Size(960, 640) })
+        {
+            main.Width = size.Width; main.Height = size.Height; Pump();
+            double applicationHeight = grid.ActualHeight;
+            foreach (string name in new[] { "AppAdvanced", "GameUdpAdvanced", "BrowserAdvanced" })
+                ((Expander)main.FindName(name)).IsExpanded = true;
+            foreach (int count in new[] { 0, 3, 32, 0 })
+            {
+                var diagnostics = new BrowserTransportSnapshot { Records = Enumerable.Range(0, count).Select(i => new BrowserConnection {
+                    Id = (ulong)i, Domain = "layout-" + i + ".example", Started = DateTimeOffset.UtcNow,
+                    Plan = new() { Policy = new() { Action = "DIRECT", Reason = "Layout fixture" } }
+                }).ToArray() };
+                model.Apply(status); model.ApplyBrowser(diagnostics); model.ApplyEdge(diagnostics); Pump();
+                Require(grid.Items.Count == 12 && ReferenceEquals(grid.SelectedItem, selected), "Diagnostics polling lost profiles or application selection");
+                Require(grid.ActualHeight >= 180 && Math.Abs(grid.ActualHeight - applicationHeight) < 1,
+                    $"Diagnostics squeezed application rows: window={size}, records={count}, height={grid.ActualHeight}");
+                grid.ScrollIntoView(selected); Pump();
+                var row = grid.ItemContainerGenerator.ContainerFromItem(selected) as DataGridRow
+                    ?? throw new Exception("Selected application row was not realized");
+                row.BringIntoView(); Pump();
+                var bounds = row.TransformToAncestor(page).TransformBounds(new Rect(row.RenderSize));
+                var visible = Rect.Intersect(bounds, new Rect(page.RenderSize));
+                Require(!visible.IsEmpty && visible.Height >= 35, "Application row cannot be brought into the page viewport");
+                Require(page.ScrollableHeight > 0, "Expanded diagnostic content is not reachable by page scrolling");
+                if (count == 32) SaveImage(main, $"services-diagnostics-{size.Width}");
+            }
+            foreach (string name in new[] { "AppAdvanced", "GameUdpAdvanced", "BrowserAdvanced" })
+                ((Expander)main.FindName(name)).IsExpanded = false;
+        }
+        main.Exit(); Pump();
+        Pass("Services keep selectable application rows while diagnostics grow, at default and minimum window sizes");
     }
     static void ActualDropdownKeyboard(ComboBox box, string name)
     {
@@ -341,7 +391,7 @@ internal static class Program
             finally { fixtureApp.Shutdown(); }
         }
         var app = new App(); app.InitializeComponent(); app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-        try { WelcomeUiChecks.Run(); CabinetUiChecks.Run(); EmergencyUiChecks.Run(); FreshPCSetupChecks.Run(); ChromeProxyValue(); ChromeRecoveryGuard(); ChromePolicyRecoveryLifecycle(); Picker(); StrategiesNull(); Lifecycle(); Dropdowns(); Pass("native WPF desktop regression suite"); return 0; }
+        try { WelcomeUiChecks.Run(); CabinetUiChecks.Run(); EmergencyUiChecks.Run(); FreshPCSetupChecks.Run(); ChromeProxyValue(); ChromeRecoveryGuard(); ChromePolicyRecoveryLifecycle(); Picker(); StrategiesNull(); Lifecycle(); ServicesLayout(); Dropdowns(); Pass("native WPF desktop regression suite"); return 0; }
         catch (Exception e) { Console.Error.WriteLine(e); File.WriteAllText(Path.Combine(Output, "failure.txt"), e.ToString()); return 1; }
         finally { foreach (System.Windows.Window w in app.Windows.Cast<System.Windows.Window>().ToArray()) { if (w is MainWindow m) m.Exit(); else w.Close(); } app.Shutdown(); File.Delete(settings); }
     }
