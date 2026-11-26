@@ -158,7 +158,7 @@ public sealed partial class DesktopViewModel : Observable
             {
                 phase = "ipc.profiles";
                 status.Profiles = await client.Call<Profile[]>("profiles", cancellationToken: ct);
-                if (status.Profiles.Length == 0)
+                if (status.Profiles.Length == 0 && Applications.Count > 0)
                     throw new ServiceException(ServiceFailure.Incompatible);
                 phase = "ipc.status";
             }
