@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 terms = [dict(months=m, days=m*30, discount=d) for m,d in [(1,0),(3,5),(6,10),(12,20)]]
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
+    browser = p.chromium.launch(headless=True, executable_path=os.environ.get('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'))
     cases = 0
     hosted_redirects = 0
     for width in [390, 1440]:
@@ -72,9 +72,16 @@ with sync_playwright() as p:
                 dialog.get_by_role('button',name='Подтвердить и перейти к оплате').click()
                 page.get_by_text('Не удалось создать оплату.',exact=False).wait_for()
                 sent=dict(requests[-1])
+                assert sent.pop('idempotency_key'), 'Every checkout needs a durable order key'
                 if kind=='club':
-                    assert sent.pop('quote_version')=='fixture-quote' and sent.pop('idempotency_key')
+                    assert sent.pop('quote_version')=='fixture-quote'
                 assert sent==dict(auto_renew=False,months=term['months'],expected_amount_kopecks=expected),requests
+                # A lost/ambiguous response must retry the same order, including
+                # for personal access. A second click must not create a new key.
+                previous=dict(requests[-1]);before=len(requests)
+                dialog.get_by_role('button',name='Подтвердить и перейти к оплате').click()
+                page.wait_for_function('!document.querySelector("dialog button").disabled')
+                assert len(requests)==before+1 and requests[-1]==previous, requests
                 dialog.get_by_role('button',name='Вернуться к выбору').click()
                 cases+=1
             assert '1\xa0137,15' in page.locator('[data-payments]').inner_text()
