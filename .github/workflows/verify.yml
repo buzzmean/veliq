@@ -92,6 +92,10 @@ jobs:
         shell: powershell
       - run: '& ./tests/windows-tools/relay-status-checks.ps1'
         shell: pwsh
+      - run: '& ./tests/windows-tools/services-view-snapshot-checks.ps1'
+        shell: powershell
+      - run: '& ./tests/windows-tools/services-view-snapshot-checks.ps1'
+        shell: pwsh
       - run: '& ./tests/windows-tools/traffic-checks.ps1'
         shell: powershell
       - run: '& ./tests/windows-tools/traffic-checks.ps1'
