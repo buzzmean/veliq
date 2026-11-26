@@ -236,7 +236,12 @@ func buildDownlevel762Codec(t *testing.T) string {
 		t.Fatal(err)
 	}
 	binary := filepath.Join(dir, "codec")
-	cmd = exec.CommandContext(ctx, filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-mod=readonly", "-o", binary, "codec.go")
+	goBinary := filepath.Join(runtime.GOROOT(), "bin", "go")
+	if runtime.GOOS == "windows" {
+		binary += ".exe"
+		goBinary += ".exe"
+	}
+	cmd = exec.CommandContext(ctx, goBinary, "build", "-mod=readonly", "-o", binary, "codec.go")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GOTOOLCHAIN=local", "GOPROXY=off", "GOWORK=off")
 	if output, err := cmd.CombinedOutput(); err != nil {
