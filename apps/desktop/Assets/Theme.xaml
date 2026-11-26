@@ -104,7 +104,12 @@
   <Setter Property="Padding" Value="10,6"/>
  </Style>
 
- <!-- Navigation rail: Content stays a localized string, the icon comes from ui:Nav.Icon. -->
+ <!-- Общая геометрия значков и подписей навигации. -->
+ <Style x:Key="NavIconGlyph" TargetType="Path" BasedOn="{StaticResource IconPath}">
+  <Setter Property="Width" Value="20"/><Setter Property="Height" Value="20"/>
+  <Setter Property="VerticalAlignment" Value="Center"/>
+  <Setter Property="StrokeLineJoin" Value="Round"/><Setter Property="StrokeStartLineCap" Value="Round"/><Setter Property="StrokeEndLineCap" Value="Round"/>
+ </Style>
  <Style x:Key="NavButton" TargetType="Button">
   <Setter Property="Foreground" Value="{StaticResource TextMuted}"/>
   <Setter Property="FontWeight" Value="Medium"/>
@@ -118,11 +123,11 @@
    <Setter.Value>
     <ControlTemplate TargetType="Button">
      <Grid>
-      <Border x:Name="Chrome" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="8">
-       <StackPanel Orientation="Horizontal" Margin="12,0">
-        <Path Data="{Binding (ui:Nav.Icon), RelativeSource={RelativeSource TemplatedParent}}" Style="{StaticResource IconPath}" Stroke="{TemplateBinding Foreground}" Margin="0,0,12,0" VerticalAlignment="Center"/>
-        <ContentPresenter VerticalAlignment="Center" RecognizesAccessKey="False"/>
-       </StackPanel>
+      <Border x:Name="Chrome" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="8" Padding="12,0,10,0">
+       <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Path x:Name="NavIconGlyph" Data="{Binding (ui:Nav.Icon), RelativeSource={RelativeSource TemplatedParent}}" Style="{StaticResource NavIconGlyph}" Stroke="{TemplateBinding Foreground}"/>
+        <ContentPresenter x:Name="NavLabelContent" Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center" RecognizesAccessKey="False"/>
+       </Grid>
       </Border>
       <Rectangle x:Name="Marker" Width="3" HorizontalAlignment="Left" Margin="-10,12,0,12" Fill="{StaticResource Accent}" Visibility="Collapsed" RadiusX="1.5" RadiusY="1.5"/>
      </Grid>
@@ -137,10 +142,11 @@
  </Style>
  <Style x:Key="PlannedNavItem" TargetType="Border">
   <Setter Property="Height" Value="40"/><Setter Property="Margin" Value="0,0,0,2"/>
-  <Setter Property="Padding" Value="13,0,10,0"/><Setter Property="Opacity" Value="0.65"/>
+  <Setter Property="Padding" Value="12,0,10,0"/><Setter Property="BorderThickness" Value="1"/>
+  <Setter Property="BorderBrush" Value="Transparent"/><Setter Property="CornerRadius" Value="8"/><Setter Property="Opacity" Value="0.65"/>
  </Style>
  <Style x:Key="PlannedNavLabel" TargetType="TextBlock">
-  <Setter Property="FontSize" Value="13"/><Setter Property="FontWeight" Value="Medium"/>
+  <Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="Medium"/>
   <Setter Property="Foreground" Value="{StaticResource TextMuted}"/><Setter Property="VerticalAlignment" Value="Center"/>
   <Setter Property="Margin" Value="12,0,8,0"/><Setter Property="TextWrapping" Value="NoWrap"/>
  </Style>

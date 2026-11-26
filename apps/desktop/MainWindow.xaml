@@ -1,6 +1,6 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:ui="clr-namespace:Veliq.Desktop" x:Class="Veliq.Desktop.MainWindow" Title="VELIQ" Icon="Assets/VELIQ.ico" Width="1180" Height="780" MinWidth="960" MinHeight="640" Background="{StaticResource Bg}" Foreground="{StaticResource Text}" FontFamily="{StaticResource VeliqFont}" FontSize="14" Language="ru-RU" WindowStartupLocation="CenterScreen" TextOptions.TextFormattingMode="Display" UseLayoutRounding="True">
  <!-- Layout and states follow app-ui/index.html: rail + screens, activation overlay on top. -->
- <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="272"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+ <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="288"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
   <Border x:Name="SidebarRail" Background="{StaticResource BgSunken}" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
    <DockPanel Margin="10,14,10,14">
     <Grid x:Name="SidebarHeader" DockPanel.Dock="Top" Height="48" Margin="0,-6,0,8">
@@ -11,15 +11,15 @@
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr NavServices}" Tag="Applications" Click="Navigate" ui:Nav.Icon="{StaticResource IconServices}"/>
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Games}" Tag="Games" Click="Navigate" ui:Nav.Icon="{StaticResource IconGames}"/>
      <Border x:Name="PlannedGameOptimization" Style="{StaticResource PlannedNavItem}" AutomationProperties.Name="{ui:Tr OptimizeGamesPlanned}">
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-       <Path Data="{StaticResource IconGames}" Stretch="Uniform" Width="18" Height="18" Stroke="{StaticResource Text}" StrokeThickness="1.5" VerticalAlignment="Center"/>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <Path x:Name="PlannedGameIcon" Data="{StaticResource IconGames}" Style="{StaticResource NavIconGlyph}" Stroke="{StaticResource TextMuted}"/>
        <TextBlock x:Name="PlannedGameLabel" Grid.Column="1" Text="{ui:Tr OptimizeGamesPlanned}" Style="{StaticResource PlannedNavLabel}"/>
        <Border x:Name="PlannedGameBadge" Grid.Column="2" Style="{StaticResource ComingSoonBadge}"><TextBlock Text="{ui:Tr ComingSoon}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
       </Grid>
      </Border>
      <Border x:Name="PlannedSystemOptimization" Style="{StaticResource PlannedNavItem}" AutomationProperties.Name="{ui:Tr OptimizeSystemPlanned}">
-      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="18"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-       <Path Data="{StaticResource IconSettings}" Stretch="Uniform" Width="18" Height="18" Stroke="{StaticResource Text}" StrokeThickness="1.5" VerticalAlignment="Center"/>
+      <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+       <Path x:Name="PlannedSystemIcon" Data="{StaticResource IconSettings}" Style="{StaticResource NavIconGlyph}" Stroke="{StaticResource TextMuted}"/>
        <TextBlock x:Name="PlannedSystemLabel" Grid.Column="1" Text="{ui:Tr OptimizeSystemPlanned}" Style="{StaticResource PlannedNavLabel}"/>
        <Border x:Name="PlannedSystemBadge" Grid.Column="2" Style="{StaticResource ComingSoonBadge}"><TextBlock Text="{ui:Tr ComingSoon}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
       </Grid>
