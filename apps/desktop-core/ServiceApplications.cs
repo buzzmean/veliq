@@ -5,19 +5,24 @@ namespace Veliq.Desktop;
 public sealed partial class DesktopViewModel
 {
     public ObservableCollection<ApplicationRow> ActiveServices { get; } = [];
-    public IEnumerable<ApplicationRow> ServiceApplications => ActiveServices;
+    // Обычный экран показывает применённые оптимизации. Редактор также показывает
+    // сохранённые профили без текущего трафика, включая заблокированные приложения.
+    public IEnumerable<ApplicationRow> ServiceApplications => ShowTechnical ? Applications : ActiveServices;
     public bool HasVisibleServices => ServiceApplications.Any();
     public bool NoActiveServices => !HasVisibleServices;
+    bool visibleServices;
 
     void NotifyVisibleServices()
     {
+        var next = HasVisibleServices;
+        if (visibleServices == next) return;
+        visibleServices = next;
         Changed(nameof(HasVisibleServices));
         Changed(nameof(NoActiveServices));
     }
 
     void UpdateServiceApplications(Snapshot status, ProcessIdentity[]? processes, CaptureEvidence? capture)
     {
-        var visibleBefore = HasVisibleServices;
         var rows = new List<ApplicationRow>();
         if (status.Optimizing)
         {
@@ -37,6 +42,6 @@ public sealed partial class DesktopViewModel
             }
         }
         Replace(ActiveServices, rows.OrderBy(row => row.Name, StringComparer.CurrentCultureIgnoreCase));
-        if (visibleBefore != HasVisibleServices) NotifyVisibleServices();
+        NotifyVisibleServices();
     }
 }
