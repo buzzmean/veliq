@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"net/netip"
+	"strings"
 )
 
 const clubLinkTCPRowLimit = 32768
@@ -78,7 +79,12 @@ func decodeClubLinkTCPTable(raw []byte, ipv6 bool) ([]clubLinkTCPRow, error) {
 func filterClubLinkTCPRows(root ProcessIdentity, rows []clubLinkTCPRow, lookup func(uint32) (ProcessIdentity, error), started uint64) (ClubLinkSnapshot, error) {
 	out := ClubLinkSnapshot{}
 	if root.PID == 0 {
-		return out, nil // The service was positively observed stopped.
+		// SCM can stop while a former direct worker still owns an established
+		// connection. Losing its ownership proof does not prove TCP absence.
+		for _, row := range rows {
+			out.UnknownPeers = append(out.UnknownPeers, row.Peer)
+		}
+		return out, nil
 	}
 	ids := map[uint32]ProcessIdentity{}
 	for _, row := range rows {
@@ -95,6 +101,13 @@ func filterClubLinkTCPRows(root ProcessIdentity, rows []clubLinkTCPRow, lookup f
 			continue
 		}
 		if !lanGameOwnershipMatches(id, id, root) {
+			// A worker can outlive its SCM root and remain connected after the
+			// service restarts with a new generation. Its name grants no trust,
+			// but ambiguity must not turn that real socket into absence proof.
+			name := id.Path[strings.LastIndexAny(id.Path, `/\`)+1:]
+			if strings.EqualFold(name, "LanGameService.exe") {
+				out.UnknownPeers = append(out.UnknownPeers, row.Peer)
+			}
 			continue
 		}
 		out.Sockets = append(out.Sockets, ClubLinkSocket{Identity: id, Peer: row.Peer, Protocol: row.Protocol})

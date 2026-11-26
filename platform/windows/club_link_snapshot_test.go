@@ -104,3 +104,45 @@ func TestClubLinkNativeOwnerRequiresSCMGenerationAndDirectWorker(t *testing.T) {
 		t.Fatal("process born after table snapshot was trusted")
 	}
 }
+
+func TestClubLinkSCMStopOrRestartDoesNotHideEstablishedOrphanWorker(t *testing.T) {
+	oldRoot := ProcessIdentity{PID: 24, CreationTime: 10, Path: `C:\LanGame\LanGameService.exe`}
+	worker := ProcessIdentity{PID: 28, CreationTime: 11, Path: oldRoot.Path, ParentPID: oldRoot.PID, ParentCreationTime: oldRoot.CreationTime}
+	peer := netip.MustParseAddrPort("10.2.3.4:9917")
+	rows := []clubLinkTCPRow{{Peer: peer, PID: worker.PID, State: 5, Protocol: "TCP4"}}
+	lookup := func(uint32) (ProcessIdentity, error) { return worker, nil }
+	baseline, err := filterClubLinkTCPRows(oldRoot, rows, lookup, 100)
+	if err != nil || len(baseline.Sockets) != 1 {
+		t.Fatal("verified direct worker baseline missing", err)
+	}
+	for name, root := range map[string]ProcessIdentity{
+		"SCM stopped":    {},
+		"SCM restarted":  {PID: 32, CreationTime: 20, Path: oldRoot.Path},
+		"SCM PID reused": {PID: oldRoot.PID, CreationTime: 20, Path: oldRoot.Path},
+	} {
+		t.Run(name, func(t *testing.T) {
+			for range 2 {
+				snapshot, err := filterClubLinkTCPRows(root, rows, lookup, 100)
+				if err != nil || len(snapshot.Sockets) != 0 || len(snapshot.UnknownPeers) != 1 || snapshot.UnknownPeers[0] != peer {
+					t.Fatal("established orphan socket became absence proof or trusted owner", snapshot, err)
+				}
+			}
+			empty, err := filterClubLinkTCPRows(root, nil, lookup, 100)
+			if err != nil || len(empty.Sockets) != 0 || len(empty.UnknownPeers) != 0 {
+				t.Fatal("actual empty full TCP table was not preserved", empty, err)
+			}
+		})
+	}
+	// A same-name executable gains no SCM trust. A positively identified foreign
+	// application can be skipped; neither is promoted to a verified LanGame socket.
+	worker.Path = `C:\Other\LanGameService.exe`
+	lookalike, err := filterClubLinkTCPRows(oldRoot, rows, lookup, 100)
+	if err != nil || len(lookalike.Sockets) != 0 || len(lookalike.UnknownPeers) != 1 {
+		t.Fatal("lookalike granted trust or its ambiguity hidden", lookalike, err)
+	}
+	worker.Path = `C:\Other\chrome.exe`
+	foreign, err := filterClubLinkTCPRows(oldRoot, rows, lookup, 100)
+	if err != nil || len(foreign.Sockets) != 0 || len(foreign.UnknownPeers) != 0 {
+		t.Fatal("positively identified foreign application was trusted", foreign, err)
+	}
+}
