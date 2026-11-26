@@ -22,8 +22,28 @@ public sealed class ActiveServicesTests
         Assert.Equal("local", Assert.Single(vm.ServiceApplications).Name);
         Assert.Equal(3, vm.Applications.Count);
         vm.ShowTechnical = true;
-        Assert.Equal("local", Assert.Single(vm.ServiceApplications).Name);
+        Assert.Equal(new[] { "closed", "direct", "local" }, vm.ServiceApplications.Select(a => a.Name));
         Assert.Equal(3, vm.Applications.Count);
+        vm.ShowTechnical = false;
+        Assert.Equal("local", Assert.Single(vm.ServiceApplications).Name);
+    }
+
+    [Fact]
+    public void EditorKeepsBlockedApplicationAndSelectionIdentityAcrossEmptyTrafficSnapshots()
+    {
+        var vm = new DesktopViewModel(new FakeService()) { ShowTechnical = true };
+        var app = App("chatgpt-desktop");
+        var status = new Snapshot { Optimizing = true, Profiles = [app] };
+        var blocked = Flow(app.Id, "BLOCK"); blocked.RelayRequiredBlocked = true;
+        vm.Apply(status, capture: new() { Flows = [blocked] });
+        var row = Assert.Single(vm.ServiceApplications);
+        Assert.False(row.HasAppliedStrategy);
+        Assert.Equal(Text.Get("ProtectedFlowBlocked"), row.ServiceStatus);
+        vm.Apply(status, capture: new());
+        Assert.Same(row, Assert.Single(vm.ServiceApplications));
+        Assert.Equal(Text.Get("NoData"), row.ServiceStatus);
+        vm.ShowTechnical = false;
+        Assert.Empty(vm.ServiceApplications);
     }
 
     [Fact]

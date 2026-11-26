@@ -5,7 +5,9 @@ namespace Veliq.Desktop;
 public sealed partial class DesktopViewModel
 {
     public ObservableCollection<ApplicationRow> ActiveServices { get; } = [];
-    public IEnumerable<ApplicationRow> ServiceApplications => ActiveServices;
+    // The ordinary view shows applied optimizations. The editor must also show
+    // saved profiles with no current traffic, including blocked applications.
+    public IEnumerable<ApplicationRow> ServiceApplications => ShowTechnical ? Applications : ActiveServices;
     public bool HasVisibleServices => ServiceApplications.Any();
     public bool NoActiveServices => !HasVisibleServices;
 
