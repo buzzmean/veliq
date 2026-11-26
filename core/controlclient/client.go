@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,6 +19,10 @@ import (
 // ErrSubscriptionExpired: the control plane refuses relay tickets because the
 // paid period (plus grace) ended. The device identity and seat stay valid.
 var ErrSubscriptionExpired = errors.New("SUBSCRIPTION_EXPIRED")
+
+type FleetRateLimit struct{ RetryAfter time.Duration }
+
+func (*FleetRateLimit) Error() string { return "fleet control plane rate limited" }
 
 // ErrNotSupported: the control plane predates the endpoint.
 var ErrNotSupported = errors.New("control plane endpoint not supported")
@@ -74,6 +79,11 @@ func (c *Client) request(ctx context.Context, method, path string, value any, to
 	if e != nil || len(b) > limit {
 		return nil, errors.New("invalid control plane response size")
 	}
+	if response.StatusCode == http.StatusTooManyRequests && strings.HasPrefix(path,"/api/v1/fleet/") {
+		seconds,err:=strconv.Atoi(response.Header.Get("Retry-After"))
+		if err!=nil||seconds<1{seconds=1}
+		return nil,&FleetRateLimit{RetryAfter:time.Duration(min(seconds,30))*time.Second}
+	}
 	if response.StatusCode == http.StatusPaymentRequired {
 		return nil, ErrSubscriptionExpired
 	}
@@ -98,6 +108,21 @@ func (c *Client) Config(ctx context.Context) (security.Config, error) {
 	}
 	return c.Cache.Current(time.Now())
 }
+func (c *Client) FleetConfig(ctx context.Context) ([]byte, error) {
+	if len(c.DeviceKey) != ed25519.PrivateKeySize {
+		return nil, errors.New("device identity required")
+	}
+	proof, err := security.NewProof(c.DeviceID, security.FleetProofAudience, c.DeviceKey, time.Now())
+	if err != nil {
+		return nil, err
+	}
+	return c.request(ctx, "POST", "/api/v1/fleet/config", proof, "")
+}
+
+func (c *Client) FleetHeartbeat(ctx context.Context, heartbeat security.FleetHeartbeat, token string) ([]byte, error) {
+	return c.request(ctx, "POST", "/api/v1/fleet/heartbeat", heartbeat, token)
+}
+
 func (c *Client) Ticket(ctx context.Context, relay string) ([]byte, error) {
 	if len(c.DeviceKey) != ed25519.PrivateKeySize {
 		return nil, errors.New("device identity required")

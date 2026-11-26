@@ -10,6 +10,7 @@ import (
 
 	"github.com/buzzmean/veliq/core/browserproxy"
 	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/routing"
 	wp "github.com/buzzmean/veliq/platform/windows"
 )
 
@@ -17,6 +18,9 @@ import (
 // relay-first rule. Only a destination OPEN rejection can suggest wrong DNS;
 // authentication/session failures must not cause a DNS/probe storm.
 func recoverableKnownOriginOpen(err error) bool {
+	if errors.Is(err, routing.ErrFleetPolicy) {
+		return false
+	}
 	var typed interface{ FailureReason() string }
 	if !errors.As(err, &typed) {
 		return false

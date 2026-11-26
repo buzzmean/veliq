@@ -338,7 +338,7 @@ func (c *Controller) evaluateFlow(p profiles.Profile, id wp.ProcessIdentity, t w
 	}
 	// Only policies with explicit per-flow semantics bypass the legacy selector.
 	if matched || p.Fallback != "" || len(p.Rules) > 0 || p.Mode == profiles.Auto && !automaticRelayAllowed(p) {
-		d.Flow.PinnedPolicy = &routing.Policy{Route: d.Route, Block: d.Block, BlockOnFailure: d.BlockOnFailure}
+		d.Flow.PinnedPolicy = &routing.Policy{Route: d.Route, Block: d.Block, BlockOnFailure: d.BlockOnFailure, ImplicitRelay: implicitRelay(p, d.Policy)}
 	}
 	return d
 }

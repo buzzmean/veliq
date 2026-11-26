@@ -848,6 +848,9 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 				} else {
 					b.mu.Lock()
 					f.decision.Route = flow.Route
+					if flow.FleetBound {
+						f.decision.BlockOnFailure = true
+					}
 					b.mu.Unlock()
 				}
 			}
@@ -865,7 +868,7 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 		if datagram != nil {
 			datagram.Close()
 		}
-		b.fallback(tuple, f, d, nil)
+		b.fallback(tuple, f, d, nil, errors.Is(err, routing.ErrFleetPolicy))
 		return
 	}
 
@@ -1019,7 +1022,7 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 			if retireIdle() {
 				return
 			}
-			b.fallback(tuple, f, d, nil)
+			b.fallback(tuple, f, d, nil, false)
 			return
 		case queued := <-f.queue:
 			payload := queued.payload
@@ -1044,7 +1047,7 @@ func (b *WinDivertBackend) forward(tuple Tuple, f *captureFlow, d *divertDLL) {
 				if localSocket && localUDPRouteError(sendErr) {
 					f.decision.GameUDP.CS2LocalFailure(f.game, time.Now())
 				}
-				b.fallback(tuple, f, d, payload)
+				b.fallback(tuple, f, d, payload, false)
 				datagram.Close()
 				<-done
 				return
@@ -1139,13 +1142,13 @@ func (b *WinDivertBackend) DiagnosticsScoped(query EvidenceQuery) (CaptureEviden
 	out.LocalDrops["capture_kernel_queue_drops"] = telemetry.Metric{Available: false, Unit: "packets"}
 	return out, nil
 }
-func (b *WinDivertBackend) fallback(tuple Tuple, f *captureFlow, d *divertDLL, failed []byte) {
+func (b *WinDivertBackend) fallback(tuple Tuple, f *captureFlow, d *divertDLL, failed []byte, fleetDenied bool) {
 	b.mu.Lock()
 	if f.retired || b.flows[tuple] != f {
 		b.mu.Unlock()
 		return
 	}
-	block := f.decision.BlockOnFailure || f.decision.ProbeDirect
+	block := fleetDenied || f.decision.BlockOnFailure || f.decision.ProbeDirect
 	f.decision.Block = block
 	if !block {
 		f.decision.Route = routing.Route{}

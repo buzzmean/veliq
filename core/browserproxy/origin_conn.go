@@ -10,6 +10,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/buzzmean/veliq/core/routing"
 )
 
 const OriginAttemptsLimit = 3
@@ -82,6 +84,9 @@ type originConn struct {
 }
 
 func WatchRelayOrigin(conn net.Conn, cfg OriginConfig) net.Conn {
+	if bound, ok := conn.(interface{ FleetRelayBound() bool }); ok && bound.FleetRelayBound() {
+		return conn
+	}
 	x := &originConn{Conn: conn, cur: conn, stateEvent: make(chan struct{}, 1), firstWrite: make(chan struct{}), done: make(chan struct{}), cfg: cfg, destination: cfg.Initial, tried: map[netip.AddrPort]bool{cfg.Initial: true}, report: OriginReport{Selected: cfg.Initial.String(), AddressAttempts: 1, State: "WAITING_CLIENT_HELLO", NegativeSkipped: cfg.Skipped, Attempts: []OriginAttempt{{Destination: cfg.Initial.String(), Reason: "OPEN"}}}}
 	if len(cfg.Prior) > 0 {
 		x.report.Attempts = append(append([]OriginAttempt(nil), cfg.Prior...), x.report.Attempts...)
@@ -377,7 +382,7 @@ func (x *originConn) retry(expected net.Conn, reason string, fromRead bool) (ret
 	if err := x.checkScope(); err != nil {
 		return err
 	}
-	ctx, stop := context.WithDeadline(x.cfg.Context, hard)
+	ctx, stop := context.WithDeadline(routing.WithExistingFlow(x.cfg.Context), hard)
 	defer stop()
 	if x.cfg.NextFlow != nil {
 		next, err := x.cfg.NextFlow(ctx, reason)

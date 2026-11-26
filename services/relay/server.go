@@ -34,6 +34,8 @@ type Config struct {
 	Allow            []netip.Prefix
 	PacketsPerSecond int
 	TicketVerifier   *security.TicketVerifier
+	Fleet            *FleetAdmission
+	FleetObserve     bool
 	Acceptance       *AcceptanceConfig
 }
 
@@ -60,6 +62,7 @@ type Metrics struct {
 	Renewals, RenewalRejected, LeaseExpiries, Revocations                            atomic.Uint64
 	Sessions, Flows                                                                  atomic.Int64
 	UDPPackets, TCPConnections, RXBytes, TXBytes, Drops, RejectedFlows, AuthFailures atomic.Uint64
+	FleetPackets, FleetOpenAttempts, FleetHandshakeRejected, FleetOpenRejected       atomic.Uint64
 	LocalDrops                                                                       telemetry.Counters
 }
 type Server struct {
@@ -73,6 +76,7 @@ type Server struct {
 	wg          sync.WaitGroup
 	done        chan struct{}
 	once        sync.Once
+	fleetSample fleetSampler
 }
 
 func Listen(addr string, c Config) (*Server, error) {
@@ -112,6 +116,26 @@ func Listen(addr string, c Config) (*Server, error) {
 		c.TLS = c.TLS.Clone()
 		c.TLS.NextProtos = []string{protocol.LeaseALPN, protocol.TicketALPN}
 	}
+	if c.Fleet != nil && c.FleetObserve {
+		return nil, errors.New("choose one fleet relay mode")
+	}
+	if c.FleetObserve && c.TicketVerifier == nil {
+		return nil, errors.New("fleet observation requires an authenticated relay")
+	}
+	if c.Fleet != nil {
+		if c.TicketVerifier == nil || c.TicketVerifier.Audience != c.Fleet.node {
+			return nil, errors.New("fleet relay requires a matching ticket audience")
+		}
+		c.Fleet.bind(c.MaxSessions, c.MaxFlows)
+		transportConfig := *q
+		q.GetConfigForClient = func(*quic.ClientInfo) (*quic.Config, error) {
+			if !c.Fleet.permitHandshake(time.Now()) {
+				c.Fleet.earlyRejected.Add(1)
+				return nil, errFleetAdmission
+			}
+			return &transportConfig, nil
+		}
+	}
 	l, e := quic.ListenAddr(addr, c.TLS, q)
 	if e != nil {
 		return nil, e
@@ -141,6 +165,11 @@ func (s *Server) accept() {
 		c, e := s.listener.Accept(context.Background())
 		if e != nil {
 			return
+		}
+		if s.config.Fleet != nil && !s.config.Fleet.admitting(time.Now()) {
+			s.Metrics.FleetHandshakeRejected.Add(1)
+			c.CloseWithError(2, "fleet admission")
+			continue
 		}
 		select {
 		case s.sem <- struct{}{}:
@@ -238,9 +267,15 @@ type session struct {
 	renewalSequence uint64
 	renewalHash     [32]byte
 	renewalReceipt  protocol.LeaseAck
+	fleetRelease    func()
 }
 
 func (x *session) run() {
+	defer func() {
+		if x.fleetRelease != nil {
+			x.fleetRelease()
+		}
+	}()
 	if x.server.config.TicketVerifier != nil {
 		if e := x.authenticate(); e != nil {
 			x.server.Metrics.AuthFailures.Add(1)
@@ -310,6 +345,19 @@ func (x *session) open(s *quic.Stream) {
 		reject(3)
 		return
 	}
+	if x.server.config.Fleet != nil || x.server.config.FleetObserve {
+		x.server.Metrics.FleetOpenAttempts.Add(1)
+	}
+	if gate := x.server.config.Fleet; gate != nil {
+		release, code := gate.reserveFlow(x.deviceID, o.Destination, o.Kind, time.Now())
+		if code != 0 {
+			x.mu.Unlock()
+			x.server.Metrics.FleetOpenRejected.Add(1)
+			reject(code)
+			return
+		}
+		defer release()
+	}
 	x.flows[o.ID] = f
 	x.server.Metrics.Flows.Add(1)
 	x.mu.Unlock()
@@ -345,6 +393,13 @@ func (x *session) open(s *quic.Stream) {
 	if x.conn.Context().Err() != nil {
 		x.mu.Unlock()
 		c.Close()
+		return
+	}
+	if gate := x.server.config.Fleet; gate != nil && gate.flowPermission(x.deviceID, o.Destination, o.Kind, time.Now()) != 0 {
+		x.mu.Unlock()
+		c.Close()
+		x.server.Metrics.FleetOpenRejected.Add(1)
+		reject(3)
 		return
 	}
 	if o.Kind == protocol.UDP {
@@ -414,6 +469,13 @@ func (x *session) readUDP(id uint32, f *flow) {
 		parts, _ := protocol.EncodeDatagrams(id, x.packetSequence.Add(1), b[:n])
 		x.server.Metrics.LocalDrops.Attempt(telemetry.SocketSend)
 		for _, p := range parts {
+			if x.server.config.Fleet != nil || x.server.config.FleetObserve {
+				x.server.Metrics.FleetPackets.Add(1)
+			}
+			if gate := x.server.config.Fleet; gate != nil && !gate.permitPacket(time.Now()) {
+				e = errFleetAdmission
+				break
+			}
 			if e = x.conn.SendDatagram(p); e != nil {
 				break
 			}
@@ -439,6 +501,15 @@ func (x *session) datagrams() {
 			case x.control <- append([]byte(nil), b...):
 			default:
 			}
+			continue
+		}
+		if x.server.config.Fleet != nil || x.server.config.FleetObserve {
+			x.server.Metrics.FleetPackets.Add(1)
+		}
+		if gate := x.server.config.Fleet; gate != nil && !gate.permitPacket(time.Now()) {
+			x.server.Metrics.Drops.Add(1)
+			x.server.Metrics.LocalDrops.Attempt(telemetry.Policy)
+			x.server.Metrics.LocalDrops.Drop(telemetry.Policy)
 			continue
 		}
 		x.server.Metrics.LocalDrops.Attempt(telemetry.Decode)
@@ -561,6 +632,15 @@ func (s *Server) Handler() http.Handler {
 		}
 		fmt.Fprintf(w, "neexitlag_lease_renewals_total %d\nneexitlag_lease_renewal_rejected_total %d\nneexitlag_lease_expiries_total %d\nneexitlag_revocations_total %d\n", s.Metrics.Renewals.Load(), s.Metrics.RenewalRejected.Load(), s.Metrics.LeaseExpiries.Load(), s.Metrics.Revocations.Load())
 		fmt.Fprintf(w, "neexitlag_relay_health 1\nneexitlag_active_sessions %d\nneexitlag_active_flows %d\nneexitlag_udp_packets_total %d\nneexitlag_tcp_connections_total %d\nneexitlag_rx_bytes_total %d\nneexitlag_tx_bytes_total %d\nneexitlag_packet_drops_total %d\nneexitlag_rejected_flows_total %d\nneexitlag_auth_failures_total %d\n", s.Metrics.Sessions.Load(), s.Metrics.Flows.Load(), s.Metrics.UDPPackets.Load(), s.Metrics.TCPConnections.Load(), s.Metrics.RXBytes.Load(), s.Metrics.TXBytes.Load(), s.Metrics.Drops.Load(), s.Metrics.RejectedFlows.Load(), s.Metrics.AuthFailures.Load())
+		if gate := s.config.Fleet; gate != nil || s.config.FleetObserve {
+			rejected := s.Metrics.FleetHandshakeRejected.Load()
+			if gate != nil {
+				rejected += gate.earlyRejected.Load()
+				fmt.Fprintf(w, "neexitlag_fleet_applied_registry_version %d\n", gate.Version())
+			}
+			fmt.Fprintf(w, "neexitlag_fleet_new_open_attempts_total %d\nneexitlag_fleet_new_open_rejected_total %d\nneexitlag_fleet_handshake_rejected_total %d\nneexitlag_fleet_udp_packet_events_total %d\n",
+				s.Metrics.FleetOpenAttempts.Load(), s.Metrics.FleetOpenRejected.Load(), rejected, s.Metrics.FleetPackets.Load())
+		}
 		for name, metric := range s.Metrics.LocalDrops.Snapshot() {
 			fmt.Fprintf(w, "neexitlag_relay_%s_total %d\n", name, metric.Count)
 		}

@@ -7,11 +7,12 @@ import (
 
 	"github.com/buzzmean/veliq/core/browserproxy"
 	"github.com/buzzmean/veliq/core/flowpolicy"
+	"github.com/buzzmean/veliq/core/routing"
 	"github.com/buzzmean/veliq/core/transport"
 )
 
 func browserCapacityFailure(err error) bool {
-	if err == nil {
+	if err == nil || errors.Is(err, routing.ErrFleetPolicy) {
 		return false
 	}
 	if errors.Is(err, errVideoRelayCapacity) {

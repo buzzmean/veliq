@@ -53,6 +53,9 @@ func (c *Controller) openNativePAC(ctx context.Context, q browserproxy.Request, 
 		defer stopCaller()
 		defer stop()
 		ctx = work
+		if routing.ExistingFlow(requestContext) {
+			ctx = routing.WithExistingFlow(ctx)
+		}
 		// CONNECT authority is owner-validated origin metadata, including ECH. Do not
 		// replace it with the TLS outer SNI or DNS association observed downstream.
 		q.Ingress = "PAC_NATIVE_UPSTREAM"

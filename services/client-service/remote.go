@@ -120,6 +120,7 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	if e = c.stopRemoteLocked(ctx); e != nil {
 		return e
 	}
+	remote.initFleet(keys, identity.ID, m.StateDirectory)
 	remoteCtx, stopRemote := context.WithCancel(c.ctx)
 	c.remoteCancel = stopRemote
 	done := make(chan struct{})
@@ -161,11 +162,36 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 		defer remote.close()
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
+		var fleetTimer *time.Timer
+		var fleetTicks <-chan time.Time
+		startFleet := func() {
+			if fleetTimer == nil && remote.fleet != nil {
+				fleetTimer = time.NewTimer(remote.fleetDelay(30 * time.Second))
+				fleetTicks = fleetTimer.C
+			}
+		}
+		defer func() {
+			if fleetTimer != nil {
+				fleetTimer.Stop()
+			}
+		}()
+		startFleet()
 		for {
 			select {
 			case <-remoteCtx.Done():
 				return
+			case <-fleetTicks:
+				fleetTimer.Reset(remote.refreshFleet(remoteCtx))
 			case <-ticker.C:
+				if remote.fleet == nil && m.StateDirectory != "" {
+					// The protected marker allows opt-in in the current service
+					// generation. Neither existing pools nor live flows are reset.
+					remote.initFleet(keys, identity.ID, m.StateDirectory)
+					if remote.fleet != nil {
+						remote.syncFleetMeasurements()
+						startFleet()
+					}
+				}
 				cfg, e := cp.Config(remoteCtx)
 				if e == nil {
 					remote.apply(remoteCtx, cfg)
@@ -184,6 +210,8 @@ type remoteState struct {
 	tls        *tls.Config
 	target     netip.AddrPort
 	clients    map[string]*transport.Pool
+	fleet      *remoteFleet
+	legacyCandidates []measurement.Candidate
 	version    uint64
 }
 
@@ -270,7 +298,11 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 	}
 	for id, pool := range s.clients {
 		if !configured[id] {
-			pool.Close()
+			if s.fleet != nil && c.fleet.Enabled() {
+				s.retireFleetPool(pool)
+			} else {
+				pool.Close()
+			}
 			delete(s.clients, id)
 			delete(s.addresses, id)
 			c.Engine.SetRelay(id, nil)
@@ -285,23 +317,7 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 	// Stable provider per relay; session creation/rotation stays inside its pool.
 	for _, node := range cfg.Relays {
 		node := node
-		factory := func(ctx context.Context) (*transport.Client, error) {
-			// Tickets are one-shot. Each factory invocation obtains a fresh signed
-			// proof/ticket, including retries after an uncertain failed handshake.
-			ticket, err := s.cp.Ticket(ctx, node.ID)
-			if err != nil {
-				if errors.Is(err, controlclient.ErrSubscriptionExpired) {
-					c.subscriptionRecheck()
-				}
-				return nil, &transport.OpenError{Reason: "ticket_request_failed", Cause: err}
-			}
-			client, err := transport.DialWithTicket(ctx, node.Address, s.tls, ticket)
-			if err != nil {
-				return nil, &transport.OpenError{Reason: "session_auth_or_dial_failed", Cause: err}
-			}
-			client.StartRenewal(func(ctx context.Context) ([]byte, error) { return s.cp.Ticket(ctx, node.ID) })
-			return client, nil
-		}
+		factory := s.relayFactory(node.ID, node.Address)
 		if pool := s.clients[node.ID]; pool != nil {
 			changed := s.addresses[node.ID] != node.Address
 			if changed {
@@ -319,7 +335,9 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 			s.addresses[node.ID] = node.Address
 			continue
 		}
-		pool, err := transport.NewPool(c.ctx, transport.DefaultPoolConfig(), factory)
+		poolConfig := transport.DefaultPoolConfig()
+		poolConfig.FleetBudget = &c.fleet.budget
+		pool, err := transport.NewPool(c.ctx, poolConfig, factory)
 		if err != nil {
 			return err
 		}
@@ -334,9 +352,11 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 		c.acceptanceRelays[node.ID] = acceptanceRelaySource{session: pool, target: s.target, generation: generation, address: node.Address}
 		c.mu.Unlock()
 		pool.SetFailureHandler(func(reason string) { c.Selector.ReportTransportFailure(node.ID, generation, reason, time.Now()) })
-		attempt, cancel := context.WithTimeout(ctx, 3*time.Second)
-		_ = pool.Warm(attempt)
-		cancel()
+		if !c.fleet.Enabled() {
+			attempt, cancel := context.WithTimeout(ctx, 3*time.Second)
+			_ = pool.Warm(attempt)
+			cancel()
+		}
 	}
 	candidates := []measurement.Candidate{{Metadata: optimizer.RelayCandidate{ID: optimizer.Direct}, Target: s.target, Open: measurement.OpenDirect}}
 	for _, node := range cfg.Relays {
@@ -344,7 +364,7 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 		if client == nil {
 			continue
 		}
-		candidates = append(candidates, measurement.Candidate{Metadata: node, Target: s.target, Open: client.OpenProbeDatagram, Load: node.Load})
+		candidates = append(candidates, measurement.Candidate{Metadata: node, Target: s.target, Open: client.OpenProbeDatagram, Load: node.Load, Eligible: func() bool { return !c.fleet.Enabled() }})
 	}
 	if len(s.echoKey) > 0 {
 		for i := range candidates {
@@ -352,7 +372,8 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 			candidates[i].Authenticated = true
 		}
 	}
-	c.Measurements.SetCandidates(candidates)
+	s.legacyCandidates = candidates
+	s.syncFleetMeasurements()
 	// P0 only: distinct server audience, existing local VPS-01 policy name.
 	// No process/profile/manual policy rewrite or TCP replay is performed.
 	primaryAddress := ""
@@ -382,7 +403,32 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 	}
 	return nil
 }
+func (s *remoteState) relayFactory(id, address string) transport.SessionFactory {
+	return func(ctx context.Context) (*transport.Client, error) {
+		// Tickets are one-shot. Each factory invocation obtains a fresh signed
+		// proof/ticket, including retries after an uncertain failed handshake.
+		ticket, err := s.cp.Ticket(ctx, id)
+		if err != nil {
+			if errors.Is(err, controlclient.ErrSubscriptionExpired) {
+				s.controller.subscriptionRecheck()
+			}
+			return nil, &transport.OpenError{Reason: "ticket_request_failed", Cause: err}
+		}
+		client, err := transport.DialWithTicket(ctx, address, s.tls, ticket)
+		if err != nil {
+			reason := "session_auth_or_dial_failed"
+			if s.controller.fleet.Enabled() && transport.TicketNetworkFailure(err) {
+				reason = "session_network_unavailable"
+			}
+			return nil, &transport.OpenError{Reason: reason, Cause: err}
+		}
+		client.StartRenewal(func(ctx context.Context) ([]byte, error) { return s.cp.Ticket(ctx, id) })
+		return client, nil
+	}
+}
+
 func (s *remoteState) close() {
+	s.closeFleetPools()
 	for _, pool := range s.clients {
 		pool.Close()
 	}

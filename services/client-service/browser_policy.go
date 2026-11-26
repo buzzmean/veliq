@@ -140,6 +140,6 @@ func applyFlowResult(p profiles.Profile, d wp.Decision, r flowpolicy.Result, net
 	}
 	d.BlockOnFailure = r.Fallback == flowpolicy.Required || r.Fallback == flowpolicy.FailBlock
 	d.ProbeDirect = r.Fallback == flowpolicy.FlowRelay
-	d.Flow.PinnedPolicy = &routing.Policy{Route: d.Route, Block: d.Block, BlockOnFailure: d.BlockOnFailure}
+	d.Flow.PinnedPolicy = &routing.Policy{Route: d.Route, Block: d.Block, BlockOnFailure: d.BlockOnFailure, ImplicitRelay: implicitRelay(p, r)}
 	return d
 }

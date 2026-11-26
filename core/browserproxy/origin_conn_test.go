@@ -406,3 +406,17 @@ func TestOriginRecoveryPreservesLargeFragmentedClientHelloByteForByte(t *testing
 		t.Fatal(report)
 	}
 }
+
+type fleetOriginConn struct{ net.Conn }
+
+func (fleetOriginConn) FleetRelayBound() bool { return true }
+
+func TestFleetOriginKeepsStreamWithoutTLSReplayWrapper(t *testing.T) {
+	a, b := net.Pipe()
+	defer a.Close()
+	defer b.Close()
+	pinned := &fleetOriginConn{a}
+	if got := WatchRelayOrigin(pinned, OriginConfig{Context: context.Background()}); got != pinned {
+		t.Fatal("fleet route acquired a replay wrapper")
+	}
+}

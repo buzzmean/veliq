@@ -5,6 +5,7 @@ package windowsplatform
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"github.com/buzzmean/veliq/core/flowpolicy"
 	"github.com/buzzmean/veliq/core/localstrategy"
@@ -771,7 +772,7 @@ func (t *tcpRedirect) deferredOpen(e *tcpEntry, c net.Conn, release func()) {
 		up, err = t.b.Engine.OpenTCP(ctx, d.Flow)
 	}
 	cancel()
-	if err != nil && d.OpenDeferred == nil && !d.BlockOnFailure && t.b.ctx.Err() == nil && (!requested.Direct() || requested.Local()) {
+	if err != nil && !errors.Is(err, routing.ErrFleetPolicy) && d.OpenDeferred == nil && !d.BlockOnFailure && t.b.ctx.Err() == nil && (!requested.Direct() || requested.Local()) {
 		// No application bytes have left this proxy yet. An explicitly permitted
 		// native fallback gets its own bounded open budget, not an expired relay ctx.
 		fallback, stop := context.WithTimeout(t.b.ctx, 3*time.Second)

@@ -10,7 +10,8 @@ import (
 
 // AdaptiveUDP validates sustained DIRECT cadence without parsing media. It can
 // transition once to required relay, never back. Previously sent media is not
-// replayed; an atomic UDP Send error can retry that unsent datagram on relay.
+// replayed; an atomic UDP Send error can retry that unsent datagram on the
+// legacy relay. Fleet selection after an active DIRECT failure requires a new flow.
 type AdaptiveUDP struct {
 	mu                   sync.Mutex
 	readMu               sync.Mutex
@@ -23,6 +24,7 @@ type AdaptiveUDP struct {
 	deadline             time.Duration
 	transitioned, closed bool
 	reason               string
+	fleetFailure         error
 	fakeSends, fakes     int
 }
 
@@ -82,26 +84,31 @@ func (e *Engine) OpenAdaptiveUDP(ctx context.Context, f Flow, relay string, dead
 	if relay == "" || deadline <= 0 || deadline > 10*time.Second {
 		return nil, errors.New("invalid adaptive UDP bound")
 	}
+	f.Protocol = "udp"
 	a := &AdaptiveUDP{e: e, flow: f, relay: relay, deadline: deadline}
+	implicit := f.PinnedPolicy != nil && f.PinnedPolicy.ImplicitRelay
 	if f.UDPFakePrelude > 0 {
 		a.health.lenientReplies = 2
 	}
 	cached := e.udpCached(f, time.Now())
 	f.PinnedPolicy = &Policy{}
 	if cached {
-		f.PinnedPolicy = &Policy{Route: Route{RelayID: relay}, BlockOnFailure: true}
+		f.PinnedPolicy = &Policy{Route: Route{RelayID: relay}, BlockOnFailure: true, ImplicitRelay: implicit}
 		a.transitioned = true
 		a.reason = "LEARNED_RECENT_DIRECT_FAILURE"
 		a.health.fallback(time.Now(), a.reason)
 	}
 	d, err := e.OpenUDP(ctx, f)
 	if err != nil && !cached {
-		f.PinnedPolicy = &Policy{Route: Route{RelayID: relay}, BlockOnFailure: true}
+		f.PinnedPolicy = &Policy{Route: Route{RelayID: relay}, BlockOnFailure: true, ImplicitRelay: implicit}
 		d, err = e.OpenUDP(ctx, f)
 		a.transitioned = true
 		a.reason = "DIRECT_OPEN_FAILED"
 		a.health.fallback(time.Now(), a.reason)
 		e.udpObserved(f, true)
+	}
+	if errors.Is(err, ErrFleetPolicy) {
+		return nil, err
 	}
 	if err != nil {
 		// A failed required-relay transition remains relay-only and retries future
@@ -119,6 +126,9 @@ func (d *AdaptiveUDP) Route() Route {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.transitioned {
+		if route, ok := d.e.flowRoute(d.flow); ok {
+			return route
+		}
 		return Route{RelayID: d.relay}
 	}
 	return Route{}
@@ -131,10 +141,15 @@ func (d *AdaptiveUDP) toRelayLocked(ctx context.Context, reason string) error {
 	d.health.fallback(d.clock(), reason)
 	d.e.udpObserved(d.flow, true)
 	f := d.flow
-	f.PinnedPolicy = &Policy{Route: Route{RelayID: d.relay}, BlockOnFailure: true}
+	implicit := f.PinnedPolicy != nil && f.PinnedPolicy.ImplicitRelay
+	f.PinnedPolicy = &Policy{Route: Route{RelayID: d.relay}, BlockOnFailure: true, ImplicitRelay: implicit}
 	openCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
 	defer cancel()
-	next, err := d.e.OpenUDP(openCtx, f)
+	next, err := d.e.OpenUDP(WithExistingFlow(openCtx), f)
+	if errors.Is(err, ErrFleetPolicy) {
+		d.fleetFailure = err
+		return err
+	}
 	if err != nil {
 		d.current = &recoveringUDP{open: func(ctx context.Context) (Datagram, error) { return d.e.OpenUDP(ctx, f) }}
 		return errors.Join(ErrUDPRecovering, err)
@@ -257,6 +272,9 @@ func (d *AdaptiveUDP) Health() UDPHealthEvidence {
 	return e
 }
 func (d *AdaptiveUDP) checkHealthLocked(ctx context.Context) error {
+	if d.fleetFailure != nil {
+		return d.fleetFailure
+	}
 	if d.transitioned {
 		return nil
 	}

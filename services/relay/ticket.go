@@ -35,6 +35,12 @@ func (x *session) authenticate() error {
 		return errors.New("Ed25519 device certificate required")
 	}
 	ticket, e := x.server.config.TicketVerifier.Accept(raw, peer, time.Now())
+	if e == nil && x.server.config.Fleet != nil {
+		x.fleetRelease, e = x.server.config.Fleet.reserveSession(ticket.DeviceID, time.Now())
+		if e != nil {
+			x.server.Metrics.FleetHandshakeRejected.Add(1)
+		}
+	}
 	if e != nil {
 		if legacy {
 			s.Write([]byte{1})

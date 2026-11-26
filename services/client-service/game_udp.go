@@ -252,7 +252,7 @@ func (c *Controller) discoverGames() {
 		if p.SteamID == "" {
 			continue
 		}
-		if found := wp.DiscoverSteamGame(c.BrowserOwnerSID, p); found.Path != "" {
+		if found := c.steamGameDiscovery(c.BrowserOwnerSID, p); found.Path != "" {
 			c.registerGame(p, found.Path)
 		}
 	}
@@ -386,7 +386,7 @@ func (c *Controller) classifyGameUDP(id wp.ProcessIdentity, t wp.Tuple) (wp.Deci
 		}
 		return wp.Decision{}, false
 	}
-	d := wp.Decision{NewConnectionsOnly: true, Revision: "game-udp-ladder-v2", Group: p.ID, Network: n.Fingerprint, GameUDP: g.Engine, GameRelayID: "VPS-01", Flow: routing.Flow{PID: id.PID, ProcessPath: id.Path, ApplicationID: p.ID, Protocol: t.Protocol, Source: t.Source, Destination: t.Destination, PinnedPolicy: &routing.Policy{}}, Policy: flowpolicy.Result{Action: flowpolicy.Direct, Fallback: flowpolicy.FailOpen, Source: "game_udp_ladder", Reason: "game route chosen and pinned before first datagram"}}
+	d := wp.Decision{NewConnectionsOnly: true, Revision: "game-udp-ladder-v2", Group: p.ID, Network: n.Fingerprint, GameUDP: g.Engine, GameRelayID: "VPS-01", Flow: routing.Flow{PID: id.PID, ProcessPath: id.Path, ApplicationID: p.ID, Protocol: t.Protocol, Source: t.Source, Destination: t.Destination, PinnedPolicy: &routing.Policy{ImplicitRelay: p.RelayID == "" && !g.LocalOnly}}, Policy: flowpolicy.Result{Action: flowpolicy.Direct, Fallback: flowpolicy.FailOpen, Source: "game_udp_ladder", Reason: "game route chosen and pinned before first datagram"}}
 	if g.CS2Auto {
 		d.CS2Auto = true
 		d.Revision = "cs2-endpoint-auto-v1"

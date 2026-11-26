@@ -33,6 +33,8 @@ func (c *Controller) handleRelayDiagnostics(ctx context.Context, method string, 
 		return c.acceptanceReadiness(ctx, query.RelayID), nil
 	case "relay.primary.status":
 		return c.relayPrimary.snapshot(), nil
+	case "relay.fleet.status":
+		return c.fleet.snapshot(time.Now()), nil
 	case "relay.pool.diagnostics":
 		var query struct {
 			RelayID string `json:"relay_id"`

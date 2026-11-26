@@ -27,6 +27,11 @@ type relayMeterConn struct {
 	idleExpired     bool
 }
 
+func (c *relayMeterConn) FleetRelayBound() bool {
+	bound, ok := c.Conn.(interface{ FleetRelayBound() bool })
+	return ok && bound.FleetRelayBound()
+}
+
 func (c *relayMeterConn) resetIdleLocked(budget time.Duration) {
 	if c.timer != nil {
 		c.timer.Stop()

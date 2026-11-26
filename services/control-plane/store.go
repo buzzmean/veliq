@@ -11,6 +11,7 @@ import (
 	"github.com/buzzmean/veliq/core/security"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"strings"
 	"time"
 )
 
@@ -182,7 +183,7 @@ func (s *Store) Relays(ctx context.Context) ([]optimizer.RelayCandidate, error) 
 	return readRelays(ctx, s.DB)
 }
 func readRelays(ctx context.Context, q querier) ([]optimizer.RelayCandidate, error) {
-	rows, e := q.Query(ctx, "SELECT metadata FROM relay_nodes ORDER BY id LIMIT 32")
+	rows, e := q.Query(ctx, "SELECT metadata FROM relay_nodes WHERE "+legacyRelayFilter+" ORDER BY id LIMIT 32")
 	if e != nil {
 		return nil, e
 	}
@@ -223,8 +224,18 @@ func readApps(ctx context.Context, q querier) ([]profiles.Profile, error) {
 	return out, rows.Err()
 }
 func (s *Store) PutRelay(ctx context.Context, r optimizer.RelayCandidate) error {
+	if strings.EqualFold(r.ID, security.FleetProofAudience) {
+		return ErrFleetRegistryConflict
+	}
 	b, _ := json.Marshal(r)
-	_, e := s.DB.Exec(ctx, "INSERT INTO relay_nodes(id,metadata) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata", r.ID, b)
+	tag, e := s.DB.Exec(ctx, `INSERT INTO relay_nodes(id,metadata) VALUES($1,$2)
+		ON CONFLICT(id) DO UPDATE SET metadata=CASE WHEN relay_nodes.metadata ? 'fleet'
+			THEN excluded.metadata || jsonb_build_object('fleet',relay_nodes.metadata->'fleet')
+			ELSE excluded.metadata END
+		WHERE COALESCE(relay_nodes.metadata #>> '{fleet,managed}','false') <> 'true'`, r.ID, b)
+	if e == nil && tag.RowsAffected() != 1 {
+		e = ErrFleetRegistryConflict
+	}
 	return e
 }
 func (s *Store) PutApp(ctx context.Context, p profiles.Profile) error {
@@ -327,11 +338,14 @@ func publishConfigTx(ctx context.Context, tx pgx.Tx, kid string, key []byte, pub
 var _ = pgx.ErrNoRows
 
 func (s *Store) SetHeartbeatToken(ctx context.Context, id string, hash []byte) error {
-	_, e := s.DB.Exec(ctx, "UPDATE relay_nodes SET heartbeat_token_hash=$2 WHERE id=$1", id, hash)
+	tag, e := s.DB.Exec(ctx, "UPDATE relay_nodes SET heartbeat_token_hash=$2 WHERE id=$1 AND "+legacyRelayFilter, id, hash)
+	if e == nil && tag.RowsAffected() != 1 {
+		return ErrFleetRegistryConflict
+	}
 	return e
 }
 func (s *Store) Heartbeat(ctx context.Context, id string, hash []byte, healthy bool, load float64) error {
-	tag, e := s.DB.Exec(ctx, "UPDATE relay_nodes SET healthy=$3,heartbeat_at=now(),metadata=jsonb_set(metadata,'{load}',to_jsonb($4::double precision)) WHERE id=$1 AND heartbeat_token_hash=$2", id, hash, healthy, load)
+	tag, e := s.DB.Exec(ctx, "UPDATE relay_nodes SET healthy=$3,heartbeat_at=now(),metadata=jsonb_set(metadata,'{load}',to_jsonb($4::double precision)) WHERE id=$1 AND heartbeat_token_hash=$2 AND "+legacyRelayFilter, id, hash, healthy, load)
 	if e != nil {
 		return e
 	}
