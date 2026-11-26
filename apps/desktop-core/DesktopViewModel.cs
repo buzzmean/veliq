@@ -155,6 +155,8 @@ public sealed partial class DesktopViewModel : Observable
     public DesktopViewModel(IServiceClient client)
     {
         this.client = client;
+        Applications.CollectionChanged += (_, _) => NotifyVisibleServices();
+        ActiveServices.CollectionChanged += (_, _) => NotifyVisibleServices();
     }
     public static bool Fresh(Route route) => route.Status == "healthy" && route.ObservedAt != default && DateTimeOffset.UtcNow - route.ObservedAt < TimeSpan.FromSeconds(90) && route.ObservedAt <= DateTimeOffset.UtcNow.AddSeconds(5);
     string Metric(Route? route, Func<Route, string> format) => Available && route is not null && Fresh(route) ? format(route) : Text.Get("NoData");
@@ -177,6 +179,14 @@ public sealed partial class DesktopViewModel : Observable
             var status = await client.Call<Snapshot>("status", cancellationToken: ct);
             if (status.Demo)
                 throw new ServiceException(ServiceFailure.Incompatible);
+            if (status.Profiles.Length == 0 || Applications.Any(a => !status.Profiles.Any(p => p.Id == a.Profile.Id)))
+            {
+                phase = "ipc.profiles";
+                status.Profiles = await client.Call<Profile[]>("profiles", cancellationToken: ct);
+                if (status.Profiles.Length == 0 && Applications.Count > 0)
+                    throw new ServiceException(ServiceFailure.Incompatible);
+                phase = "ipc.status";
+            }
             ProcessIdentity[]? processes = null;
             CaptureEvidence? capture = null;
             // Auxiliary diagnostics must not prevent a valid service connection.
@@ -284,10 +294,12 @@ public sealed partial class DesktopViewModel : Observable
         Snapshot = null;
         Connection = Text.Failure(e);
         Error = Connection;
-        Applications.Clear();
+        // Keep configured profiles in the editor while discarding stale live evidence.
+        foreach (var row in Applications)
+            row.Update(row.Profile, null, null);
         ActiveServices.Clear();
         Routes.Clear();
-        Relays.Clear();
+        // Preserve picker selection; Snapshot=null and CanControl=false prevent applying it.
         Measurements.Clear();
         Changes.Clear();
         Diagnostics.Clear();
@@ -343,8 +355,18 @@ public sealed partial class DesktopViewModel : Observable
             // Recheck current service state inside the mutation gate. An old GUI
             // snapshot or two rapid clicks must not create duplicate profiles.
             var existing = await client.Call<Profile[]>("profiles", cancellationToken: ct);
-            duplicate = existing.Any(p => p.Executables.Any(e => SameExecutable(e, path)));
-            if (duplicate) return;
+            var alreadyAdded = existing.FirstOrDefault(p => p.Executables.Any(e => SameExecutable(e, path)));
+            if (alreadyAdded is not null)
+            {
+                duplicate = true;
+                if (!Applications.Any(a => a.Profile.Id == alreadyAdded.Id))
+                {
+                    var row = new ApplicationRow();
+                    row.Update(alreadyAdded, null, null);
+                    Applications.Add(row);
+                }
+                return;
+            }
             if(BrowserCatalog.IsEdge(profile))await RequireEdgeServiceAsync(ct);
             var saved = await client.Call<Profile[]>("profile.set", profile, ct);
             if (Snapshot is { } snapshot) snapshot.Profiles = saved;

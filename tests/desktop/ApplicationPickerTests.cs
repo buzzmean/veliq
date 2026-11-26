@@ -86,18 +86,19 @@ public sealed class ApplicationPickerTests
         finally { File.Delete(path); }
     }
     [Fact]
-    public async Task DuplicateRechecksServiceRatherThanStaleGuiSnapshot()
+    public async Task DuplicateRechecksServiceAndRestoresEditorRow()
     {
         string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid()+".exe");
         try
         {
             await File.WriteAllBytesAsync(path, [0]);
             var service = new PickerService();
-            var desktop = new DesktopViewModel(service);
+            var desktop = new DesktopViewModel(service) { ShowTechnical = true };
             await desktop.RefreshAsync();
             service.State = new() { Profiles = [new() { Id = "existing", Executables = [path], Custom = true }] };
             Assert.False(await desktop.AddApplicationAsync(path));
             Assert.Equal(Text.Get("AlreadyAdded"), desktop.Error);
+            Assert.Contains(desktop.ServiceApplications, a => a.Profile.Id == "existing");
             Assert.DoesNotContain(service.Calls, c => c.Method == "profile.set");
         }
         finally { File.Delete(path); }
