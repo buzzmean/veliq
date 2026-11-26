@@ -155,6 +155,8 @@ public sealed partial class DesktopViewModel : Observable
     public DesktopViewModel(IServiceClient client)
     {
         this.client = client;
+        Applications.CollectionChanged += (_, _) => NotifyVisibleServices();
+        ActiveServices.CollectionChanged += (_, _) => NotifyVisibleServices();
     }
     public static bool Fresh(Route route) => route.Status == "healthy" && route.ObservedAt != default && DateTimeOffset.UtcNow - route.ObservedAt < TimeSpan.FromSeconds(90) && route.ObservedAt <= DateTimeOffset.UtcNow.AddSeconds(5);
     string Metric(Route? route, Func<Route, string> format) => Available && route is not null && Fresh(route) ? format(route) : Text.Get("NoData");

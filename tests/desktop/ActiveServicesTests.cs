@@ -47,6 +47,24 @@ public sealed class ActiveServicesTests
     }
 
     [Fact]
+    public void EditorNotifiesVisibilityWhenFirstProfileArrivesAndWhenLastProfileIsRemoved()
+    {
+        var vm = new DesktopViewModel(new FakeService()) { ShowTechnical = true };
+        var notifications = new List<string?>();
+        vm.PropertyChanged += (_, e) => notifications.Add(e.PropertyName);
+        var status = new Snapshot { Profiles = [App("configured")] };
+        vm.Apply(status);
+        Assert.Contains(nameof(vm.HasVisibleServices), notifications);
+        Assert.True(vm.HasVisibleServices);
+        notifications.Clear();
+        vm.Apply(status);
+        Assert.DoesNotContain(nameof(vm.HasVisibleServices), notifications);
+        vm.Apply(new Snapshot());
+        Assert.Contains(nameof(vm.NoActiveServices), notifications);
+        Assert.True(vm.NoActiveServices);
+    }
+
+    [Fact]
     public void MissingLiveIdentityAndReusedPidCannotKeepAnAppVisible()
     {
         var vm = new DesktopViewModel(new FakeService());

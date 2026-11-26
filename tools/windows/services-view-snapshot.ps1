@@ -1,6 +1,6 @@
 #requires -Version 5.1
 # Standalone, bounded IPC reads. Never prints a token, path, destination or raw payload.
-param([ValidateRange(1,6)][int]$Samples=4)
+param([ValidateRange(1,6)][int]$Samples=4,[switch]$CodexDetails)
 $ErrorActionPreference='Stop'
 Set-StrictMode -Version Latest
 
@@ -24,11 +24,11 @@ function Read-ViewBytes([IO.Stream]$Stream,[int]$Count,[DateTime]$Deadline) {
  }
  return ,$buffer
 }
-function Invoke-ViewRead([ValidateSet('status','profiles','capture.diagnostics','relay.primary.status')][string]$Method,[string]$TokenFile=(Join-Path $env:ProgramData 'VELIQ\ipc.token'),[string]$PipeName='neexitlag-v1') {
+function Invoke-ViewRead([ValidateSet('status','profiles','capture.diagnostics','relay.primary.status')][string]$Method,[string]$TokenFile=(Join-Path $env:ProgramData 'VELIQ\ipc.token'),[string]$PipeName='neexitlag-v1',$Payload=$null) {
  $pipe=$null;$bytes=$null
  try {
   $id=[Guid]::NewGuid().ToString('N')
-  $request=@{version=1;id=$id;sent_at=[DateTimeOffset]::UtcNow.ToString('o');token=[IO.File]::ReadAllText($TokenFile).Trim();method=$Method;payload=$null}|ConvertTo-Json -Compress
+  $request=@{version=1;id=$id;sent_at=[DateTimeOffset]::UtcNow.ToString('o');token=[IO.File]::ReadAllText($TokenFile).Trim();method=$Method;payload=$Payload}|ConvertTo-Json -Depth 5 -Compress
   $bytes=[Text.Encoding]::UTF8.GetBytes($request)
   $pipe=[IO.Pipes.NamedPipeClientStream]::new('.',$PipeName,[IO.Pipes.PipeDirection]::InOut,[IO.Pipes.PipeOptions]::Asynchronous)
   $deadline=[DateTime]::UtcNow.AddSeconds(2)
@@ -84,7 +84,37 @@ function Get-ViewSample([int]$Index,$Status,$Capture) {
  }
 }
 
-Write-Output 'VELIQ read-only snapshot v1; service and routes are not changed.'
+function Get-ViewFailureRows($Capture) {
+ $flows=@(Read-ViewField $Capture 'flows' @())
+ $blocked=@($flows|Where-Object {(Read-ViewField $_ 'selected_route' '') -like 'BLOCK*' -or (Read-ViewField $_ 'failure_cause' '') -ne ''})
+ if($blocked.Count -gt 0){$flows=$blocked}
+ foreach($flow in @($flows|Select-Object -First 2)){
+  $policy=Read-ViewField $flow 'policy' $null
+  $open=Read-ViewField $flow 'relay_open' $null
+  $admission=Read-ViewField $flow 'tcp_admission' $null
+  $counters=Read-ViewField $flow 'counters' $null
+  [pscustomobject][ordered]@{
+   FlowId=Read-ViewField $flow 'flow_id'
+   Group=Read-ViewField $flow 'process_group'
+   Active=Read-ViewField $flow 'active' $false
+   CurrentIdentity=Read-ViewField $flow 'identity_current' $false
+   LastSeen=Read-ViewField $flow 'last_seen'
+   Route=Read-ViewField $flow 'selected_route'
+   PolicyAction=Read-ViewField $policy 'action'
+   PolicyRelay=Read-ViewField $policy 'relay_id'
+   Failure=Read-ViewField $flow 'failure_cause' 'NOT_RECORDED'
+   Drop=Read-ViewField $flow 'last_drop_cause' 'NOT_RECORDED'
+   FallbackReason=Read-ViewField $flow 'fallback_reason' 'NOT_RECORDED'
+   Lifecycle=Read-ViewField $flow 'lifecycle' 'NOT_RECORDED'
+   OpenFailure=Read-ViewField $open 'failure_reason' 'NOT_RECORDED'
+   Admission=Read-ViewField $admission 'state' 'NOT_RECORDED'
+   DirectBytes=Read-ViewField $counters 'direct_bytes'
+   RelayBytes=Read-ViewField $counters 'relayed_bytes'
+  }
+ }
+}
+
+Write-Output 'VELIQ read-only snapshot v2; service and routes are not changed.'
 $profiles=Invoke-ViewRead 'profiles'
 if($profiles.ok){Write-Output ('SAVED_PROFILES='+@($profiles.data).Count)}else{Write-Output ('PROFILES_ERROR='+$profiles.error_code)}
 $primary=Invoke-ViewRead 'relay.primary.status'
@@ -103,3 +133,20 @@ for($i=1;$i -le $Samples;$i++){
  if($i -lt $Samples){Start-Sleep -Milliseconds 800}
 }
 $rows|Format-Table -AutoSize|Out-String -Width 220|Write-Output
+if($CodexDetails){
+ # Scope before the backend's 32-row truncation; PID plus birth prevents reuse.
+ $targets=@(Get-Process -Name codex -ErrorAction SilentlyContinue|Select-Object -First 2)
+ if($targets.Count -eq 0){$targets=@(Get-Process -Name ChatGPT -ErrorAction SilentlyContinue|Select-Object -First 2)}
+ if($targets.Count -eq 0){Write-Output 'CODEX_NOT_RUNNING'}
+ foreach($target in $targets){
+  try{$birth=[uint64]$target.StartTime.ToUniversalTime().ToFileTimeUtc()}
+  catch{Write-Output ('PROCESS_IDENTITY_UNAVAILABLE PID='+$target.Id);continue}
+  $scope=@{pid=[uint32]$target.Id;creation_time=$birth}
+  $result=Invoke-ViewRead 'capture.diagnostics' -Payload $scope
+  if(!$result.ok){Write-Output ('SCOPED_CAPTURE_ERROR PID='+$target.Id+' '+$result.error_code);continue}
+  $flows=@(Read-ViewField $result.data 'flows' @())
+  Write-Output ('SCOPED_PID='+$target.Id+' FLOWS='+$flows.Count+' TRUNCATED='+(Read-ViewField $result.data 'truncated'))
+  if($flows.Count -eq 0){Write-Output 'NO_RECORDED_FLOW_FOR_THIS_PROCESS'}
+  Get-ViewFailureRows $result.data|Format-List|Out-String -Width 220|Write-Output
+ }
+}
