@@ -65,7 +65,7 @@ public sealed class ViewModelTests
         Assert.Equal("Недоступен", vm.Routes[0].Status);
     }
     [Fact]
-    public async Task ServiceUnavailableClearsStaleTelemetryAndCanReconnect()
+    public async Task ServiceUnavailableKeepsProfilesButClearsStaleTelemetryAndCanReconnect()
     {
         var service = new FakeService();
         var vm = new DesktopViewModel(service);
@@ -76,6 +76,8 @@ public sealed class ViewModelTests
         Assert.Equal("Служба VELIQ остановлена", vm.Connection);
         Assert.Equal("Нет данных", vm.Rx);
         Assert.Empty(vm.Routes);
+        Assert.Single(vm.Applications);
+        Assert.Equal("Нет данных", vm.Applications[0].UserStatus);
         service.Failure = null;
         await vm.RefreshAsync();
         Assert.True(vm.Available);

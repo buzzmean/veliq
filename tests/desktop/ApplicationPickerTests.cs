@@ -98,6 +98,7 @@ public sealed class ApplicationPickerTests
             service.State = new() { Profiles = [new() { Id = "existing", Executables = [path], Custom = true }] };
             Assert.False(await desktop.AddApplicationAsync(path));
             Assert.Equal(Text.Get("AlreadyAdded"), desktop.Error);
+            Assert.Contains(desktop.Applications, a => a.Profile.Id == "existing");
             Assert.DoesNotContain(service.Calls, c => c.Method == "profile.set");
         }
         finally { File.Delete(path); }

@@ -26,9 +26,43 @@ public class GuiFailureBoundaryTests {
   await vm.RefreshAsync();Assert.DoesNotContain("EDGE_POLICY_ACCESS_DENIED",vm.EdgeState);Assert.Empty(vm.Notice);Assert.Single(vm.Applications);Assert.True(vm.CanControl);
  }
  [Fact]public async Task RealStatusFailureStillDisablesControls(){
-  var service=new FakeService();var vm=new DesktopViewModel(service);await vm.RefreshAsync();
+  var service=new FakeService();var vm=new DesktopViewModel(service);await vm.RefreshAsync();var row=Assert.Single(vm.Applications);var relay=Assert.Single(vm.Relays);
   service.Failure=new ServiceException(ServiceFailure.Unavailable);await vm.RefreshAsync();
-  Assert.False(vm.Available);Assert.False(vm.CanControl);Assert.Empty(vm.Applications);
+  Assert.False(vm.Available);Assert.False(vm.CanControl);Assert.Same(row,Assert.Single(vm.Applications));
+  Assert.Same(relay,Assert.Single(vm.Relays));
+  Assert.Equal(Text.Get("NoData"),row.UserStatus);
+ }
+ [Fact]public async Task PartialStatusRecoversProfilesFromDedicatedEndpoint(){
+  var service=new PartialStatus();var vm=new DesktopViewModel(service);
+  await vm.RefreshAsync();
+  Assert.True(vm.CanControl);Assert.Equal("game",Assert.Single(vm.Applications).Profile.Id);
+  Assert.Contains(service.Calls,"profiles");
+ }
+ [Fact]public async Task PartialStatusCannotRemovePreviouslyVisibleProfile(){
+  var service=new PartialStatus();service.OmitOnlyAfterFirstPoll=true;
+  service.Profiles=[new(){Id="game",Name="Игра",Executables=["game.exe"]},new(){Id="custom",Name="Приложение",Executables=["app.exe"],Custom=true}];
+  var vm=new DesktopViewModel(service);
+  await vm.RefreshAsync();var rows=vm.Applications.ToArray();Assert.Equal(2,rows.Length);
+  await vm.RefreshAsync();
+  Assert.Equal(2,vm.Applications.Count);Assert.Same(rows[1],vm.Applications[1]);Assert.True(vm.CanControl);
+  Assert.Contains(service.Calls,"profiles");
+ }
+ sealed class PartialStatus:IServiceClient {
+  readonly FakeService service=new();
+  public readonly List<string> Calls=[];
+  public Profile[] Profiles {set=>service.State.Profiles=value;}
+  public bool OmitOnlyAfterFirstPoll;
+  int statusPolls;
+  public Task<T> Call<T>(string method,object? payload=null,CancellationToken ct=default){
+   Calls.Add(method);
+   if(method=="status"){
+    var partial=System.Text.Json.JsonSerializer.Deserialize<Snapshot>(System.Text.Json.JsonSerializer.Serialize(service.State))!;
+    if(!OmitOnlyAfterFirstPoll)partial.Profiles=[];
+    else if(++statusPolls>1)partial.Profiles=partial.Profiles.Take(1).ToArray();
+    return Task.FromResult((T)(object)partial);
+   }
+   return service.Call<T>(method,payload,ct);
+  }
  }
  [Fact]public async Task RejectedActionPreservesConnectionButUnavailableIPCDoesNot(){
   var vm=new DesktopViewModel(new FakeService());await vm.RefreshAsync();

@@ -151,6 +151,17 @@ public sealed partial class DesktopViewModel : Observable
             var status = await client.Call<Snapshot>("status", cancellationToken: ct);
             if (status.Demo)
                 throw new ServiceException(ServiceFailure.Incompatible);
+            // A running service always has built-in profiles. Before removing a
+            // visible row, confirm absence through the dedicated profile API.
+            // A partial status frame must not make the picker forget a profile.
+            if (status.Profiles.Length == 0 || Applications.Any(a => !status.Profiles.Any(p => p.Id == a.Profile.Id)))
+            {
+                phase = "ipc.profiles";
+                status.Profiles = await client.Call<Profile[]>("profiles", cancellationToken: ct);
+                if (status.Profiles.Length == 0)
+                    throw new ServiceException(ServiceFailure.Incompatible);
+                phase = "ipc.status";
+            }
             ProcessIdentity[]? processes = null;
             CaptureEvidence? capture = null;
             // Auxiliary diagnostics must not prevent a valid service connection.
@@ -255,9 +266,13 @@ public sealed partial class DesktopViewModel : Observable
         Snapshot = null;
         Connection = Text.Failure(e);
         Error = Connection;
-        Applications.Clear();
+        // Keep the last authenticated profile identities visible while the
+        // service is unavailable. Live process and route evidence is stale.
+        foreach (var row in Applications)
+            row.Update(row.Profile, null, null);
         Routes.Clear();
-        Relays.Clear();
+        // Keep server names in the picker so its selection does not jump.
+        // Snapshot is null and CanControl is false, so no route can be applied.
         Measurements.Clear();
         Changes.Clear();
         Diagnostics.Clear();
@@ -313,8 +328,18 @@ public sealed partial class DesktopViewModel : Observable
             // Recheck current service state inside the mutation gate. An old GUI
             // snapshot or two rapid clicks must not create duplicate profiles.
             var existing = await client.Call<Profile[]>("profiles", cancellationToken: ct);
-            duplicate = existing.Any(p => p.Executables.Any(e => SameExecutable(e, path)));
-            if (duplicate) return;
+            var alreadyAdded = existing.FirstOrDefault(p => p.Executables.Any(e => SameExecutable(e, path)));
+            if (alreadyAdded is not null)
+            {
+                duplicate = true;
+                if (!Applications.Any(a => a.Profile.Id == alreadyAdded.Id))
+                {
+                    var row = new ApplicationRow();
+                    row.Update(alreadyAdded, null, null);
+                    Applications.Add(row);
+                }
+                return;
+            }
             if(BrowserCatalog.IsEdge(profile))await RequireEdgeServiceAsync(ct);
             var saved = await client.Call<Profile[]>("profile.set", profile, ct);
             if (Snapshot is { } snapshot) snapshot.Profiles = saved;
