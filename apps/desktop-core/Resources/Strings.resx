@@ -560,6 +560,8 @@
   <data name="PresetVersionLabel" xml:space="preserve"><value>Пресет / версия / вариант</value></data>
   <data name="AutoOptimize" xml:space="preserve"><value>AUTO · Оптимизировать</value></data>
   <data name="AdvancedDiagnostics" xml:space="preserve"><value>Расширенные настройки / диагностика</value></data>
+  <data name="ApplicationDiagnostics" xml:space="preserve"><value>Настройки и диагностика приложений</value></data>
+  <data name="BrowserDiagnostics" xml:space="preserve"><value>Диагностика браузеров</value></data>
   <data name="AutoToolsMissing" xml:space="preserve"><value>Установите tools/windows из того же service/scripts artifact.</value></data>
   <data name="AutoStartFailed" xml:space="preserve"><value>Не удалось запустить проверку маршрута.</value></data>
   <data name="AutoProbeFailed" xml:space="preserve"><value>Проверка маршрута не завершена. Диагностика сохранена:</value></data>

@@ -65,7 +65,7 @@ public sealed class ViewModelTests
         Assert.Equal("Недоступен", vm.Routes[0].Status);
     }
     [Fact]
-    public async Task ServiceUnavailableClearsStaleTelemetryAndCanReconnect()
+    public async Task ServiceUnavailableKeepsProfilesButClearsStaleTelemetryAndCanReconnect()
     {
         var service = new FakeService();
         var vm = new DesktopViewModel(service);
@@ -76,6 +76,8 @@ public sealed class ViewModelTests
         Assert.Equal("Служба VELIQ остановлена", vm.Connection);
         Assert.Equal("Нет данных", vm.Rx);
         Assert.Empty(vm.Routes);
+        Assert.Single(vm.Applications);
+        Assert.Equal("Нет данных", vm.Applications[0].UserStatus);
         service.Failure = null;
         await vm.RefreshAsync();
         Assert.True(vm.Available);
@@ -297,7 +299,7 @@ public sealed class PollingPresentationTests
 public sealed class CommandDisconnectionTests
 {
     [Fact]
-    public async Task LostServiceDuringCommandImmediatelyClearsTelemetry()
+    public async Task LostServiceDuringCommandKeepsProfilesButClearsTelemetry()
     {
         var service = new FakeService();
         var vm = new DesktopViewModel(service);
@@ -306,7 +308,8 @@ public sealed class CommandDisconnectionTests
         await vm.OptimizeAsync(true);
         Assert.False(vm.Available);
         Assert.Equal("Нет данных", vm.CurrentLatency);
-        Assert.Empty(vm.Applications);
+        Assert.Single(vm.Applications);
+        Assert.Equal("Нет данных", vm.Applications[0].UserStatus);
         Assert.Equal("Не удалось подключиться к службе", vm.Connection);
     }
 }
