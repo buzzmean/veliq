@@ -299,7 +299,7 @@ public sealed class PollingPresentationTests
 public sealed class CommandDisconnectionTests
 {
     [Fact]
-    public async Task LostServiceDuringCommandImmediatelyClearsTelemetry()
+    public async Task LostServiceDuringCommandKeepsProfilesButClearsTelemetry()
     {
         var service = new FakeService();
         var vm = new DesktopViewModel(service);
@@ -308,7 +308,8 @@ public sealed class CommandDisconnectionTests
         await vm.OptimizeAsync(true);
         Assert.False(vm.Available);
         Assert.Equal("Нет данных", vm.CurrentLatency);
-        Assert.Empty(vm.Applications);
+        Assert.Single(vm.Applications);
+        Assert.Equal("Нет данных", vm.Applications[0].UserStatus);
         Assert.Equal("Не удалось подключиться к службе", vm.Connection);
     }
 }

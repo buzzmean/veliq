@@ -49,6 +49,7 @@ public class GuiFailureBoundaryTests {
  }
  sealed class PartialStatus:IServiceClient {
   readonly FakeService service=new();
+  public PartialStatus(){service.State.History=System.Text.Json.JsonSerializer.SerializeToElement(new{});}
   public readonly List<string> Calls=[];
   public Profile[] Profiles {set=>service.State.Profiles=value;}
   public bool OmitOnlyAfterFirstPoll;
