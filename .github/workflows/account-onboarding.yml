@@ -53,6 +53,13 @@ jobs:
         run: go test -race -v -count=1 -timeout=180s ./services/client-service -run '^TestAccountRealBrowserRegistrationToDeviceBinding$'
       - name: Real SQL authorization, slots, revocation and club freeze
         run: go test -race -v -count=1 -timeout=120s ./core/enrollment ./services/control-plane ./services/client-service -run 'DeviceLink|AccountDeviceBinding|AccountHTTPS|ClubImageApproval|AccountClubTemplate|CodeFreeAccount|SubscriptionPaymentDoesNotOverrideManualOff'
+      - name: Checkout retries and club invitations (synthetic API only)
+        env:
+          PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: /usr/bin/google-chrome
+        run: |
+          python3 tests/frontend/payment_smoke.py
+          python3 tests/frontend/club_referrals_smoke.py
+          VELIQ_TEST_WIDTH=1440 VELIQ_TEST_COLOR_SCHEME=light python3 tests/frontend/club_referrals_smoke.py
   server-bundle:
     needs: browser-client-postgres
     runs-on: ubuntu-24.04
@@ -73,10 +80,12 @@ jobs:
           cp -r website bin/account-server-bundle/
           cp docs/ACCOUNT_ONBOARDING.md bin/account-server-bundle/README.md
           python3 - <<'PY'
-          import hashlib,json,os,pathlib
+          import hashlib,json,os,pathlib,re
           root=pathlib.Path('bin/account-server-bundle')
           files=[{'path':str(p.relative_to(root)),'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in sorted(root.rglob('*')) if p.is_file()]
-          report={'source_commit':os.environ['EXPECTED_COMMIT'],'schema_version':5,'approval':'NOT_DEPLOYED','production_contacted':False,'files':files}
+          registered=re.findall(r'"migrations/(\d+)_[^"\n]+\.sql"',pathlib.Path('services/control-plane/store.go').read_text())
+          schema=max(map(int,registered))
+          report={'source_commit':os.environ['EXPECTED_COMMIT'],'schema_version':schema,'approval':'NOT_DEPLOYED','production_contacted':False,'files':files}
           (root/'manifest.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
           print('ACCOUNT_SERVER_BUNDLE_BUILT source='+report['source_commit']+' approval=NOT_DEPLOYED')
           PY
