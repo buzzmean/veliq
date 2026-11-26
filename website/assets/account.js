@@ -354,7 +354,8 @@
           // прежний заказ или результат сверки без новой оплаты.
           function send(){
             call('POST','/subscriptions/'+s.id+'/pay',request).then(function(result){
-              if(!result.redirect)throw new Error('PROMO_RECONCILIATION_REQUIRED');
+              if(result.status==='succeeded'&&!result.review_required){close();return load();}
+              if(!result.redirect)throw new Error(s.kind==='club'||appliedCode?'PROMO_RECONCILIATION_REQUIRED':'PAYMENT_RECONCILIATION_REQUIRED');
               location.href=result.redirect;
             }).catch(function(x){
               if(!dialog.open)return;

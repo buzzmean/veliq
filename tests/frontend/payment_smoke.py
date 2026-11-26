@@ -24,6 +24,7 @@ with sync_playwright() as p:
             requests = []
             result = dict(status='pending',review_required=False)
             create_success = dict(enabled=False)
+            confirmed_without_redirect = dict(enabled=False)
             hosted_url = 'https://pay.platega.io/?id=synthetic-hosted-choice'
             def route(r):
                 if r.request.url == hosted_url:
@@ -41,6 +42,10 @@ with sync_playwright() as p:
                         operation='renewal' if sub['paid_until'] else 'purchase'))
                 elif path.endswith('/pay'):
                     requests.append(r.request.post_data_json)
+                    if confirmed_without_redirect['enabled']:
+                        sub.update(active=True,paid_until='2027-03-17T12:00:00Z')
+                        r.fulfill(json=dict(id='b'*32,status='succeeded',review_required=False))
+                        return
                     # Keep this browser in the cabinet for assertions and retry UX.
                     if create_success['enabled']:r.fulfill(json=dict(redirect=hosted_url))
                     else:r.fulfill(status=502,json=dict(error='PAYMENT_UNAVAILABLE'))
@@ -91,6 +96,16 @@ with sync_playwright() as p:
             page.get_by_role('button',name='Проверить оплату',exact=True).click()
             page.get_by_text('Оплата подтверждена. Срок доступа обновлён.',exact=True).wait_for()
             assert 'Оплачено до' in page.locator('.acc-sub__head').inner_text()
+            # A retried order may already be settled and need no hosted redirect.
+            # Load its actual access state instead of proposing another payment.
+            if kind=='player':
+                confirmed_without_redirect['enabled']=True
+                page.locator('.acc-sub').get_by_role('button',name='Продлить',exact=True).click()
+                page.get_by_role('dialog').get_by_role('button',name='Подтвердить и перейти к оплате').click()
+                page.get_by_role('dialog').wait_for(state='detached')
+                assert '17.03.2027' in page.locator('.acc-sub__head').inner_text()
+                confirmed_without_redirect['enabled']=False
+                cases+=1
             # A lifetime subscription must never offer another purchase.
             sub['lifetime']=True
             page.reload();page.locator('[data-step="cabinet"]').wait_for(state='visible')
