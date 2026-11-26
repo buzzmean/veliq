@@ -30,6 +30,7 @@ type ClubQuote struct {
 	EligibleSeats   int        `json:"eligible_seats"`
 	EligibleSeconds int64      `json:"eligible_seconds"`
 	DiscountAmount  int64      `json:"discount_kopecks"`
+	Referral        bool       `json:"referral_discount,omitempty"`
 	Fee             int64      `json:"fee_kopecks"`
 	Operation       string     `json:"operation"`
 	ServiceStart    time.Time  `json:"expected_start"`
@@ -126,6 +127,7 @@ func clubQuoteLocked(ctx context.Context, tx pgx.Tx, acc Account, requested Subs
 		}
 	}
 	q.ServiceEnd = q.ServiceStart.Add(time.Duration(q.Days) * 24 * time.Hour)
+	referralCode := clubReferralCode(code)
 	var ent clubEntitlement
 	e = tx.QueryRow(ctx, `SELECT promotion_id,coalesce(club_reference,''),coalesce(initial_subscription_id,''),coalesce(initial_seats,0),review_required,starts_at,ends_at,allocated_until_seconds,discount_numerator,discount_kopecks FROM club_promotion_entitlements WHERE account_id=$1 FOR UPDATE`, acc.ID).Scan(&ent.promotion, &ent.club, &ent.subscription, &ent.seats, &ent.review, &ent.start, &ent.end, &ent.cursor, &ent.numerator, &ent.discount)
 	exists := e == nil
@@ -145,7 +147,7 @@ func clubQuoteLocked(ctx context.Context, tx pgx.Tx, acc Account, requested Subs
 			return q, errors.New("PROMO_RECONCILIATION_REQUIRED")
 		}
 	}
-	if code != "" {
+	if code != "" && referralCode == "" {
 		hash, err := promotionHash(code)
 		if err != nil {
 			return q, err
@@ -234,16 +236,38 @@ func clubQuoteLocked(ctx context.Context, tx pgx.Tx, acc Account, requested Subs
 			}
 		}
 	}
+	if referralCode != "" {
+		if q.Months != 1 || q.Days != 30 {
+			return q, errors.New("CLUB_REFERRAL_MONTH_ONLY")
+		}
+		if q.Operation != "renewal" {
+			return q, errors.New("PROMO_INVALID")
+		}
+		if q.EligibleSeconds > 0 || term.Discount > 0 {
+			return q, errors.New("CLUB_REFERRAL_PROMO_CONFLICT")
+		}
+		if e = checkClubReferralCredit(ctx, tx, acc.ID, referralCode); e != nil {
+			return q, e
+		}
+		q.Referral = true
+		q.Discount = 30
+		q.Amount = (q.BaseAmount*70 + 50) / 100
+		q.DiscountAmount = q.BaseAmount - q.Amount
+	}
 	// Bind the confirmed money and term to the locked subscription and benefit
 	// state. An expired subscription advances its estimated service start with
 	// now. Reservation recomputes that interval without invalidating the same
 	// offer on every elapsed second.
-	q.Version = clubDigest([]any{
+	versionFields := []any{
 		3, q.SubscriptionID, sub.PlanID, sub.PaidUntil,
 		q.Seats, q.Months, q.Days, q.BaseAmount, q.Amount, q.Discount, q.DiscountAmount, q.Fee,
 		q.PromotionID, q.ClubReference, q.Entitlement, q.NewEntitlement, q.EligibleSeats,
 		ent.subscription, ent.seats, ent.start, ent.end, ent.cursor, ent.numerator, ent.discount,
-	})
+	}
+	if q.Referral {
+		versionFields = append(versionFields, referralCode)
+	}
+	q.Version = clubDigest(versionFields)
 	return q, nil
 }
 
@@ -281,6 +305,9 @@ func (s *Store) ReserveClubOrder(ctx context.Context, acc Account, sub Subscript
 	if e = lockClubAccount(ctx, tx, acc.ID); e != nil {
 		return out, e
 	}
+	if referralCode := clubReferralCode(code); referralCode != "" {
+		code = referralCode
+	}
 	requestHash := clubRequestHash(sub.ID, months, code)
 	var oldHash string
 	var raw []byte
@@ -301,6 +328,14 @@ func (s *Store) ReserveClubOrder(ctx context.Context, acc Account, sub Subscript
 	if !errors.Is(e, pgx.ErrNoRows) {
 		return out, e
 	}
+	var referralPending bool
+	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM club_referral_credits r JOIN payments p ON p.id=r.reserved_payment_id
+ WHERE r.account_id=$1 AND p.status IN ('pending','canceled'))`, acc.ID).Scan(&referralPending); e != nil {
+		return out, e
+	}
+	if referralPending {
+		return out, errors.New("PROMO_RECONCILIATION_REQUIRED")
+	}
 	q, e := clubQuoteLocked(ctx, tx, acc, sub, p, months, code, now)
 	if e != nil {
 		return out, e
@@ -315,6 +350,14 @@ func (s *Store) ReserveClubOrder(ctx context.Context, acc Account, sub Subscript
 	if _, e = tx.Exec(ctx, `INSERT INTO payments(id,subscription_id,provider,provider_payment_id,amount_kopecks,period_days,status,reference) VALUES($1,$2,$3,$4,$5,$6,'pending','club-order-v2')`, id, sub.ID, provider, "reservation:"+id, q.Amount, q.Days); e != nil {
 		return out, e
 	}
+	if q.Referral {
+		var reserved string
+		e = tx.QueryRow(ctx, `UPDATE club_referral_credits SET reserved_payment_id=$3
+ WHERE code=$1 AND account_id=$2 AND reserved_payment_id IS NULL RETURNING code`, code, acc.ID, id).Scan(&reserved)
+		if e != nil {
+			return out, e
+		}
+	}
 	if q.NewEntitlement {
 		if _, e = tx.Exec(ctx, `INSERT INTO club_promotion_entitlements(account_id,promotion_id,club_reference,initial_subscription_id,initial_seats) VALUES($1,$2,$3,$4,$5)`, acc.ID, q.PromotionID, q.ClubReference, sub.ID, q.Seats); e != nil {
 			return out, e
@@ -324,7 +367,7 @@ func (s *Store) ReserveClubOrder(ctx context.Context, acc Account, sub Subscript
 		}
 	}
 	var entitlement any
-	if q.Entitlement {
+	if q.Entitlement && !q.Referral {
 		entitlement = acc.ID
 		if _, e = tx.Exec(ctx, `UPDATE club_promotion_entitlements SET allocated_until_seconds=greatest(allocated_until_seconds,$2),discount_numerator=$3,discount_kopecks=discount_kopecks+$4 WHERE account_id=$1`, acc.ID, q.BenefitTo, q.Numerator, q.DiscountAmount); e != nil {
 			return out, e

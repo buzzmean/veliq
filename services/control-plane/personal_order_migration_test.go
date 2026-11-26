@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestPersonalOrderMigration13To14PreservesFinancialRightsAndDiagnostics(t *testing.T) {
+func TestPersonalOrderMigration13To15PreservesFinancialRightsAndDiagnostics(t *testing.T) {
 	base := codeStore(t)
 	ctx := context.Background()
 	id, _ := security.NewID()
@@ -107,7 +107,7 @@ INSERT INTO club_health_persistent_devices(device_id,account_id,pc,software_vers
 	var version, orders int
 	var diagnosticsSupported bool
 	if err = pool.QueryRow(ctx, `SELECT (SELECT max(version) FROM schema_migrations),
- EXISTS(SELECT 1 FROM schema_migrations WHERE version=13),(SELECT count(*) FROM personal_payment_orders)`).Scan(&version, &diagnosticsSupported, &orders); err != nil || version != 14 || !diagnosticsSupported || orders != 0 {
+ EXISTS(SELECT 1 FROM schema_migrations WHERE version=13),(SELECT count(*) FROM personal_payment_orders)`).Scan(&version, &diagnosticsSupported, &orders); err != nil || version != 15 || !diagnosticsSupported || orders != 0 {
 		t.Fatal("schema13 contract or clean additive order table missing", version, orders, err)
 	}
 }

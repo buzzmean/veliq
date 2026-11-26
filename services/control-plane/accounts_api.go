@@ -226,6 +226,14 @@ func (a *API) accountView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out := map[string]any{"server_time": time.Now(), "email": acc.Email, "kind": kind, "name": name, "subscriptions": subs, "payments": pays, "club_orders": orders, "plans": a.Settings.Plans, "payment_terms": paymentTermsFor(kind), "payments_enabled": a.Settings.Payments != nil, "auto_renew_available": false, "subscription_enforced": a.Settings.EnforceSubscription}
+	if kind == "club" && a.Settings.ClubVerificationToken != "" {
+		referrals, err := a.Store.clubReferrals(r.Context(), acc.ID)
+		if err != nil {
+			a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
+			return
+		}
+		out["club_referrals"] = referrals
+	}
 	if _, available := a.personalTrialPlan(); kind == "player" && available {
 		code, err := a.Store.trialOffer(r.Context(), acc)
 		if err != nil {

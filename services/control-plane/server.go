@@ -167,6 +167,7 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("POST /api/v1/account/login/verify", a.loginVerify)
 	m.HandleFunc("POST /api/v1/account/logout", a.logout)
 	m.HandleFunc("GET /api/v1/account", a.accountView)
+	m.HandleFunc("POST /api/v1/account/club-invitations/{action}", a.clubInvitation)
 	m.HandleFunc("GET /api/v1/account/trial", a.trialAvailability)
 	m.HandleFunc("POST /api/v1/account/trial/activate", a.trialActivate)
 	m.HandleFunc("POST /api/v1/account/subscriptions", a.subscriptionCreate)

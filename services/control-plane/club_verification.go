@@ -148,6 +148,10 @@ func (a *API) clubVerificationApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if result.RowsAffected() == 1 {
+		if err = awardClubReferral(ctx, tx, account, id); err != nil {
+			a.fail(w, http.StatusServiceUnavailable, "CLUB_VERIFICATION_UNAVAILABLE")
+			return
+		}
 		if _, err = tx.Exec(ctx, "INSERT INTO audit_log(actor,action,entity_id) VALUES($1,'subscription.club_verified',$2)", "club-verification:"+strconv.FormatInt(q.Operator, 10), id); err != nil {
 			a.fail(w, http.StatusServiceUnavailable, "CLUB_VERIFICATION_UNAVAILABLE")
 			return
