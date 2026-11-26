@@ -15,6 +15,8 @@
     PAYMENT_CONFIRMATION_REQUIRED: 'Сначала проверьте и подтвердите условия заказа.',
     PAYMENT_IDEMPOTENCY_REQUIRED: 'Не удалось подготовить номер заказа. Обновите кабинет.',
     PAYMENT_IDEMPOTENCY_CONFLICT: 'Этот номер уже связан с другим заказом. Проверьте историю оплаты.',
+    PAYMENT_IN_PROGRESS: 'Предыдущий заказ ещё обрабатывается. Повторите проверку позже; новую оплату создавать не нужно.',
+    PAYMENT_RECONCILIATION_REQUIRED: 'Предыдущий заказ сохранён, но ответ сервиса оплаты не подтверждён. Не оплачивайте повторно; обратитесь в поддержку для проверки заказа.',
     PROMO_INVALID: 'Промокод не подходит для этого аккаунта или срока.',
     PROMO_USED: 'Промокод уже использован.',
     TRIAL_UNAVAILABLE: 'Пробный день больше недоступен для этого аккаунта. Обновите кабинет.',
@@ -346,7 +348,8 @@
         confirm.addEventListener('click',function(){
           busy(confirm,true);cancel.disabled=true;
           request.expected_amount_kopecks=frozen.amount_kopecks;
-          if(s.kind==='club'){request.quote_version=frozen.quote_version;request.idempotency_key=crypto.randomUUID();}
+          request.idempotency_key=crypto.randomUUID();
+          if(s.kind==='club')request.quote_version=frozen.quote_version;
           // При неопределённом ответе сохраняем запрос и ключ: сервер вернёт
           // прежний заказ или результат сверки без новой оплаты.
           function send(){
@@ -355,7 +358,7 @@
               location.href=result.redirect;
             }).catch(function(x){
               if(!dialog.open)return;
-              if(s.kind==='club'&&x.message==='PAYMENT_PRICE_CHANGED'){
+              if(x.message==='PAYMENT_PRICE_CHANGED'){
                 close();
                 showPaymentConfirmation(true);
                 return;
