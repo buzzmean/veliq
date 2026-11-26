@@ -12,14 +12,14 @@
      <Button Style="{StaticResource NavButton}" Content="{ui:Tr Games}" Tag="Games" Click="Navigate" ui:Nav.Icon="{StaticResource IconGames}"/>
      <Border x:Name="PlannedGameOptimization" Style="{StaticResource PlannedNavItem}" AutomationProperties.Name="{ui:Tr OptimizeGamesPlanned}">
       <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-       <Path x:Name="PlannedGameIcon" Data="{StaticResource IconGames}" Style="{StaticResource NavIconGlyph}" Stroke="{StaticResource TextMuted}"/>
+       <Grid x:Name="PlannedGameIconFrame" Width="20" Height="20" VerticalAlignment="Center"><Path x:Name="PlannedGameIcon" Data="{StaticResource IconGames}" Style="{StaticResource NavIconGlyph}" Stroke="{StaticResource TextMuted}"/></Grid>
        <TextBlock x:Name="PlannedGameLabel" Grid.Column="1" Text="{ui:Tr OptimizeGamesPlanned}" Style="{StaticResource PlannedNavLabel}"/>
        <Border x:Name="PlannedGameBadge" Grid.Column="2" Style="{StaticResource ComingSoonBadge}"><TextBlock Text="{ui:Tr ComingSoon}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
       </Grid>
      </Border>
      <Border x:Name="PlannedSystemOptimization" Style="{StaticResource PlannedNavItem}" AutomationProperties.Name="{ui:Tr OptimizeSystemPlanned}">
       <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="20"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-       <Path x:Name="PlannedSystemIcon" Data="{StaticResource IconSettings}" Style="{StaticResource NavIconGlyph}" Stroke="{StaticResource TextMuted}"/>
+       <Grid x:Name="PlannedSystemIconFrame" Width="20" Height="20" VerticalAlignment="Center"><Path x:Name="PlannedSystemIcon" Data="{StaticResource IconSettings}" Style="{StaticResource NavIconGlyph}" Stroke="{StaticResource TextMuted}"/></Grid>
        <TextBlock x:Name="PlannedSystemLabel" Grid.Column="1" Text="{ui:Tr OptimizeSystemPlanned}" Style="{StaticResource PlannedNavLabel}"/>
        <Border x:Name="PlannedSystemBadge" Grid.Column="2" Style="{StaticResource ComingSoonBadge}"><TextBlock Text="{ui:Tr ComingSoon}" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
       </Grid>

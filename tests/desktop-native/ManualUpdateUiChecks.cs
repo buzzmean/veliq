@@ -107,33 +107,41 @@ internal static partial class Program
         var first = top.Children.OfType<Button>().First();
         first.ApplyTemplate();
         var firstIcon = (System.Windows.Shapes.Path)first.Template.FindName("NavIconGlyph", first);
+        var firstFrame = (FrameworkElement)first.Template.FindName("NavIconFrame", first);
         var firstLabel = (ContentPresenter)first.Template.FindName("NavLabelContent", first);
-        var iconColumn = Bounds(firstIcon); var labelColumn = Bounds(firstLabel);
+        var iconColumn = Bounds(firstFrame); var labelColumn = Bounds(firstLabel);
         System.Windows.Rect? previous = null;
         double? gap = null;
         foreach (var row in top.Children.OfType<FrameworkElement>().Append(about))
         {
             System.Windows.Shapes.Path icon;
+            FrameworkElement frame;
             FrameworkElement label;
             if (row is Button entry)
             {
                 entry.ApplyTemplate();
                 icon = (System.Windows.Shapes.Path)entry.Template.FindName("NavIconGlyph", entry);
+                frame = (FrameworkElement)entry.Template.FindName("NavIconFrame", entry);
                 label = (ContentPresenter)entry.Template.FindName("NavLabelContent", entry);
             }
             else
             {
                 var suffix = row.Name == "PlannedGameOptimization" ? "Game" : "System";
                 icon = (System.Windows.Shapes.Path)window.FindName("Planned" + suffix + "Icon");
+                frame = (FrameworkElement)window.FindName("Planned" + suffix + "IconFrame");
                 label = (TextBlock)window.FindName("Planned" + suffix + "Label");
                 Require(((TextBlock)label).FontSize == first.FontSize, "Planned text uses a different navigation size");
             }
-            var rowBounds = Bounds(row); var iconBounds = Bounds(icon); var labelBounds = Bounds(label);
+            var rowBounds = Bounds(row); var iconBounds = Bounds(icon); var frameBounds = Bounds(frame); var labelBounds = Bounds(label);
             Require(Math.Abs(row.ActualHeight - first.ActualHeight) < 0.01, "Navigation row heights differ");
-            Require(Math.Abs(iconBounds.Left - iconColumn.Left) < 0.5 && Math.Abs(labelBounds.Left - labelColumn.Left) < 0.5,
+            Require(Math.Abs(frameBounds.Left - iconColumn.Left) < 0.5 && Math.Abs(labelBounds.Left - labelColumn.Left) < 0.5,
                 "Navigation icons and labels do not share their columns");
-            Require(Math.Abs(iconBounds.Width - iconColumn.Width) < 0.5 && Math.Abs(iconBounds.Height - iconColumn.Height) < 0.5 &&
-                Math.Abs(icon.StrokeThickness - firstIcon.StrokeThickness) < 0.01, "Navigation icon frames or stroke widths differ");
+            Require(Math.Abs(frameBounds.Width - iconColumn.Width) < 0.5 && Math.Abs(frameBounds.Height - iconColumn.Height) < 0.5 &&
+                Math.Abs(icon.StrokeThickness - firstIcon.StrokeThickness) < 0.01, "Navigation icon frames or stroke widths differ: " + row.Name);
+            Require(iconBounds.Left >= frameBounds.Left - 0.5 && iconBounds.Right <= frameBounds.Right + 0.5 &&
+                iconBounds.Top >= frameBounds.Top - 0.5 && iconBounds.Bottom <= frameBounds.Bottom + 0.5 &&
+                Math.Abs(iconBounds.Left + iconBounds.Width / 2 - frameBounds.Left - frameBounds.Width / 2) < 1,
+                "Navigation glyph is clipped or not centred within its frame: " + row.Name);
             Require(Math.Abs(iconBounds.Top + iconBounds.Height / 2 - rowBounds.Top - rowBounds.Height / 2) < 1 &&
                 Math.Abs(labelBounds.Top + labelBounds.Height / 2 - rowBounds.Top - rowBounds.Height / 2) < 1,
                 "Navigation icon or label is not centred within its row");
