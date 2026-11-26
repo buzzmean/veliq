@@ -49,6 +49,7 @@ type Diagnostic struct {
 	Lost            uint64    `json:"lost,omitempty"`
 	Occurrences     uint64    `json:"occurrences,omitempty"`
 	LastAt          time.Time `json:"last_at,omitzero"`
+	ClubLink        ClubLink  `json:"club_link,omitzero"`
 }
 
 func (e Diagnostic) Valid(now time.Time) bool {
@@ -57,7 +58,7 @@ func (e Diagnostic) Valid(now time.Time) bool {
 		return false
 	}
 	if !eventID.MatchString(e.ID) || !eventID.MatchString(e.Session) ||
-		!label.MatchString(e.PC) || !buildID.MatchString(e.Version) || !buildID.MatchString(e.Source) ||
+		!label.MatchString(e.PC) || !buildID.MatchString(e.Version) || !buildID.MatchString(e.Source) || !e.validClubLink() ||
 		!symbol.MatchString(e.Observer) || !symbol.MatchString(e.Component) || !symbol.MatchString(e.Code) ||
 		e.Operation != "" && !symbol.MatchString(e.Operation) ||
 		e.Incident != "" && !eventID.MatchString(e.Incident) ||

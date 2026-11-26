@@ -84,16 +84,18 @@ type diagnosticStatus struct {
 	Events        []clubhealth.Diagnostic `json:"events"`
 }
 type persistentDiagnostics struct {
-	repeatMu sync.Mutex
-	repeats  map[clubhealth.Diagnostic]diagnosticRepeat
-	done     chan struct{}
-	write    func([]byte) error // Isolated fixture only; never configured through IPC.
-	input    chan diagnosticInput
-	uploads  chan diagnosticUpload
-	dropped  atomic.Uint64
-	cp       atomic.Pointer[controlclient.Client]
-	status   atomic.Pointer[diagnosticStatus]
-	base     clubhealth.Diagnostic
+	repeatMu   sync.Mutex
+	repeats    map[clubhealth.Diagnostic]diagnosticRepeat
+	done       chan struct{}
+	write      func([]byte) error // Isolated fixture only; never configured through IPC.
+	input      chan diagnosticInput
+	clubInputs chan diagnosticInput
+	uploadWake chan struct{}
+	uploads    chan diagnosticUpload
+	dropped    atomic.Uint64
+	cp         atomic.Pointer[controlclient.Client]
+	status     atomic.Pointer[diagnosticStatus]
+	base       clubhealth.Diagnostic
 }
 
 func (d *persistentDiagnostics) event(component, observer, state, code string) clubhealth.Diagnostic {
@@ -129,6 +131,7 @@ func (c *Controller) ConfigurePersistentDiagnostics(m Manifest) {
 		source = "unknown"
 	}
 	d := &persistentDiagnostics{done: make(chan struct{}), input: make(chan diagnosticInput, clubhealth.InputEvents), uploads: make(chan diagnosticUpload, 1),
+		clubInputs: make(chan diagnosticInput, 2*clubLinkPeers), uploadWake: make(chan struct{}, 1),
 		base: clubhealth.Diagnostic{PC: pc, Version: "0.3." + BuildSequence, Source: source, Session: session, ServicePID: uint32(os.Getpid())}}
 	if !c.diagnostics.CompareAndSwap(nil, d) {
 		return
@@ -148,6 +151,7 @@ func (c *Controller) ConfigurePersistentDiagnostics(m Manifest) {
 	go c.observeDiagnosticLocal(c.ctx, d)
 	go c.observeDiagnosticWindows(c.ctx, d)
 	go d.observeInternet(c.ctx)
+	go d.observeClubLinks(c.ctx)
 	d.note("SERVICE", "SERVICE_LIFECYCLE", "ready", "SERVICE_STARTED", 0, "service")
 }
 
@@ -160,6 +164,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 	durable := clubhealth.Journal{}
 	var savedAt time.Time
 	recoveryPending := false
+	urgentPending := false
 	if j.Lost > 0 {
 		e := d.event("JOURNAL", "JOURNAL_READ", "observed", "PREVIOUS_EVENTS_LOST")
 		e.Lost = j.Lost
@@ -223,6 +228,10 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 		}
 		storage = "OK"
 		publish()
+		if !dirty && urgentPending {
+			urgentPending = false
+			d.wakeDiagnosticUpload()
+		}
 		return !dirty // Новое событие восстановления сначала попадёт на диск.
 	}
 	ticker := time.NewTicker(10 * time.Second)
@@ -246,6 +255,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 		}
 		if j.Add(e, time.Now()) {
 			dirty = true
+			urgentPending = urgentPending || !e.ClubLink.IsZero()
 		}
 	}
 	for {
@@ -255,6 +265,8 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 			for draining := true; draining; {
 				select {
 				case in := <-d.input:
+					observe(in)
+				case in := <-d.clubInputs:
 					observe(in)
 				default:
 					draining = false
@@ -268,6 +280,17 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 			return
 		case in := <-d.input:
 			observe(in)
+		case in := <-d.clubInputs:
+			observe(in)
+			for n := 1; n < 2*clubLinkPeers; n++ {
+				select {
+				case next := <-d.clubInputs:
+					observe(next)
+				default:
+					n = 2 * clubLinkPeers
+				}
+			}
+			flush(true)
 		case request := <-d.uploads:
 			collectRepeats()
 			if request.device != "" && j.Device == "" {
@@ -298,7 +321,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 			}
 			if request.reply != nil {
 				if flush(false) {
-					b := durable.Batch()
+					b := clubLinkDiagnosticBatch(durable)
 					b.Reporter = &clubhealth.Reporter{PC: d.base.PC, Version: d.base.Version, Source: d.base.Source, Session: d.base.Session, ServicePID: d.base.ServicePID}
 					request.reply <- b
 				} else {
@@ -337,18 +360,15 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 
 func (d *persistentDiagnostics) upload(ctx context.Context) {
 	delay := 30 * time.Second
+	var retryNotBefore time.Time
 	for {
 		// Session-specific deterministic jitter avoids a club-wide retry burst.
 		jitter := time.Duration(d.base.Session[0]%11) * time.Second
 		if delay < 30*time.Second {
 			jitter = 0
 		}
-		timer := time.NewTimer(delay + jitter)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
+		if !waitDiagnosticUpload(ctx, delay+jitter, d.uploadWake, retryNotBefore) {
 			return
-		case <-timer.C:
 		}
 		cp := d.cp.Load()
 		if cp == nil {
@@ -389,6 +409,7 @@ func (d *persistentDiagnostics) upload(ctx context.Context) {
 			}
 			d.note("CONTROL_PLANE", "AUTHENTICATED_UPLOAD", state, code, native, "cp")
 			delay = min(5*time.Minute, delay*2)
+			retryNotBefore = time.Now().Add(delay)
 			continue
 		}
 		d.note("CONTROL_PLANE", "AUTHENTICATED_UPLOAD", "ready", "DURABLE_ACK", 0, "cp")
@@ -398,6 +419,7 @@ func (d *persistentDiagnostics) upload(ctx context.Context) {
 			return
 		}
 		delay = 30 * time.Second
+		retryNotBefore = time.Time{}
 		if len(b.Events) == clubhealth.MaxEvents {
 			delay = time.Second
 		}
