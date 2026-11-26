@@ -319,7 +319,8 @@ public sealed class CommandDisconnectionTests
         await vm.OptimizeAsync(true);
         Assert.False(vm.Available);
         Assert.Equal("Нет данных", vm.CurrentLatency);
-        Assert.Empty(vm.Applications);
+        Assert.Single(vm.Applications);
+        Assert.Equal(Text.Get("NoData"), vm.Applications[0].UserStatus);
         Assert.Equal("Не удалось подключиться к службе", vm.Connection);
     }
 }
