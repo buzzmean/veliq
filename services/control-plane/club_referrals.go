@@ -58,6 +58,86 @@ type clubReferralView struct {
 	Credits        []clubReferralCredit `json:"credits"`
 }
 
+// Сначала выбирается первый платёж, затем проверяются его approval и review.
+// Более поздний чистый платёж не заменяет первый спорный источник награды.
+const existingClubReferralAward = `
+ FROM club_referral_claims c JOIN accounts a ON a.id=c.invitee_id
+ JOIN LATERAL (
+  SELECT p.id,p.subscription_id FROM payments p JOIN subscriptions s ON s.id=p.subscription_id
+  WHERE s.account_id=c.invitee_id AND s.kind='club' AND p.status='succeeded' AND p.amount_kopecks>0
+  ORDER BY p.created_at,p.id LIMIT 1
+ ) first_payment ON true
+ JOIN club_verifications v ON v.subscription_id=first_payment.subscription_id
+ WHERE c.source_payment_id IS NULL AND NOT a.disabled AND a.account_type IN ('club','') AND v.approved_at IS NOT NULL
+ AND NOT EXISTS(SELECT 1 FROM payment_review_events e WHERE e.payment_id=first_payment.id)`
+
+// ReconcileExistingClubReferralAwards завершает только уже заработанные награды
+// сохранённых claims после старого CP. Вызывается до HTTP startup с deadline.
+func (s *Store) ReconcileExistingClubReferralAwards(ctx context.Context) error {
+	cursor := ""
+	for {
+		rows, err := s.DB.Query(ctx, `SELECT c.invitee_id`+existingClubReferralAward+`
+ AND c.invitee_id>$1 ORDER BY c.invitee_id LIMIT 64`, cursor)
+		if err != nil {
+			return err
+		}
+		accounts := make([]string, 0, 64)
+		for rows.Next() {
+			var account string
+			if err = rows.Scan(&account); err != nil {
+				break
+			}
+			accounts = append(accounts, account)
+		}
+		if err == nil {
+			err = rows.Err()
+		}
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		if len(accounts) == 0 {
+			return nil
+		}
+		for _, account := range accounts {
+			if err = s.reconcileExistingClubReferralAward(ctx, account); err != nil {
+				return err
+			}
+			cursor = account
+		}
+	}
+}
+
+func (s *Store) reconcileExistingClubReferralAward(ctx context.Context, account string) error {
+	tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var locked string
+	err = tx.QueryRow(ctx, "SELECT id FROM accounts WHERE id=$1 AND NOT disabled AND account_type IN ('club','') FOR NO KEY UPDATE", account).Scan(&locked)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// READ COMMITTED видит approval/review, завершившиеся во время ожидания lock.
+	var subscription string
+	err = tx.QueryRow(ctx, `SELECT first_payment.subscription_id`+existingClubReferralAward+`
+ AND c.invitee_id=$1`, locked).Scan(&subscription)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err = awardClubReferral(ctx, tx, locked, subscription); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 func (s *Store) clubReferrals(ctx context.Context, account string) (clubReferralView, error) {
 	view := clubReferralView{Credits: []clubReferralCredit{}}
 	err := s.DB.QueryRow(ctx, `SELECT `+eligibleClubInviter+`, NOT `+clubReferralCheckoutStarted+`,

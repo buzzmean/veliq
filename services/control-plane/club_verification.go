@@ -123,7 +123,7 @@ func (a *API) clubVerificationApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx := r.Context()
-	tx, err := a.Store.DB.Begin(ctx)
+	tx, err := a.Store.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		a.fail(w, http.StatusServiceUnavailable, "CLUB_VERIFICATION_UNAVAILABLE")
 		return
@@ -131,7 +131,7 @@ func (a *API) clubVerificationApprove(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(ctx)
 	var account string
 	err = tx.QueryRow(ctx, `SELECT a.id FROM subscriptions s JOIN accounts a ON a.id=s.account_id
-		WHERE s.id=$1 AND s.kind='club' AND NOT a.disabled FOR NO KEY UPDATE OF a`, id).Scan(&account)
+		WHERE s.id=$1 AND s.kind='club' AND NOT a.disabled AND a.account_type IN ('club','') FOR NO KEY UPDATE OF a`, id).Scan(&account)
 	if errors.Is(err, pgx.ErrNoRows) {
 		a.fail(w, http.StatusNotFound, "SUBSCRIPTION_NOT_FOUND")
 		return
@@ -148,10 +148,6 @@ func (a *API) clubVerificationApprove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if result.RowsAffected() == 1 {
-		if err = awardClubReferral(ctx, tx, account, id); err != nil {
-			a.fail(w, http.StatusServiceUnavailable, "CLUB_VERIFICATION_UNAVAILABLE")
-			return
-		}
 		if _, err = tx.Exec(ctx, "INSERT INTO audit_log(actor,action,entity_id) VALUES($1,'subscription.club_verified',$2)", "club-verification:"+strconv.FormatInt(q.Operator, 10), id); err != nil {
 			a.fail(w, http.StatusServiceUnavailable, "CLUB_VERIFICATION_UNAVAILABLE")
 			return
@@ -162,6 +158,10 @@ func (a *API) clubVerificationApprove(w http.ResponseWriter, r *http.Request) {
 			a.fail(w, http.StatusConflict, "CLUB_VERIFICATION_NOT_PENDING")
 			return
 		}
+	}
+	if err = awardClubReferral(ctx, tx, account, id); err != nil {
+		a.fail(w, http.StatusServiceUnavailable, "CLUB_VERIFICATION_UNAVAILABLE")
+		return
 	}
 	if err = tx.Commit(ctx); err != nil {
 		a.fail(w, http.StatusServiceUnavailable, "CLUB_VERIFICATION_UNAVAILABLE")

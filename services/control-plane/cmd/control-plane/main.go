@@ -248,6 +248,12 @@ func main() {
 			}
 		}
 	}
+	referralContext, stopReferralReconciliation := context.WithTimeout(ctx, 5*time.Second)
+	e = store.ReconcileExistingClubReferralAwards(referralContext)
+	stopReferralReconciliation()
+	if e != nil {
+		fail(fmt.Errorf("existing club referral reconciliation failed"))
+	}
 	if e = api.Initialize(ctx); e != nil {
 		fail(e)
 	}
