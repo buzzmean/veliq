@@ -67,15 +67,16 @@ func DefaultPoolConfig() PoolConfig {
 }
 
 type PoolSession struct {
-	ID             uint64        `json:"id"`
-	Healthy        bool          `json:"healthy"`
-	Draining       bool          `json:"draining"`
-	ActiveFlows    int           `json:"active_flows"`
-	Capacity       int           `json:"capacity"`
-	CreatedAt      time.Time     `json:"created_at"`
-	CreationReason string        `json:"creation_reason"`
-	Lease          LeaseSnapshot `json:"lease"`
-	EndReason      string        `json:"end_reason,omitempty"`
+	ID              uint64        `json:"id"`
+	Healthy         bool          `json:"healthy"`
+	Draining        bool          `json:"draining"`
+	ActiveFlows     int           `json:"active_flows"`
+	Capacity        int           `json:"capacity"`
+	CreatedAt       time.Time     `json:"created_at"`
+	CreationReason  string        `json:"creation_reason"`
+	Lease           LeaseSnapshot `json:"lease"`
+	EndReason       string        `json:"end_reason,omitempty"`
+	AdmissionFenced bool          `json:"admission_fenced"`
 }
 type PoolOpenEvent struct {
 	AcquireMS     float64   `json:"acquire_ms"`
@@ -130,6 +131,7 @@ type poolSession struct {
 	active                       int
 	born, lastUsed, blockedUntil time.Time
 	draining                     bool
+	fence                        uint64
 	reason                       string
 }
 
@@ -149,6 +151,10 @@ type Pool struct {
 	closed, creating bool
 	draining         bool
 	admissionEpoch   uint64
+	admissionToken   uint64
+	admissionGuard   func() bool
+	creatingToken    uint64
+	createCancel     context.CancelFunc
 	waiters          int
 	nextID           uint64
 	retryAfter       time.Time
@@ -183,6 +189,17 @@ func alive(c *Client) bool {
 		return true
 	}
 }
+func (p *Pool) fencedLocked(s *poolSession) bool {
+	if s.fence == 0 || !p.cfg.FleetBudget.priorityValid(s.fence) {
+		return false
+	}
+	for _, other := range p.sessions {
+		if other != s && !other.draining && alive(other.client) && other.client.conn.Context().Err() == nil && !(other.fence != 0 && p.cfg.FleetBudget.priorityValid(other.fence)) {
+			return true
+		}
+	}
+	return false
+}
 func mergeDrops(out, next map[string]telemetry.Metric) {
 	for k, v := range next {
 		a := out[k]
@@ -205,8 +222,11 @@ func (p *Pool) reapLocked(now time.Time) {
 	keep := p.sessions[:0]
 	remaining := len(p.sessions)
 	for _, s := range p.sessions {
+		if s.fence != 0 && !p.fencedLocked(s) {
+			s.fence = 0
+		}
 		live := alive(s.client)
-		if !live || s.active == 0 && (s.draining || p.cfg.FleetBudget.overSessionLimit() || (remaining > 1 || p.cfg.FleetBudget.Enabled()) && now.Sub(s.lastUsed) > p.cfg.IdleTimeout) {
+		if !live || s.active == 0 && (s.draining || p.fencedLocked(s) || p.cfg.FleetBudget.overSessionLimit() || (remaining > 1 || p.cfg.FleetBudget.Enabled()) && now.Sub(s.lastUsed) > p.cfg.IdleTimeout) {
 			s.failed = !live
 			remaining--
 			mergeDrops(p.retiredDrops, s.client.LocalDrops.Snapshot())
@@ -252,19 +272,29 @@ func (p *Pool) maintain() {
 		}
 	}
 }
-func (p *Pool) create(reason string, factory SessionFactory, epoch uint64, releaseSlot func()) {
+func (p *Pool) create(reason string, factory SessionFactory, epoch, token uint64, releaseSlot func()) {
 	defer p.wg.Done()
 	start := time.Now()
 	p.mu.Lock()
 	p.creation.begin(start, reason)
-	p.mu.Unlock()
 	ctx, cancel := context.WithTimeout(p.ctx, p.cfg.CreateTimeout)
-	c, err := factory(ctx)
+	p.createCancel = cancel
+	guard := p.admissionGuard
+	permitted := token == 0 || p.cfg.FleetBudget.priorityValid(token)
+	p.mu.Unlock()
+	var c *Client
+	var err error
+	if permitted {
+		c, err = factory(ctx)
+	}
 	cancel()
+	// Client policy callbacks never run under pool/budget locks.
+	permitted = token == 0 || guard != nil && guard()
 	p.mu.Lock()
+	p.createCancel = nil
 	p.creating = false
 	p.creation.finish(time.Now(), start, reason, c, err)
-	if p.closed || p.ctx.Err() != nil || p.draining || epoch != p.admissionEpoch {
+	if p.closed || p.ctx.Err() != nil || p.draining || epoch != p.admissionEpoch || !permitted || token != 0 && !p.cfg.FleetBudget.priorityValid(token) {
 		if c != nil {
 			c.Close()
 		}
@@ -319,6 +349,10 @@ func (p *Pool) create(reason string, factory SessionFactory, epoch uint64, relea
 	}()
 }
 func (p *Pool) acquire(ctx context.Context, probe bool) (*poolSession, error) {
+	return p.acquireToken(ctx, probe, 0)
+}
+
+func (p *Pool) acquireToken(ctx context.Context, probe bool, token uint64) (*poolSession, error) {
 	waiting := false
 	var releaseWaiter func()
 	defer func() {
@@ -343,6 +377,10 @@ func (p *Pool) acquire(ctx context.Context, probe bool) (*poolSession, error) {
 			p.mu.Unlock()
 			return nil, ErrClosed
 		}
+		if token != 0 && (p.admissionToken != token || !p.cfg.FleetBudget.priorityValid(token)) {
+			p.mu.Unlock()
+			return nil, &OpenError{"fleet_admission_cancelled", ErrCapacity}
+		}
 		if p.draining {
 			p.mu.Unlock()
 			return nil, &OpenError{"relay_draining", ErrCapacity}
@@ -360,7 +398,7 @@ func (p *Pool) acquire(ctx context.Context, probe bool) (*poolSession, error) {
 			if !probe {
 				limit -= p.cfg.ProbeReserve
 			}
-			if s.draining || s.active >= limit {
+			if s.draining || p.fencedLocked(s) || s.active >= limit {
 				continue
 			}
 			if now.Before(s.blockedUntil) {
@@ -410,14 +448,15 @@ func (p *Pool) acquire(ctx context.Context, probe bool) (*poolSession, error) {
 					break
 				}
 			}
-			releaseSlot, ok := p.cfg.FleetBudget.reserve(fleetSession)
+			releaseSlot, ok := p.cfg.FleetBudget.reserveOwned(fleetSession, p)
 			if !ok {
 				p.mu.Unlock()
 				return nil, &OpenError{"fleet_session_capacity", ErrCapacity}
 			}
 			p.creating = true
+			p.creatingToken = p.admissionToken
 			p.wg.Add(1)
-			go p.create(reason, p.factory, p.admissionEpoch, releaseSlot)
+			go p.create(reason, p.factory, p.admissionEpoch, p.admissionToken, releaseSlot)
 		}
 		if !p.creating && !blocked {
 			p.mu.Unlock()
@@ -453,6 +492,7 @@ func (p *Pool) release(s *poolSession) {
 	p.mu.Lock()
 	s.active--
 	s.lastUsed = time.Now()
+	p.reapLocked(s.lastUsed)
 	p.signalLocked()
 	p.mu.Unlock()
 }
@@ -648,14 +688,14 @@ func (p *Pool) Snapshot() PoolSnapshot {
 		if healthy {
 			out.HealthySessions++
 			out.ActiveFlows += s.active
-			if !s.draining {
+			if !s.draining && !p.fencedLocked(s) {
 				out.Capacity += p.cfg.SessionFlows
 				if !time.Now().Before(s.blockedUntil) {
 					out.AvailableCapacity += max(0, p.cfg.SessionFlows-p.cfg.ProbeReserve-s.active)
 				}
 			}
 		}
-		out.Sessions = append(out.Sessions, PoolSession{s.id, healthy, s.draining, s.active, p.cfg.SessionFlows, s.born.UTC(), s.reason, s.client.Lease(), s.client.SessionEndReason()})
+		out.Sessions = append(out.Sessions, PoolSession{ID: s.id, Healthy: healthy, Draining: s.draining, ActiveFlows: s.active, Capacity: p.cfg.SessionFlows, CreatedAt: s.born.UTC(), CreationReason: s.reason, Lease: s.client.Lease(), EndReason: s.client.SessionEndReason(), AdmissionFenced: p.fencedLocked(s)})
 	}
 	return out
 }
@@ -729,6 +769,10 @@ func (p *Pool) UpdateFactory(factory SessionFactory, drain bool) {
 	defer p.mu.Unlock()
 	p.factory = factory
 	if drain {
+		p.admissionEpoch++
+		if p.createCancel != nil {
+			p.createCancel()
+		}
 		for _, s := range p.sessions {
 			s.draining = true
 		}

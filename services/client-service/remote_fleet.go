@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -192,9 +193,23 @@ func (s *remoteState) applyFleetPolicy(policy security.FleetPolicy, now time.Tim
 		}
 	}
 	s.fleet.pools, s.fleet.probes = chosen, probes
+	s.updateFleetAdmissionSources()
 	f.configure(policy.Version, policy.ExpiresAt, policy.Enabled, candidates, emptyReason)
 	s.syncFleetMeasurements()
 	return nil
+}
+
+func (s *remoteState) updateFleetAdmissionSources() {
+	ids := make([]string, 0, len(s.clients))
+	for id := range s.clients {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	donors := make([]*transport.Pool, 0, len(ids))
+	for _, id := range ids {
+		donors = append(donors, s.clients[id])
+	}
+	s.controller.fleet.setAdmissionSources(donors)
 }
 
 func (s *remoteState) syncFleetMeasurements() {

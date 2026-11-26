@@ -91,7 +91,9 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	if e != nil {
 		return e
 	}
-	if d := c.diagnostics.Load(); d != nil { d.cp.Store(cp) }
+	if d := c.diagnostics.Load(); d != nil {
+		d.cp.Store(cp)
+	}
 	target, e := netip.ParseAddrPort(m.ProbeTarget)
 	if e != nil {
 		return errors.New("explicit UDP echo probe target required")
@@ -152,6 +154,17 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	go func() { defer c.wg.Done(); workers.Wait(); close(done) }()
 	signed, initialError := cp.Config(ctx)
 	if initialError == nil {
+		initialError = remote.checkRevocation(signed)
+	}
+	if initialError == nil && remote.fleet != nil {
+		if c.gameMeasurementNetwork() == "" {
+			inspect, stop := context.WithTimeout(ctx, 8*time.Second)
+			c.refreshNetworkContext(inspect)
+			stop()
+		}
+		remote.refreshFleet(ctx)
+	}
+	if initialError == nil {
 		initialError = remote.apply(ctx, signed)
 	}
 	// Keep retrying after an initial outage; no valid config means DIRECT.
@@ -188,6 +201,7 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 					// generation. Neither existing pools nor live flows are reset.
 					remote.initFleet(keys, identity.ID, m.StateDirectory)
 					if remote.fleet != nil {
+						remote.refreshFleet(remoteCtx)
 						remote.syncFleetMeasurements()
 						startFleet()
 					}
@@ -203,19 +217,19 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 }
 
 type remoteState struct {
-	addresses  map[string]string
-	echoKey    []byte
-	controller *Controller
-	cp         *controlclient.Client
-	tls        *tls.Config
-	target     netip.AddrPort
-	clients    map[string]*transport.Pool
-	fleet      *remoteFleet
+	addresses        map[string]string
+	echoKey          []byte
+	controller       *Controller
+	cp               *controlclient.Client
+	tls              *tls.Config
+	target           netip.AddrPort
+	clients          map[string]*transport.Pool
+	fleet            *remoteFleet
 	legacyCandidates []measurement.Candidate
-	version    uint64
+	version          uint64
 }
 
-func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
+func (s *remoteState) checkRevocation(cfg security.Config) error {
 	c := s.controller
 	for _, id := range cfg.RevokedDevices {
 		if id == s.cp.DeviceID {
@@ -240,6 +254,14 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 			return errors.New("device revoked")
 		}
 	}
+	return nil
+}
+
+func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
+	if err := s.checkRevocation(cfg); err != nil {
+		return err
+	}
+	c := s.controller
 	if cfg.Version != s.version {
 		if e := c.Selector.Configure(cfg.RoutingParameters); e != nil {
 			return e
@@ -337,9 +359,21 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 		}
 		poolConfig := transport.DefaultPoolConfig()
 		poolConfig.FleetBudget = &c.fleet.budget
-		pool, err := transport.NewPool(c.ctx, poolConfig, factory)
-		if err != nil {
-			return err
+		var pool *transport.Pool
+		if s.fleet != nil {
+			entry := s.fleet.pools[node.ID]
+			if entry.pool != nil && entry.address == node.Address {
+				pool = entry.pool
+				entry.owned = false
+				s.fleet.pools[node.ID] = entry
+			}
+		}
+		if pool == nil {
+			var err error
+			pool, err = transport.NewPool(c.ctx, poolConfig, factory)
+			if err != nil {
+				return err
+			}
 		}
 		s.clients[node.ID] = pool
 		s.addresses[node.ID] = node.Address
@@ -357,6 +391,9 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 			_ = pool.Warm(attempt)
 			cancel()
 		}
+	}
+	if s.fleet != nil {
+		s.updateFleetAdmissionSources()
 	}
 	candidates := []measurement.Candidate{{Metadata: optimizer.RelayCandidate{ID: optimizer.Direct}, Target: s.target, Open: measurement.OpenDirect}}
 	for _, node := range cfg.Relays {

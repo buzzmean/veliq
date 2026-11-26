@@ -18,6 +18,10 @@ function Get-OwnedServiceState([string]$Name='VELIQ'){
 }
 foreach($name in @('VELIQ','neexitlag')){if((Get-OwnedServiceState $name) -ne 'ABSENT'){throw 'EXISTING_SERVICE_PRESERVED'}}
 foreach($path in @($installed,$app,(Join-Path $env:ProgramData 'neexitlag'),(Join-Path $env:ProgramFiles 'VELIQ Setup'))){if(Test-Path -LiteralPath $path){throw 'EXISTING_INSTALLATION_PRESERVED'}}
+& (Join-Path $PSScriptRoot 'service-startup-checks.ps1')
+& (Join-Path $PSScriptRoot 'service-recovery-checks.ps1')
+. (Join-Path $PSScriptRoot '../../tools/windows/common.ps1')
+. (Join-Path $PSScriptRoot 'service-recovery-native.ps1')
 function Invoke-OwnedInstaller([string]$Path,[string]$Stage,[int]$ExpectedExit=0,[switch]$InvalidClubImage,[switch]$AccountImage,[switch]$OmitNoRestart,[switch]$UpdateMode,[string]$InstallerAction='',
  [string]$LateGuiPath='',[string]$LateGuiArguments='',[string]$LateGuiReady=''){
  # Inno's uninstaller delegates to _unins.tmp. Process.WaitForExit waits only
@@ -150,6 +154,7 @@ function Write-PreflightEnvironmentProbe {
 }
 function Assert-InstalledCandidate {
  if((Get-OwnedServiceState) -ne 'Running'){throw 'INSTALLED_SERVICE_NOT_RUNNING'}
+ Assert-OwnedRecoveryPolicy $installed
  $result=Get-Content -Raw -LiteralPath (Join-Path $app 'install-result.json')|ConvertFrom-Json
  if($result.result -cne 'PASS' -or !$result.reboot_check_known -or $result.reboot_required -ne $false -or @($result.reboot_reasons).Count){throw 'INSTALL_RESULT_NOT_PASS'}
  foreach($pair in @(@('service/veliq-service.exe',(Join-Path $installed 'veliq-service.exe')),@('gui/VELIQ.exe',(Join-Path $app 'VELIQ.exe')))){
@@ -334,10 +339,16 @@ func main(){
  # Explicit repair must retain the installed owner configuration and IPC token.
  $repairHashes=@{}
  foreach($name in @('service.json','ipc.token')){$repairHashes[$name]=(Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash}
+ # Remove recovery only from this fixture's previously absent disposable service.
+ # The real existing-service REINSTALL must restore SCM state, not just keep a valid old policy.
+ Clear-OwnedRecoveryFixture $installed
  Invoke-OwnedInstaller $setup 'explicit-reinstall' -InstallerAction 'REINSTALL'
  Assert-InstalledCandidate
  foreach($name in $repairHashes.Keys){if((Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash -cne $repairHashes[$name]){throw 'REINSTALL_EXISTING_STATE_CHANGED'}}
- Write-Output 'BETA_REINSTALL_PASS explicit action; installed owner/config/token preserved'
+ Write-Output 'BETA_REINSTALL_PASS explicit action; cleared SCM recovery restored restart5s x3/reset86400/noncrash; Auto/Running/IPC; owner/config/token preserved'
+ $recovered=Assert-OwnedCrashRecovery $installed $ExpectedCommit (Get-FileHash -LiteralPath (Join-Path $payload 'service/veliq-service.exe')).Hash $repairHashes
+ Assert-InstalledCandidate
+ Write-Output ('BETA_CRASH_RECOVERY_PASS '+($recovered|ConvertTo-Json -Compress)+'; SCM automatic restart; no manual start; config/token preserved')
  # A newer registered version must refuse before touching service or GUI files.
  $registration='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{E18D91DB-2E64-4405-A05E-AB15A4192318}_is1'
  $previousVersion=(Get-ItemProperty -LiteralPath $registration).DisplayVersion

@@ -107,6 +107,7 @@ try{
  }while(!$ready -and [DateTime]::UtcNow -lt $deadline)
  if(!$ready){throw 'Updated service IPC readiness failed'}
  Set-VeliqServiceAutomatic
+ Set-VeliqServiceRecovery
  Set-Service -Name VELIQ -DisplayName 'VELIQ Routing Service'
  if($NativeTcpFirewall){Write-Host 'Native TCP firewall admission verified: this service executable only; no global firewall or VPS changes.'}
  foreach($lane in @('browser','edge')){try{$view=Invoke-ServiceIPC ($lane+'.status') $null (Join-Path $root 'ipc.token');$silent=$view.PSObject.Properties['silent_activation'];if($null -ne $silent){$state=[string]$silent.Value.state;if($state -notin @('NOT_CONFIGURED','POLICY_PENDING_BROWSER_REFRESH','PAC_REQUEST_OBSERVED','POLICY_OR_LISTENER_UNAVAILABLE','POLICY_SUSPENDED')){$state='UNKNOWN'};Write-Host ($lane+' silent PAC: '+$state+'; browser processes untouched; effective uptake separate from update success')}}catch{Write-Host ($lane+' silent PAC: STATUS_UNAVAILABLE; no website PASS claimed')}}

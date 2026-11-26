@@ -15,6 +15,25 @@ import (
 	"time"
 )
 
+func (c *Controller) refreshNetworkContext(ctx context.Context) {
+	c.mu.Lock()
+	routes := append([]netip.Addr{}, c.NetworkHostRoutes...)
+	c.mu.Unlock()
+	inspect := c.networkInspector
+	if inspect == nil {
+		inspect = windowsplatform.InspectNetwork
+	}
+	n := inspect(ctx, routes)
+	if n.Error != "" {
+		slog.Warn("network inspection failed; AUTO waits for a fresh fingerprint", "error", n.Error)
+	}
+	c.mergeConflicts(&n)
+	c.network.Store(&n)
+	c.Local.Suspend(len(n.Conflicts) > 0)
+	c.Learned.Cleanup(time.Now())
+	c.fleet.networkChanged()
+}
+
 func (c *Controller) watchNetwork() {
 	// The route fingerprint is cheap and gates AUTO/Chrome freshness; the process
 	// and module conflict scan is slow, so it runs on its own cadence and never
@@ -25,18 +44,8 @@ func (c *Controller) watchNetwork() {
 	defer tick.Stop()
 	for {
 		ctx, cancel := context.WithTimeout(c.ctx, 8*time.Second)
-		c.mu.Lock()
-		routes := append([]netip.Addr{}, c.NetworkHostRoutes...)
-		c.mu.Unlock()
-		n := windowsplatform.InspectNetwork(ctx, routes)
+		c.refreshNetworkContext(ctx)
 		cancel()
-		if n.Error != "" {
-			slog.Warn("network inspection failed; AUTO waits for a fresh fingerprint", "error", n.Error)
-		}
-		c.mergeConflicts(&n)
-		c.network.Store(&n)
-		c.Local.Suspend(len(n.Conflicts) > 0)
-		c.Learned.Cleanup(time.Now())
 		select {
 		case <-c.ctx.Done():
 			return
@@ -59,6 +68,7 @@ func (c *Controller) watchConflicts() {
 				merged := *n
 				c.mergeConflicts(&merged)
 				c.network.Store(&merged)
+				c.fleet.networkChanged()
 			}
 			c.Local.Suspend(len(scan.Conflicts) > 0)
 		}

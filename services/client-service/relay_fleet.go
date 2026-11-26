@@ -53,25 +53,29 @@ type fleetFailure struct {
 }
 
 type relayFleet struct {
-	mu                                sync.Mutex
-	budget                            transport.FleetBudget
-	network                           func() string
-	now                               func() time.Time
-	device                            string
-	epoch                             uint64
-	expires                           time.Time
-	nodes                             []fleetNode
-	affinity                          map[string]*fleetAffinity
-	failures                          map[fleetFailureKey]fleetFailure
-	detectors                         map[string]*optimizer.RouteSelector
-	observedNetwork                   string
-	shortlistNetwork                  string
-	preferred, challenger             string
-	challengerSince, challengerSample time.Time
-	samples                           int
-	lastNode, reason                  string
-	emptyReason                       string
-	scopeApplication                  string
+	mu                                                sync.Mutex
+	budget                                            transport.FleetBudget
+	network                                           func() string
+	now                                               func() time.Time
+	device                                            string
+	epoch                                             uint64
+	expires                                           time.Time
+	nodes                                             []fleetNode
+	affinity                                          map[string]*fleetAffinity
+	failures                                          map[fleetFailureKey]fleetFailure
+	detectors                                         map[string]*optimizer.RouteSelector
+	observedNetwork                                   string
+	shortlistNetwork                                  string
+	preferred, challenger                             string
+	challengerSince, challengerSample                 time.Time
+	samples                                           int
+	lastNode, reason                                  string
+	emptyReason                                       string
+	scopeApplication                                  string
+	admission                                         *transport.FleetAdmission
+	admissionPool                                     *transport.Pool
+	admissionNode, admissionAddress, admissionNetwork string
+	admissionDonors                                   []*transport.Pool
 }
 
 func newRelayFleet(network func() string) *relayFleet {
@@ -96,6 +100,9 @@ func (f *relayFleet) ManagesFlow(flow routing.Flow) bool {
 
 func (f *relayFleet) setScope(application string) {
 	f.mu.Lock()
+	if f.scopeApplication != application {
+		f.cancelAdmissionLocked()
+	}
 	f.scopeApplication = application
 	f.mu.Unlock()
 }
@@ -105,6 +112,7 @@ func (f *relayFleet) setScope(application string) {
 func (f *relayFleet) arm(device string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.cancelAdmissionLocked()
 	if f.device != device {
 		f.affinity = make(map[string]*fleetAffinity)
 	}
@@ -118,6 +126,7 @@ func (f *relayFleet) arm(device string) {
 
 // configure consumes authenticated policy, including explicit rollback.
 func (f *relayFleet) configure(epoch uint64, expires time.Time, enabled bool, nodes []fleetNode, emptyReason string) {
+	network := f.network()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(nodes) > fleetCandidateLimit || epoch < f.epoch || !expires.After(f.now()) {
@@ -125,6 +134,9 @@ func (f *relayFleet) configure(epoch uint64, expires time.Time, enabled bool, no
 	}
 	if !enabled && f.budget.Enabled() && epoch <= f.epoch {
 		return
+	}
+	if !enabled || !f.probeNodeIn(nodes, f.admissionNode, f.admissionAddress, f.now()) || f.admissionNetwork != network {
+		f.cancelAdmissionLocked()
 	}
 	for _, old := range f.nodes {
 		if !f.probeNodeIn(nodes, old.id, old.address, f.now()) {
@@ -143,6 +155,74 @@ func (f *relayFleet) configure(epoch uint64, expires time.Time, enabled bool, no
 	if !enabled {
 		f.reason = "signed_rollback"
 	}
+	f.ensureAdmissionLocked(network, f.now())
+}
+
+func (f *relayFleet) setAdmissionSources(pools []*transport.Pool) {
+	f.mu.Lock()
+	f.admissionDonors = append([]*transport.Pool(nil), pools...)
+	if f.admission != nil {
+		f.admission.SetDonors(pools)
+	}
+	f.mu.Unlock()
+}
+
+func (f *relayFleet) networkChanged() {
+	network := f.network()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.admission != nil && f.admissionNetwork != network {
+		f.cancelAdmissionLocked()
+	}
+	f.ensureAdmissionLocked(network, f.now())
+}
+
+func (f *relayFleet) cancelAdmissionLocked() {
+	if f.admission != nil {
+		f.admission.Cancel()
+	}
+	f.admission, f.admissionPool = nil, nil
+	f.admissionNode, f.admissionAddress, f.admissionNetwork = "", "", ""
+}
+
+func (f *relayFleet) ensureAdmissionLocked(network string, now time.Time) {
+	if network == "" || !f.budget.Enabled() || !now.Before(f.expires) {
+		f.cancelAdmissionLocked()
+		return
+	}
+	var desired *fleetNode
+	for i := range f.nodes {
+		p, ok := f.nodes[i].pool.(*transport.Pool)
+		if ok && f.probeNodeIn(f.nodes, f.nodes[i].id, f.nodes[i].address, now) && !p.HasAdmittingSession() {
+			desired = &f.nodes[i]
+			break
+		}
+	}
+	if desired == nil {
+		f.cancelAdmissionLocked()
+		return
+	}
+	pool := desired.pool.(*transport.Pool)
+	until := minFleetTime(f.expires, desired.observed.Add(fleetLoadTTL))
+	if f.admission != nil && f.admissionPool == pool && f.admissionNode == desired.id && f.admissionAddress == desired.address && f.admissionNetwork == network && f.admission.Refresh(until) {
+		return
+	}
+	f.cancelAdmissionLocked()
+	id, address := desired.id, desired.address
+	f.admissionPool, f.admissionNode, f.admissionAddress, f.admissionNetwork = pool, id, address, network
+	f.admission = transport.NewFleetAdmission(pool, f.admissionDonors, until, func() bool {
+		current := f.network()
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return current == network && f.budget.Enabled() && f.now().Before(f.expires) && f.probeNodeIn(f.nodes, id, address, f.now()) && f.admissionPool == pool
+	})
+}
+
+func minFleetTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
 }
 
 func (f *relayFleet) resetQualityLocked(network string) {
@@ -155,6 +235,7 @@ func (f *relayFleet) resetQualityLocked(network string) {
 func (f *relayFleet) suspend() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.cancelAdmissionLocked()
 	if f.budget.Enabled() {
 		f.expires = time.Time{}
 		f.reason = "fleet_policy_unavailable"
@@ -162,8 +243,10 @@ func (f *relayFleet) suspend() {
 }
 
 func (f *relayFleet) probeAllowed(id, address string, now time.Time) bool {
+	network := f.network()
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.ensureAdmissionLocked(network, now)
 	return f.budget.Enabled() && now.Before(f.expires) && f.probeNodeIn(f.nodes, id, address, now)
 }
 
@@ -259,8 +342,10 @@ func (f *relayFleet) reserve(flow routing.Flow, excluded string) (fleetAttempt, 
 		return reject("fleet_policy_unavailable")
 	}
 	if network == "" || flow.Network != "" && flow.Network != network {
+		f.cancelAdmissionLocked()
 		return reject("fleet_network_unverified")
 	}
+	f.ensureAdmissionLocked(network, now)
 	if f.observedNetwork != network {
 		f.resetQualityLocked(network)
 	}
@@ -537,6 +622,7 @@ func (f *relayFleet) OpenDatagram(ctx context.Context, flow routing.Flow) (routi
 }
 
 func (f *relayFleet) snapshot(now time.Time) map[string]any {
+	network := f.network()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	ids := make([]string, 0, len(f.nodes))
@@ -547,6 +633,27 @@ func (f *relayFleet) snapshot(now time.Time) map[string]any {
 	if f.budget.Enabled() && !f.expires.After(now) {
 		reason = "fleet_policy_unavailable"
 	}
-	return map[string]any{"budget": f.budget.Snapshot(), "candidates": ids, "version": f.epoch,
+	admission := transport.FleetAdmissionSnapshot{State: "POLICY_UNAVAILABLE"}
+	if f.budget.Enabled() && now.Before(f.expires) && len(f.nodes) > 0 {
+		admission.State = "READY"
+		for _, node := range f.nodes {
+			p, ok := node.pool.(*transport.Pool)
+			if !f.probeNodeIn(f.nodes, node.id, node.address, now) {
+				admission.State = "LOAD_STALE"
+			} else if !ok || !p.HasAdmittingSession() {
+				admission.State = "UNAVAILABLE"
+			}
+		}
+	}
+	if f.admission != nil {
+		admission = f.admission.Snapshot()
+	}
+	if f.budget.Enabled() && now.Before(f.expires) && network == "" {
+		admission.State = "WAITING_NETWORK"
+	}
+	if reason == "policy_ready" && admission.State != "READY" {
+		reason = "fleet_session_waiting"
+	}
+	return map[string]any{"budget": f.budget.Snapshot(), "candidates": ids, "version": f.epoch, "admission": admission, "admission_target": f.admissionNode,
 		"lease_expires_at": f.expires, "last_authenticated_relay": f.lastNode, "reason": reason}
 }

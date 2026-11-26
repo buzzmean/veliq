@@ -28,11 +28,32 @@ const (
 // Pools debit it even when the feature is off, so a hot opt-in accounts for
 // pre-existing work without revoking a permit that has already been issued.
 type FleetBudget struct {
-	mu        sync.Mutex
-	enabled   bool
-	used      [fleetResources]int
-	echoes    [FleetEchoLimit]time.Time
-	echoIndex int
+	mu            sync.Mutex
+	enabled       bool
+	used          [fleetResources]int
+	echoes        [FleetEchoLimit]time.Time
+	echoIndex     int
+	changed       chan struct{}
+	nextAdmission uint64
+	priority      uint64
+	priorityPool  *Pool
+	priorityUntil time.Time
+}
+
+func (b *FleetBudget) signalLocked() {
+	if b.changed != nil {
+		close(b.changed)
+	}
+	b.changed = make(chan struct{})
+}
+
+func (b *FleetBudget) changes() <-chan struct{} {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.changed == nil {
+		b.changed = make(chan struct{})
+	}
+	return b.changed
 }
 
 type FleetOccupancy struct {
@@ -46,6 +67,10 @@ type FleetOccupancy struct {
 func (b *FleetBudget) SetEnabled(enabled bool) {
 	b.mu.Lock()
 	b.enabled = enabled
+	if !enabled {
+		b.priority, b.priorityPool = 0, nil
+	}
+	b.signalLocked()
 	b.mu.Unlock()
 }
 
@@ -83,13 +108,24 @@ func (b *FleetBudget) overSessionLimit() bool {
 }
 
 func (b *FleetBudget) reserve(resource fleetResource) (func(), bool) {
+	return b.reserveOwned(resource, nil)
+}
+
+func (b *FleetBudget) reserveOwned(resource fleetResource, owner *Pool) (func(), bool) {
 	if b == nil {
 		return func() {}, true
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	limits := [...]int{FleetSessionLimit, FleetApplicationLimit, FleetProbeLimit, FleetWaitingLimit}
+	if b.priority != 0 && !time.Now().Before(b.priorityUntil) {
+		b.priority, b.priorityPool = 0, nil
+		b.signalLocked()
+	}
 	if b.enabled {
+		if resource == fleetSession && b.priority != 0 && owner != b.priorityPool && b.used[fleetSession] >= FleetSessionLimit-1 {
+			return nil, false
+		}
 		if b.used[resource] >= limits[resource] {
 			return nil, false
 		}
@@ -104,9 +140,57 @@ func (b *FleetBudget) reserve(resource fleetResource) (func(), bool) {
 		once.Do(func() {
 			b.mu.Lock()
 			b.used[resource]--
+			if resource == fleetSession {
+				b.signalLocked()
+			}
 			b.mu.Unlock()
 		})
 	}, true
+}
+
+func (b *FleetBudget) admissionToken() uint64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.nextAdmission++
+	if b.nextAdmission == 0 {
+		b.nextAdmission++
+	}
+	return b.nextAdmission
+}
+
+func (b *FleetBudget) prioritize(pool *Pool, token uint64, until time.Time, freeOnly bool) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if !b.enabled || !time.Now().Before(until) {
+		return false
+	}
+	if b.priority != 0 && !time.Now().Before(b.priorityUntil) {
+		b.priority, b.priorityPool = 0, nil
+	}
+	if b.priority != 0 && b.priority != token || freeOnly && b.used[fleetSession] >= FleetSessionLimit {
+		return false
+	}
+	b.priority, b.priorityPool, b.priorityUntil = token, pool, until
+	b.signalLocked()
+	return true
+}
+
+func (b *FleetBudget) priorityValid(token uint64) bool {
+	if b == nil || token == 0 {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.enabled && b.priority == token && time.Now().Before(b.priorityUntil)
+}
+
+func (b *FleetBudget) cancelPriority(token uint64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.priority == token {
+		b.priority, b.priorityPool = 0, nil
+		b.signalLocked()
+	}
 }
 
 func (b *FleetBudget) allowEcho(now time.Time) bool {

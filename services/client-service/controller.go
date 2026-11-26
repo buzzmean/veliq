@@ -132,6 +132,7 @@ type Controller struct {
 	steamGameDiscovery        func(string, gameudp.Preset) windowsplatform.PUBGInstallation
 	Learned                   *localstrategy.Cache
 	network                   atomic.Pointer[windowsplatform.NetworkContext]
+	networkInspector          func(context.Context, []netip.Addr) windowsplatform.NetworkContext
 	conflicts                 atomic.Pointer[windowsplatform.ConflictScan]
 	// NetworkHostRoutes are extra /32 routes (relay VPS) included in the fingerprint.
 	NetworkHostRoutes           []netip.Addr

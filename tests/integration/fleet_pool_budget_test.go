@@ -5,13 +5,396 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/buzzmean/veliq/core/routing"
 	"github.com/buzzmean/veliq/core/transport"
 )
+
+func waitFleetAdmission(t *testing.T, check func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(4 * time.Second)
+	for !check() {
+		if time.Now().After(deadline) {
+			t.Fatal("bounded fleet admission condition not reached")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func busyFleetDonor(t *testing.T, budget *transport.FleetBudget, renew bool) (*poolFixture, net.Conn, routing.Datagram, net.Conn) {
+	t.Helper()
+	cfg := transport.DefaultPoolConfig()
+	cfg.FleetBudget = budget
+	cfg.MaxSessions = 2
+	cfg.SessionFlows = 3
+	lease := time.Duration(0)
+	if renew {
+		lease = 3 * time.Second
+	}
+	x := newRenewingPoolFixture(t, cfg, nil, lease)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	a, err := x.pool.OpenTCP(ctx, x.tcp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { a.Close() })
+	u, err := x.pool.OpenDatagram(ctx, x.udp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { u.Close() })
+	b, err := x.pool.OpenTCP(ctx, x.tcp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { b.Close() })
+	return x, a, u, b
+}
+
+func fleetUDPEcho(t *testing.T, d routing.Datagram) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := d.Send([]byte("pinned-UDP")); err != nil {
+		t.Fatal(err)
+	}
+	data, err := d.Receive(ctx)
+	if err != nil || string(data) != "pinned-UDP" {
+		t.Fatal("pinned datagram failed", err)
+	}
+}
+
+func TestFleetSelectiveHandoffPreservesBusyTCPUDPAndRenewal(t *testing.T) {
+	budget := &transport.FleetBudget{}
+	legacy, tcp, udp, other := busyFleetDonor(t, budget, true)
+	cfg := transport.DefaultPoolConfig()
+	cfg.FleetBudget = budget
+	target := newRenewingPoolFixture(t, cfg, nil, 3*time.Second)
+	budget.SetEnabled(true)
+	plan := transport.NewFleetAdmission(target.pool, []*transport.Pool{legacy.pool}, time.Now().Add(10*time.Second), nil)
+	defer plan.Cancel()
+	waitFleetAdmission(t, func() bool { return plan.Snapshot().State == "WAITING_EXISTING_LEASES" })
+	before := plan.Snapshot()
+	if before.ExistingLeases != 2 || before.VictimSession != 1 || !before.Priority {
+		t.Fatalf("unsafe victim: %+v", before)
+	}
+	for range 3 {
+		if !plan.Refresh(time.Now().Add(10 * time.Second)) {
+			t.Fatal("same policy lost its plan")
+		}
+		if plan.Snapshot().VictimSession != before.VictimSession {
+			t.Fatal("victim moved on refresh")
+		}
+	}
+	assertTCPEcho(t, tcp)
+	assertTCPEcho(t, other)
+	fleetUDPEcho(t, udp)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	newLegacy, err := legacy.pool.OpenTCP(ctx, legacy.tcp)
+	if err != nil {
+		t.Fatal("alternative admission lost", err)
+	}
+	defer newLegacy.Close()
+	assertTCPEcho(t, newLegacy)
+	waitFleetAdmission(t, func() bool { return legacy.server.Metrics.Renewals.Load() >= 2 })
+	assertTCPEcho(t, tcp)
+	fleetUDPEcho(t, udp)
+	if target.issued.Load() != 0 || budget.Snapshot().Sessions != 2 {
+		t.Fatal("busy leases were bypassed")
+	}
+	stop := make(chan struct{})
+	var storm sync.WaitGroup
+	for range 4 {
+		storm.Add(1)
+		go func() {
+			defer storm.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				attempt, end := context.WithTimeout(context.Background(), 50*time.Millisecond)
+				_ = legacy.pool.Warm(attempt)
+				end()
+			}
+		}()
+	}
+	tcp.Close()
+	udp.Close()
+	waitFleetAdmission(t, func() bool { return target.pool.HasAdmittingSession() })
+	close(stop)
+	storm.Wait()
+	if legacy.issued.Load() != 2 || target.issued.Load() != 1 || budget.Snapshot().Sessions != 2 {
+		t.Fatalf("priority or max2 violated: legacy%d target%d %+v", legacy.issued.Load(), target.issued.Load(), budget.Snapshot())
+	}
+	assertTCPEcho(t, other)
+	assertTCPEcho(t, newLegacy)
+	managedContext, stopManaged := context.WithTimeout(context.Background(), time.Second)
+	defer stopManaged()
+	managed, err := target.pool.OpenFleetTCP(managedContext, target.tcp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertTCPEcho(t, managed)
+	managed.Close()
+	newLegacy.Close()
+	other.Close()
+	tcp.Close()
+	udp.Close()
+	legacy.pool.Close()
+	target.pool.Close()
+	if got := budget.Snapshot(); got != (transport.FleetOccupancy{Enabled: true}) {
+		t.Fatalf("release was not exactly once: %+v", got)
+	}
+}
+
+func TestFleetSelectiveHandoffCancellationRestoresAdmission(t *testing.T) {
+	for _, mode := range []string{"cancel", "off", "expiry", "guard", "target-close"} {
+		t.Run(mode, func(t *testing.T) {
+			budget := &transport.FleetBudget{}
+			legacy, tcp, udp, other := busyFleetDonor(t, budget, false)
+			cfg := transport.DefaultPoolConfig()
+			cfg.FleetBudget = budget
+			target := newPoolFixture(t, cfg, nil)
+			budget.SetEnabled(true)
+			var valid atomic.Bool
+			valid.Store(true)
+			until := time.Now().Add(3 * time.Second)
+			if mode == "expiry" {
+				until = time.Now().Add(250 * time.Millisecond)
+			}
+			plan := transport.NewFleetAdmission(target.pool, []*transport.Pool{legacy.pool}, until, valid.Load)
+			defer plan.Cancel()
+			waitFleetAdmission(t, func() bool { return plan.Snapshot().State == "WAITING_EXISTING_LEASES" })
+			switch mode {
+			case "cancel":
+				plan.Cancel()
+			case "off":
+				budget.SetEnabled(false)
+			case "guard":
+				valid.Store(false)
+			case "target-close":
+				target.pool.Close()
+			}
+			waitFleetAdmission(t, func() bool {
+				select {
+				case <-plan.Done():
+					return true
+				default:
+					return false
+				}
+			})
+			for _, s := range legacy.pool.Snapshot().Sessions {
+				if s.AdmissionFenced || s.Draining {
+					t.Fatal("cancel became permanent drain")
+				}
+			}
+			assertTCPEcho(t, tcp)
+			assertTCPEcho(t, other)
+			fleetUDPEcho(t, udp)
+			if target.issued.Load() != 0 {
+				t.Fatal("cancelled policy issued target session")
+			}
+		})
+	}
+}
+
+func TestFleetSelectiveHandoffDoesNotFenceSoleUnrelatedPools(t *testing.T) {
+	budget := &transport.FleetBudget{}
+	cfg := transport.DefaultPoolConfig()
+	cfg.FleetBudget = budget
+	a := newPoolFixture(t, cfg, nil)
+	b := newPoolFixture(t, cfg, nil)
+	target := newPoolFixture(t, cfg, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	one, err := a.pool.OpenTCP(ctx, a.tcp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer one.Close()
+	two, err := b.pool.OpenDatagram(ctx, b.udp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer two.Close()
+	budget.SetEnabled(true)
+	plan := transport.NewFleetAdmission(target.pool, []*transport.Pool{a.pool, b.pool}, time.Now().Add(time.Second), nil)
+	defer plan.Cancel()
+	time.Sleep(150 * time.Millisecond)
+	if got := plan.Snapshot(); got.State != "WAITING_NATURAL_SESSION_RELEASE" || !got.Priority || got.VictimSession != 0 {
+		t.Fatalf("sole exact providers were damaged: %+v", got)
+	}
+	assertTCPEcho(t, one)
+	fleetUDPEcho(t, two)
+	if target.issued.Load() != 0 || budget.Snapshot().Sessions != 2 {
+		t.Fatal("infinite leases were reported as progress")
+	}
+}
+
+func TestFleetSelectiveHandoffRejectsStaleFactoryAndOldCancel(t *testing.T) {
+	budget := &transport.FleetBudget{}
+	budget.SetEnabled(true)
+	cfg := transport.DefaultPoolConfig()
+	cfg.FleetBudget = budget
+	target := newPoolFixture(t, cfg, nil)
+	started, finish := make(chan struct{}), make(chan struct{})
+	target.pool.UpdateFactory(func(ctx context.Context) (*transport.Client, error) {
+		c, err := target.factory(ctx)
+		if err != nil {
+			return nil, err
+		}
+		close(started)
+		<-finish
+		return c, nil
+	}, false)
+	old := transport.NewFleetAdmission(target.pool, nil, time.Now().Add(3*time.Second), nil)
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("factory did not authenticate")
+	}
+	old.Cancel()
+	target.pool.UpdateFactory(target.factory, false)
+	next := transport.NewFleetAdmission(target.pool, nil, time.Now().Add(3*time.Second), nil)
+	defer next.Cancel()
+	close(finish)
+	old.Cancel()
+	waitFleetAdmission(t, func() bool { return target.pool.HasAdmittingSession() })
+	if target.issued.Load() != 2 || len(target.pool.Snapshot().Sessions) != 1 || budget.Snapshot().Sessions != 1 {
+		t.Fatal("stale factory consumed/published the new plan")
+	}
+	target.mu.Lock()
+	oldClient := target.clients[0]
+	target.mu.Unlock()
+	select {
+	case <-oldClient.Done():
+	default:
+		t.Fatal("old token published authenticated client")
+	}
+}
+
+func TestFleetSelectiveHandoffRestoresSoleLegacyAfterAlternativeDies(t *testing.T) {
+	for _, mode := range []string{"blocked-target", "failed-target"} {
+		t.Run(mode, func(t *testing.T) {
+			budget := &transport.FleetBudget{}
+			legacy, tcp, udp, _ := busyFleetDonor(t, budget, false)
+			cfg := transport.DefaultPoolConfig()
+			cfg.FleetBudget = budget
+			target := newPoolFixture(t, cfg, nil)
+			started := make(chan struct{})
+			var once sync.Once
+			target.pool.UpdateFactory(func(ctx context.Context) (*transport.Client, error) {
+				once.Do(func() { close(started) })
+				if mode == "blocked-target" {
+					<-ctx.Done()
+					return nil, ctx.Err()
+				}
+				return nil, errors.New("fixture unavailable")
+			}, false)
+			budget.SetEnabled(true)
+			plan := transport.NewFleetAdmission(target.pool, []*transport.Pool{legacy.pool}, time.Now().Add(3*time.Second), nil)
+			defer plan.Cancel()
+			waitFleetAdmission(t, func() bool { return plan.Snapshot().VictimSession == 1 })
+			legacy.mu.Lock()
+			alternative := legacy.clients[1]
+			legacy.mu.Unlock()
+			alternative.Close()
+			select {
+			case <-started:
+			case <-time.After(2 * time.Second):
+				t.Fatal("freed slot was not offered to target")
+			}
+			assertTCPEcho(t, tcp)
+			fleetUDPEcho(t, udp)
+			udp.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			conn, err := legacy.pool.OpenTCP(ctx, legacy.tcp)
+			if err != nil {
+				t.Fatal("live sole exact provider remained fenced", err)
+			}
+			defer conn.Close()
+			assertTCPEcho(t, conn)
+			for _, s := range legacy.pool.Snapshot().Sessions {
+				if s.AdmissionFenced {
+					t.Fatal("sole legacy session still fenced")
+				}
+			}
+			if budget.Snapshot().Sessions > 2 {
+				t.Fatal("restoration exceeded shared budget")
+			}
+		})
+	}
+}
+
+func TestFleetFutureSlotClaimBeatsLegacyNaturalRetirementStorm(t *testing.T) {
+	budget := &transport.FleetBudget{}
+	cfg := transport.DefaultPoolConfig()
+	cfg.FleetBudget = budget
+	a := newPoolFixture(t, cfg, nil)
+	b := newPoolFixture(t, cfg, nil)
+	target := newPoolFixture(t, cfg, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	first, err := a.pool.OpenTCP(ctx, a.tcp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	other, err := b.pool.OpenTCP(ctx, b.tcp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	budget.SetEnabled(true)
+	plan := transport.NewFleetAdmission(target.pool, []*transport.Pool{a.pool, b.pool}, time.Now().Add(3*time.Second), nil)
+	defer plan.Cancel()
+	waitFleetAdmission(t, func() bool { return plan.Snapshot().State == "WAITING_NATURAL_SESSION_RELEASE" })
+	if !plan.Snapshot().Priority || plan.Snapshot().VictimSession != 0 {
+		t.Fatal("future slot was not reserved independently of safe fence")
+	}
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	// External factory rotation retires only the old endpoint; the application
+	// lease still lives until Close. Re-creation must lose to the pending claim.
+	a.pool.UpdateFactory(a.factory, true)
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				attempt, end := context.WithTimeout(ctx, 50*time.Millisecond)
+				_ = a.pool.Warm(attempt)
+				end()
+			}
+		}()
+	}
+	assertTCPEcho(t, first)
+	assertTCPEcho(t, other)
+	first.Close()
+	waitFleetAdmission(t, func() bool { return target.pool.HasAdmittingSession() })
+	close(stop)
+	wg.Wait()
+	if a.issued.Load() != 1 || target.issued.Load() != 1 || budget.Snapshot().Sessions != 2 {
+		t.Fatal("legacy re-creation stole naturally released slot")
+	}
+	assertTCPEcho(t, other)
+}
 
 func TestFleetPoolsShareAdmissionAcrossConcurrentOpenFixtures(t *testing.T) {
 	for _, starts := range []int{10, 40, 120} {

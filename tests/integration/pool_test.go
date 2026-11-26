@@ -32,9 +32,14 @@ type poolFixture struct {
 	tickets  [][]byte
 	dial     func(context.Context, []byte) (*transport.Client, error)
 	issued   atomic.Int64
+	factory  transport.SessionFactory
 }
 
 func newPoolFixture(t *testing.T, cfg transport.PoolConfig, mutate func(*transport.Client, int) error) *poolFixture {
+	return newRenewingPoolFixture(t, cfg, mutate, 0)
+}
+
+func newRenewingPoolFixture(t *testing.T, cfg transport.PoolConfig, mutate func(*transport.Client, int) error, lease time.Duration) *poolFixture {
 	t.Helper()
 	st, ct, err := labcert.Pair()
 	if err != nil {
@@ -42,7 +47,11 @@ func newPoolFixture(t *testing.T, cfg transport.PoolConfig, mutate func(*transpo
 	}
 	pub, key, _ := ed25519.GenerateKey(rand.Reader)
 	v := security.NewTicketVerifier(map[string]ed25519.PublicKey{"test": pub}, "VPS-01")
-	r, err := relay.Listen("127.0.0.1:0", relay.Config{TLS: st, TicketVerifier: v, Allow: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}})
+	serverConfig := relay.Config{TLS: st, TicketVerifier: v, Allow: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}}
+	if lease > 0 {
+		serverConfig.Acceptance = &relay.AcceptanceConfig{LeaseDuration: lease}
+	}
+	r, err := relay.Listen("127.0.0.1:0", serverConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,17 +73,23 @@ func newPoolFixture(t *testing.T, cfg transport.PoolConfig, mutate func(*transpo
 	x.dial = func(ctx context.Context, raw []byte) (*transport.Client, error) {
 		return transport.DialWithTicket(ctx, r.Addr().String(), ct, raw)
 	}
-	p, err := transport.NewPool(context.Background(), cfg, func(ctx context.Context) (*transport.Client, error) {
-		n := int(x.issued.Add(1))
+	issue := func(context.Context) ([]byte, error) {
 		id, _ := security.NewID()
 		now := time.Now()
-		raw, err := security.Sign("ticket", "test", key, security.Ticket{ID: id, DeviceID: "device", DeviceKey: security.Fingerprint(peer), RelayID: "VPS-01", IssuedAt: now, ExpiresAt: now.Add(time.Minute)})
+		return security.Sign("ticket", "test", key, security.Ticket{ID: id, DeviceID: "device", DeviceKey: security.Fingerprint(peer), RelayID: "VPS-01", IssuedAt: now, ExpiresAt: now.Add(time.Minute)})
+	}
+	x.factory = func(ctx context.Context) (*transport.Client, error) {
+		n := int(x.issued.Add(1))
+		raw, err := issue(ctx)
 		if err != nil {
 			return nil, err
 		}
 		c, err := x.dial(ctx, raw)
 		if err != nil {
 			return nil, err
+		}
+		if lease > 0 {
+			c.StartRenewal(issue)
 		}
 		if mutate != nil {
 			if err = mutate(c, n); err != nil {
@@ -87,7 +102,8 @@ func newPoolFixture(t *testing.T, cfg transport.PoolConfig, mutate func(*transpo
 		x.tickets = append(x.tickets, raw)
 		x.mu.Unlock()
 		return c, nil
-	})
+	}
+	p, err := transport.NewPool(context.Background(), cfg, x.factory)
 	if err != nil {
 		t.Fatal(err)
 	}

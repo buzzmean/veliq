@@ -2,6 +2,38 @@
 
 The legacy relay path is the default. On an explicitly enrolled client, fleet applies to new implicit RELAY opens already authorized by routing policy. An explicit ID and address, MANUAL, DIRECT, LOCAL and protected routing keep their policy scope. Every service pool consumes the same client budget in fleet mode. The limits are two QUIC sessions, 47 application flows, one probe flow, 16 waiters and 10 relay echo sends per five-second rolling window. Older live resources count against the limit and finish on their original path. The two selected candidates use authenticated relay echo as transport evidence. The acknowledged target OPEN supplies separate destination evidence.
 
+## Admission while existing sessions are busy
+
+The two-session budget counts both legacy and managed sessions, including sessions
+being created. One session can carry flows from several applications; this limit
+does not restrict the client to two applications.
+
+A fresh, authorized managed candidate can claim the next available session slot.
+If a legacy pool has two suitable sessions, one session stops accepting new opens
+while its existing TCP and UDP leases continue on their original connection.
+New opens can use the suitable alternative in that same pool. The client does not
+substitute another relay identity or address for an explicit or manual route.
+Once the selected session becomes idle, the managed candidate has priority over
+legacy session creation. Losing the alternative must not fence the sole usable
+legacy session.
+If no session can be drained safely, the claim still protects the next naturally
+released slot without preventing opens on existing sole-provider sessions.
+
+This transfer does not create an extra session or force existing flows to close.
+Two indefinitely live sessions can therefore keep admission waiting indefinitely.
+Policy expiry, suspension, rollback, or a changed candidate/network cancels the
+operation's own reservation and fence; it does not undo permanent pool retirement.
+Status distinguishes waiting for the network, existing leases, and session setup.
+Reading `relay.fleet.status` does not initiate admission or network probes.
+An accepted transport session still requires separate application and destination
+evidence.
+
+Startup initializes the network context passively and binds fresh fleet policy
+before admitting legacy work into both slots. An unavailable network leaves the
+service available for diagnostics while managed admission waits. A service
+reinstallation is an update/recovery operation, not evidence that a live session
+transfer preserves connections across process replacement.
+
 ## Isolated reference setup
 
 - Build the reference client, control plane and relay from the same reviewed source. Pin the actual role, commit, byte size and SHA256 of each test binary. Use loopback for the control-plane fixture, local test trust, an isolated PostgreSQL schema and a dedicated authenticated UDP echo target.

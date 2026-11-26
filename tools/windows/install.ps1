@@ -75,8 +75,7 @@ Protect-ServiceDirectory $InstallDirectory $OwnerSid
 $binary='"'+(Join-Path $InstallDirectory "veliq-service.exe")+'" -config "'+$manifestPath+'"'
 New-Service -Name VELIQ -BinaryPathName $binary -DisplayName "VELIQ Routing Service" -StartupType Automatic | Out-Null
 Set-VeliqServiceAutomatic
-& sc.exe failure VELIQ reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
-if($LASTEXITCODE){throw "Failed to configure service recovery"}
+Set-VeliqServiceRecovery
 # Owner-authorized native browser TCP requires this app-scoped inbound reflection rule.
 # Installing a rule does not load WinDivert or activate traffic before enrollment.
 if($NativeTcpFirewall){[void](Add-NativeTcpFirewallAdmission (Join-Path $InstallDirectory 'veliq-service.exe'))}
