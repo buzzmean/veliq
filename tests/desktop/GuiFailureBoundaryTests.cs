@@ -36,7 +36,7 @@ public class GuiFailureBoundaryTests {
   var service=new PartialStatus();var vm=new DesktopViewModel(service);
   await vm.RefreshAsync();
   Assert.True(vm.CanControl);Assert.Equal("game",Assert.Single(vm.Applications).Profile.Id);
-  Assert.Contains(service.Calls,"profiles");
+  Assert.Contains("profiles",service.Calls);
  }
  [Fact]public async Task PartialStatusCannotRemovePreviouslyVisibleProfile(){
   var service=new PartialStatus();service.OmitOnlyAfterFirstPoll=true;
@@ -45,7 +45,7 @@ public class GuiFailureBoundaryTests {
   await vm.RefreshAsync();var rows=vm.Applications.ToArray();Assert.Equal(2,rows.Length);
   await vm.RefreshAsync();
   Assert.Equal(2,vm.Applications.Count);Assert.Same(rows[1],vm.Applications[1]);Assert.True(vm.CanControl);
-  Assert.Contains(service.Calls,"profiles");
+  Assert.Contains("profiles",service.Calls);
  }
  sealed class PartialStatus:IServiceClient {
   readonly FakeService service=new();
