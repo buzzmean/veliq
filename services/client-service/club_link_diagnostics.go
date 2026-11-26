@@ -143,11 +143,9 @@ func (d *persistentDiagnostics) observeClubLinks(ctx context.Context) {
 			d.note("CLUB_LINK_OBSERVER", "PASSIVE_TCP_TABLE", "ready", "SNAPSHOT_COMPLETE", 0, "club-link-observer")
 		}
 		for _, fact := range tracker.observe(snapshot, err, at) {
-			e := d.event("CLUB_LINK", "PASSIVE_TCP_TABLE", "failed", fact.link.Event)
-			e.At, e.ClubLink, e.Incident = at, fact.link, fact.link.LinkID
-			e.PID, e.Birth, e.App, e.ProcessVerified = fact.owner.PID, fact.owner.CreationTime, "langameservice.exe", true
-			if fact.link.Event == "CONNECTION_RESTORED" {
-				e.State = "recovered" // TCP was observed again; no application recovery is attempted.
+			e, ok := d.clubLinkEvent(fact, at)
+			if !ok {
+				continue
 			}
 			select {
 			case d.clubInputs <- diagnosticInput{event: e}:
@@ -163,6 +161,16 @@ func (d *persistentDiagnostics) observeClubLinks(ctx context.Context) {
 	}
 }
 
+func (d *persistentDiagnostics) clubLinkEvent(fact clubLinkFact, at time.Time) (clubhealth.Diagnostic, bool) {
+	e := d.event("CLUB_LINK", "PASSIVE_TCP_TABLE", "failed", fact.link.Event)
+	e.At, e.ClubLink, e.Incident = at, fact.link, fact.link.LinkID
+	e.PID, e.Birth, e.App, e.ProcessVerified = fact.owner.PID, fact.owner.CreationTime, "langameservice.exe", true
+	if fact.link.Event == "CONNECTION_RESTORED" {
+		e.State = "recovered" // TCP was observed again; no application recovery is attempted.
+	}
+	return e.WithClubLinkShadow()
+}
+
 func (d *persistentDiagnostics) wakeDiagnosticUpload() {
 	select {
 	case d.uploadWake <- struct{}{}:
@@ -176,7 +184,7 @@ func clubLinkDiagnosticBatch(j clubhealth.Journal) clubhealth.Batch {
 	var urgent []clubhealth.Diagnostic
 	for _, rows := range [][]clubhealth.JournalRow{j.Rows, j.History} {
 		for _, row := range rows {
-			if !row.Acked && !row.Event.ClubLink.IsZero() && len(urgent) < clubhealth.MaxEvents {
+			if !row.Acked && row.Event.Component == "CLUB_LINK" && len(urgent) < clubhealth.MaxEvents {
 				urgent = append(urgent, row.Event)
 			}
 		}
@@ -190,7 +198,7 @@ func clubLinkDiagnosticBatch(j clubhealth.Journal) clubhealth.Batch {
 		to   *[]clubhealth.JournalRow
 	}{{j.Rows, &ordinary.Rows}, {j.History, &ordinary.History}} {
 		for _, row := range queues.from {
-			if !row.Acked && row.Event.ClubLink.IsZero() {
+			if !row.Acked && row.Event.Component != "CLUB_LINK" {
 				*queues.to = append(*queues.to, row)
 			}
 		}

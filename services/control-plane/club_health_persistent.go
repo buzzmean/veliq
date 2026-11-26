@@ -103,6 +103,14 @@ func (s *Store) RecordPersistentDiagnostics(ctx context.Context, q clubhealth.Pe
 		return err
 	}
 	for _, e := range q.Batch.Events {
+		// The API verified the ORIGINAL batch audience and signature before
+		// entering this transaction. Hydrate only a value copy for storage:
+		// old-journal and typed retries must describe the same immutable fact.
+		var ok bool
+		e, ok = e.CanonicalClubLink()
+		if !ok {
+			return errDiagnosticConflict
+		}
 		raw, err := json.Marshal(e)
 		if err != nil {
 			return err

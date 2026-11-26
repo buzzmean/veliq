@@ -39,6 +39,29 @@ func clubDiagnosticFixture(d *persistentDiagnostics, at time.Time) clubhealth.Di
 	return e
 }
 
+func TestClubLinkProducerAlwaysPreservesDownlevelEnvelope(t *testing.T) {
+	d := &persistentDiagnostics{base: clubhealth.Diagnostic{PC: "PC13", Version: "0.3.792", Source: "095c8ac8", Session: strings.Repeat("b", 32), ServicePID: 10}}
+	at := time.Now().UTC()
+	for _, protocol := range []string{"TCP4", "TCP6"} {
+		for _, event := range []string{"CONNECTION_LOST", "CONNECTION_RESTORED"} {
+			link := clubDiagnosticFixture(d, at).ClubLink
+			link.Protocol = protocol
+			if event == "CONNECTION_RESTORED" {
+				link.Event, link.Previous, link.Current, link.LastEstablishedAt = event, "ABSENT", "ESTABLISHED", at
+			}
+			e, ok := d.clubLinkEvent(clubLinkFact{link: link, owner: clubSocketFixture("10.2.3.4:9917", 24, 100).Identity}, at)
+			if !ok || !e.Valid(at) || !strings.HasPrefix(e.Operation, "CL1_") || e.ClubLink != link {
+				t.Fatal("producer omitted a valid typed/envelope pair")
+			}
+			e.ClubLink = clubhealth.ClubLink{}
+			effective, ok := e.EffectiveClubLink()
+			if !ok || effective != link {
+				t.Fatal("old journal would lose producer evidence")
+			}
+		}
+	}
+}
+
 func TestClubLinkPeerLossNeedsTwoCompleteSamplesAndPositiveRestoration(t *testing.T) {
 	at := time.Now().UTC()
 	first := clubSocketFixture("10.2.3.4:9917", 24, 100)
@@ -237,6 +260,27 @@ func TestClubLinkBatchSkipsLargeOldBacklogWithoutStarvingLifecycle(t *testing.T)
 	}
 	if lifecycle != clubhealth.MaxEvents/2 {
 		t.Fatal("outage burst starved lifecycle", lifecycle)
+	}
+}
+
+func TestClubLinkBatchKeepsDownlevelFactAheadOfOrdinaryBacklog(t *testing.T) {
+	d := diagnosticRuntimeFixture()
+	now := time.Now().UTC()
+	j := clubhealth.Journal{Format: 1}
+	for i := range 100 {
+		e := d.event("SERVICE", "FIXTURE", "failed", "ERROR")
+		e.ID = fmt.Sprintf("%032x", i+1)
+		j.Rows = append(j.Rows, clubhealth.JournalRow{Event: e})
+	}
+	e, ok := clubDiagnosticFixture(d, now).WithClubLinkShadow()
+	if !ok {
+		t.Fatal("fixture")
+	}
+	e.ClubLink = clubhealth.ClubLink{} // Exact762 acceptance separately proves this codec result.
+	j.History = []clubhealth.JournalRow{{Event: e}}
+	b := clubLinkDiagnosticBatch(j)
+	if len(b.Events) != clubhealth.MaxEvents || b.Events[0] != e || b.Events[1].Component != "SERVICE" {
+		t.Fatal("downlevel pending fact lost urgency or starved ordinary diagnostics")
 	}
 }
 

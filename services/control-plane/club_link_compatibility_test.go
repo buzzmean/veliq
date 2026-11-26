@@ -19,6 +19,7 @@ func TestPersistentBodyAcceptsMixedLegacyAndClubLinkMetadata(t *testing.T) {
 	e.At = time.Now().UTC()
 	e.Component, e.Observer, e.State, e.Code = "CLUB_LINK", "PASSIVE_TCP_TABLE", "failed", "CONNECTION_LOST"
 	e.NativeCode, e.EventID = 0, 0
+	e.ServicePID = 44 // The real producer always carries its reporting service generation.
 	e.PID, e.Birth, e.App, e.ProcessVerified = 24, 100, "langameservice.exe", true
 	e.Incident = strings.Repeat("d", 32)
 	e.ClubLink = clubhealth.ClubLink{Kind: "LANGAME", LinkID: e.Incident, PeerID: strings.Repeat("e", 32), Protocol: "TCP4",
