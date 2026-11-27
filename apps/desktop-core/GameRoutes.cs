@@ -11,7 +11,7 @@ public sealed partial class GameCard
     string? relayId;bool selected;
     public string? RelayId {get=>relayId;set{if(Set(ref relayId,value))RouteChanged();}}
     public bool IsSelected {get=>selected;set=>Set(ref selected,value);}
-    public bool IsCustom=>Mode!="DIRECT";
+    public bool IsCustom=>Mode is "MANUAL" or "DIRECT_PLUS";
     public string RouteKey=>Mode=="MANUAL"?"MANUAL:"+RelayId:Mode;
     public string RouteLabel=>Mode switch{"AUTO"=>"Авто","DIRECT_PLUS"=>"Локально","MANUAL"=>RelayId is {Length:>0} r?"Сервер "+Text.Route(r):"Через сервер",_=>"Напрямую"};
     void RouteChanged(){Changed(nameof(RouteLabel));Changed(nameof(IsCustom));Changed(nameof(RouteKey));RouteKeyChanged?.Invoke();}

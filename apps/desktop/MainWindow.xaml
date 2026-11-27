@@ -118,11 +118,14 @@
      <Grid MinHeight="220">
      <TextBlock Text="{ui:Tr NoOptimizedApplications}" Style="{StaticResource Hint}" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="{Binding NoActiveServices, Converter={StaticResource BoolToVisible}}"/>
      <DataGrid x:Name="AppGrid" MinHeight="220" MaxHeight="320" ItemsSource="{Binding ServiceApplications}" Visibility="{Binding HasVisibleServices, Converter={StaticResource BoolToVisible}}" SelectionChanged="ApplicationSelected" SelectionMode="Single" Margin="0,8,0,0"><DataGrid.Columns>
-      <DataGridTextColumn Header="{ui:Tr Application}" Binding="{Binding Name}" Width="150"/>
+      <DataGridTextColumn Header="{ui:Tr Application}" Binding="{Binding Name}" Width="*" MinWidth="150"/>
       <DataGridTextColumn Header="{ui:Tr Executable}" Binding="{Binding Path}" Width="2*"/>
       <DataGridTextColumn Header="{ui:Tr Mode}" Binding="{Binding Mode}" Width="120"/>
       <DataGridTextColumn Header="{ui:Tr ProcessStatus}" Binding="{Binding ProcessStatus}" Width="130"/>
-      <DataGridTextColumn Header="{ui:Tr CurrentRoute}" Binding="{Binding ServiceStatus}" Width="*"/>
+      <DataGridTextColumn Binding="{Binding ServiceStatus}" Width="Auto" MinWidth="180" MaxWidth="300">
+       <DataGridTextColumn.Header><TextBlock Text="{ui:Tr CurrentRoute}" HorizontalAlignment="Right"/></DataGridTextColumn.Header>
+       <DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="TextAlignment" Value="Right"/><Setter Property="TextTrimming" Value="CharacterEllipsis"/></Style></DataGridTextColumn.ElementStyle>
+      </DataGridTextColumn>
       <DataGridTextColumn Header="{ui:Tr UdpTraffic}" Binding="{Binding Udp}" Width="130" Visibility="Collapsed"/>
       <DataGridTextColumn Header="{ui:Tr TcpTraffic}" Binding="{Binding Tcp}" Width="130" Visibility="Collapsed"/>
       <DataGridTextColumn Header="{ui:Tr IPv4Label}" Binding="{Binding Ipv4}" Width="130" Visibility="Collapsed"/>
