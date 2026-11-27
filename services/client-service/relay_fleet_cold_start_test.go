@@ -205,7 +205,7 @@ func TestFleetColdConnectRemoteBeforeStartReservesAdmission(t *testing.T) {
 				}()
 			}
 			wg.Wait()
-			if legacyCalls.Load() > 1 || controller.fleet.budget.Snapshot().Sessions > 2 {
+			if legacyCalls.Load() > 2 || controller.fleet.budget.Snapshot().Sessions > transport.FleetSessionLimit {
 				t.Fatal("legacy creators stole the cold bootstrap slot", legacyCalls.Load())
 			}
 		})

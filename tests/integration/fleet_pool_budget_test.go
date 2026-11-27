@@ -58,6 +58,34 @@ func busyFleetDonor(t *testing.T, budget *transport.FleetBudget, renew bool) (*p
 	return x, a, u, b
 }
 
+// occupyOtherFleetSlots supplies unrelated, authenticated pools so the old
+// handoff cases exercise the shared ceiling rather than a two-session constant.
+// No application or probe permits are consumed by these warm sessions.
+func occupyOtherFleetSlots(t *testing.T, budget *transport.FleetBudget, slots int) func() {
+	t.Helper()
+	var pools []*transport.Pool
+	closePools := func() {
+		for _, p := range pools {
+			_ = p.Close()
+		}
+	}
+	t.Cleanup(closePools)
+	for range slots {
+		cfg := transport.DefaultPoolConfig()
+		cfg.FleetBudget = budget
+		cfg.MaxSessions = 1
+		x := newPoolFixture(t, cfg, nil)
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		err := x.pool.Warm(ctx)
+		cancel()
+		if err != nil {
+			t.Fatal("could not occupy shared session fixture", err)
+		}
+		pools = append(pools, x.pool)
+	}
+	return closePools
+}
+
 func fleetUDPEcho(t *testing.T, d routing.Datagram) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -74,6 +102,7 @@ func fleetUDPEcho(t *testing.T, d routing.Datagram) {
 func TestFleetSelectiveHandoffPreservesBusyTCPUDPAndRenewal(t *testing.T) {
 	budget := &transport.FleetBudget{}
 	legacy, tcp, udp, other := busyFleetDonor(t, budget, true)
+	closeFillers := occupyOtherFleetSlots(t, budget, transport.FleetSessionLimit-2)
 	cfg := transport.DefaultPoolConfig()
 	cfg.FleetBudget = budget
 	target := newRenewingPoolFixture(t, cfg, nil, 3*time.Second)
@@ -107,7 +136,7 @@ func TestFleetSelectiveHandoffPreservesBusyTCPUDPAndRenewal(t *testing.T) {
 	waitFleetAdmission(t, func() bool { return legacy.server.Metrics.Renewals.Load() >= 2 })
 	assertTCPEcho(t, tcp)
 	fleetUDPEcho(t, udp)
-	if target.issued.Load() != 0 || budget.Snapshot().Sessions != 2 {
+	if target.issued.Load() != 0 || budget.Snapshot().Sessions != transport.FleetSessionLimit {
 		t.Fatal("busy leases were bypassed")
 	}
 	stop := make(chan struct{})
@@ -133,8 +162,8 @@ func TestFleetSelectiveHandoffPreservesBusyTCPUDPAndRenewal(t *testing.T) {
 	waitFleetAdmission(t, func() bool { return target.pool.HasAdmittingSession() })
 	close(stop)
 	storm.Wait()
-	if legacy.issued.Load() != 2 || target.issued.Load() != 1 || budget.Snapshot().Sessions != 2 {
-		t.Fatalf("priority or max2 violated: legacy%d target%d %+v", legacy.issued.Load(), target.issued.Load(), budget.Snapshot())
+	if legacy.issued.Load() != 2 || target.issued.Load() != 1 || budget.Snapshot().Sessions != transport.FleetSessionLimit {
+		t.Fatalf("priority or shared session ceiling violated: legacy%d target%d %+v", legacy.issued.Load(), target.issued.Load(), budget.Snapshot())
 	}
 	assertTCPEcho(t, other)
 	assertTCPEcho(t, newLegacy)
@@ -152,6 +181,7 @@ func TestFleetSelectiveHandoffPreservesBusyTCPUDPAndRenewal(t *testing.T) {
 	udp.Close()
 	legacy.pool.Close()
 	target.pool.Close()
+	closeFillers()
 	if got := budget.Snapshot(); got != (transport.FleetOccupancy{Enabled: true}) {
 		t.Fatalf("release was not exactly once: %+v", got)
 	}
@@ -162,6 +192,7 @@ func TestFleetSelectiveHandoffCancellationRestoresAdmission(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			budget := &transport.FleetBudget{}
 			legacy, tcp, udp, other := busyFleetDonor(t, budget, false)
+			occupyOtherFleetSlots(t, budget, transport.FleetSessionLimit-2)
 			cfg := transport.DefaultPoolConfig()
 			cfg.FleetBudget = budget
 			target := newPoolFixture(t, cfg, nil)
@@ -227,6 +258,7 @@ func TestFleetSelectiveHandoffDoesNotFenceSoleUnrelatedPools(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer two.Close()
+	occupyOtherFleetSlots(t, budget, transport.FleetSessionLimit-2)
 	budget.SetEnabled(true)
 	plan := transport.NewFleetAdmission(target.pool, []*transport.Pool{a.pool, b.pool}, time.Now().Add(time.Second), nil)
 	defer plan.Cancel()
@@ -236,7 +268,7 @@ func TestFleetSelectiveHandoffDoesNotFenceSoleUnrelatedPools(t *testing.T) {
 	}
 	assertTCPEcho(t, one)
 	fleetUDPEcho(t, two)
-	if target.issued.Load() != 0 || budget.Snapshot().Sessions != 2 {
+	if target.issued.Load() != 0 || budget.Snapshot().Sessions != transport.FleetSessionLimit {
 		t.Fatal("infinite leases were reported as progress")
 	}
 }
@@ -288,6 +320,7 @@ func TestFleetSelectiveHandoffRestoresSoleLegacyAfterAlternativeDies(t *testing.
 		t.Run(mode, func(t *testing.T) {
 			budget := &transport.FleetBudget{}
 			legacy, tcp, udp, _ := busyFleetDonor(t, budget, false)
+			occupyOtherFleetSlots(t, budget, transport.FleetSessionLimit-2)
 			cfg := transport.DefaultPoolConfig()
 			cfg.FleetBudget = budget
 			target := newPoolFixture(t, cfg, nil)
@@ -330,7 +363,7 @@ func TestFleetSelectiveHandoffRestoresSoleLegacyAfterAlternativeDies(t *testing.
 					t.Fatal("sole legacy session still fenced")
 				}
 			}
-			if budget.Snapshot().Sessions > 2 {
+			if budget.Snapshot().Sessions > transport.FleetSessionLimit {
 				t.Fatal("restoration exceeded shared budget")
 			}
 		})
@@ -356,6 +389,7 @@ func TestFleetFutureSlotClaimBeatsLegacyNaturalRetirementStorm(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer other.Close()
+	occupyOtherFleetSlots(t, budget, transport.FleetSessionLimit-2)
 	budget.SetEnabled(true)
 	plan := transport.NewFleetAdmission(target.pool, []*transport.Pool{a.pool, b.pool}, time.Now().Add(3*time.Second), nil)
 	defer plan.Cancel()
@@ -390,7 +424,7 @@ func TestFleetFutureSlotClaimBeatsLegacyNaturalRetirementStorm(t *testing.T) {
 	waitFleetAdmission(t, func() bool { return target.pool.HasAdmittingSession() })
 	close(stop)
 	wg.Wait()
-	if a.issued.Load() != 1 || target.issued.Load() != 1 || budget.Snapshot().Sessions != 2 {
+	if a.issued.Load() != 1 || target.issued.Load() != 1 || budget.Snapshot().Sessions != transport.FleetSessionLimit {
 		t.Fatal("legacy re-creation stole naturally released slot")
 	}
 	assertTCPEcho(t, other)
@@ -418,6 +452,7 @@ func TestFleetPoolsShareAdmissionAcrossConcurrentOpenFixtures(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer previous.Close()
+			closeFillers := occupyOtherFleetSlots(t, budget, transport.FleetSessionLimit-2)
 			budget.SetEnabled(true)
 			if err = legacy.pool.Warm(ctx); transport.FailureReason(err) != "fleet_session_capacity" || legacy.issued.Load() != 0 {
 				t.Fatalf("legacy Warm bypassed shared session ceiling: %v", err)
@@ -476,7 +511,7 @@ func TestFleetPoolsShareAdmissionAcrossConcurrentOpenFixtures(t *testing.T) {
 			if _, err := a.pool.OpenProbeDatagram(ctx, a.udp); transport.FailureReason(err) != "fleet_stream_capacity" {
 				t.Fatalf("second pool bypassed probe ceiling: %v", err)
 			}
-			if got := budget.Snapshot(); got.Sessions != 2 || got.Applications != want+1 || got.Probes != 1 || got.Waiting != 0 {
+			if got := budget.Snapshot(); got.Sessions != transport.FleetSessionLimit || got.Applications != want+1 || got.Probes != 1 || got.Waiting != 0 {
 				t.Fatalf("unexpected shared occupancy: %+v", got)
 			}
 			b.pool.SetDraining(true)
@@ -494,6 +529,7 @@ func TestFleetPoolsShareAdmissionAcrossConcurrentOpenFixtures(t *testing.T) {
 			}
 			_ = a.pool.Close()
 			_ = b.pool.Close()
+			closeFillers()
 			if state := budget.Snapshot(); state != (transport.FleetOccupancy{Enabled: true}) {
 				t.Fatalf("leaked session permits: %+v", state)
 			}
@@ -543,5 +579,108 @@ func TestFleetPoolCancelledOpenReturnsSharedWaiterAndApplication(t *testing.T) {
 	}
 	if got := budget.Snapshot(); got.Sessions != 0 {
 		t.Fatalf("session creation permit remained after close: %+v", got)
+	}
+}
+
+// Real QUIC/mTLS regression for hot opt-in with the three occupied legacy
+// sessions observed in the field. Increasing the session ceiling does not
+// require closing, moving, or fencing any existing TCP/UDP lease.
+func TestFleetHotEnableAdmitsManagedAlongsideThreeBusyLegacySessions(t *testing.T) {
+	budget := &transport.FleetBudget{}
+	cfg := transport.DefaultPoolConfig()
+	cfg.FleetBudget = budget
+	cfg.MaxSessions = 1
+	one := newPoolFixture(t, cfg, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	first, err := one.pool.OpenTCP(ctx, one.tcp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	legacy, tcp, udp, other := busyFleetDonor(t, budget, false)
+	if got := budget.Snapshot(); got.Enabled || got.Sessions != 3 || got.Applications != 4 {
+		t.Fatalf("fixture is not the three busy feature-off sessions: %+v", got)
+	}
+	cfg.MaxSessions = 1
+	target := newPoolFixture(t, cfg, nil)
+	budget.SetEnabled(true)
+	plan := transport.NewFleetAdmission(target.pool, []*transport.Pool{one.pool, legacy.pool}, time.Now().Add(3*time.Second), nil)
+	defer plan.Cancel()
+	waitFleetAdmission(t, func() bool { return target.pool.HasAdmittingSession() })
+	if got := budget.Snapshot(); got.Sessions != 4 || got.Applications != 4 {
+		t.Fatalf("new managed session did not coexist with old leases: %+v", got)
+	}
+	if plan.Snapshot().VictimSession != 0 || one.issued.Load() != 1 || legacy.issued.Load() != 2 || target.issued.Load() != 1 {
+		t.Fatal("hot opt-in replaced or fenced an existing session", plan.Snapshot())
+	}
+	for _, p := range []*transport.Pool{one.pool, legacy.pool} {
+		for _, s := range p.Snapshot().Sessions {
+			if s.Draining || s.AdmissionFenced {
+				t.Fatal("old busy session was drained instead of retained")
+			}
+		}
+	}
+	assertTCPEcho(t, first)
+	assertTCPEcho(t, tcp)
+	assertTCPEcho(t, other)
+	fleetUDPEcho(t, udp)
+	managed, err := target.pool.OpenFleetTCP(ctx, target.tcp)
+	if err != nil {
+		t.Fatal("managed application OPEN failed", err)
+	}
+	defer managed.Close()
+	assertTCPEcho(t, managed)
+	budget.SetEnabled(false)
+	assertTCPEcho(t, first)
+	assertTCPEcho(t, tcp)
+	assertTCPEcho(t, managed)
+	fleetUDPEcho(t, udp)
+}
+
+func TestFleetSixRelayPoolsAndTwoExtraSessionsKeepBoundedCeiling(t *testing.T) {
+	budget := &transport.FleetBudget{}
+	budget.SetEnabled(true)
+	cfg := transport.DefaultPoolConfig()
+	cfg.FleetBudget = budget
+	cfg.MaxSessions = 3
+	cfg.SessionFlows = 2
+	primary := newPoolFixture(t, cfg, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	var busy []net.Conn
+	for range 3 {
+		c, err := primary.pool.OpenTCP(ctx, primary.tcp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		busy = append(busy, c)
+		t.Cleanup(func() { c.Close() })
+	}
+	// Five other relay pools plus three demanded primary sessions exercise
+	// six distinct authenticated endpoints and the two spare session slots.
+	closeOthers := occupyOtherFleetSlots(t, budget, 5)
+	if got := budget.Snapshot(); got.Sessions != 8 {
+		t.Fatalf("six-node plus spare-session ceiling changed: %+v", got)
+	}
+	ninth := newPoolFixture(t, cfg, nil)
+	if err := ninth.pool.Warm(ctx); transport.FailureReason(err) != "fleet_session_capacity" || ninth.issued.Load() != 0 {
+		t.Fatalf("ninth session reached factory or bypassed client ceiling: %v", err)
+	}
+	for _, c := range busy {
+		assertTCPEcho(t, c)
+	}
+	closeOthers()
+	if err := ninth.pool.Warm(ctx); err != nil || ninth.issued.Load() != 1 {
+		t.Fatal("naturally released capacity was not reusable", err)
+	}
+	for _, c := range busy {
+		assertTCPEcho(t, c)
+		c.Close()
+	}
+	primary.pool.Close()
+	ninth.pool.Close()
+	if got := budget.Snapshot(); got != (transport.FleetOccupancy{Enabled: true}) {
+		t.Fatalf("session/application permits were not refunded exactly: %+v", got)
 	}
 }

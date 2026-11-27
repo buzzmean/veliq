@@ -1,15 +1,20 @@
 # Fleet relay admission
 
-The legacy relay path is the default. On an explicitly enrolled client, fleet applies to new implicit RELAY opens already authorized by routing policy. An explicit ID and address, MANUAL, DIRECT, LOCAL and protected routing keep their policy scope. Every service pool consumes the same client budget in fleet mode. The limits are two QUIC sessions, 47 application flows, one probe flow, 16 waiters and 10 relay echo sends per five-second rolling window. Older live resources count against the limit and finish on their original path. The two selected candidates use authenticated relay echo as transport evidence. The acknowledged target OPEN supplies separate destination evidence.
+The legacy relay path is the default. On an explicitly enrolled client, fleet applies to new implicit RELAY opens already authorized by routing policy. An explicit ID and address, MANUAL, DIRECT, LOCAL and protected routing keep their policy scope. Every service pool consumes the same client budget in fleet mode. The limits are eight QUIC sessions, 47 application flows, one probe flow, 16 waiters and 10 relay echo sends per five-second rolling window. Older live resources count against the limit and finish on their original path. The two selected candidates use authenticated relay echo as transport evidence. The acknowledged target OPEN supplies separate destination evidence.
 
 ## Admission while existing sessions are busy
 
-The two-session budget counts both legacy and managed sessions, including sessions
-being created. One session can carry flows from several applications; this limit
-does not restrict the client to two applications.
+The eight-session client budget counts both legacy and managed sessions, including
+sessions being created. It uses the existing bounded pool ceiling, leaving room
+for six relay nodes and connection replacement without preallocating sessions.
+Sessions are created only when authorized work needs them. One session can carry
+flows from several applications; this limit is not an application count.
+Signed per-node session, flow, packet, bit-rate and OPEN limits remain enforced,
+as do the independent client application, probe, waiter and echo limits.
 
 A fresh, authorized managed candidate can claim the next available session slot.
-If a legacy pool has two suitable sessions, one session stops accepting new opens
+When the shared session budget is full and a legacy pool has two suitable
+sessions, one session stops accepting new opens
 while its existing TCP and UDP leases continue on their original connection.
 New opens can use the suitable alternative in that same pool. The client does not
 substitute another relay identity or address for an explicit or manual route.
@@ -19,8 +24,11 @@ legacy session.
 If no session can be drained safely, the claim still protects the next naturally
 released slot without preventing opens on existing sole-provider sessions.
 
-This transfer does not create an extra session or force existing flows to close.
-Two indefinitely live sessions can therefore keep admission waiting indefinitely.
+Admission never exceeds the shared session ceiling or forces existing flows
+to close. With unused capacity, a managed session can start alongside old work.
+A completely occupied eight-session budget can still keep admission waiting
+indefinitely when all existing leases remain live. Three busy legacy sessions
+do not exhaust this budget or require active connections to be closed.
 Policy expiry, suspension, rollback, or a changed candidate/network cancels the
 operation's own reservation and fence; it does not undo permanent pool retirement.
 Status distinguishes waiting for the network, existing leases, and session setup.
@@ -29,7 +37,8 @@ An accepted transport session still requires separate application and destinatio
 evidence.
 
 Startup initializes the network context passively and binds fresh fleet policy
-before admitting legacy work into both slots. An unavailable network leaves the
+before exposing legacy work to the shared session budget. An unavailable network
+leaves the
 service available for diagnostics while managed admission waits. A service
 reinstallation is an update/recovery operation, not evidence that a live session
 transfer preserves connections across process replacement.

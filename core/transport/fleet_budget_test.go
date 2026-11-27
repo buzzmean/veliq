@@ -10,7 +10,7 @@ import (
 func TestFleetBudgetHotEnablePreservesExistingReservations(t *testing.T) {
 	budget := &FleetBudget{}
 	var live []func()
-	for i := 0; i < 4; i++ {
+	for i := 0; i < FleetSessionLimit+2; i++ {
 		release, ok := budget.reserve(fleetSession)
 		if !ok {
 			t.Fatal("feature-off budget denied a session")
@@ -18,13 +18,13 @@ func TestFleetBudgetHotEnablePreservesExistingReservations(t *testing.T) {
 		live = append(live, release)
 	}
 	budget.SetEnabled(true)
-	if s := budget.Snapshot(); s.Sessions != 4 || !s.Enabled {
+	if s := budget.Snapshot(); s.Sessions != FleetSessionLimit+2 || !s.Enabled {
 		t.Fatalf("lost existing sessions: %+v", s)
 	}
 	if _, ok := budget.reserve(fleetSession); ok {
 		t.Fatal("over-limit session admitted after opt-in")
 	}
-	for _, release := range live[:3] {
+	for _, release := range live[:FleetSessionLimit+1] {
 		release()
 		release()
 	}
@@ -33,7 +33,7 @@ func TestFleetBudgetHotEnablePreservesExistingReservations(t *testing.T) {
 		t.Fatal("released capacity not reusable")
 	}
 	release()
-	live[3]()
+	live[FleetSessionLimit+1]()
 	if sessions := budget.Snapshot().Sessions; sessions != 0 {
 		t.Fatalf("session permits leaked: %d", sessions)
 	}

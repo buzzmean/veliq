@@ -6,7 +6,9 @@ import (
 )
 
 const (
-	FleetSessionLimit     = 2
+	// Share the established bounded pool ceiling across the whole client.
+	// Sessions are created on demand; relay-signed quotas remain independent.
+	FleetSessionLimit     = PoolMaxSessions
 	FleetApplicationLimit = 47
 	FleetProbeLimit       = 1
 	FleetWaitingLimit     = 16
