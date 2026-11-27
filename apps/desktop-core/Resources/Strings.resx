@@ -611,7 +611,7 @@
   <data name="EnterActivationCode" xml:space="preserve"><value>Введите код активации</value></data>
   <data name="ActivateCode" xml:space="preserve"><value>Активировать</value></data>
   <data name="Games" xml:space="preserve"><value>Игры</value></data>
-  <data name="GameCatalogHint" xml:space="preserve"><value>В режиме «Авто» VELIQ выбирает маршрут сам. Нажмите на карточку игры, если нужна индивидуальная настройка.</value></data>
+  <data name="GameCatalogHint" xml:space="preserve"><value>Выбор маршрута вручную необязателен. Карточка открывает индивидуальные настройки игры.</value></data>
   <data name="GameCatalogSearch" xml:space="preserve"><value>Поиск игры</value></data>
   <data name="GameCatalogApply" xml:space="preserve"><value>Применить</value></data>
   <data name="GameCatalogRepair" xml:space="preserve"><value>Исправить лаунчер</value></data>
