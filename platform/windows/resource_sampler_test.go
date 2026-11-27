@@ -54,7 +54,7 @@ func TestResourceSamplerMonotonicDeltasKnownAndThrottle(t *testing.T) {
 	}
 }
 func TestResourceSamplerPIDBirthReuseAndCounterResetAreExplicit(t *testing.T) {
-	for _, which := range []string{"birth", "cpu", "io", "system", "pid", "unavailable", "backward-clock"} {
+	for _, which := range []string{"birth", "cpu", "io", "system", "pid", "unavailable", "backward-clock", "zero-clock"} {
 		t.Run(which, func(t *testing.T) {
 			a, b := resourceFixtureFrame(123, 1000, 50, 70), resourceFixtureFrame(123, 2000, 60, 80)
 			switch which {
@@ -79,12 +79,19 @@ func TestResourceSamplerPIDBirthReuseAndCounterResetAreExplicit(t *testing.T) {
 			if which == "backward-clock" {
 				*at = at.Add(-10 * time.Second)
 			}
+			if which == "zero-clock" {
+				s.interval = 0
+				*at = at.Add(-5 * time.Second)
+			}
 			out := s.Observe()
 			if out.Delta.Reset == "" {
 				t.Fatal("reset silently attributed", which, out)
 			}
+			if which == "zero-clock" && (out.Delta.Reset != "MONOTONIC_CLOCK_RESET" || out.Delta.ElapsedNS != 0) {
+				t.Fatal("zero native interval must remain unknown", out)
+			}
 			switch which {
-			case "birth", "pid", "unavailable", "backward-clock":
+			case "birth", "pid", "unavailable", "backward-clock", "zero-clock":
 				if out.Delta.Known != 0 {
 					t.Fatal("wrong generation/clock attributed", out)
 				}
@@ -151,8 +158,19 @@ func TestResourceSamplerOwnProcessCountersNoExternalSource(t *testing.T) {
 	// Native reads only; this force bypasses the scheduled interval in the fixture.
 	s.interval = 0
 	for range 4 {
+		// Windows may return identical monotonic timestamps for adjacent reads.
+		// Await a real clock tick instead of inventing an interval or asking the
+		// runtime to attribute CPU over zero elapsed time. Both bounds prevent
+		// an indefinitely stalled native clock from hanging the fixture.
+		deadline := time.Now().Add(time.Second)
+		for polls := 0; !s.now().After(s.previous); polls++ {
+			if polls >= 1000 || !time.Now().Before(deadline) {
+				t.Fatal("native monotonic clock did not advance within the bounded wait")
+			}
+			time.Sleep(time.Millisecond)
+		}
 		next := s.Observe()
-		if next.Sample.Birth != out.Sample.Birth || next.Sample.CPUTimeNS < out.Sample.CPUTimeNS || next.Delta.Reset != "" {
+		if next.Sample.PID != out.Sample.PID || next.Sample.Birth != out.Sample.Birth || next.Sample.CPUTimeNS < out.Sample.CPUTimeNS || next.Delta.Reset != "" || next.Delta.ElapsedNS == 0 || next.Delta.Known&flightrecorder.ResourceCPU == 0 {
 			t.Fatal("own monotonic source mismatch", next)
 		}
 		out = next
