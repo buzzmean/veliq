@@ -80,8 +80,13 @@ def run(origin, output):
             assert len(activation_requests) == 1
             after = context.request.get(origin + "/__fixture/state", params={"email": email}).json()
             assert after["subscriptions"] == after["activated_trials"] == 1 and after["paid_subscriptions"] == 0
-            seeded = context.request.post(origin + "/__fixture/seed-personal-bindings", data={"email": email, "count": 3})
-            assert seeded.ok, "real three-binding fixture seed refused"
+            # The real session cookie correctly has Path=/api/v1/account.
+            # Forward only this synthetic account cookie to the loopback-only,
+            # test-compiled fixture; never widen the production cookie path.
+            fixture_session = next(cookie for cookie in context.cookies(origin + "/api/v1/account") if cookie["name"] == "veliq_session")
+            seeded = context.request.post(origin + "/__fixture/seed-personal-bindings", data={"email": email, "count": 3},
+                                          headers={"Cookie": fixture_session["name"] + "=" + fixture_session["value"]})
+            assert seeded.ok, ("real three-binding fixture seed refused", seeded.status)
             page.reload()
             page.locator("[data-step=cabinet]").wait_for(state="visible")
             current = context.request.get(origin + "/api/v1/account").json()
