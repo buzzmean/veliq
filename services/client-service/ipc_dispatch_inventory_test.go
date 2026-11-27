@@ -23,9 +23,25 @@ func TestIPCDispatcherCoversHandlersAndClientLiterals(t *testing.T) {
 		t.Fatal(err)
 	}
 	dispatched := map[string]bool{}
+	wrapperDelegates := false
+	for _, decl := range parsed.Decls {
+		if fn, ok := decl.(*ast.FuncDecl); ok && fn.Name.Name == "Handle" {
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				if call, ok := n.(*ast.CallExpr); ok {
+					if target, ok := call.Fun.(*ast.SelectorExpr); ok && target.Sel.Name == "handleRequest" {
+						wrapperDelegates = true
+					}
+				}
+				return true
+			})
+		}
+	}
+	if !wrapperDelegates {
+		t.Fatal("public IPC wrapper no longer delegates to the checked dispatcher")
+	}
 	for _, decl := range parsed.Decls {
 		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "Handle" {
+		if !ok || fn.Name.Name != "handleRequest" {
 			continue
 		}
 		// The final method switch is the dispatcher; the earlier switch only sets

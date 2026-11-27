@@ -51,8 +51,6 @@ func flightOperation(method string) string {
 		return "AUTO_COMMIT"
 	case "browser.native.enable":
 		return "NATIVE_BROWSER_ENABLE"
-	case "browser.native.disable":
-		return "NATIVE_BROWSER_DISABLE"
 	case "browser.start":
 		return "BROWSER_START"
 	case "browser.prepare":

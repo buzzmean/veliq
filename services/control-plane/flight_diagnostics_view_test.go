@@ -20,9 +20,9 @@ func flightViewFixture(s flightrecorder.Summary) clubhealth.Diagnostic {
 	return clubhealth.Diagnostic{Component: "PERFORMANCE", Observer: "FLIGHT_RECORDER", Code: "RESOURCE_CONTEXT", Operation: s.Encode(), ProcessVerified: true, PID: 123, Birth: 134402359570643174, App: "veliq-service.exe"}
 }
 func TestFlightDiagnosticSummaryKnownUnitsOneCoreAndContext(t *testing.T) {
-	s := flightrecorder.Summary{Flags: flightrecorder.KnownCPU | flightrecorder.KnownInterval | flightrecorder.KnownWorkingSet | flightrecorder.KnownIO | flightrecorder.KnownGC | flightrecorder.VerifiedProcess | flightrecorder.ContextPre | flightrecorder.ContextPost | flightrecorder.Heartbeat, SpanMS: 5000, CPUTimeUS: 10000000, WorkingSetKiB: 524288, ReadKiB: 12, WriteKiB: 34, GCPauseUS: 123}
+	s := flightrecorder.Summary{Flags: flightrecorder.KnownCPU | flightrecorder.KnownInterval | flightrecorder.KnownWorkingSet | flightrecorder.KnownIO | flightrecorder.KnownGC | flightrecorder.VerifiedProcess | flightrecorder.ContextPre, SpanMS: 5000, CPUTimeUS: 10000000, WorkingSetKiB: 524288, ReadKiB: 12, WriteKiB: 34, GCPauseUS: 123}
 	text := flightDiagnosticSummary(flightViewFixture(s))
-	for _, part := range []string{"интервал 5000 мс", "CPU: 200.00% одного ядра (10000000 мкс)", "RSS: 512.00 МиБ", "IO: чтение 12 КиБ, запись 34 КиБ", "паузы GC: 123 мкс", "связь с поколением процесса подтверждена", "до события, после события, периодический снимок", "FPS не измерен; причина сбоя не установлена"} {
+	for _, part := range []string{"интервал 5000 мс", "CPU: 200.00% одного ядра (10000000 мкс)", "RSS: 512.00 МиБ", "IO: чтение 12 КиБ, запись 34 КиБ", "паузы GC: 123 мкс", "связь с поколением процесса подтверждена", "контекст: до события", "FPS не измерен; причина сбоя не установлена"} {
 		if !strings.Contains(text, part) {
 			t.Fatal("missing known-only presentation", part, text)
 		}
@@ -38,7 +38,6 @@ func TestFlightDiagnosticSummaryUnknownResetAndZeroInterval(t *testing.T) {
 		{name: "known-zero", s: flightrecorder.Summary{Flags: flightrecorder.KnownCPU | flightrecorder.KnownInterval, SpanMS: 5000}, want: []string{"CPU: 0.00% одного ядра (0 мкс)"}},
 		{name: "reset", s: flightrecorder.Summary{Flags: flightrecorder.CounterReset | flightrecorder.KnownWorkingSet, WorkingSetKiB: 1024}, want: []string{"сброс или разрыв счётчиков", "дельты CPU/IO/GC неизвестны", "RSS: 1.00 МиБ", "CPU: неизвестно"}, absent: []string{"0.00%", "перезапуск"}},
 		{name: "submillisecond", s: flightrecorder.Summary{Flags: flightrecorder.KnownCPU | flightrecorder.KnownInterval, CPUTimeUS: 10}, want: []string{"интервал меньше 1 мс", "CPU: 10 мкс; доля одного ядра неизвестна"}, absent: []string{"+Inf", "NaN", "% одного"}},
-		{name: "no-interval", s: flightrecorder.Summary{Flags: flightrecorder.KnownCPU, CPUTimeUS: 100}, want: []string{"CPU: 100 мкс; доля одного ядра неизвестна"}, absent: []string{"% одного"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			text := flightDiagnosticSummary(flightViewFixture(tc.s))
@@ -55,6 +54,35 @@ func TestFlightDiagnosticSummaryUnknownResetAndZeroInterval(t *testing.T) {
 		})
 	}
 }
+func TestFlightDiagnosticSummaryContextFlagsAreExclusive(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		flag   uint16
+		want   string
+		absent []string
+	}{
+		{"pre", flightrecorder.ContextPre, "контекст: до события", []string{"после события", "периодический снимок"}},
+		{"post", flightrecorder.ContextPost, "контекст: после события", []string{"до события", "периодический снимок"}},
+		{"heartbeat", flightrecorder.Heartbeat, "контекст: периодический снимок", []string{"до события", "после события"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := flightViewFixture(flightrecorder.Summary{Flags: tc.flag})
+			if tc.flag == flightrecorder.Heartbeat {
+				e.Code = "RECORDER_HEARTBEAT"
+			}
+			text := flightDiagnosticSummary(e)
+			if !strings.Contains(text, tc.want) {
+				t.Fatal(tc.want, text)
+			}
+			for _, absent := range tc.absent {
+				if strings.Contains(text, absent) {
+					t.Fatal("mixed context displayed", text)
+				}
+			}
+		})
+	}
+}
+
 func TestFlightDiagnosticSummarySaturationNeverComputesFalseExactRatio(t *testing.T) {
 	s := flightrecorder.Summary{Flags: flightrecorder.KnownCPU | flightrecorder.KnownInterval | flightrecorder.KnownWorkingSet | flightrecorder.KnownIO | flightrecorder.KnownGC | flightrecorder.Saturated, SpanMS: math.MaxUint32, CPUTimeUS: math.MaxUint32, WorkingSetKiB: math.MaxUint32, ReadKiB: math.MaxUint32, WriteKiB: 1, GCPauseUS: math.MaxUint32}
 	text := flightDiagnosticSummary(flightViewFixture(s))
@@ -64,9 +92,21 @@ func TestFlightDiagnosticSummarySaturationNeverComputesFalseExactRatio(t *testin
 }
 func TestFlightDiagnosticSummaryRequiresExactScopeAndCanonicalPayload(t *testing.T) {
 	valid := flightViewFixture(flightrecorder.Summary{Flags: flightrecorder.Heartbeat})
-	for _, change := range []func(*clubhealth.Diagnostic){func(e *clubhealth.Diagnostic) { e.Component = "TLS" }, func(e *clubhealth.Diagnostic) { e.Observer = "WINDOWS_EVENT_LOG" }, func(e *clubhealth.Diagnostic) { e.Code = "RECORDER_OVERFLOW" }, func(e *clubhealth.Diagnostic) { e.Operation = "FR1_invalid" }, func(e *clubhealth.Diagnostic) { e.Operation = strings.ToLower(e.Operation) }, func(e *clubhealth.Diagnostic) { e.Operation = flightrecorder.Summary{Flags: 0x8000}.Encode() }, func(e *clubhealth.Diagnostic) { e.Operation = flightrecorder.Summary{CPUTimeUS: 1}.Encode() }, func(e *clubhealth.Diagnostic) {
-		e.Operation = flightrecorder.Summary{Flags: flightrecorder.CounterReset | flightrecorder.KnownCPU}.Encode()
-	}} {
+	for _, change := range []func(*clubhealth.Diagnostic){func(e *clubhealth.Diagnostic) {
+		e.Operation = flightrecorder.Summary{Flags: flightrecorder.KnownCPU, CPUTimeUS: 100}.Encode()
+	},
+		func(e *clubhealth.Diagnostic) {
+			e.Operation = flightrecorder.Summary{Flags: flightrecorder.ContextPre | flightrecorder.ContextPost}.Encode()
+		},
+		func(e *clubhealth.Diagnostic) {
+			e.Operation = flightrecorder.Summary{Flags: flightrecorder.Heartbeat | flightrecorder.ContextPre}.Encode()
+		},
+		func(e *clubhealth.Diagnostic) {
+			e.Operation = flightrecorder.Summary{Flags: flightrecorder.Heartbeat | flightrecorder.ContextPost}.Encode()
+		},
+		func(e *clubhealth.Diagnostic) { e.Component = "TLS" }, func(e *clubhealth.Diagnostic) { e.Observer = "WINDOWS_EVENT_LOG" }, func(e *clubhealth.Diagnostic) { e.Code = "RECORDER_OVERFLOW" }, func(e *clubhealth.Diagnostic) { e.Operation = "FR1_invalid" }, func(e *clubhealth.Diagnostic) { e.Operation = strings.ToLower(e.Operation) }, func(e *clubhealth.Diagnostic) { e.Operation = flightrecorder.Summary{Flags: 0x8000}.Encode() }, func(e *clubhealth.Diagnostic) { e.Operation = flightrecorder.Summary{CPUTimeUS: 1}.Encode() }, func(e *clubhealth.Diagnostic) {
+			e.Operation = flightrecorder.Summary{Flags: flightrecorder.CounterReset | flightrecorder.KnownCPU}.Encode()
+		}} {
 		e := valid
 		change(&e)
 		if text := flightDiagnosticSummary(e); text != "" {
