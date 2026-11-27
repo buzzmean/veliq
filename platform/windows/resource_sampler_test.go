@@ -152,7 +152,8 @@ func TestResourceSamplerOwnProcessCountersNoExternalSource(t *testing.T) {
 	}
 	s := NewResourceSampler(0)
 	out := s.Observe()
-	if out.Sample.PID != uint32(os.Getpid()) || out.Sample.Birth == 0 || out.Sample.Known&flightrecorder.ResourceCPU == 0 || out.Sample.Known&flightrecorder.ResourceWorkingSet == 0 || out.Sample.CostNS == 0 {
+	ownCounters := flightrecorder.ResourceCPU | flightrecorder.ResourceIO
+	if out.Sample.PID != uint32(os.Getpid()) || out.Sample.Birth == 0 || out.Sample.Known&ownCounters != ownCounters || out.Sample.Known&flightrecorder.ResourceWorkingSet == 0 || out.Sample.CostNS == 0 {
 		t.Fatal("own process observation absent", out)
 	}
 	// Native reads only; this force bypasses the scheduled interval in the fixture.
@@ -170,8 +171,15 @@ func TestResourceSamplerOwnProcessCountersNoExternalSource(t *testing.T) {
 			time.Sleep(time.Millisecond)
 		}
 		next := s.Observe()
-		if next.Sample.PID != out.Sample.PID || next.Sample.Birth != out.Sample.Birth || next.Sample.CPUTimeNS < out.Sample.CPUTimeNS || next.Delta.Reset != "" || next.Delta.ElapsedNS == 0 || next.Delta.Known&flightrecorder.ResourceCPU == 0 {
+		if next.Sample.PID != out.Sample.PID || next.Sample.Birth != out.Sample.Birth || next.Sample.Source != out.Sample.Source || next.Sample.CPUTimeNS < out.Sample.CPUTimeNS || next.Sample.ReadBytes < out.Sample.ReadBytes || next.Sample.WriteBytes < out.Sample.WriteBytes || next.Delta.ElapsedNS == 0 || next.Delta.Known&ownCounters != ownCounters {
 			t.Fatal("own monotonic source mismatch", next)
+		}
+		// GetSystemTimes can be noncoherent or have no measurable advance over
+		// this deliberately tiny Windows interval. Its unknown delta does not
+		// invalidate independently verified per-process CPU and IO counters.
+		systemOnlyReset := runtime.GOOS == "windows" && next.Delta.Reset == "COUNTER_REGRESSION" && next.Delta.Known&ownCounters == ownCounters && next.Delta.Known&flightrecorder.ResourceSystemCPU == 0
+		if next.Delta.Reset != "" && !systemOnlyReset {
+			t.Fatal("own-process reset is not an isolated unknown system-CPU delta", next)
 		}
 		out = next
 	}
