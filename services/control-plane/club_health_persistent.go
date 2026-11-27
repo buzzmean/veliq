@@ -243,6 +243,7 @@ func (a *API) accountDiagnostics(w http.ResponseWriter, r *http.Request) {
 }
 
 var diagnosticView = template.Must(template.New("diagnostics").Funcs(template.FuncMap{
+	"flightSummary": flightDiagnosticSummary,
 	"hex": func(v uint32) string {
 		if v == 0 {
 			return ""
@@ -258,7 +259,7 @@ var diagnosticView = template.Must(template.New("diagnostics").Funcs(template.Fu
 {{range .Devices}}<tr><td>{{.PC}}</td><td>{{.Version}}</td><td>{{.State}}</td><td>{{.Discarded}}</td></tr>{{end}}</tbody></table>
 <h2>Последние события</h2><table><thead><tr><th>UTC</th><th>ПК / версия</th><th>Источник</th><th>Состояние</th><th>Код</th><th>Наблюдения</th><th>Процесс</th></tr></thead><tbody>
 {{range .Events}}{{with .Summary}}<tr><td>{{.At}}</td><td>{{.PC}} / {{.Version}}</td><td>{{.Component}} / {{.Observer}}</td><td>{{.State}}</td>
-<td>{{.Code}} {{hex .NativeCode}}; операция {{.Operation}}; состояние провайдера {{.ProviderState}}; EventID {{.EventID}}</td><td>{{if .Occurrences}}{{.Occurrences}}; последнее {{.LastAt}}{{else}}1{{end}}{{if .Lost}}; потеряно записей {{.Lost}}{{end}}</td><td>{{.App}} PID {{.PID}}; поколение {{.Birth}}; подтверждено {{.ProcessVerified}}</td></tr>{{end}}{{end}}
+<td>{{.Code}} {{hex .NativeCode}}; операция {{.Operation}}; состояние провайдера {{.ProviderState}}; EventID {{.EventID}}{{with flightSummary .}}<div>{{.}}</div>{{end}}</td><td>{{if .Occurrences}}{{.Occurrences}}; последнее {{.LastAt}}{{else}}1{{end}}{{if .Lost}}; потеряно записей {{.Lost}}{{end}}</td><td>{{.App}} PID {{.PID}}; поколение {{.Birth}}; подтверждено {{.ProcessVerified}}</td></tr>{{end}}{{end}}
 </tbody></table><p>Показано до 300 событий. Журнал не содержит HTTPS-содержимое, ключи или коды активации.</p></html>`))
 
 func (s *Store) PersistentDiagnosticsView(ctx context.Context, owner, pc string) (json.RawMessage, error) {

@@ -92,26 +92,14 @@ func (c *Controller) matchApplication(id wp.ProcessIdentity) (profiles.Profile, 
 
 func (c *Controller) matchEligibleApplication(id wp.ProcessIdentity) (profiles.Profile, bool) {
 	direct, hasDirect := c.Profiles.Match(id)
-	possible := false
-	for _, p := range c.Profiles.List() {
-		if p.Identity != nil {
-			for _, h := range p.Identity.Helpers {
-				if strings.EqualFold(path.Base(strings.ReplaceAll(id.Path, "\\", "/")), h) {
-					possible = true
-				}
-			}
-		}
-	}
-	if !possible {
+	if !c.Profiles.MayMatchHelper(id.Path) {
 		return direct, hasDirect
 	}
 	c.groupMu.Lock()
 	defer c.groupMu.Unlock()
 	if b, ok := c.groupBindings[id.PID]; ok && b.identity.CreationTime == id.CreationTime && strings.EqualFold(b.identity.Path, id.Path) {
-		for _, p := range c.Profiles.List() {
-			if p.ID == b.profile && validGroupBinding(b, p) {
-				return p, true
-			}
+		if p, ok := c.Profiles.Get(b.profile); ok && validGroupBinding(b, p) {
+			return p, true
 		}
 	}
 	_, nativeAncestry := c.discovery.(interface {
@@ -150,10 +138,8 @@ func (c *Controller) matchEligibleApplication(id wp.ProcessIdentity) (profiles.P
 		}
 	}
 	if b, ok := c.groupBindings[id.PID]; ok && b.identity.CreationTime == id.CreationTime && strings.EqualFold(b.identity.Path, id.Path) {
-		for _, p := range c.Profiles.List() {
-			if p.ID == b.profile && validGroupBinding(b, p) {
-				return p, true
-			}
+		if p, ok := c.Profiles.Get(b.profile); ok && validGroupBinding(b, p) {
+			return p, true
 		}
 	}
 	// Discovery records parent birth identities from the same bounded snapshot.

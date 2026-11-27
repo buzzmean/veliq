@@ -236,12 +236,17 @@ func (l *EvidenceLedger) recordBytesLocked(id ProcessIdentity, t Tuple, event, r
 	v.Executable = id.Path
 	v.CreationTime = id.CreationTime
 	t = key.Tuple
-	v.Source = t.Source.String()
-	v.Destination = t.Destination.String()
+	// The key already includes PID birth and the canonical (possibly aliased)
+	// tuple. Endpoints cannot change inside this record; formatting per packet
+	// only allocates identical strings on the capture path.
+	if v.Source == "" {
+		v.Source = t.Source.String()
+		v.Destination = t.Destination.String()
+	}
 	v.LastSeen = time.Now()
 	increment(&v.Counters, event)
 	incrementBytes(&v.Counters, event, bytes)
-	if v.HotAttach != nil && (event == "relay" || event == "direct" || event == "reply") {
+	if v.HotAttach != nil && v.HotAttach.State != "HOT_ATTACH_ROUTE_USED" && (event == "relay" || event == "direct" || event == "reply") {
 		h := *v.HotAttach
 		h.State = "HOT_ATTACH_ROUTE_USED"
 		v.HotAttach = &h

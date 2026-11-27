@@ -84,6 +84,7 @@ type diagnosticStatus struct {
 	Events        []clubhealth.Diagnostic `json:"events"`
 }
 type persistentDiagnostics struct {
+	flight     atomic.Pointer[flightRecorderRuntime]
 	repeatMu   sync.Mutex
 	repeats    map[clubhealth.Diagnostic]diagnosticRepeat
 	done       chan struct{}
@@ -146,6 +147,7 @@ func (c *Controller) ConfigurePersistentDiagnostics(m Manifest) {
 		}
 		f.Close()
 	}
+	c.ConfigureFlightRecorder(m)
 	go d.run(c.ctx, filepath.Join(m.StateDirectory, "club-health-journal.json"), identity.ID)
 	go d.upload(c.ctx)
 	go c.observeDiagnosticLocal(c.ctx, d)
@@ -160,6 +162,13 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 		defer close(d.done)
 	}
 	j := clubhealth.LoadJournal(path, device, time.Now())
+	add := func(e clubhealth.Diagnostic, now time.Time) bool {
+		if j.Add(e, now) {
+			d.recordFlightFact(e)
+			return true
+		}
+		return false
+	}
 	j.PreserveBacklog(d.base.Version)
 	durable := clubhealth.Journal{}
 	var savedAt time.Time
@@ -168,10 +177,10 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 	if j.Lost > 0 {
 		e := d.event("JOURNAL", "JOURNAL_READ", "observed", "PREVIOUS_EVENTS_LOST")
 		e.Lost = j.Lost
-		j.Add(e, time.Now())
+		add(e, time.Now())
 	}
 	if j.Open {
-		j.Add(d.event("JOURNAL", "JOURNAL_READ", "unknown", "UNCLEAN_STOP_TAIL_MAY_BE_MISSING"), time.Now())
+		add(d.event("JOURNAL", "JOURNAL_READ", "unknown", "UNCLEAN_STOP_TAIL_MAY_BE_MISSING"), time.Now())
 	}
 	j.Open = true
 	transitions := &j.Transitions
@@ -183,11 +192,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 	}
 	publish := func() {
 		s := &diagnosticStatus{PC: d.base.PC, Version: d.base.Version, Lost: j.Lost, Storage: storage, RetentionDays: 14, MaxBytes: clubhealth.JournalBytes}
-		for _, row := range append(append([]clubhealth.JournalRow(nil), j.History...), j.Rows...) {
-			if !row.Acked {
-				s.Pending++
-			}
-		}
+		s.Pending = diagnosticPendingCount(&j)
 		for _, row := range j.Rows[max(0, len(j.Rows)-32):] {
 			s.Events = append(s.Events, row.Event)
 		}
@@ -209,7 +214,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 			e := d.event("JOURNAL", "JOURNAL_WRITE", "failed", "WRITE_FAILED")
 			e.Code, e.NativeCode = clubhealth.ErrorCode(err)
 			if event, changed := transitions.Observe("journal-write", e); changed {
-				j.Add(event, time.Now())
+				add(event, time.Now())
 			}
 			dirty = true
 			storage = "WRITE_FAILED"
@@ -222,7 +227,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 		recoveryPending = false
 		if storage == "WRITE_FAILED" {
 			e, _ := transitions.Observe("journal-write", d.event("JOURNAL", "JOURNAL_WRITE", "ready", "WRITE_OK"))
-			j.Add(e, time.Now())
+			add(e, time.Now())
 			dirty = true
 			recoveryPending = true
 		}
@@ -239,7 +244,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 	lastLost := j.Lost
 	collectRepeats := func() {
 		for _, e := range d.takeRepeats() {
-			if j.Add(e, time.Now()) {
+			if add(e, time.Now()) {
 				dirty = true
 			}
 		}
@@ -253,7 +258,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 				return
 			}
 		}
-		if j.Add(e, time.Now()) {
+		if add(e, time.Now()) {
 			dirty = true
 			urgentPending = urgentPending || !e.ClubLink.IsZero()
 		}
@@ -273,7 +278,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 				}
 			}
 			j.Lost += d.dropped.Swap(0)
-			j.Add(d.event("SERVICE", "SERVICE_LIFECYCLE", "observed", "SERVICE_STOP_REQUESTED"), time.Now())
+			add(d.event("SERVICE", "SERVICE_LIFECYCLE", "observed", "SERVICE_STOP_REQUESTED"), time.Now())
 			j.Open = false
 			dirty = true
 			flush(true)
@@ -316,7 +321,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 				transitions = &j.Transitions
 				e := d.event("JOURNAL", "DEVICE_BINDING", "observed", "DEVICE_IDENTITY_CHANGED")
 				e.Lost = lost
-				j.Add(e, time.Now())
+				add(e, time.Now())
 				dirty = true
 			}
 			if request.reply != nil {
@@ -345,7 +350,7 @@ func (d *persistentDiagnostics) run(ctx context.Context, path, device string) {
 			if j.Lost != lastLost {
 				e := d.event("JOURNAL", "BOUNDED_QUEUE", "observed", "EVENTS_LOST")
 				e.Lost = j.Lost
-				j.Add(e, time.Now())
+				add(e, time.Now())
 				lastLost = j.Lost
 				dirty = true
 			}
@@ -579,4 +584,18 @@ func (d *persistentDiagnostics) observeInternet(ctx context.Context) {
 		case <-timer.C:
 		}
 	}
+}
+
+// Counting pending rows never allocates/copies either diagnostic queue. The
+// immutable durable snapshot and signed ACK path remain separate and unchanged.
+func diagnosticPendingCount(j *clubhealth.Journal) int {
+	count := 0
+	for _, rows := range [][]clubhealth.JournalRow{j.History, j.Rows} {
+		for _, row := range rows {
+			if !row.Acked {
+				count++
+			}
+		}
+	}
+	return count
 }

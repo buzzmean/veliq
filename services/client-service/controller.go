@@ -89,28 +89,30 @@ type Snapshot struct {
 	ActiveAppExecutables map[string]string             `json:"active_app_executables,omitempty"`
 }
 type Controller struct {
-	diagnostics      atomic.Pointer[persistentDiagnostics]
-	emergencyHandler func(context.Context, string, json.RawMessage) (any, error)
-	emergencyStopped atomic.Bool
-	emergencyClosed  atomic.Bool
-	closeOnce        sync.Once
-	updater          atomic.Pointer[updater]
-	traffic          *traffic.Client
-	remoteTraffic    remoteTrafficState
-	catalog          *clientCatalog
-	clubConfig       atomic.Pointer[clubConfiguration]
-	clubProbe        atomic.Pointer[ClubRelayCheck]
-	clubMode         atomic.Bool
-	games            gameRuntime
-	activation       activationRuntime
-	subscription     subscriptionRuntime
-	remoteDone       chan struct{}
-	remoteMu         sync.Mutex
-	fleet            *relayFleet
-	remoteCancel     context.CancelFunc
-	selfExecutable   string
-	isLanGameProcess func(windowsplatform.ProcessIdentity) bool
-	BrowserOwnerSID  string // Existing installation owner; restrict the loopback endpoint to this user.
+	flight            atomic.Pointer[flightRecorderRuntime]
+	flightIPCInFlight atomic.Uint32
+	diagnostics       atomic.Pointer[persistentDiagnostics]
+	emergencyHandler  func(context.Context, string, json.RawMessage) (any, error)
+	emergencyStopped  atomic.Bool
+	emergencyClosed   atomic.Bool
+	closeOnce         sync.Once
+	updater           atomic.Pointer[updater]
+	traffic           *traffic.Client
+	remoteTraffic     remoteTrafficState
+	catalog           *clientCatalog
+	clubConfig        atomic.Pointer[clubConfiguration]
+	clubProbe         atomic.Pointer[ClubRelayCheck]
+	clubMode          atomic.Bool
+	games             gameRuntime
+	activation        activationRuntime
+	subscription      subscriptionRuntime
+	remoteDone        chan struct{}
+	remoteMu          sync.Mutex
+	fleet             *relayFleet
+	remoteCancel      context.CancelFunc
+	selfExecutable    string
+	isLanGameProcess  func(windowsplatform.ProcessIdentity) bool
+	BrowserOwnerSID   string // Existing installation owner; restrict the loopback endpoint to this user.
 	// In-process fixture injection only; production uses the system resolver/roots.
 	BrowserRecoveryExecutable string                 // In-process fixture only; production authenticates its own installed binary.
 	BrowserAlternativeDNS     browserproxy.DNSLookup // In-process fixture only; no IPC/config override.
@@ -322,6 +324,14 @@ func (c *Controller) closeResources() {
 		timer := time.NewTimer(2 * time.Second)
 		select {
 		case <-d.done:
+			timer.Stop()
+		case <-timer.C:
+		}
+	}
+	if f := c.flight.Load(); f != nil && f.done != nil {
+		timer := time.NewTimer(2 * time.Second)
+		select {
+		case <-f.done:
 			timer.Stop()
 		case <-timer.C:
 		}
@@ -650,7 +660,22 @@ func (c *Controller) Snapshot() Snapshot {
 	}
 	return snapshot
 }
-func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMessage) (result any, err error) {
+func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMessage) (any, error) {
+	if c.flight.Load() == nil {
+		return c.handleRequest(ctx, method, raw)
+	}
+	c.flightIPCInFlight.Add(1)
+	defer c.flightIPCInFlight.Add(^uint32(0))
+	finish := c.beginFlightOperation(method)
+	result, err := c.handleRequest(ctx, method, raw)
+	// A panic leaves an unfinished BEGIN, rather than a false successful END.
+	if finish != nil {
+		finish(err)
+	}
+	return result, err
+}
+
+func (c *Controller) handleRequest(ctx context.Context, method string, raw json.RawMessage) (result any, err error) {
 	defer func() {
 		if err != nil {
 			if d := c.diagnostics.Load(); d != nil {
@@ -833,6 +858,24 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 			return d.status.Load(), nil
 		}
 		return diagnosticStatus{Storage: "NOT_CONFIGURED"}, nil
+	case "flight.status":
+		return c.FlightRecorderStatus(), nil
+	case "flight.context":
+		var q struct {
+			Limit int `json:"limit"`
+		}
+		if len(raw) != 0 && string(raw) != "null" {
+			if security.Parse(raw, &q) != nil {
+				return nil, errors.New("FLIGHT_REQUEST_INVALID")
+			}
+		}
+		if q.Limit == 0 {
+			q.Limit = 8
+		}
+		if q.Limit < 1 || q.Limit > 8 {
+			return nil, errors.New("FLIGHT_LIMIT_INVALID")
+		}
+		return c.FlightRecorderContext(ctx, q.Limit)
 	case "profiles":
 		return c.Profiles.List(), nil
 	case "profiles.routing":

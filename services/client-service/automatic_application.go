@@ -41,10 +41,8 @@ func automaticApplication(p profiles.Profile) bool {
 		base := path.Base(strings.ToLower(strings.ReplaceAll(exe, "\\", "/")))
 		// Preserve separately accepted game/local-only and anti-cheat boundaries.
 		// Launcher policy must never grant capture of these executables.
-		for _, game := range gameudp.Presets() {
-			if strings.EqualFold(base, game.Executable) {
-				return false
-			}
+		if gameudp.IsKnownExecutable(base) {
+			return false
 		}
 		switch base {
 		case "valorant.exe", "valorant-win64-shipping.exe", "league of legends.exe", "vgc.exe", "vgtray.exe", "faceit.exe", "faceitclient.exe", "faceitservice.exe", "beservice.exe", "beservice_x64.exe", "easyanticheat.exe", "easyanticheat_eos.exe":

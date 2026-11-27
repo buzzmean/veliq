@@ -35,7 +35,22 @@ public sealed partial class ApplicationRow : Observable
     public bool HasAppliedStrategy {get;private set;}
     public string AppliedStrategyStatus {get;private set;}="";
     public string ServiceStatus=>HasAppliedStrategy?AppliedStrategyStatus:UserStatus;
-    public string LocalDetails {get;private set;}=Text.Get("NoData");
+    bool technicalDetailsEnabled = true;
+    // IPC supplies a new snapshot; retain only this row's already-attributed
+    // flows until the next Update. They must not be mutated between updates.
+    CaptureFlow[]? detailFlows;
+    string? cachedDetails;
+    public string LocalDetails => technicalDetailsEnabled ? TechnicalDetails() : Text.Get("NoData");
+    internal void SetTechnicalDetails(bool enabled)
+    {
+        if (technicalDetailsEnabled == enabled) return;
+        var previous = LocalDetails;
+        technicalDetailsEnabled = enabled;
+        if (previous != LocalDetails) Changed(nameof(LocalDetails));
+    }
+    // The support report requests the full current evidence independently of
+    // whether the ordinary UI is displaying technical details.
+    internal string TechnicalDetails() => cachedDetails ??= FormatLocalDetails(detailFlows);
  public string Udp { get; private set; } = Text.Get("NoData");
  public string Tcp { get; private set; } = Text.Get("NoData");
  public string Ipv4 { get; private set; } = Text.Get("NoData");
@@ -64,11 +79,13 @@ public sealed partial class ApplicationRow : Observable
         UserStatus=active is null||active.Length==0?Text.Get("NoData"):active.Any(f=>f.SelectedRoute.StartsWith("BLOCK",StringComparison.Ordinal)||f.RelayRequiredBlocked)?Text.Get("ProtectedFlowBlocked"):relay&&direct?Text.Get("HybridRoute"):relay?Text.Get("ProtectedRoute"):active.Any(f=>f.Counters.DirectPlusPackets>0)?Text.Get("AppliedDirectOptimization"):direct?Text.Get("DirectConnection"):Text.Get("AutoChecking");
         if(capture?.Truncated==true)UserStatus=Text.Get("PartialRouteEvidence")+" "+UserStatus;
         if(active?.Length>0)processStatus=Text.Get("Active");
-        LocalDetails=active is null?Text.Get("NoData"):string.Join("; ",active.Select(f=>$"{f.Protocol} · {f.Source} → {f.Destination} · upstream={f.UpstreamSource} · flow={f.FlowId} · {f.ProcessGroup} · {f.Exe} · PID={f.Pid}/{f.CreationTime} · {f.Policy?.Action} · {f.Policy?.Reason} · {f.Policy?.Source} · {f.FallbackReason} · {f.NetworkFingerprint} · blocked={f.RelayRequiredBlocked} · captured={f.Counters.CapturedPackets}/{f.Counters.CapturedBytes} · direct={f.Counters.DirectPackets}/{f.Counters.DirectBytes} · replies={f.Counters.DirectReplyPackets} · udp-health={f.UdpHealth?.State}/{f.UdpHealth?.Reason} · probation={f.UdpHealth?.ProbationReplies}/{f.UdpHealth?.ProbationReplyBytes}/{f.UdpHealth?.ProbationDurationMs}ms · cadence={f.UdpHealth?.ReplyBins}/{f.UdpHealth?.OutboundBins} · degraded={f.UdpHealth?.DegradedDurationMs}ms · direct+={f.Counters.DirectPlusBytes} · {f.Strategy}: {f.Domain} {f.Destination} {Text.Route(f.SelectedRoute=="RELAY"?f.RelayId:f.SelectedRoute)} · {f.Preset} {f.Chain} · {(f.FakeTtl>0?$"TTL={f.FakeTtl}":"")} · {Text.Get("LocalModified")}: {f.Counters.DirectPlusPackets} · {Text.Get("RelayTraffic")}: {Text.Bytes(f.Counters.RelayedBytes)} · QUIC→TCP={f.Counters.QuicFallbackPackets}").Distinct());
+        detailFlows = active;
+        cachedDetails = null;
         Udp=Summary(f=>f.Protocol=="udp");Tcp=Summary(f=>f.Protocol=="tcp");Ipv4=Summary(f=>f.IpVersion=="IPv4");
         Ipv6=active?.Any(f=>f.IpVersion=="IPv6")==true?Summary(f=>f.IpVersion=="IPv6"):Text.Get("IPv6Unsupported");
         NotifyDisplayChanges(previous);
     }
+    static string FormatLocalDetails(CaptureFlow[]? flows) => flows is null?Text.Get("NoData"):string.Join("; ",flows.Select(f=>$"{f.Protocol} · {f.Source} → {f.Destination} · upstream={f.UpstreamSource} · flow={f.FlowId} · {f.ProcessGroup} · {f.Exe} · PID={f.Pid}/{f.CreationTime} · {f.Policy?.Action} · {f.Policy?.Reason} · {f.Policy?.Source} · {f.FallbackReason} · {f.NetworkFingerprint} · blocked={f.RelayRequiredBlocked} · captured={f.Counters.CapturedPackets}/{f.Counters.CapturedBytes} · direct={f.Counters.DirectPackets}/{f.Counters.DirectBytes} · replies={f.Counters.DirectReplyPackets} · udp-health={f.UdpHealth?.State}/{f.UdpHealth?.Reason} · probation={f.UdpHealth?.ProbationReplies}/{f.UdpHealth?.ProbationReplyBytes}/{f.UdpHealth?.ProbationDurationMs}ms · cadence={f.UdpHealth?.ReplyBins}/{f.UdpHealth?.OutboundBins} · degraded={f.UdpHealth?.DegradedDurationMs}ms · direct+={f.Counters.DirectPlusBytes} · {f.Strategy}: {f.Domain} {f.Destination} {Text.Route(f.SelectedRoute=="RELAY"?f.RelayId:f.SelectedRoute)} · {f.Preset} {f.Chain} · {(f.FakeTtl>0?$"TTL={f.FakeTtl}":"")} · {Text.Get("LocalModified")}: {f.Counters.DirectPlusPackets} · {Text.Get("RelayTraffic")}: {Text.Bytes(f.Counters.RelayedBytes)} · QUIC→TCP={f.Counters.QuicFallbackPackets}").Distinct());
     public static bool Matches(string executable, string path)
     {
         var e = executable.Replace('\\', '/');
@@ -251,6 +268,7 @@ public sealed partial class DesktopViewModel : Observable
                 row = new();
                 Applications.Add(row);
             }
+            row.SetTechnicalDetails(ShowTechnical);
             row.Update(profile, processes, capture);
         }
         Replace(Routes, status.Routes.Select(r => new RouteRow(r.Id, Text.Route(r.Id), Text.Get(Fresh(r) ? "Available" : "Unavailable"), Metric(r, x => Text.Milliseconds(x.RttMs)), Metric(r, x => Text.Milliseconds(x.JitterMs)), r.Quality?.NetworkSampleCount > 0 ? Text.Percent(r.Quality.ProbeLoss) : Metric(r, x => Text.Percent(x.Loss)), Fresh(r) && r.Score.HasValue ? r.Score.Value.ToString("F1", Text.Russian) : Text.Get("NoData"), r.Id == status.Primary ? Text.Get("Primary") : r.Id == status.Secondary || r.Id == status.Tertiary ? Text.Get("Backup") : "", r.Quality)));

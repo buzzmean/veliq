@@ -171,8 +171,9 @@ func (p Profile) Matches(i Identity) bool {
 }
 
 type Registry struct {
-	mu    sync.RWMutex
-	items map[string]Profile
+	mu         sync.RWMutex
+	items      map[string]Profile
+	matchOrder []string
 }
 
 func New(all []Profile) *Registry {
@@ -204,7 +205,24 @@ func (r *Registry) Upsert(p Profile) error {
 		return errors.New("profile storage limit reached")
 	}
 	r.items[p.ID] = p
+	r.rebuildMatchOrderLocked()
 	return nil
+}
+
+// Matching order changes only with configuration. Never copy/sort the complete
+// profile catalog on a new socket; returned matching profiles still own copies.
+func (r *Registry) rebuildMatchOrderLocked() {
+	r.matchOrder = r.matchOrder[:0]
+	for id := range r.items {
+		r.matchOrder = append(r.matchOrder, id)
+	}
+	sort.Slice(r.matchOrder, func(a, b int) bool {
+		left, right := r.items[r.matchOrder[a]], r.items[r.matchOrder[b]]
+		if left.Custom != right.Custom {
+			return left.Custom
+		}
+		return left.ID < right.ID
+	})
 }
 func (r *Registry) List() []Profile {
 	r.mu.RLock()
@@ -218,17 +236,56 @@ func (r *Registry) List() []Profile {
 	return out
 }
 func (r *Registry) Match(i Identity) (Profile, bool) {
-	all := r.List()
-	sort.SliceStable(all, func(a, b int) bool { return all[a].Custom && !all[b].Custom })
-	for _, p := range all {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, id := range r.matchOrder {
+		p := r.items[id]
 		if p.Matches(i) {
-			return p, true
+			return clone(p), true
 		}
 	}
 	return Profile{}, false
 }
 
-func (r *Registry) Delete(id string) { r.mu.Lock(); defer r.mu.Unlock(); delete(r.items, id) }
+func (r *Registry) Delete(id string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.items[id]; ok {
+		delete(r.items, id)
+		r.rebuildMatchOrderLocked()
+	}
+}
+
+// Get provides an isolated current profile for an already birth-bound helper.
+// The caller must still validate its group/trial identity; this is not a cache.
+func (r *Registry) Get(id string) (Profile, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.items[id]
+	if !ok {
+		return Profile{}, false
+	}
+	return clone(p), true
+}
+
+// MayMatchHelper is a cheap candidate check, never ancestry authorization. It
+// must not call discovery, perform I/O or invoke user callbacks under this lock.
+func (r *Registry) MayMatchHelper(executable string) bool {
+	base := filepath.Base(strings.ReplaceAll(executable, "\\", "/"))
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, p := range r.items {
+		if p.Identity == nil {
+			continue
+		}
+		for _, helper := range p.Identity.Helpers {
+			if strings.EqualFold(base, helper) {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 func clone(p Profile) Profile {
 	if p.Trial != nil {
@@ -236,6 +293,8 @@ func clone(p Profile) Profile {
 		p.Trial = &v
 	}
 	p.Executables = append([]string(nil), p.Executables...)
+	p.ProtocolHints = append([]string(nil), p.ProtocolHints...)
+	p.PortHints = append([]uint16(nil), p.PortHints...)
 	p.Rules = append([]flowpolicy.Rule(nil), p.Rules...)
 	p.BrowserRecoveryRules = append([]flowpolicy.Rule(nil), p.BrowserRecoveryRules...)
 	for _, rules := range [][]flowpolicy.Rule{p.Rules, p.BrowserRecoveryRules} {

@@ -7,7 +7,7 @@ public enum HealthLevel { Ok, Neutral, Warning, Problem }
 public sealed partial class DesktopViewModel
 {
     bool showTechnical;
-    public bool ShowTechnical { get => showTechnical; set { if (Set(ref showTechnical, value)) { Changed(nameof(ServiceApplications)); NotifyVisibleServices(); } } }
+    public bool ShowTechnical { get => showTechnical; set { if (Set(ref showTechnical, value)) { foreach (var row in Applications.Concat(ActiveServices).Distinct()) row.SetTechnicalDetails(value); Changed(nameof(ServiceApplications)); NotifyVisibleServices(); } } }
     string healthKey = "";
     // Polling repeats identical snapshots; notify only when the verdict really changes.
     void HealthChanged()
@@ -56,7 +56,7 @@ public sealed partial class DesktopViewModel
         b.AppendLine().AppendLine("Маршруты:");
         foreach (var r in Routes) b.AppendLine($"  {r.Name} | {r.Status} | {r.Rtt} | {r.Jitter} | {r.Loss} | {r.Role}");
         b.AppendLine().AppendLine("Приложения:");
-        foreach (var a in Applications) b.AppendLine($"  {a.Name} | {a.Mode} | {a.Path} | {a.ProcessStatus} | {a.UserStatus} | {a.LocalDetails}");
+        foreach (var a in Applications) b.AppendLine($"  {a.Name} | {a.Mode} | {a.Path} | {a.ProcessStatus} | {a.UserStatus} | {a.TechnicalDetails()}");
         b.AppendLine().AppendLine("Браузеры: " + BrowserReadinessText);
         return b.ToString();
     }

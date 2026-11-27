@@ -284,6 +284,15 @@ func (c *Controller) handleActivation(method string, raw json.RawMessage) (any, 
 	return c.activation.status, nil
 }
 func (c *Controller) activationAttempt(ctx context.Context, m Manifest, r activationRecord) (activationRecord, enrollment.Policy, error) {
+	result, policy, err := c.activationAttemptStages(ctx, m, r)
+	// A returned enrollment attempt is distinct from connected/activated/capture
+	// readiness. A panic leaves its last phase unfinished, never successful.
+	c.activationFlightResult(err)
+	return result, policy, err
+}
+
+func (c *Controller) activationAttemptStages(ctx context.Context, m Manifest, r activationRecord) (activationRecord, enrollment.Policy, error) {
+	c.activationFlightPhase("CA_VALIDATE")
 	caFile := m.ControlPlaneCAFile
 	if caFile == "" {
 		caFile = m.CAFile
@@ -303,6 +312,7 @@ func (c *Controller) activationAttempt(ctx context.Context, m Manifest, r activa
 	http.Timeout = 4 * time.Second
 	defer http.CloseIdleConnections()
 	client := enrollment.Client{URL: m.ControlPlaneURL, HTTP: http}
+	c.activationFlightPhase("CONTROL_POLICY")
 	policy, e := client.Policy(ctx)
 	if e != nil {
 		return r, policy, e
@@ -311,12 +321,14 @@ func (c *Controller) activationAttempt(ctx context.Context, m Manifest, r activa
 		return r, policy, errors.New("ACTIVATION_UNAVAILABLE")
 	}
 	if r.AccountLink != nil && r.AccountLink.Mode == "image" {
+		c.activationFlightPhase("ACCOUNT_IMAGE_ENROLL")
 		return c.accountImageAttempt(ctx, m, r, policy, client)
 	}
 	salt, e := hex.DecodeString(policy.HardwareSalt)
 	if e != nil || len(salt) != 32 {
 		return r, policy, errors.New("ACTIVATION_INVALID_RESPONSE")
 	}
+	c.activationFlightPhase("HARDWARE_ID")
 	machine, e := c.activationHardware(ctx, salt)
 	if e != nil {
 		return r, policy, e
@@ -328,6 +340,7 @@ func (c *Controller) activationAttempt(ctx context.Context, m Manifest, r activa
 	if r.AccountLink != nil && validActivationIdentity(m) {
 		identityPath = m.DeviceIdentityFile
 	}
+	c.activationFlightPhase("IDENTITY_PREPARE")
 	id, key, e := security.LoadOrCreateIdentity(identityPath)
 	if e != nil {
 		return r, policy, errors.New("ACTIVATION_KEY_FAILED")
@@ -341,6 +354,7 @@ func (c *Controller) activationAttempt(ctx context.Context, m Manifest, r activa
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
+	c.activationFlightPhase("ENROLL_VERIFY")
 	response, e := accountEnrollmentResponse(ctx, c, m, &r, policy, client, request, key, roots)
 	if e != nil {
 		return r, policy, e
@@ -372,9 +386,11 @@ func (c *Controller) activationAttempt(ctx context.Context, m Manifest, r activa
 	}
 	c.remoteMu.Lock()
 	defer c.remoteMu.Unlock()
+	c.activationFlightPhase("OLD_WORKER_STOP")
 	if e = c.stopRemoteLocked(ctx); e != nil {
 		return r, policy, errors.New("ACTIVATION_UNAVAILABLE")
 	}
+	c.activationFlightPhase("CREDENTIAL_COMMIT")
 	for _, item := range []struct {
 		path string
 		raw  []byte
@@ -485,6 +501,7 @@ func (c *Controller) activationLoop(managed bool) {
 			}
 			if e == nil && !connected {
 				ctx, cancel := context.WithTimeout(c.ctx, 8*time.Second)
+				c.activationFlightPhase("TRANSPORT_CONNECT")
 				connected = c.activationConnect(ctx, m)
 				cancel()
 				if !connected {
@@ -510,6 +527,7 @@ func (c *Controller) activationLoop(managed bool) {
 			}
 			c.activation.mu.Unlock()
 			if e == nil {
+				c.activationFlightPhase("CAPTURE_START")
 				captureRetry = c.startActivatedCapture(connected, &automaticStarted) != nil
 			}
 		} else if os.IsNotExist(e) {

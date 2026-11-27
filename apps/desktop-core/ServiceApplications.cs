@@ -37,6 +37,7 @@ public sealed partial class DesktopViewModel
                 var images = group.Select(f => f.Exe).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
                 var name = images[0].Replace('\\', '/').Split('/').Last();
                 if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) name = name[..^4];
+                row.SetTechnicalDetails(ShowTechnical);
                 row.Update(new Profile { Id = group.Key, Name = name, Executables = images, Mode = "AUTO" }, processes, capture);
                 if (row.HasAppliedStrategy) rows.Add(row);
             }

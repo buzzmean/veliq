@@ -100,7 +100,7 @@ func (c *Controller) ConfigureClub(m Manifest) error {
 // manifest/service and are deliberately outside this boundary.
 func clubReadMethod(method string) bool {
 	switch method {
-	case "automation.status", "browser.youtube.decisions", "browser.youtube.local.status", "diagnostics.status":
+	case "automation.status", "browser.youtube.decisions", "browser.youtube.local.status", "diagnostics.status", "flight.status", "flight.context":
 		return true
 	case "account.status", "riot.status", "browser.local.probes", "traffic.status", "update.status", "local.catalog", "relay.primary.status", "relay.pool.diagnostics", "status", "profiles", "activation.status", "subscription.status", "subscription.refresh", "browser.native.status", "browser.status", "edge.status", "gameudp.status", "gameudp.cs2.endpoint", "club.status", "capture.changes.marker", "capture.changes", "capture.diagnostics":
 		return true
