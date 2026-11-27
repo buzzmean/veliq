@@ -51,6 +51,10 @@ func decodeClubHealthEvent(channel string, raw []byte) (clubhealth.Event, bool) 
 	p := strings.ToLower(x.System.Provider.Name)
 	switch p {
 	case "service control manager":
+		// Only termination/start-failure records establish a service fault.
+		if channel != "System" || e.Code != 7000 && e.Code != 7031 && e.Code != 7034 {
+			return clubhealth.Event{}, false
+		}
 		if len(x.EventData.Data) != 0 {
 			switch strings.ToLower(x.EventData.Data[0].Text) {
 			case "veliq", "veliq routing service":
@@ -66,18 +70,34 @@ func decodeClubHealthEvent(channel string, raw []byte) (clubhealth.Event, bool) 
 			}
 		}
 	case "application error", "application hang", "windows error reporting":
-		for _, data := range x.EventData.Data {
-			match := clubFaultingExe.FindStringSubmatch(data.Text)
-			if len(match) > 1 {
-				e.App = strings.ToLower(match[1])
-				e.Kind = "veliq_crash"
+		if channel != "Application" {
+			return clubhealth.Event{}, false
+		}
+		// WER1001 can describe a queued report, a hang or another application.
+		// Only the structured faulting image (not an arbitrary mention) is used.
+		for i, data := range x.EventData.Data {
+			name := strings.ToLower(data.Name)
+			imageField := name == "appname" || name == "applicationname" || name == "exename" ||
+				(p == "windows error reporting" && name == "p1") || (i == 0 && name == "")
+			if !imageField {
+				continue
+			}
+			image := path.Base(strings.ReplaceAll(strings.TrimSpace(data.Text), "\\", "/"))
+			match := clubFaultingExe.FindStringSubmatch(image)
+			if len(match) != 2 || !strings.EqualFold(match[0], image) {
+				continue
+			}
+			e.App = strings.ToLower(match[1])
+			e.Kind = "application_report"
+			if p == "application error" && e.Code == 1000 {
+				e.Kind = "application_crash"
 				if e.App == "langameservice.exe" {
 					e.Kind = "langame_crash"
-				} else if e.App != "veliq.exe" && e.App != "veliq-service.exe" {
-					e.Kind = "application_crash"
+				} else if e.App == "veliq.exe" || e.App == "veliq-service.exe" {
+					e.Kind = "veliq_crash"
 				}
-				break
 			}
+			break
 		}
 	case "langameservice", "langame":
 		if x.System.Level > 0 && x.System.Level <= 3 {

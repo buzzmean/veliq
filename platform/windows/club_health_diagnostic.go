@@ -87,8 +87,26 @@ func decodeDiagnosticEvent(channel string, raw []byte, lookup func(uint32) (Proc
 		e.Component = "LANGAME"
 	case "veliq_crash", "veliq_start_failed":
 		e.Component = "SERVICE"
-	case "application_crash":
+	case "application_crash", "application_report":
 		e.Component = "APPLICATION"
+	}
+	if strings.EqualFold(x.System.Provider.Name, "Application Error") && e.EventID == 1000 {
+		e.Operation = "APPLICATION_FAULT"
+	} else if strings.EqualFold(x.System.Provider.Name, "Service Control Manager") {
+		if e.EventID == 7000 {
+			e.Operation = "SERVICE_START_FAILURE"
+		} else {
+			e.Operation = "SERVICE_TERMINATION"
+		}
+	}
+	// A classifier correction is a new interpretation, not a replacement of
+	// old immutable audit bytes. A fixed namespace avoids conflicts with old
+	// journals/CPs even when only the server retains the original record.
+	// The physical record key remains channel/record/time; build/session are
+	// deliberately absent, so replay never creates another interpretation.
+	if e.Operation != "" || e.Code == "APPLICATION_REPORT" {
+		sum := sha256.Sum256([]byte("windows-event-interpretation-v2:" + e.ID))
+		e.ID = hex.EncodeToString(sum[:16])
 	}
 	// Only named numeric fields; never arbitrary text/exception messages.
 	for _, d := range x.EventData.Data {
