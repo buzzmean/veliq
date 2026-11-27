@@ -123,6 +123,13 @@ func (s *Store) EnrollCode(ctx context.Context, hash []byte, machine string, d D
 	}
 	var clubVerified bool
 	if subscription != nil {
+		var staged bool
+		if e = tx.QueryRow(ctx, "SELECT coalesce((to_jsonb(s)->>'personal_optimization_lease_stage')::boolean,false) FROM subscriptions s WHERE id=$1", *subscription).Scan(&staged); e != nil {
+			return e
+		}
+		if staged {
+			return errors.New("LEASE_UNSUPPORTED")
+		}
 		clubVerified, e = checkClubVerification(ctx, tx, *subscription)
 		if e != nil {
 			return e
@@ -146,7 +153,7 @@ func (s *Store) EnrollCode(ctx context.Context, hash []byte, machine string, d D
 }
 
 // Caller holds the global enrollment lock and the authorization row.
-func enrollSlotTx(ctx context.Context, tx pgx.Tx, id string, limit int, machine string, d Device, kid string, key []byte, public map[string]string, account string) error {
+func enrollSlotTx(ctx context.Context, tx pgx.Tx, id string, limit int, machine string, d Device, kid string, key []byte, public map[string]string, account string, sequentialPersonal ...bool) error {
 	var old string
 	var disabled bool
 	e := tx.QueryRow(ctx, "SELECT device_id,disabled FROM activation_slots WHERE code_id=$1 AND machine_hash=$2 FOR UPDATE", id, machine).Scan(&old, &disabled)
@@ -161,7 +168,7 @@ func enrollSlotTx(ctx context.Context, tx pgx.Tx, id string, limit int, machine 
 		if e = tx.QueryRow(ctx, "SELECT count(*) FROM activation_slots WHERE code_id=$1 AND NOT disabled", id).Scan(&n); e != nil {
 			return e
 		}
-		if n >= limit {
+		if n >= limit && !(account != "" && len(sequentialPersonal) > 0 && sequentialPersonal[0]) {
 			return errors.New("ACTIVATION_LIMIT")
 		}
 	}

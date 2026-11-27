@@ -19,12 +19,15 @@ const OwnerPromoAccountID = "00000000000000000000000000000000"
 const OwnerPromoEmail = "redacted-owner@example.invalid"
 
 type PaymentQuote struct {
-	BaseAmount  int64  `json:"base_amount_kopecks"`
-	Amount      int64  `json:"amount_kopecks"`
-	Discount    int    `json:"discount"`
-	Days        int    `json:"days"`
-	Months      int    `json:"months"`
-	PromotionID string `json:"-"`
+	BaseAmount              int64  `json:"base_amount_kopecks"`
+	Amount                  int64  `json:"amount_kopecks"`
+	Discount                int    `json:"discount"`
+	Days                    int    `json:"days"`
+	Months                  int    `json:"months"`
+	PromotionID             string `json:"-"`
+	Promotion               string `json:"promotion,omitempty"`
+	FirstPurchaseEligible   bool   `json:"first_purchase_eligible"`
+	FirstMonthConsumesOffer bool   `json:"first_month_consumes_offer"`
 }
 
 func promotionHash(code string) ([]byte, error) {

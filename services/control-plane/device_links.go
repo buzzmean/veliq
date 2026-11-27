@@ -27,11 +27,12 @@ type deviceLinkRow struct {
 	Expires                                    time.Time
 	Account, Subscription                      string
 	Completed                                  bool
+	PersonalOptimizationLeaseV1                bool
 }
 
 func readDeviceLink(ctx context.Context, tx pgx.Tx, id string) (deviceLinkRow, error) {
 	var l deviceLinkRow
-	e := tx.QueryRow(ctx, `SELECT id,mode,name,device_id,machine_hash,public_key,secret_hash,bootstrap_hash,expires_at,coalesce(account_id,''),coalesce(subscription_id,''),completed FROM account_device_links WHERE id=$1 FOR UPDATE`, id).Scan(&l.ID, &l.Mode, &l.Name, &l.Device, &l.Machine, &l.PublicKey, &l.SecretHash, &l.BootstrapHash, &l.Expires, &l.Account, &l.Subscription, &l.Completed)
+	e := tx.QueryRow(ctx, `SELECT id,mode,name,device_id,machine_hash,public_key,secret_hash,bootstrap_hash,expires_at,coalesce(account_id,''),coalesce(subscription_id,''),completed,personal_optimization_lease_v1 FROM account_device_links WHERE id=$1 FOR UPDATE`, id).Scan(&l.ID, &l.Mode, &l.Name, &l.Device, &l.Machine, &l.PublicKey, &l.SecretHash, &l.BootstrapHash, &l.Expires, &l.Account, &l.Subscription, &l.Completed, &l.PersonalOptimizationLeaseV1)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return l, errors.New("ACCOUNT_LINK_INVALID")
 	}
@@ -43,7 +44,7 @@ func (s *Store) startDeviceLink(ctx context.Context, q enrollment.DeviceLinkRequ
 		return deviceLinkRow{}, e
 	}
 	bootstrap, _ := hex.DecodeString(q.BootstrapHash)
-	l := deviceLinkRow{ID: q.ID, Mode: q.Mode, Name: q.Name, Device: q.Device.DeviceID, Machine: q.Device.MachineHash, PublicKey: base64.RawURLEncoding.EncodeToString(pub), SecretHash: hash, BootstrapHash: bootstrap, Expires: time.Now().UTC().Add(deviceLinkLifetime)}
+	l := deviceLinkRow{PersonalOptimizationLeaseV1: q.PersonalOptimizationLeaseV1, ID: q.ID, Mode: q.Mode, Name: q.Name, Device: q.Device.DeviceID, Machine: q.Device.MachineHash, PublicKey: base64.RawURLEncoding.EncodeToString(pub), SecretHash: hash, BootstrapHash: bootstrap, Expires: time.Now().UTC().Add(deviceLinkLifetime)}
 	tx, e := s.DB.Begin(ctx)
 	if e != nil {
 		return l, e
@@ -57,7 +58,7 @@ func (s *Store) startDeviceLink(ctx context.Context, q enrollment.DeviceLinkRequ
 	}
 	old, oe := readDeviceLink(ctx, tx, q.ID)
 	if oe == nil {
-		if subtle.ConstantTimeCompare(old.SecretHash, hash) != 1 || old.Mode != l.Mode || old.Name != l.Name || old.Device != l.Device || old.Machine != l.Machine || old.PublicKey != l.PublicKey || subtle.ConstantTimeCompare(old.BootstrapHash, bootstrap) != 1 {
+		if subtle.ConstantTimeCompare(old.SecretHash, hash) != 1 || old.PersonalOptimizationLeaseV1 != l.PersonalOptimizationLeaseV1 || old.Mode != l.Mode || old.Name != l.Name || old.Device != l.Device || old.Machine != l.Machine || old.PublicKey != l.PublicKey || subtle.ConstantTimeCompare(old.BootstrapHash, bootstrap) != 1 {
 			return l, errors.New("ACCOUNT_LINK_INVALID")
 		}
 		return old, tx.Commit(ctx)
@@ -72,7 +73,7 @@ func (s *Store) startDeviceLink(ctx context.Context, q enrollment.DeviceLinkRequ
 	if count >= 4096 {
 		return l, errors.New("ACTIVATION_RATE_LIMIT")
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO account_device_links(id,secret_hash,mode,name,device_id,machine_hash,public_key,bootstrap_hash,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, l.ID, l.SecretHash, l.Mode, l.Name, l.Device, l.Machine, l.PublicKey, l.BootstrapHash, l.Expires)
+	_, e = tx.Exec(ctx, `INSERT INTO account_device_links(id,secret_hash,mode,name,device_id,machine_hash,public_key,bootstrap_hash,expires_at,personal_optimization_lease_v1) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, l.ID, l.SecretHash, l.Mode, l.Name, l.Device, l.Machine, l.PublicKey, l.BootstrapHash, l.Expires, l.PersonalOptimizationLeaseV1)
 	if e != nil {
 		return l, e
 	}
@@ -80,9 +81,11 @@ func (s *Store) startDeviceLink(ctx context.Context, q enrollment.DeviceLinkRequ
 }
 
 type accountSubscription struct {
-	Binding enrollment.AccountBinding
-	Code    string
-	Limit   int
+	Binding    enrollment.AccountBinding
+	Code       string
+	Limit      int
+	Lifetime   bool
+	LeaseStage bool
 }
 
 func accountSubscriptionTx(ctx context.Context, tx pgx.Tx, account, subscription string, enforce bool) (accountSubscription, error) {
@@ -93,13 +96,14 @@ func accountSubscriptionTx(ctx context.Context, tx pgx.Tx, account, subscription
 	if _, e := tx.Exec(ctx, "SELECT id FROM accounts WHERE id=$1 FOR NO KEY UPDATE", account); e != nil {
 		return out, e
 	}
-	e := tx.QueryRow(ctx, `SELECT sub.id,sub.kind,sub.seats,sub.paid_until,ac.email,ac.display_name,ac.disabled,c.id,c.revoked,c.expires_at,sub.lifetime,sub.trial_until FROM subscriptions sub JOIN accounts ac ON ac.id=sub.account_id JOIN activation_codes c ON c.subscription_id=sub.id WHERE sub.id=$1 AND sub.account_id=$2 FOR UPDATE OF sub,c`, subscription, account).Scan(&out.Binding.Subscription, &out.Binding.Kind, &out.Limit, &paid, &out.Binding.Email, &out.Binding.Name, &disabled, &out.Code, &revoked, &expires, &lifetime, &trial)
+	e := tx.QueryRow(ctx, `SELECT sub.id,sub.kind,sub.seats,sub.paid_until,ac.email,ac.display_name,ac.disabled,c.id,c.revoked,c.expires_at,sub.lifetime,sub.trial_until,sub.personal_optimization_lease_stage FROM subscriptions sub JOIN accounts ac ON ac.id=sub.account_id JOIN activation_codes c ON c.subscription_id=sub.id WHERE sub.id=$1 AND sub.account_id=$2 FOR UPDATE OF sub,c`, subscription, account).Scan(&out.Binding.Subscription, &out.Binding.Kind, &out.Limit, &paid, &out.Binding.Email, &out.Binding.Name, &disabled, &out.Code, &revoked, &expires, &lifetime, &trial, &out.LeaseStage)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return out, errors.New("ACCOUNT_SUBSCRIPTION_REQUIRED")
 	}
 	if e != nil {
 		return out, e
 	}
+	out.Lifetime = lifetime
 	if disabled || revoked || (!lifetime && !expires.After(time.Now())) {
 		return out, errors.New("ACCOUNT_SUBSCRIPTION_REQUIRED")
 	}
@@ -147,6 +151,9 @@ func (s *Store) approveDeviceLink(ctx context.Context, account Account, id, subs
 	if e != nil {
 		return e
 	}
+	if sub.LeaseStage && !l.PersonalOptimizationLeaseV1 {
+		return errors.New("LEASE_UNSUPPORTED")
+	}
 	if l.Mode == "image" && sub.Binding.Kind != "club" {
 		return errors.New("ACCOUNT_SUBSCRIPTION_REQUIRED")
 	}
@@ -181,6 +188,10 @@ func (a *API) deviceLinkStart(w http.ResponseWriter, r *http.Request) {
 	var q enrollment.DeviceLinkRequest
 	if body(r, &q) != nil {
 		a.fail(w, 400, "ACCOUNT_LINK_INVALID")
+		return
+	}
+	if q.PersonalOptimizationLeaseV1 && (!a.Settings.PersonalOptimizationLeases || q.Mode != "device") {
+		a.fail(w, 409, "LEASE_UNSUPPORTED")
 		return
 	}
 	pub, e := q.Validate(time.Now())
@@ -226,6 +237,10 @@ func (a *API) deviceLinkPoll(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 401, "ACCOUNT_LINK_INVALID")
 		return
 	}
+	if q.PersonalOptimizationLeaseV1 != l.PersonalOptimizationLeaseV1 || l.PersonalOptimizationLeaseV1 && !a.Settings.PersonalOptimizationLeases {
+		a.fail(w, 409, "LEASE_UNSUPPORTED")
+		return
+	}
 	if !l.Expires.After(time.Now()) {
 		a.fail(w, 410, "ACCOUNT_LINK_EXPIRED")
 		return
@@ -237,6 +252,10 @@ func (a *API) deviceLinkPoll(w http.ResponseWriter, r *http.Request) {
 	sub, e := accountSubscriptionTx(r.Context(), tx, l.Account, l.Subscription, true)
 	if e != nil {
 		a.deviceLinkFailure(w, e)
+		return
+	}
+	if sub.LeaseStage && (!l.PersonalOptimizationLeaseV1 || !a.Settings.PersonalOptimizationLeases) {
+		a.fail(w, 409, "LEASE_UNSUPPORTED")
 		return
 	}
 	out := enrollment.DeviceLinkStatus{State: "APPROVED", ExpiresAt: l.Expires, Interval: 3, Account: sub.Binding}
@@ -276,9 +295,16 @@ func (a *API) deviceLinkPoll(w http.ResponseWriter, r *http.Request) {
 			a.deviceLinkFailure(w, e)
 			return
 		}
-		if e = enrollSlotTx(r.Context(), tx, sub.Code, sub.Limit, l.Machine, Device{ID: l.Device, Name: l.Name, PublicKey: l.PublicKey}, a.Settings.KeyID, a.Settings.SigningKey, a.deviceTrust(), l.Account); e != nil {
+		modernPersonal := sub.LeaseStage && a.Settings.PersonalOptimizationLeases && l.PersonalOptimizationLeaseV1 && sub.Binding.Kind == "player" && sub.Limit == 1 && !sub.Lifetime
+		if e = enrollSlotTx(r.Context(), tx, sub.Code, sub.Limit, l.Machine, Device{ID: l.Device, Name: l.Name, PublicKey: l.PublicKey}, a.Settings.KeyID, a.Settings.SigningKey, a.deviceTrust(), l.Account, modernPersonal); e != nil {
 			a.deviceLinkFailure(w, e)
 			return
+		}
+		if modernPersonal {
+			if _, e = tx.Exec(r.Context(), "UPDATE devices SET personal_optimization_lease_v1=true WHERE id=$1", l.Device); e != nil {
+				a.deviceLinkFailure(w, e)
+				return
+			}
 		}
 		der, e := issueClientCertificate(a.Settings.CA, a.Settings.CAKey, pub, time.Now())
 		if e != nil {
@@ -310,7 +336,7 @@ func (a *API) deviceTrust() map[string]string {
 func (a *API) deviceLinkFailure(w http.ResponseWriter, e error) {
 	code, status := "ACCOUNT_LINK_UNAVAILABLE", 503
 	switch e.Error() {
-	case "ACCOUNT_LINK_INVALID", "ACCOUNT_LINK_EXPIRED", "ACCOUNT_SUBSCRIPTION_REQUIRED", "ACCOUNT_DEVICE_ALREADY_OWNED", "ACCOUNT_IMAGE_REVOKED", "SUBSCRIPTION_EXPIRED", "ACTIVATION_LIMIT", "MACHINE_DISABLED", "ACTIVATION_IDENTITY_CONFLICT", "CLUB_PAYMENT_REQUIRED", "CLUB_VERIFICATION_PENDING":
+	case "ACCOUNT_LINK_INVALID", "ACCOUNT_LINK_EXPIRED", "ACCOUNT_SUBSCRIPTION_REQUIRED", "ACCOUNT_DEVICE_ALREADY_OWNED", "ACCOUNT_IMAGE_REVOKED", "SUBSCRIPTION_EXPIRED", "ACTIVATION_LIMIT", "MACHINE_DISABLED", "ACTIVATION_IDENTITY_CONFLICT", "CLUB_PAYMENT_REQUIRED", "CLUB_VERIFICATION_PENDING", "LEASE_UNSUPPORTED":
 		code = e.Error()
 		status = 403
 	case "ACTIVATION_RATE_LIMIT":

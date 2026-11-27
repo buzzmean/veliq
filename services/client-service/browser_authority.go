@@ -161,7 +161,7 @@ func (c *Controller) authorityPlan(ctx context.Context, q browserproxy.Request) 
 	c.mu.Unlock()
 	return browserproxy.Plan{Enabled: enabled, Network: d.Network, Destination: destination, Policy: r}, nil
 }
-func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, plan browserproxy.Plan) (net.Conn, error) {
+func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, plan browserproxy.Plan) (conn net.Conn, err error) {
 	id, err := c.authorityCurrent(q)
 	if err != nil {
 		return nil, err
@@ -180,6 +180,16 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 		address := net.JoinHostPort(q.Host, strconv.Itoa(int(q.Port)))
 		return (&net.Dialer{}).DialContext(ctx, "tcp", address)
 	}
+	optimized := plan.Enabled && plan.Policy.Action != flowpolicy.Direct
+	if err := c.personalLeaseOpenError(optimized); err != nil {
+		return nil, err
+	}
+	defer func() {
+		if gateErr := c.personalLeaseOpenError(optimized); gateErr != nil && conn != nil {
+			_ = conn.Close() // Newly opened only; existing pinned streams are untouched.
+			conn, err = nil, gateErr
+		}
+	}()
 	if c.authorityBrowser(q) {
 		if plan.Policy.Source == "owner_authority_boot_guard" {
 			if !c.authorityGuardPending() {

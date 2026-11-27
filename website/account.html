@@ -31,6 +31,7 @@
   <link rel="stylesheet" href="assets/header-account.css?v=20261105-1">
   <link rel="stylesheet" href="assets/account-devices.css?v=20261124">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+  <link rel="stylesheet" href="/assets/offers.css?v=20261127-stage1">
 </head>
 <body>
 <script src="assets/icons.js"></script>
@@ -78,7 +79,7 @@
   <div data-step="code" hidden>
     <form class="acc-form card" data-code-form novalidate>
       <div class="acc-form__intro"><p class="acc-eyebrow">Подтверждение почты</p><h2 class="h2">Проверьте почту</h2><p class="muted">Отправили код на <b class="acc-email" data-sent-to></b>.</p></div>
-      <label class="field"><span>Код из письма</span><input class="input acc-otp" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]6" minlength="6" maxlength="6" placeholder="000000" aria-describedby="code-help" required></label>
+      <label class="field"><span>Код из письма</span><input class="input acc-otp" type="text" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000" aria-describedby="code-help" required></label>
       <p class="muted acc-small" id="code-help">Введите все шесть цифр. Код действует 10 минут. Если письма нет, проверьте «Спам».</p>
       <button class="btn" type="submit">Войти</button>
       <button class="btn btn--quiet btn--sm" type="button" data-change-email>Другая почта</button>
@@ -97,6 +98,14 @@
   </div>
   <div class="acc-dashboard" data-step="cabinet" hidden>
     <div class="acc-head card"><div class="acc-identity"><span class="acc-avatar" aria-hidden="true">V</span><div><p class="acc-account-email" data-account-email></p><p class="muted acc-small" data-account-kind></p></div></div><button class="btn btn--ghost btn--sm" type="button" data-logout>Выйти</button></div>
+    <section class="card offer offer--trial" id="trial" aria-labelledby="account-trial-title" data-trial-panel hidden>
+      <h2 id="account-trial-title">24 часа бесплатно</h2>
+      <p data-trial-description>Включите, когда удобно. 24 часа начнутся после нажатия кнопки. Без карты и автопродления.</p>
+      <p class="offer__note">Одновременно — один ПК. Смена ПК не запускает сутки заново.</p>
+      <span data-trial-code hidden></span><button class="btn" type="button" data-trial-activate>Активировать 24 часа</button>
+      <p data-trial-until role="status" hidden></p><p class="acc-error" data-trial-error role="alert" hidden></p>
+    </section>
+    <section class="offer acc-plan-offer" data-personal-offer hidden><p class="offer__title">−30% на первую подписку от 3 месяцев</p><p class="offer__total" data-offer-total></p><p class="offer__note">Если первая покупка на месяц, скидка не сохраняется. Не суммируется с другими скидками.</p><a class="acc-text-link" href="#account-plans">Выбрать срок</a></section>
     <section class="card acc-panel" data-link-panel hidden>
       <h2 class="h2" data-link-title>Подключить компьютер</h2><p data-link-name></p>
       <form class="acc-link-form" data-link-form><label class="field"><span>Подписка</span><span class="acc-select"><select class="input" name="subscription" data-link-subscription></select></span></label>
@@ -105,17 +114,6 @@
     </section>
     <div class="acc-dashboard__grid">
       <div class="acc-dashboard__main">
-        <section class="card acc-panel" aria-labelledby="account-trial-title" data-trial-panel hidden>
-          <div class="acc-panel__head">
-            <h2 class="h2" id="account-trial-title">Пробный день</h2>
-            <p class="muted acc-small">24 часа на одном компьютере с момента активации. Без карты и автопродления.</p>
-          </div>
-          <div>
-            <p class="acc-small">Ваш промокод <code data-trial-code style="overflow-wrap:anywhere"></code></p>
-            <button class="btn btn--sm" type="button" data-trial-activate>Активировать 24 часа</button>
-          </div>
-          <p class="acc-error" data-trial-error role="alert" hidden></p>
-        </section>
         <section class="card acc-panel" aria-labelledby="account-subscriptions-title">
           <div class="acc-panel__head"><h2 class="h2" id="account-subscriptions-title">Мои подписки</h2></div>
           <div class="acc-empty" data-subs-empty><span class="acc-empty__icon" aria-hidden="true"><svg class="i"><use href="#i-games"/></svg></span><h3 class="h3">Пока нет подписок</h3><p class="muted" data-subs-hint>Здесь появятся ваша подписка и подключённые компьютеры.</p><a class="btn btn--sm" href="#account-plans" data-choose-plan hidden>Выбрать тариф</a></div>
@@ -154,7 +152,8 @@
   </div>
 </div></section>
 <script src="/assets/pricing-policy.js?v=20261118"></script>
-<script src="assets/account.js?v=749e29c58d46"></script>
+<script src="/assets/offers.js?v=20261127-stage1"></script>
+<script src="assets/account.js?v=20261127-stage1"></script>
 
 
 </main>

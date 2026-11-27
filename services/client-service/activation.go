@@ -198,6 +198,7 @@ func validActivationIdentity(m Manifest) bool {
 // identity use this background manager; existing valid legacy installs do not.
 func (c *Controller) ConfigureActivation(m Manifest) bool {
 	m = clientconfig.Normalize(m)
+	c.configurePersonalLeaseStage(m.PersonalOptimizationLeaseStage)
 	c.browser.readiness.enforced.Store(true)
 	c.configureBrowserTransportCheck(m)
 	c.mu.Lock()

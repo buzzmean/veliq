@@ -29,6 +29,7 @@ type Manifest = clientconfig.Manifest
 func LoadManifest(path string) (Manifest, error) { return clientconfig.Load(path) }
 func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	m = clientconfig.Normalize(m)
+	c.configurePersonalLeaseStage(m.PersonalOptimizationLeaseStage)
 	c.remoteMu.Lock()
 	defer c.remoteMu.Unlock()
 	raw, e := os.ReadFile(m.TrustFile)
@@ -80,7 +81,7 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	cfg := &tls.Config{MinVersion: tls.VersionTLS13, RootCAs: certPool, GetClientCertificate: renewer.clientCertificate}
 	cache := security.NewConfigCache(keys, filepath.Join(m.StateDirectory, "signed-config.json"))
 	_ = cache.Load(time.Now())
-	cp := &controlclient.Client{BaseURL: m.ControlPlaneURL, Cache: cache, DeviceID: identity.ID, DeviceKey: key}
+	cp := &controlclient.Client{BaseURL: m.ControlPlaneURL, Cache: cache, DeviceID: identity.ID, DeviceKey: key, PersonalOptimizationLeaseStage: m.PersonalOptimizationLeaseStage}
 	// Installer/activation manifests may carry only ca_file: the control plane
 	// is then verified by the same private CA, never by Windows system roots.
 	cpCA := m.ControlPlaneCAFile
@@ -122,6 +123,7 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	if e = c.stopRemoteLocked(ctx); e != nil {
 		return e
 	}
+	c.setPersonalLeaseSource(cp)
 	remote.initFleet(keys, identity.ID, m.StateDirectory)
 	remoteCtx, stopRemote := context.WithCancel(c.ctx)
 	c.remoteCancel = stopRemote

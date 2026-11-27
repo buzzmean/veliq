@@ -104,6 +104,7 @@ type Controller struct {
 	games            gameRuntime
 	activation       activationRuntime
 	subscription     subscriptionRuntime
+	personalLease    personalLeaseRuntime
 	remoteDone       chan struct{}
 	remoteMu         sync.Mutex
 	fleet            *relayFleet
@@ -250,6 +251,7 @@ func (c *Controller) syncPolicies() {
 	}
 }
 func (c *Controller) Start() {
+	c.startPersonalLeaseWorker()
 	c.wg.Add(1)
 	go func() { defer c.wg.Done(); c.watchTrafficAccounting() }()
 	c.wg.Add(1)
@@ -411,17 +413,18 @@ func (c *Controller) saveProfiles() error {
 	}
 	return os.Rename(name, c.customPath)
 }
-func (c *Controller) Classify(identity windowsplatform.ProcessIdentity, t windowsplatform.Tuple) windowsplatform.Decision {
+func (c *Controller) Classify(identity windowsplatform.ProcessIdentity, t windowsplatform.Tuple) (decision windowsplatform.Decision) {
 	c.mu.Lock()
 	enabled := c.enabled
 	c.mu.Unlock()
-	decision := windowsplatform.Decision{Route: routing.Route{}}
+	decision = windowsplatform.Decision{Route: routing.Route{}}
 	if windowsplatform.IsPrivateClubInfrastructure(t) {
 		return decision
 	}
 	if !enabled || c.selfExecutable != "" && strings.EqualFold(identity.Path, c.selfExecutable) {
 		return decision
 	}
+	defer func() { decision = c.personalLeaseGateDecision(decision) }()
 	if d, ok := c.classifySTUNGameAuto(identity, t); ok {
 		return d
 	}
@@ -615,7 +618,7 @@ func (c *Controller) Snapshot() Snapshot {
 		rx += brx
 		tx += btx
 	}
-	snapshot := Snapshot{CaptureActive: backend.Ready, CapturePermitted: c.activationNetworkAllowed(), HotAttach: c.hotAttachStatus(), Version: "0.3.0-dev", Build: buildStamp(), Connected: (c.Demo || backend.Ready) && (controlPlaneURL == "" || c.relayConnected()), Optimizing: enabled && (c.Demo || backend.Ready), Demo: c.Demo, Backend: backend, Primary: selection.Primary, Secondary: selection.Secondary, Tertiary: selection.Tertiary, Routes: views, Profiles: c.Profiles.List(), RXBytes: rx, TXBytes: tx, History: history, Flows: flows, Settings: settings, ControlPlane: controlPlaneURL, ActiveApps: apps}
+	snapshot := Snapshot{CaptureActive: backend.Ready, CapturePermitted: c.activationNetworkAllowed(), HotAttach: c.hotAttachStatus(), Version: "0.3.0-dev", Build: buildStamp(), Connected: (c.Demo || backend.Ready) && (controlPlaneURL == "" || c.relayConnected()), Optimizing: enabled && (c.Demo || backend.Ready) && c.personalLeaseNetworkAllowed(time.Now()), Demo: c.Demo, Backend: backend, Primary: selection.Primary, Secondary: selection.Secondary, Tertiary: selection.Tertiary, Routes: views, Profiles: c.Profiles.List(), RXBytes: rx, TXBytes: tx, History: history, Flows: flows, Settings: settings, ControlPlane: controlPlaneURL, ActiveApps: apps}
 	snapshot.ServicePID = uint32(os.Getpid())
 	snapshot.ActiveAppExecutables = executables
 	snapshot.RelayConnected = c.relayConnected()
@@ -693,10 +696,14 @@ func (c *Controller) Handle(ctx context.Context, method string, raw json.RawMess
 			if e := security.Parse(raw, &v); e != nil {
 				return nil, e
 			}
-			if v.Enabled {
+			if v.Enabled && !c.activationEntitled() {
 				return nil, errors.New("ACTIVATION_REQUIRED")
 			}
-			return c.handleOptimize(ctx, raw)
+			if !v.Enabled {
+				c.activationMu.Lock()
+				defer c.activationMu.Unlock()
+				return c.handleOptimize(ctx, raw)
+			}
 		}
 	}
 

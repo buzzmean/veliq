@@ -268,7 +268,7 @@ func (a *API) subscriptionCreate(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 400, "SUBSCRIPTION_INVALID")
 		return
 	}
-	id, e := a.Store.createSubscription(r.Context(), acc, p, q.Seats, a.Settings.ClubVerificationToken != "")
+	id, e := a.Store.createSubscription(r.Context(), acc, p, q.Seats, a.Settings.ClubVerificationToken != "", a.Settings.PersonalOptimizationLeases)
 	if e != nil {
 		switch e.Error() {
 		case "SUBSCRIPTION_INVALID", "SUBSCRIPTION_LIMIT":
@@ -439,7 +439,11 @@ func (a *API) pay(w http.ResponseWriter, r *http.Request, acc Account, id string
 	if q.PromoCode != "" || quoteOnly {
 		var quote PaymentQuote
 		if quoteOnly {
-			quote, err = a.Store.QuotePromotion(r.Context(), acc, *sub, p, months, q.PromoCode)
+			if q.PromoCode == "" && sub.Kind == "player" {
+				quote, err = a.Store.QuotePersonal(r.Context(), acc, *sub, p, months, a.Settings.PersonalFirstPurchase)
+			} else {
+				quote, err = a.Store.QuotePromotion(r.Context(), acc, *sub, p, months, q.PromoCode)
+			}
 		} else {
 			reservation, quote, err = a.Store.ReservePromotion(r.Context(), acc, *sub, p, months, q.PromoCode, q.ExpectedAmount, a.Settings.Payments.Name())
 		}

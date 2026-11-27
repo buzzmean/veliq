@@ -49,7 +49,7 @@ func scanPersonalOrder(row pgx.Row) (out PersonalOrder, hash, provider string, e
 // ReservePersonalOrder commits the sole creation claim before provider I/O.
 // A committed claim is never leased or retried: even a timeout may have created
 // a payable provider transaction. Repeats use its saved result or require review.
-func (s *Store) ReservePersonalOrder(ctx context.Context, acc Account, subID string, p Plan, months int, expected *int64, key, provider string) (PersonalOrder, error) {
+func (s *Store) ReservePersonalOrder(ctx context.Context, acc Account, subID string, p Plan, months int, expected *int64, key, provider string, firstPurchase ...bool) (PersonalOrder, error) {
 	var out PersonalOrder
 	if !clubOrderKey.MatchString(key) {
 		return out, errors.New("PAYMENT_IDEMPOTENCY_REQUIRED")
@@ -100,10 +100,11 @@ func (s *Store) ReservePersonalOrder(ctx context.Context, acc Account, subID str
 	if sub.Kind != "player" || p.ID != sub.PlanID || p.Kind != "player" || p.PricePerSeatRub == 0 {
 		return out, errors.New("PRICE_NOT_SET")
 	}
-	amount, term, err := p.QuotePayment(sub.Seats, months)
+	q, err := personalQuoteTx(ctx, tx, acc.ID, sub, p, months, len(firstPurchase) > 0 && firstPurchase[0])
 	if err != nil {
 		return out, err
 	}
+	amount := q.Amount
 	if amount != *expected {
 		return out, errors.New("PAYMENT_PRICE_CHANGED")
 	}
@@ -118,15 +119,14 @@ func (s *Store) ReservePersonalOrder(ctx context.Context, acc Account, subID str
 	if err != nil {
 		return out, err
 	}
-	q := PersonalQuote{PaymentQuote: PaymentQuote{BaseAmount: p.PricePerSeatRub * int64(sub.Seats) * int64(months) * 100,
-		Amount: amount, Discount: term.Discount, Months: months, Days: term.Days}, SubscriptionID: sub.ID, PlanID: sub.PlanID, Seats: sub.Seats}
-	raw, err := json.Marshal(q)
+	quote := PersonalQuote{PaymentQuote: q, SubscriptionID: sub.ID, PlanID: sub.PlanID, Seats: sub.Seats}
+	raw, err := json.Marshal(quote)
 	if err != nil {
 		return out, err
 	}
-	reference := fmt.Sprintf("personal-order-v1;months=%d;discount=%d;seats=%d;base_rub=%d", months, term.Discount, sub.Seats, p.PricePerSeatRub)
+	reference := fmt.Sprintf("personal-order-v1;months=%d;discount=%d;seats=%d;base_rub=%d", months, q.Discount, sub.Seats, p.PricePerSeatRub)
 	if _, err = tx.Exec(ctx, `INSERT INTO payments(id,subscription_id,provider,provider_payment_id,amount_kopecks,period_days,status,reference)
- VALUES($1,$2,$3,$4,$5,$6,'pending',$7)`, id, sub.ID, provider, "reservation:"+id, amount, term.Days, reference); err != nil {
+ VALUES($1,$2,$3,$4,$5,$6,'pending',$7)`, id, sub.ID, provider, "reservation:"+id, amount, q.Days, reference); err != nil {
 		return out, err
 	}
 	if _, err = tx.Exec(ctx, `INSERT INTO personal_payment_orders(payment_id,account_id,idempotency_key,request_hash,snapshot)
@@ -136,7 +136,7 @@ func (s *Store) ReservePersonalOrder(ctx context.Context, acc Account, subID str
 	if _, err = tx.Exec(ctx, "INSERT INTO audit_log(actor,action,entity_id) VALUES($1,'personal-order.reserved',$2)", "account:"+acc.ID, id); err != nil {
 		return out, err
 	}
-	return PersonalOrder{ID: id, Quote: q, Status: "pending"}, tx.Commit(ctx)
+	return PersonalOrder{ID: id, Quote: quote, Status: "pending"}, tx.Commit(ctx)
 }
 
 // Both ordinary and promotion reservation callers hold the same account lock
@@ -242,7 +242,7 @@ func (a *API) personalPaymentFail(w http.ResponseWriter, err error) {
 }
 
 func (a *API) payPersonal(w http.ResponseWriter, r *http.Request, acc Account, sub Subscription, p Plan, months int, expected *int64, key string) {
-	o, err := a.Store.ReservePersonalOrder(r.Context(), acc, sub.ID, p, months, expected, key, a.Settings.Payments.Name())
+	o, err := a.Store.ReservePersonalOrder(r.Context(), acc, sub.ID, p, months, expected, key, a.Settings.Payments.Name(), a.Settings.PersonalFirstPurchase)
 	if err != nil {
 		a.personalPaymentFail(w, err)
 		return

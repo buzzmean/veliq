@@ -13,23 +13,27 @@ import (
 )
 
 type Manifest struct {
-	ClubImage               bool                        `json:"club_image,omitempty"`
-	ClubBrowserPaths        []string                    `json:"club_browser_paths,omitempty"`
-	ActivationCodeFile      string                      `json:"activation_code_file,omitempty"`
-	ActivationCAFingerprint string                      `json:"activation_ca_sha256,omitempty"`
-	ProbeTokenFile          string                      `json:"probe_token_file,omitempty"`
-	ControlPlaneCAFile      string                      `json:"control_plane_ca_file,omitempty"`
-	OwnerSID                string                      `json:"owner_sid"`
-	TokenFile               string                      `json:"token_file"`
-	StateDirectory          string                      `json:"state_directory"`
-	ControlPlaneURL         string                      `json:"control_plane_url"`
-	TrustFile               string                      `json:"trust_file"`
-	DeviceIdentityFile      string                      `json:"device_identity_file"`
-	DeviceCertificate       string                      `json:"device_certificate"`
-	CAFile                  string                      `json:"ca_file"`
-	ProbeTarget             string                      `json:"probe_target"`
-	TCPProbeTarget          string                      `json:"tcp_probe_target"`
-	Driver                  windowsplatform.DriverFiles `json:"driver"`
+	// PersonalOptimizationLeaseStage is deliberately opt-in for an isolated test
+	// installation. Existing paid, lifetime and club installations keep their
+	// current behavior; this is not a production rollout switch.
+	PersonalOptimizationLeaseStage bool                        `json:"personal_optimization_lease_stage,omitempty"`
+	ClubImage                      bool                        `json:"club_image,omitempty"`
+	ClubBrowserPaths               []string                    `json:"club_browser_paths,omitempty"`
+	ActivationCodeFile             string                      `json:"activation_code_file,omitempty"`
+	ActivationCAFingerprint        string                      `json:"activation_ca_sha256,omitempty"`
+	ProbeTokenFile                 string                      `json:"probe_token_file,omitempty"`
+	ControlPlaneCAFile             string                      `json:"control_plane_ca_file,omitempty"`
+	OwnerSID                       string                      `json:"owner_sid"`
+	TokenFile                      string                      `json:"token_file"`
+	StateDirectory                 string                      `json:"state_directory"`
+	ControlPlaneURL                string                      `json:"control_plane_url"`
+	TrustFile                      string                      `json:"trust_file"`
+	DeviceIdentityFile             string                      `json:"device_identity_file"`
+	DeviceCertificate              string                      `json:"device_certificate"`
+	CAFile                         string                      `json:"ca_file"`
+	ProbeTarget                    string                      `json:"probe_target"`
+	TCPProbeTarget                 string                      `json:"tcp_probe_target"`
+	Driver                         windowsplatform.DriverFiles `json:"driver"`
 }
 
 func Normalize(m Manifest) Manifest {

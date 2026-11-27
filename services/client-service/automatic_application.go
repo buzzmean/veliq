@@ -211,6 +211,15 @@ func (c *Controller) openAutomaticPlan(ctx context.Context, cur profilesResult, 
 	if !cur.enabled || cur.routingDisabled || !automaticApplication(cur.profile) || directOnlyFlow(wp.Tuple{Protocol: "tcp", Destination: p.Destination}) || !p.Destination.Addr().Is4() {
 		return nil, p, errors.New("AUTOMATIC_SCOPE_EXCLUDED")
 	}
+	if err := c.personalLeaseOpenError(p.Enabled); err != nil {
+		if p.Policy.Action == flowpolicy.Direct && !p.FirstFlightManaged && p.Policy.Strategy == "" && !protectedBrowserDomain(q.Host) && c.browserOriginPolicy(q.Host).Kind != "RELAY" {
+			// Expired test admission cannot use cached LOCAL or install a retry
+			// watcher. An otherwise healthy application keeps its plain OS route.
+			conn, openErr := open(ctx, q, p)
+			return conn, p, openErr
+		}
+		return nil, p, err
+	}
 	if p.Policy.Source == "rule" || p.Policy.Source == "configured_baseline" || p.Policy.Action == flowpolicy.Block ||
 		p.Policy.Action == flowpolicy.DirectPlus {
 		conn, err := open(ctx, q, p)

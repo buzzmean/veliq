@@ -1,0 +1,42 @@
+.offer { border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); padding: 16px 18px; background: var(--bg); color: var(--text); display: grid; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.offer[hidden], [data-offer-public][hidden] { display: none !important; }
+.offer p { margin: 0; }
+.offer__title { font-size: 20px; line-height: 1.2; font-weight: 700; }
+.offer__total { font-size: 22px; line-height: 1.2; font-weight: 700; font-variant-numeric: tabular-nums; }
+.offer__note { font-size: 13px; line-height: 1.45; color: var(--text-muted); }
+.offer--trial { background: var(--bg-raised); gap: 12px; }
+.offer--trial .btn { justify-self: start; }
+.offer--trial h2 { margin: 0; font-size: 26px; line-height: 1.15; }
+.offer--club { max-width: 680px; }
+.offer--club strong { display: block; font-size: 18px; }
+.offer--compact { display: block; font-size: 13px; line-height: 1.4; padding: 10px 12px; }
+.offer--compact strong { font-size: 14px; font-weight: 600; }
+.pricing-early-club { margin-top: 12px; max-width: 680px; }
+#club-plan { scroll-margin-top: 80px; }
+.offer-link { display: inline-block; margin-top: 12px; font-weight: 600; text-underline-offset: 4px; }
+.get__actions { min-width: 0; display: grid; justify-items: start; }
+.acc-first-month-warning { border-left: 3px solid var(--accent); padding-left: 12px; font-size: 14px; line-height: 1.5; }
+.acc-plan-offer { margin: 0 0 16px; }
+body.pricing-page .page-head { padding-block: 28px 24px; }
+body.pricing-page .page-head .h1 { font-size: clamp(34px, 5vw, 56px); }
+body.pricing-page .page-head .lede { margin-top: 12px; }
+.pricing-page .plan > .btn { margin-top: 0; }
+@media (max-width: 600px) {
+  .offer { padding: 14px; gap: 6px; }
+  .offer__title { font-size: 18px; }
+  .offer__total { font-size: 20px; }
+  .offer--compact { padding: 10px 12px; }
+  .offer--trial h2 { font-size: 24px; }
+  .offer--trial .btn { width: 100%; }
+  .acc-page-head { padding-block: 16px; }
+  .acc-page-head .lede { margin-top: 8px; }
+  .acc-head { padding: 14px; flex-direction: row; flex-wrap: nowrap; align-items: center; gap: 10px; }
+  .acc-head .acc-identity { min-width: 0; flex: 1 1 0; }
+  .acc-head .acc-account-email { font-size: 14px; overflow-wrap: anywhere; }
+  .acc-head [data-logout] { flex: 0 0 auto; padding: 8px 10px; font-size: 13px; }
+  .acc-section { padding-top: 16px; }
+  .pricing-page .page-head .lede { font-size: 15px; }
+  .pricing-page .plan { gap: 12px; padding: 20px; }
+  .get__actions { width: 100%; }
+  .get__actions > .btn { width: 100%; }
+}

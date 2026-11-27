@@ -92,7 +92,10 @@ try:
         expect(dialog.get_by_text('Клубное приглашение даёт скидку 30% на это продление на 30 дней.')).to_be_visible()
         expect(dialog.get_by_text('К оплате:', exact=False)).to_contain_text('418,60')
         assert seen[0][1] == {'code': invite}
-        assert all(data.get('promo_code') == credit and data['months'] == 1 for path, data in seen[2:])
+        # Automatic ordinary-price previews carry no promo. The explicit promo
+        # preview and the final confirmation must both retain this exact code.
+        promo_quotes = [data for path, data in seen if path.endswith('/quote') and data.get('promo_code')]
+        assert len(promo_quotes) == 2 and all(data['promo_code'] == credit and data['months'] == 1 for data in promo_quotes)
         assert not page_errors, 'browser reported JavaScript errors'
         browser.close()
     print('CLUB_REFERRAL_CHROMIUM_PASS mobile layout, invitation, credit states, one-month quote (mocked API)')

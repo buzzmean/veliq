@@ -28,6 +28,7 @@ func (*FleetRateLimit) Error() string { return "fleet control plane rate limited
 var ErrNotSupported = errors.New("control plane endpoint not supported")
 
 type Client struct {
+	PersonalOptimizationLeaseStage bool
 	BaseURL              string
 	HTTP                 *http.Client
 	Cache                *security.ConfigCache
@@ -86,6 +87,11 @@ func (c *Client) request(ctx context.Context, method, path string, value any, to
 	}
 	if response.StatusCode == http.StatusPaymentRequired {
 		return nil, ErrSubscriptionExpired
+	}
+	// A lease conflict is a structured admission decision, not a transport error.
+	// Only this endpoint accepts its bounded, strictly decoded conflict body.
+	if response.StatusCode == http.StatusConflict && path == "/api/v1/subscription/optimization-lease" {
+		return b, nil
 	}
 	if response.StatusCode == http.StatusNotFound || response.StatusCode == http.StatusMethodNotAllowed {
 		return nil, ErrNotSupported
@@ -178,11 +184,12 @@ func (c *Client) Heartbeat(ctx context.Context, id, token string, load float64) 
 
 // SubscriptionStatus is this device's own paid period as the control plane sees it.
 type SubscriptionStatus struct {
-	Managed    bool       `json:"managed"`
-	Enforced   bool       `json:"enforced"`
-	Active     bool       `json:"active"`
-	PaidUntil  *time.Time `json:"paid_until,omitempty"`
-	GraceUntil *time.Time `json:"grace_until,omitempty"`
+	OptimizationLease OptimizationLeasePolicy `json:"optimization_lease"`
+	Managed           bool                    `json:"managed"`
+	Enforced          bool                    `json:"enforced"`
+	Active            bool                    `json:"active"`
+	PaidUntil         *time.Time              `json:"paid_until,omitempty"`
+	GraceUntil        *time.Time              `json:"grace_until,omitempty"`
 }
 
 func (c *Client) SubscriptionStatus(ctx context.Context) (SubscriptionStatus, error) {
@@ -190,7 +197,11 @@ func (c *Client) SubscriptionStatus(ctx context.Context) (SubscriptionStatus, er
 	if len(c.DeviceKey) != ed25519.PrivateKeySize {
 		return out, errors.New("device identity required")
 	}
-	proof, e := security.NewProof(c.DeviceID, security.SubscriptionAudience, c.DeviceKey, time.Now())
+	audience := security.SubscriptionAudience
+	if c.PersonalOptimizationLeaseStage {
+		audience = security.SubscriptionPersonalLeaseAudience
+	}
+	proof, e := security.NewProof(c.DeviceID, audience, c.DeviceKey, time.Now())
 	if e != nil {
 		return out, e
 	}

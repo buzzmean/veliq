@@ -2,7 +2,7 @@
 import json
 import os
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[2]
 terms = [dict(months=m, days=m*30, discount=d) for m,d in [(1,0),(3,5),(6,10),(12,20)]]
@@ -75,7 +75,7 @@ with sync_playwright() as p:
             for term in account_terms:
                 select.select_option(str(term['months']))
                 expected=base*seats*term['months']*(100-term['discount'])
-                assert str(term['days'])+' дней' in page.locator('.acc-sub [aria-live]').inner_text()
+                expect(page.locator('.acc-sub [aria-live]')).to_contain_text(str(term['days'])+' дней')
                 page.locator('.acc-sub').get_by_role('button',name='Оплатить',exact=True).click()
                 dialog=page.get_by_role('dialog');dialog.wait_for()
                 dialog.get_by_role('button',name='Подтвердить и перейти к оплате').click()

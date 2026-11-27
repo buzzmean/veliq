@@ -111,8 +111,35 @@
   var trialCode = $('[data-trial-code]');
   var trialButton = $('[data-trial-activate]');
   var trialError = $('[data-trial-error]');
+  function renderOffers(offers) {
+    state.offers = offers;
+    trialCode.textContent = '';
+    trialButton.hidden = false;
+    $('[data-trial-panel]').hidden = true;
+    $('[data-personal-offer]').hidden = true;
+    $('[data-trial-until]').hidden = true;
+    if (state.kind !== 'player' || !offers || !window.veliqOffers) return;
+    var trial = offers.trial || {};
+    var until = typeof trial.trial_until === 'string' && new Date(trial.trial_until);
+    if (trial.active === true && until && Number.isFinite(until.getTime())) {
+      $('[data-trial-panel]').hidden = false;
+      trialButton.hidden = true;
+      $('[data-trial-description]').textContent = 'Пробные сутки уже активированы. Повторный вход или смена компьютера не меняют срок.';
+      say($('[data-trial-until]'), 'Доступ до ' + dateTime(trial.trial_until) + '. Без автопродления и списаний.');
+    } else if (window.veliqOffers.trial(trial) && trial.eligible === true && typeof trial.code === 'string' && trial.code) {
+      trialCode.textContent = trial.code;
+      $('[data-trial-panel]').hidden = false;
+      $('[data-trial-description]').textContent = 'Включите, когда удобно. 24 часа начнутся после нажатия кнопки. Без карты и автопродления.';
+    }
+    if (window.veliqOffers.personal(offers.personal_first_purchase, true) && offers.personal_first_purchase.payment_in_progress !== true) {
+      window.veliqOffers.fillPersonal($('[data-personal-offer]'), offers.personal_first_purchase);
+      $('[data-personal-offer] a').href = state.subscriptions.some(function(s){return s.kind==='player';}) ? '#account-subscriptions-title' : '#account-plans';
+    }
+  }
   $('[data-logout]').addEventListener('click', function () {
     trialCode.textContent = '';
+    state.offers = null;
+    $('[data-personal-offer]').hidden = true;
     $('[data-trial-panel]').hidden = true;
     say(trialError, '');
   });
@@ -122,8 +149,8 @@
     say(trialError, '');
     call('POST', '/trial/activate', {code: trialCode.textContent}).then(function () {
       return load().then(function () {
-        var card = $('[data-subs] .acc-sub');
-        if (card) card.focus();
+        var until = $('[data-trial-until]');
+        if (!until.hidden) { until.tabIndex = -1; until.focus(); }
       });
     }).catch(function (error) {
       say(trialError, message(error.message));
@@ -131,6 +158,8 @@
   });
 
   function planOf(id) { for (var i = 0; i < state.plans.length; i++) if (state.plans[i].id === id) return state.plans[i]; return null; }
+  function personalLeaseStage(s) { return s.kind === 'player' && s.personal_optimization_lease_stage === true; }
+  function subscriptionUsage(s) { return personalLeaseStage(s) ? 'Подключено ПК: ' + s.used_seats + '. Одновременная оптимизация: 1. Компьютер можно менять без ограничения числа последовательных подключений.' : 'Занято компьютеров: ' + s.used_seats + ' из ' + s.seats; }
 
   function renderClubReferrals(referrals) {
     var panel = $('[data-club-referrals]');
@@ -275,7 +304,7 @@
     var help = el('div', 'acc-connect'); help.hidden = true;
     help.appendChild(el('p', null, 'На новом компьютере откройте VELIQ и войдите в этот аккаунт. Подтвердите подключение в кабинете.'));
     help.appendChild(el('a', 'acc-text-link', 'Скачать VELIQ')).href = '/download';
-    if (s.can_connect && (s.kind !== 'club' || s.club_verification === 'verified')) {
+    if (s.can_connect && !personalLeaseStage(s) && (s.kind !== 'club' || s.club_verification === 'verified')) {
       var issue = el('button', 'btn btn--sm', 'Сгенерировать код'); issue.type = 'button';
       var secret = el('output', 'acc-activation-code'); secret.hidden = true;
       var copy = el('button', 'btn btn--sm btn--quiet', 'Скопировать'); copy.type = 'button'; copy.hidden = true;
@@ -367,7 +396,7 @@
     else if (s.trial_until) status = s.active ? 'Пробный доступ до ' + dateTime(s.trial_until) : 'Пробный доступ завершён';
     head.appendChild(el('span', 'acc-badge' + (s.active ? ' acc-badge--ok' : ''), status));
     card.appendChild(head);
-    card.appendChild(el('p', 'muted', 'Занято компьютеров: ' + s.used_seats + ' из ' + s.seats));
+    card.appendChild(el('p', 'muted', subscriptionUsage(s)));
 
     var actions = el('div', 'acc-actions');
     var err = el('p', 'acc-error'); err.hidden = true;
@@ -376,12 +405,22 @@
     else if (s.trial_until && !s.active) payLabel = 'Выбрать срок и оплатить';
     var pay = el('button', 'btn', payLabel);
     var duration=el('select','input');duration.setAttribute('aria-label','Срок продления');
-    var policy=window.veliqPricing; var terms=state.terms || []; terms.forEach(function(t){var o=el('option',null,t.months+' мес. ('+t.days+' дней)'+(t.discount?' · скидка '+t.discount+'%':''));o.value=t.months;duration.appendChild(o);});
+    var policy=window.veliqPricing; var terms=state.terms || []; terms.forEach(function(t){var first=s.kind==='player'&&window.veliqOffers&&state.offers&&window.veliqOffers.personal(state.offers.personal_first_purchase,true)&&t.months>1;var o=el('option',null,t.months+' мес. ('+t.days+' дней)'+(first?' · первая покупка −30%':t.discount?' · скидка '+t.discount+'%':''));o.value=t.months;duration.appendChild(o);});
     var durationLabel=el('label','field');durationLabel.appendChild(el('span',null,'Срок подписки'));durationLabel.appendChild(duration);
     var quote=el('p','muted');quote.setAttribute('aria-live','polite');
-    var appliedCode='', appliedQuote=null, quoteVersion=0, checking=false;
+    var firstMonthWarning=el('p','acc-first-month-warning');firstMonthWarning.hidden=true;firstMonthWarning.setAttribute('role','status');
+    var appliedCode='', appliedQuote=null, quoteVersion=0, checking=false, previewing=false;
     function quotedAmount(){var term=terms.find(function(t){return t.months===Number(duration.value);});var base=paymentsOn?p.price_per_seat_rub:policy&&policy.prices[s.kind];return appliedQuote?appliedQuote.amount_kopecks:term&&base?base*s.seats*term.months*(100-term.discount):0;}
-    function showQuote(){var term=terms.find(function(t){return t.months===Number(duration.value);});if(!term)return;var base=(paymentsOn?p.price_per_seat_rub:policy&&policy.prices[s.kind])*s.seats*term.months*100;var reduction=appliedQuote?appliedQuote.base_amount_kopecks-appliedQuote.amount_kopecks:base-quotedAmount();quote.textContent='За '+term.days+' дней. Базовая сумма: '+rub(base/100)+'. Скидка: '+rub(reduction/100)+'. К оплате: '+rub(quotedAmount()/100)+'. Комиссия для вас: 0 ₽. Разовая оплата без автосписаний.';}
+    function showQuote(){var term=terms.find(function(t){return t.months===Number(duration.value);});if(!term)return;firstMonthWarning.hidden=!(appliedQuote&&appliedQuote.first_month_consumes_offer===true);firstMonthWarning.textContent='Если первая подтверждённая покупка — на месяц, право на −30% для первого заказа от 3 месяцев будет использовано. Выберите 3, 6 или 12 месяцев, чтобы воспользоваться акцией.';if(paymentsOn&&!appliedQuote){quote.textContent='Получаем расчёт сервера…';return;}var base=appliedQuote?appliedQuote.base_amount_kopecks:(policy&&policy.prices[s.kind])*s.seats*term.months*100;var reduction=base-quotedAmount();quote.textContent='За '+term.days+' дней. Базовая сумма: '+rub(base/100)+'. Скидка: '+rub(reduction/100)+'. К оплате: '+rub(quotedAmount()/100)+'. '+(appliedQuote&&appliedQuote.promotion==='personal_first_purchase'?'Первая покупка: −30%, без сложения со скидкой за срок. ':'')+'Комиссия для вас: 0 ₽. Разовая оплата без автосписаний.';}
+    function refreshQuote(){
+      if(!paymentsOn||s.lifetime)return;
+      var version=++quoteVersion;previewing=true;busy(pay,true);showQuote();
+      call('POST','/subscriptions/'+s.id+'/quote',{months:Number(duration.value)}).then(function(result){
+        if(version!==quoteVersion)return;
+        if(!Number.isSafeInteger(result.amount_kopecks)||result.amount_kopecks<1||!Number.isSafeInteger(result.base_amount_kopecks))throw new Error('PAYMENT_UNAVAILABLE');
+        previewing=false;appliedQuote=result;showQuote();busy(pay,false);
+      }).catch(function(error){if(version!==quoteVersion)return;previewing=false;pay.setAttribute('aria-busy','false');quote.textContent='Расчёт временно недоступен. Обновите кабинет перед оплатой.';firstMonthWarning.hidden=true;say(err,message(error.message));});
+    }
 
     var promo=el('details','acc-promo'), summary=el('summary',null,'У меня есть промокод');promo.appendChild(summary);
     var promoForm=el('form','acc-promo__form'), promoLabel=el('label','field'), promoInput=el('input','input');
@@ -389,12 +428,12 @@
     var apply=el('button','btn btn--sm','Применить');apply.type='submit';promoForm.appendChild(apply);
     var remove=el('button','btn btn--sm btn--quiet','Убрать промокод');remove.type='button';remove.hidden=true;promoForm.appendChild(remove);
     var promoNote=el('p','acc-small');promoNote.setAttribute('role','status');promoNote.hidden=true;promo.appendChild(promoForm);promo.appendChild(promoNote);
-    function clearPromo(){quoteVersion++;appliedCode='';appliedQuote=null;remove.hidden=true;checking=false;busy(apply,false);busy(pay,false);say(promoNote,'');showQuote();}
+    function clearPromo(skipRefresh){quoteVersion++;previewing=false;appliedCode='';appliedQuote=null;remove.hidden=true;checking=false;busy(apply,false);busy(pay,false);say(promoNote,'');showQuote();if(skipRefresh!==true)refreshQuote();}
     duration.addEventListener('change',clearPromo);promoInput.addEventListener('input',clearPromo);
     remove.addEventListener('click',function(){clearPromo();promoInput.value='';promoInput.focus();});
     promoForm.addEventListener('submit',function(e){
-      e.preventDefault();if(checking||pay.getAttribute('aria-busy')==='true')return;
-      var code=promoInput.value.trim();if(!code)return;clearPromo();var version=quoteVersion;
+      e.preventDefault();if(checking||(pay.getAttribute('aria-busy')==='true'&&!previewing))return;
+      var code=promoInput.value.trim();if(!code)return;clearPromo(true);var version=quoteVersion;
       checking=true;busy(apply,true);busy(pay,true);say(promoNote,'Проверяем промокод…');
       call('POST','/subscriptions/'+s.id+'/quote',{months:Number(duration.value),promo_code:code}).then(function(result){
         if(version!==quoteVersion)return;
@@ -403,7 +442,7 @@
       }).catch(function(x){if(version===quoteVersion)say(promoNote,message(x.message));}).then(function(){if(version===quoteVersion){checking=false;busy(apply,false);busy(pay,false);}});
     });
     showQuote();
-    if(!s.lifetime){card.appendChild(durationLabel);card.appendChild(quote);if(paymentsOn)card.appendChild(promo);}
+    if(!s.lifetime){card.appendChild(durationLabel);card.appendChild(quote);card.appendChild(firstMonthWarning);if(paymentsOn)card.appendChild(promo);refreshQuote();}
     function showPaymentConfirmation(refreshed) {
       if(checking||pay.disabled)return;
       if(!paymentsOn){say(err,MESSAGES.PAYMENT_NOT_CONFIGURED);return;}
@@ -421,6 +460,8 @@
         [ (state.name || 'Мой аккаунт')+(frozen.club_reference?' · Клуб '+frozen.club_reference:''), 'Подписка: '+s.id, operation+' · '+p.title, 'Компьютеров: '+s.seats+'. Срок: '+frozen.days+' дней.', 'Базовая сумма: '+rub(frozen.base_amount_kopecks/100), 'Скидка: '+rub((frozen.base_amount_kopecks-frozen.amount_kopecks)/100), 'К оплате: '+rub(frozen.amount_kopecks/100)+'. Комиссия для вас: 0 ₽.' ].forEach(function(line){dialog.appendChild(el('p',null,line));});
         if(frozen.referral_discount)dialog.appendChild(el('p',null,'Клубное приглашение даёт скидку 30% на это продление на 30 дней.'));
         else if(frozen.eligible_seconds>0)dialog.appendChild(el('p',null,'По текущему расчёту скидка 30% действует на '+frozen.eligible_seats+' первоначальных мест и '+(frozen.eligible_seconds/86400).toLocaleString('ru-RU',{maximumFractionDigits:6})+' дней льготного периода. Остальной срок — по полной цене.'));
+        if(frozen.promotion==='personal_first_purchase')dialog.appendChild(el('p',null,'Скидка 30% на весь первый заказ. Не суммируется со скидкой за срок.'));
+        if(frozen.first_month_consumes_offer===true){var warning=el('p','acc-first-month-warning',firstMonthWarning.textContent);dialog.appendChild(warning);}
         if(!frozen.referral_discount&&frozen.window_end)dialog.appendChild(el('p',null,'Льготное окно заканчивается '+new Date(frozen.window_end).toLocaleString('ru-RU')+'. Оно не начинается заново при продлении.'));
         dialog.appendChild(el('p',null,'После подтверждения оплаты эта подписка получит '+frozen.days+' дней'+(frozen.expected_start?' (ожидаемо с '+new Date(frozen.expected_start).toLocaleString('ru-RU')+' до '+new Date(frozen.expected_end).toLocaleString('ru-RU')+')':'')+'. При поздней оплате полный срок сохраняется; новая льгота не возникает. Автосписаний нет.'));
         var confirm=el('button','btn','Подтвердить и перейти к оплате'),cancel=el('button','btn btn--quiet','Вернуться к выбору');confirm.type=cancel.type='button';dialog.appendChild(confirm);dialog.appendChild(cancel);root.appendChild(dialog);
@@ -560,12 +601,12 @@
   },15000);
 
   function load() {
-    return call('GET', '').then(function (data) {
+    return Promise.all([call('GET', ''),call('GET','/offers').catch(function(){return null;})]).then(function (results) {
+      var data=results[0];
       state.serverTime=data.server_time||new Date().toISOString();
       state.name=data.name||'';state.orders=data.club_orders||[];state.plans = data.plans || []; state.terms=data.payment_terms || (!data.payments_enabled && window.veliqPricing ? (data.kind==='club'?window.veliqPricing.club_terms:window.veliqPricing.terms).map(function(t){return {months:t.months,discount:t.discount,days:t.months*30};}):[]); state.paymentsOn=!!data.payments_enabled; state.kind=data.kind || ''; state.subscriptions=data.subscriptions || []; state.enforced=!!data.subscription_enforced;
       if(!state.kind){ updateProfileFields(); show('profile'); return; }
-      trialCode.textContent = state.kind === 'player' ? (data.trial_code || '') : '';
-      $('[data-trial-panel]').hidden = !trialCode.textContent;
+      renderOffers(results[1]);
       say(trialError, '');
       $('[data-account-email]').textContent = data.email;
       $('[data-account-kind]').textContent = (data.kind === 'club' ? 'Клуб' : 'Пользователь') + (data.name ? ' · ' + data.name : '');
@@ -629,7 +670,7 @@
       $('[data-link-name]').textContent=info.name;
       var select=$('[data-link-subscription]');select.textContent='';
       state.subscriptions.filter(function(s){return (info.mode!=='image'||s.kind==='club')&&s.can_connect!==false;}).forEach(function(s){
-        var p=planOf(s.plan_id),option=el('option',null,(p?p.title:s.kind)+' · '+s.used_seats+' / '+s.seats+' ПК');option.value=s.id;select.appendChild(option);
+        var p=planOf(s.plan_id),option=el('option',null,(p?p.title:s.kind)+' · '+(personalLeaseStage(s)?'подключено '+s.used_seats+' ПК, одна оптимизация':s.used_seats+' / '+s.seats+' ПК'));option.value=s.id;select.appendChild(option);
       });
       $('[data-link-approve]').disabled=info.approved||!select.options.length;
       select.disabled=info.approved;

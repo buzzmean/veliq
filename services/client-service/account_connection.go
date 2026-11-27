@@ -187,6 +187,7 @@ func (c *Controller) handleAccountStart(ctx context.Context) (any, error) {
 	if e != nil {
 		return nil, errors.New("ACCOUNT_LINK_UNAVAILABLE")
 	}
+	l.PersonalOptimizationLeaseV1 = m.PersonalOptimizationLeaseStage && mode == "device"
 	r := activationRecord{RequestID: l.ID, Pending: true, AccountLink: &l, AccountStarted: time.Now().Unix()}
 	b, _ := json.Marshal(r)
 	if e = protectedActivationWrite(pendingActivationFile(m), b); e != nil {

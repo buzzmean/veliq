@@ -345,8 +345,25 @@ func (c *Controller) handleOptimize(ctx context.Context, raw json.RawMessage) (a
 		c.subscription.mu.Unlock()
 	}
 	c.activation.stopAutomatic.Store(!v.Enabled)
-	if v.Enabled && !c.activationNetworkAllowed() {
+	if v.Enabled && !c.activationEntitled() {
 		return nil, errors.New("ACTIVATION_REQUIRED")
+	}
+	c.mu.Lock()
+	previouslyEnabled := c.enabled
+	c.mu.Unlock()
+	completed := false
+	defer func() {
+		if v.Enabled && !previouslyEnabled && !completed && (c.Backend == nil || !c.Backend.Status().Ready) {
+			c.releasePersonalLease(ctx)
+		}
+	}()
+	if v.Enabled {
+		if err := c.ensurePersonalLease(ctx); err != nil {
+			return nil, err
+		}
+		if !c.activationNetworkAllowed() {
+			return nil, errors.New("PERSONAL_LEASE_REQUIRED")
+		}
 	}
 	if !c.browser.readiness.enforced.Load() && v.Enabled {
 		c.mu.Lock()
@@ -379,7 +396,7 @@ func (c *Controller) handleOptimize(ctx context.Context, raw json.RawMessage) (a
 		if v.Enabled {
 			if !c.Backend.Status().Ready {
 				if e := c.Backend.Start(c.ctx, c.Classify); e != nil {
-					c.ObserveDiagnosticError("CAPTURE_START",e)
+					c.ObserveDiagnosticError("CAPTURE_START", e)
 					c.mu.Lock()
 					c.enabled = wasEnabled
 					c.captureStartError = "CAPTURE_START_FAILED"
@@ -408,7 +425,10 @@ func (c *Controller) handleOptimize(ctx context.Context, raw json.RawMessage) (a
 	c.Measurements.Active.Store(v.Enabled)
 	if v.Enabled {
 		c.retryBrowserAuthority(true)
+	} else {
+		c.releasePersonalLease(ctx)
 	}
+	completed = true
 	return c.Snapshot(), nil
 }
 

@@ -21,20 +21,22 @@ import (
 // DeviceLink is an expiring browser approval, never a human activation code.
 // Secret and BootstrapSecret belong only in SYSTEM-protected storage, not IPC.
 type DeviceLink struct {
-	ID              string `json:"id"`
-	Secret          string `json:"secret"`
-	Mode            string `json:"mode"`
-	BootstrapSecret string `json:"bootstrap_secret,omitempty"`
+	PersonalOptimizationLeaseV1 bool   `json:"personal_optimization_lease_v1,omitempty"`
+	ID                          string `json:"id"`
+	Secret                      string `json:"secret"`
+	Mode                        string `json:"mode"`
+	BootstrapSecret             string `json:"bootstrap_secret,omitempty"`
 }
 type DeviceLinkRequest struct {
-	ID            string          `json:"id"`
-	Secret        string          `json:"secret"`
-	Mode          string          `json:"mode"`
-	Name          string          `json:"name"`
-	Device        freshpc.Request `json:"device"`
-	BootstrapHash string          `json:"bootstrap_hash,omitempty"`
-	IssuedAt      int64           `json:"issued_at"`
-	Signature     string          `json:"signature,omitempty"`
+	PersonalOptimizationLeaseV1 bool            `json:"personal_optimization_lease_v1,omitempty"`
+	ID                          string          `json:"id"`
+	Secret                      string          `json:"secret"`
+	Mode                        string          `json:"mode"`
+	Name                        string          `json:"name"`
+	Device                      freshpc.Request `json:"device"`
+	BootstrapHash               string          `json:"bootstrap_hash,omitempty"`
+	IssuedAt                    int64           `json:"issued_at"`
+	Signature                   string          `json:"signature,omitempty"`
 }
 type AccountBinding struct {
 	Kind         string     `json:"kind"`
@@ -53,8 +55,9 @@ type DeviceLinkStatus struct {
 	BootstrapID     string         `json:"bootstrap_id,omitempty"`
 }
 type DeviceLinkPoll struct {
-	ID     string `json:"id"`
-	Secret string `json:"secret"`
+	PersonalOptimizationLeaseV1 bool   `json:"personal_optimization_lease_v1,omitempty"`
+	ID                          string `json:"id"`
+	Secret                      string `json:"secret"`
 }
 type ClubEnrollmentRequest = DeviceLinkRequest
 
@@ -93,7 +96,7 @@ func (q DeviceLinkRequest) signed() []byte {
 	return append([]byte("neexitlag:device-link-request:v1\x00"), b...)
 }
 func (l DeviceLink) Request(name string, device freshpc.Request, key ed25519.PrivateKey, now time.Time) (DeviceLinkRequest, error) {
-	q := DeviceLinkRequest{ID: l.ID, Secret: l.Secret, Mode: l.Mode, Name: name, Device: device, IssuedAt: now.Unix()}
+	q := DeviceLinkRequest{ID: l.ID, Secret: l.Secret, Mode: l.Mode, Name: name, Device: device, IssuedAt: now.Unix(), PersonalOptimizationLeaseV1: l.PersonalOptimizationLeaseV1}
 	if l.Mode == "image" {
 		h, e := AccountSecretHash(l.BootstrapSecret)
 		if e != nil {
@@ -119,7 +122,7 @@ func (q DeviceLinkRequest) Validate(now time.Time) (ed25519.PublicKey, error) {
 	}
 	if q.Mode == "image" {
 		h, e := hex.DecodeString(q.BootstrapHash)
-		if e != nil || len(h) != 32 || hex.EncodeToString(h) != q.BootstrapHash || q.Signature != "" || q.Device != (freshpc.Request{}) {
+		if e != nil || len(h) != 32 || hex.EncodeToString(h) != q.BootstrapHash || q.Signature != "" || q.Device != (freshpc.Request{}) || q.PersonalOptimizationLeaseV1 {
 			return nil, fail
 		}
 		return nil, nil
@@ -147,7 +150,7 @@ func (c Client) StartDeviceLink(ctx context.Context, q DeviceLinkRequest) (Devic
 }
 func (c Client) PollDeviceLink(ctx context.Context, l DeviceLink) (DeviceLinkStatus, error) {
 	var out DeviceLinkStatus
-	e := c.call(ctx, "/api/v1/enroll/device/poll", DeviceLinkPoll{ID: l.ID, Secret: l.Secret}, &out)
+	e := c.call(ctx, "/api/v1/enroll/device/poll", DeviceLinkPoll{ID: l.ID, Secret: l.Secret, PersonalOptimizationLeaseV1: l.PersonalOptimizationLeaseV1}, &out)
 	return out, e
 }
 func (c Client) EnrollClub(ctx context.Context, id, secret string, q freshpc.Request, key ed25519.PrivateKey, roots *x509.CertPool) (Response, error) {

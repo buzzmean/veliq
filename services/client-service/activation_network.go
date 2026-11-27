@@ -5,6 +5,7 @@ import (
 	"errors"
 	"github.com/buzzmean/veliq/core/enrollment"
 	wp "github.com/buzzmean/veliq/platform/windows"
+	"time"
 )
 
 // New/unconfigured controllers and valid legacy installations retain their
@@ -12,6 +13,10 @@ import (
 // before any WinDivert handle or browser policy is activated.
 // An ended subscription blocks the same way until the next successful payment.
 func (c *Controller) activationNetworkAllowed() bool {
+	return c.activationEntitled() && c.personalLeaseNetworkAllowed(time.Now())
+}
+
+func (c *Controller) activationEntitled() bool {
 	return !c.emergencyStopped.Load() && !c.activation.networkBlocked.Load() && !c.subscription.suspended.Load()
 }
 func (c *Controller) activationHardware(ctx context.Context, salt []byte) (string, error) {
