@@ -102,10 +102,15 @@ func (c *Controller) authorityPlan(ctx context.Context, q browserproxy.Request) 
 		return browserproxy.Plan{Policy: c.lanGameProxyPolicy(q.Host)}, nil
 	}
 	if c.authorityBrowser(q) {
+		var plan browserproxy.Plan
+		var err error
 		if c.authorityGuardPending() {
-			return c.authorityGuardPlan(ctx, q)
+			plan, err = c.authorityGuardPlan(ctx, q)
+		} else {
+			plan, err = c.browserPlan(ctx, q)
 		}
-		return c.browserPlan(ctx, q)
+		plan.BrowserRecoveryAuthorized = true
+		return plan, err
 	}
 	resolver := c.BrowserResolver
 	if resolver == nil {
@@ -198,8 +203,19 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 	if selected && p.ID != q.Owner.Profile || !selected && q.Owner.Profile != "owner-system-passthrough" {
 		return nil, browserproxy.ErrOwnerProfile
 	}
+	if !selected {
+		// Keep the ephemeral AUTO identity as well as its pinned policy. Losing
+		// this provenance would bypass implicit/fleet relay admission accounting.
+		if discovered, ok := c.automaticProfile(id); ok {
+			p = discovered
+		}
+	}
 	d := applyFlowResult(p, wp.Decision{}, plan.Policy, plan.Network, c.Local)
-	d.Flow = routing.Flow{Protocol: "tcp", Source: q.Source, Destination: plan.Destination, PID: id.PID, ProcessPath: id.Path, ApplicationID: q.Owner.Profile, Network: plan.Network, PinnedPolicy: d.Flow.PinnedPolicy}
+	application := p.ID
+	if application == "" {
+		application = q.Owner.Profile
+	}
+	d.Flow = routing.Flow{Protocol: "tcp", Source: q.Source, Destination: plan.Destination, PID: id.PID, ProcessPath: id.Path, ApplicationID: application, Network: plan.Network, PinnedPolicy: d.Flow.PinnedPolicy}
 	if d.Route.Local() {
 		backend, ok := c.Backend.(interface {
 			OpenBrowserLocalTCP(context.Context, wp.ProcessIdentity, netip.AddrPort, netip.AddrPort, wp.Decision) (net.Conn, error)
@@ -209,7 +225,10 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 		}
 		return backend.OpenBrowserLocalTCP(ctx, id, q.Source, plan.Destination, d)
 	}
-	if !plan.Enabled || !selected {
+	// Discovery does not create a stored profile. Its resolved policy still
+	// applies: an unregistered process reaching a protected origin must use the
+	// pinned relay policy, never the same-owner compatibility DIRECT dial.
+	if plan.Policy.Action == flowpolicy.Direct && (!plan.Enabled || !selected) {
 		return (&net.Dialer{}).DialContext(ctx, "tcp", plan.Destination.String())
 	}
 	return c.Engine.OpenTCP(ctx, d.Flow)
@@ -220,10 +239,22 @@ func (c *Controller) authorityOpenPlan(ctx context.Context, q browserproxy.Reque
 			conn, err := c.authorityOpen(ctx, q, plan)
 			return conn, plan, err
 		}
-		return c.browserOpenPlan(ctx, q, plan)
+		conn, actual, err := c.browserOpenPlan(ctx, q, plan)
+		actual.BrowserRecoveryAuthorized = plan.BrowserRecoveryAuthorized
+		return conn, actual, err
 	}
 	conn, err := c.authorityOpen(ctx, q, plan)
 	return conn, plan, err
+}
+
+func (c *Controller) authorityWatchDirect(q browserproxy.Request, plan browserproxy.Plan) bool {
+	if !plan.BrowserRecoveryAuthorized {
+		return false
+	}
+	if _, err := c.authorityCurrent(q); err != nil {
+		return false
+	}
+	return c.authorityBrowser(q)
 }
 
 func (c *Controller) authorityLeasePath() string {

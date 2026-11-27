@@ -162,11 +162,7 @@ func (c *Controller) openAutomaticApplication(ctx context.Context, p profiles.Pr
 	if err != nil || !cur.enabled || c.policyRevision(cur.profile) != c.policyRevision(p) || cur.network != d.Flow.Network {
 		return nil, d, errors.New("AUTOMATIC_SCOPE_CHANGED")
 	}
-	plan := browserproxy.Plan{Enabled: true, Network: cur.network, Destination: tuple.Destination, Policy: d.Policy, Probe: "AUTOMATIC_DIRECT_FIRST"}
-	if q.Host == "" && q.Port == 443 && plan.Policy.Source != "rule" {
-		plan = stallRetryPlan(cur, plan)
-		plan.Policy.Source, plan.Policy.Reason = "automatic_opaque_tls", "TLS443 origin unavailable: authenticated relay, no invented inner SNI or LOCAL transform"
-	}
+	plan := c.automaticApplicationPlan(cur, q, tuple, d, reason)
 	n := &c.browser.applications
 	record, err := n.begin(q, tuple)
 	if err != nil {
@@ -188,6 +184,19 @@ func (c *Controller) openAutomaticApplication(ctx context.Context, p profiles.Pr
 		return nil, d, err
 	}
 	return newNativeBrowserConn(conn, n, record), d, nil
+}
+
+func (c *Controller) automaticApplicationPlan(cur profilesResult, q browserproxy.Request, tuple wp.Tuple, d wp.Decision, reason string) browserproxy.Plan {
+	plan := browserproxy.Plan{Enabled: true, Network: cur.network, Destination: tuple.Destination, Policy: d.Policy, Probe: "AUTOMATIC_DIRECT_FIRST"}
+	// A positive binary framing result is not HTTPS merely because the port
+	// is 443. Its ordinary DIRECT socket gets connect-failure recovery only.
+	// ECH, no-SNI and incomplete TLS keep the opaque protected-origin boundary.
+	nonTLSDirect := reason == "NON_TLS_BINARY" && d.AllowNonTLSDirect && d.Policy.Action == flowpolicy.Direct && d.Policy.Source == "auto_direct_default" && !d.Block && !c.browser.domains.profileEvidence(cur.network, cur.profile.ID, tuple.Destination.Addr(), "", time.Now()).Restricted
+	if q.Host == "" && q.Port == 443 && plan.Policy.Source == "auto_direct_default" && !d.Block && !nonTLSDirect {
+		plan = stallRetryPlan(cur, plan)
+		plan.Policy.Source, plan.Policy.Reason = "automatic_opaque_tls", "TLS443 origin unavailable: authenticated relay, no invented inner SNI or LOCAL transform"
+	}
+	return plan
 }
 
 // Reuse the common service ladder rather than treating each new executable as

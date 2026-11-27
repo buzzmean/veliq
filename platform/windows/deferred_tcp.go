@@ -32,6 +32,11 @@ func ReadDeferredHello(c net.Conn) ([]byte, string, string) {
 		data = append(data, buf[:n]...)
 		if n > 0 {
 			emptyReads = 0
+			// Confirm framing, not just a different port-443 first byte. TLS,
+			// HTTP and plausible legacy SSLv2 ClientHello remain opaque.
+			if confirmedNonTLSBinary(data) {
+				return data, "", "NON_TLS_BINARY"
+			}
 			if progress.ready(data) {
 				domain, reason, done := localstrategy.InspectHelloStream(data)
 				if done {
@@ -52,6 +57,17 @@ func ReadDeferredHello(c net.Conn) ([]byte, string, string) {
 		}
 	}
 	return data, "", "REASSEMBLY_LIMIT"
+}
+
+func confirmedNonTLSBinary(data []byte) bool {
+	if len(data) < 4 || data[0] >= 20 || data[0] == '\t' || data[0] == '\r' || data[0] == '\n' {
+		return false
+	}
+	// SSLv2 has both a high-bit two-byte header and a three-byte header
+	// whose first byte can be zero. Do not convert a plausible ClientHello
+	// (message type 1, record length >=9, padding shorter than the record).
+	recordBytes := int(data[0])<<8 | int(data[1])
+	return !(data[3] == 1 && recordBytes >= 9 && int(data[2]) < recordBytes)
 }
 
 // A stream Read is not a TCP segment: one valid hello may arrive one byte at a
@@ -131,7 +147,8 @@ func ResolveDeferredDecision(initial Decision, domain, reason string) Decision {
 	// Missing SNI is not a failed relay open. Chrome sends an ECH extension
 	// even for GREASE; keep an explicit authenticated opaque-name route alive.
 	// Other policies without such a route still fail closed.
-	if domain == "" && d.BlockOnFailure && (d.Policy.Action != flowpolicy.RelayRequired || d.Route.Direct() || d.Route.Local()) {
+	nonTLSDirect := initial.AllowNonTLSDirect && d.AllowNonTLSDirect && reason == "NON_TLS_BINARY" && !d.Block && d.Route.Direct() && !d.Route.Local() && d.Policy.Action == flowpolicy.Direct && d.Policy.Source == "auto_direct_default"
+	if domain == "" && d.BlockOnFailure && !nonTLSDirect && (d.Policy.Action != flowpolicy.RelayRequired || d.Route.Direct() || d.Route.Local()) {
 		d.Block = true
 	}
 	if d.Block {

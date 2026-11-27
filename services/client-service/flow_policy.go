@@ -211,6 +211,7 @@ func (c *Controller) scopedDecision(p profiles.Profile, id wp.ProcessIdentity, t
 			}
 		}
 		if automaticApplication(p) && c.automaticCaptureAllowed() && t.Protocol == "tcp" && t.Destination.Addr().Is4() && !directOnlyFlow(t) {
+			d.AllowNonTLSDirect = domain == "" && t.Destination.Port() == 443 && len(p.Rules) == 0 && p.Fallback == "" && !d.Block && d.Route.Direct() && !d.Route.Local() && d.Policy.Action == flowpolicy.Direct && d.Policy.Source == "auto_direct_default" && !c.browser.domains.profileEvidence(network, p.ID, t.Destination.Addr(), "", time.Now()).Restricted
 			d.OriginDomain = domain
 			d.NewConnectionsOnly = true
 			d.OpenDeferred = func(ctx context.Context, decision wp.Decision, reason string) (net.Conn, wp.Decision, error) {

@@ -101,7 +101,7 @@ func (c *Controller) restoreAuthorityListenerLocked(a *browserAuthorityRuntime, 
 }
 
 func (c *Controller) listenOwnerAuthority(address string) (*browserproxy.Server, error) {
-	return browserproxy.Listen(c.ctx, browserproxy.Config{Address: address, RequireClientHelloReplay: true, Authorize: c.authorityOwner, Plan: c.authorityPlan, Open: c.authorityOpen, OpenPlan: c.authorityOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, OnDirectAnswered: c.browserDirectAnswered, OnDiagnostic:c.observeProxyDiagnostic})
+	return browserproxy.Listen(c.ctx, browserproxy.Config{Address: address, RequireClientHelloReplay: true, Authorize: c.authorityOwner, Plan: c.authorityPlan, Open: c.authorityOpen, OpenPlan: c.authorityOpenPlan, TransformApplied: c.browserTransform, OnStall: c.browserStall, ShouldWatchDirect: c.authorityWatchDirect, OnDirectAnswered: c.browserDirectAnswered, OnDiagnostic: c.observeProxyDiagnostic})
 }
 func (c *Controller) authorityGuardPending() bool {
 	if !c.browser.authority.guardRequired.Load() {

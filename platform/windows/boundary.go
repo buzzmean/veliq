@@ -44,6 +44,9 @@ type TCPPolicyReporter interface {
 
 type Decision struct {
 	OriginHintOnly bool // Domain is routing metadata; do not treat it as authenticated SNI.
+	// Only ordinary generic AUTO may accept positively non-TLS binary framing
+	// without a domain. This never authorizes incomplete TLS, ECH or no-SNI TLS.
+	AllowNonTLSDirect bool
 	// Selected browser DNS only; no DNS/53 packet is relayed.
 	DNSExchange func(context.Context, []byte) ([]byte, error)
 

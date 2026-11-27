@@ -67,8 +67,11 @@ type Trial struct {
 	DurationMS       int64  `json:"duration_ms"`
 }
 type Plan struct {
-	FirstFlightManaged     bool   `json:"-"` // Route ladder owns bounded pre-ServerHello retries.
-	YouTubeLocalGeneration uint64 `json:"-"` // Reject stale plans before opening an upstream.
+	// Snapshot of the shared listener's browser role before OPEN. It cannot be
+	// borrowed by an ordinary tunnel when profiles change during socket setup.
+	BrowserRecoveryAuthorized bool   `json:"-"`
+	FirstFlightManaged        bool   `json:"-"` // Route ladder owns bounded pre-ServerHello retries.
+	YouTubeLocalGeneration    uint64 `json:"-"` // Reject stale plans before opening an upstream.
 	// Set only by native planner when no protected DNS/outer association exists.
 	OrdinaryCapacityDirect bool `json:"-"`
 
@@ -163,6 +166,9 @@ type Config struct {
 	// tunnel gets no answer from the origin after the browser's first bytes. It is called at
 	// most once per tunnel; on error the tunnel is closed (never retried over DIRECT).
 	OnStall func(context.Context, Request, Plan) (net.Conn, Plan, error)
+	// ShouldWatchDirect limits browser-specific first-flight recovery on shared
+	// listeners. Nil preserves the dedicated browser listener's existing policy.
+	ShouldWatchDirect func(Request, Plan) bool
 	// OnDirectAnswered is called once when such a DIRECT tunnel receives its first byte
 	// from the origin. This is progress only: a TLS alert/byte does not prove HTTPS.
 	OnDirectAnswered func(Request, Plan)
@@ -634,7 +640,7 @@ func (s *Server) handle(c net.Conn, acceptedAt time.Time) {
 	s.mu.Lock()
 	s.pathOpenedLocked(owner.Profile)
 	s.mu.Unlock()
-	if secure && port == 443 && plan.Enabled && plan.Policy.Action == flowpolicy.Direct && !plan.FirstFlightManaged && s.cfg.OnStall != nil {
+	if secure && port == 443 && plan.Enabled && plan.Policy.Action == flowpolicy.Direct && !plan.FirstFlightManaged && s.cfg.OnStall != nil && (s.cfg.ShouldWatchDirect == nil || s.cfg.ShouldWatchDirect(q, plan)) {
 		upstream = s.watchDirect(lifetime, upstream, q, plan, id, 0)
 	}
 
