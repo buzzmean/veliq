@@ -154,10 +154,10 @@ def apply(stage,commit,confirm):
   raise RuntimeError('CURRENT_PROTOCOL_3_BASELINE_REQUIRED')
  # Migration 4 is additive; current control-plane applies it on startup.
  # Keep rejecting unreviewed future schemas before any deployment mutation.
- # Reviewed additive schemas through 15 preserve identity, certificates and
+ # Reviewed additive schemas through 16 preserve identity, certificates and
  # replay rows. Financial rollback to an older control-plane additionally
  # requires a separate checkout gate to preserve durable payment order claims.
- if report['applied_schema_version'] not in (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15):raise RuntimeError('UNSUPPORTED_SCHEMA_VERSION')
+ if report['applied_schema_version'] not in (1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16):raise RuntimeError('UNSUPPORTED_SCHEMA_VERSION')
  if report['systemd_version']<247:raise RuntimeError('SYSTEMD_LOADCREDENTIAL_REQUIRES_247')
  if not Path('/etc/neexitlag/echo/echo.token').is_file():raise RuntimeError('EXISTING_ECHO_CREDENTIAL_REQUIRED')
  # Read-only preflight verifies same CA/SAN/root key before any upgrade writes.
