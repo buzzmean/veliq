@@ -76,6 +76,7 @@ type relayFleet struct {
 	admissionPool                                     *transport.Pool
 	admissionNode, admissionAddress, admissionNetwork string
 	admissionDonors                                   []*transport.Pool
+	sessionCreations                                  []fleetSessionCreation
 }
 
 func newRelayFleet(network func() string) *relayFleet {
@@ -113,6 +114,7 @@ func (f *relayFleet) arm(device string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.cancelAdmissionLocked()
+	f.denySessionCreationsLocked()
 	if f.device != device {
 		f.affinity = make(map[string]*fleetAffinity)
 	}
@@ -134,6 +136,9 @@ func (f *relayFleet) configure(epoch uint64, expires time.Time, enabled bool, no
 	}
 	if !enabled && f.budget.Enabled() && epoch <= f.epoch {
 		return
+	}
+	if !enabled {
+		f.denySessionCreationsLocked()
 	}
 	if !enabled || !f.probeNodeIn(nodes, f.admissionNode, f.admissionAddress, f.now()) || f.admissionNetwork != network {
 		f.cancelAdmissionLocked()
@@ -186,6 +191,7 @@ func (f *relayFleet) cancelAdmissionLocked() {
 }
 
 func (f *relayFleet) ensureAdmissionLocked(network string, now time.Time) {
+	f.invalidateCreationNetworkLocked(network)
 	if network == "" || !f.budget.Enabled() || !now.Before(f.expires) {
 		f.cancelAdmissionLocked()
 		return
@@ -193,7 +199,7 @@ func (f *relayFleet) ensureAdmissionLocked(network string, now time.Time) {
 	var desired *fleetNode
 	for i := range f.nodes {
 		p, ok := f.nodes[i].pool.(*transport.Pool)
-		if ok && f.probeNodeIn(f.nodes, f.nodes[i].id, f.nodes[i].address, now) && !p.HasAdmittingSession() {
+		if ok && f.probeNodeIn(f.nodes, f.nodes[i].id, f.nodes[i].address, now) && !p.HasAdmittingSession() && p.CanCreateFleetSession() {
 			desired = &f.nodes[i]
 			break
 		}
@@ -236,6 +242,7 @@ func (f *relayFleet) suspend() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.cancelAdmissionLocked()
+	f.denySessionCreationsLocked()
 	if f.budget.Enabled() {
 		f.expires = time.Time{}
 		f.reason = "fleet_policy_unavailable"
@@ -520,7 +527,7 @@ func (f *relayFleet) backoffLocked(key fleetFailureKey, reason string) {
 
 func fleetOpenFailure(err error) (reason string, retry, origin bool) {
 	switch transport.FailureReason(err) {
-	case "fleet_session_capacity", "fleet_stream_capacity", "fleet_waiter_capacity", "pool_capacity", "waiter_capacity",
+	case "fleet_session_capacity", "fleet_session_quota", "fleet_stream_capacity", "fleet_waiter_capacity", "pool_capacity", "waiter_capacity",
 		"stream_capacity", "admission_timeout", "relay_flow_capacity", "relay_draining":
 		return "fleet_capacity_exhausted", true, false
 	case "upstream_dial_timeout", "upstream_connection_refused", "upstream_dial_failed":
@@ -642,6 +649,8 @@ func (f *relayFleet) snapshot(now time.Time) map[string]any {
 				admission.State = "LOAD_STALE"
 			} else if !ok || !p.HasAdmittingSession() {
 				admission.State = "UNAVAILABLE"
+			} else if !p.CanReuseFleetSession() {
+				admission.State = "REUSE_BLOCKED"
 			}
 		}
 	}
@@ -654,6 +663,13 @@ func (f *relayFleet) snapshot(now time.Time) map[string]any {
 	if reason == "policy_ready" && admission.State != "READY" {
 		reason = "fleet_session_waiting"
 	}
-	return map[string]any{"budget": f.budget.Snapshot(), "candidates": ids, "version": f.epoch, "admission": admission, "admission_target": f.admissionNode,
+	capacity := make([]map[string]any, 0, len(f.sessionCreations))
+	for _, entry := range f.sessionCreations {
+		valid := f.budget.Enabled() && now.Before(f.expires) && network != "" && entry.network == network
+		capacity = append(capacity, map[string]any{"node": entry.id, "authenticated_session": entry.pool.HasAdmittingSession(),
+			"reuse_allowed": valid && entry.pool.CanReuseFleetSession(), "new_session_allowed": valid && entry.pool.CanCreateFleetSession()})
+	}
+	sort.Slice(capacity, func(i, j int) bool { return capacity[i]["node"].(string) < capacity[j]["node"].(string) })
+	return map[string]any{"budget": f.budget.Snapshot(), "capacity": capacity, "candidates": ids, "version": f.epoch, "admission": admission, "admission_target": f.admissionNode,
 		"lease_expires_at": f.expires, "last_authenticated_relay": f.lastNode, "reason": reason}
 }

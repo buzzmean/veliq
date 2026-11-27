@@ -143,26 +143,37 @@ func (s *remoteState) applyFleetPolicy(policy security.FleetPolicy, now time.Tim
 	if len(policy.Candidates) > 0 {
 		emptyReason = "fleet_load_stale"
 	}
+	network := s.controller.gameMeasurementNetwork()
+	fresh := make(map[string]security.FleetCandidate)
 	for _, node := range policy.Candidates {
-		if node.Phase != security.FleetCanary && node.Phase != security.FleetActive || !node.LoadAvailable || node.ObservedAt.IsZero() ||
+		if !policy.Enabled || node.Phase != security.FleetCanary && node.Phase != security.FleetActive || !node.LoadAvailable || node.ObservedAt.IsZero() ||
 			!node.ObservedAt.Add(security.FleetFreshness).After(now) {
 			continue
 		}
+		fresh[node.ID] = node
 		emptyReason = "fleet_capacity_exhausted"
-		if weight := node.Limits.SpareWeight(node.Used); weight > 0 {
+		entry := s.knownFleetPool(node.ID, node.Address)
+		weight := node.Limits.SpareWeight(node.Used)
+		if entry.pool != nil {
+			// Capacity affects new admission, not the lifetime of authenticated
+			// leases. Keep the exact pool even if another resource is full.
+			chosen[node.ID] = entry
+			if entry.pool.HasAdmittingSession() {
+				weight = fleetReusableWeight(node.Limits, node.Used)
+			}
+		}
+		if weight > 0 {
 			candidates = append(candidates, fleetNode{id: node.ID, address: node.Address, weight: weight,
-				canary: node.Phase == security.FleetCanary, observed: node.ObservedAt})
+				canary: node.Phase == security.FleetCanary, observed: node.ObservedAt, pool: entry.pool})
 		}
 	}
-	candidates = f.shortlist(candidates, s.controller.gameMeasurementNetwork())
+	candidates = f.shortlist(candidates, network)
 	probes := make([]measurement.Candidate, 0, len(candidates))
 	var created []*transport.Pool
 	for i := range candidates {
 		node := &candidates[i]
-		entry := s.fleet.pools[node.id]
-		if legacy := s.clients[node.id]; legacy != nil && s.addresses[node.id] == node.address {
-			entry = remoteFleetPool{address: node.address, pool: legacy}
-		} else if entry.pool == nil || entry.address != node.address || !entry.owned {
+		entry := chosen[node.id]
+		if entry.pool == nil {
 			cfg := transport.DefaultPoolConfig()
 			cfg.FleetBudget = &f.budget
 			pool, err := transport.NewPool(ctx, cfg, s.relayFactory(node.id, node.address))
@@ -181,12 +192,21 @@ func (s *remoteState) applyFleetPolicy(policy security.FleetPolicy, now time.Tim
 		if len(s.echoKey) > 0 {
 			probes = append(probes, measurement.Candidate{
 				Metadata: optimizer.RelayCandidate{ID: id, Address: address}, Target: s.target,
-				Open:          e2eprobe.ProbeOpener(entry.pool.OpenProbeDatagram, s.echoKey),
+				Open:          e2eprobe.ProbeOpener(entry.pool.OpenFleetProbeDatagram, s.echoKey),
 				Authenticated: true, SerialRelay: true,
 				Eligible: func() bool { return f.probeAllowed(id, address, time.Now()) },
 			})
 		}
 	}
+	bindings := make([]fleetSessionCreation, 0, len(chosen))
+	for id, entry := range chosen {
+		node := fresh[id]
+		bindings = append(bindings, fleetSessionCreation{id: id, pool: entry.pool, owned: entry.owned, network: network,
+			reuse: network != "" && fleetReusableWeight(node.Limits, node.Used) > 0,
+			allow: network != "" && node.Limits.SpareWeight(node.Used) > 0,
+			until: minFleetTime(policy.ExpiresAt, node.ObservedAt.Add(security.FleetFreshness))})
+	}
+	f.setSessionCreations(bindings)
 	for id, old := range s.fleet.pools {
 		if old.owned && chosen[id].pool != old.pool {
 			s.retireFleetPool(old.pool)
@@ -197,6 +217,35 @@ func (s *remoteState) applyFleetPolicy(policy security.FleetPolicy, now time.Tim
 	f.configure(policy.Version, policy.ExpiresAt, policy.Enabled, candidates, emptyReason)
 	s.syncFleetMeasurements()
 	return nil
+}
+
+// Only this remote generation's owned pool, or an exact known legacy alias,
+// proves that a reusable session belongs to this relay identity and address.
+func (s *remoteState) knownFleetPool(id, address string) remoteFleetPool {
+	if legacy := s.clients[id]; legacy != nil && s.addresses[id] == address {
+		return remoteFleetPool{address: address, pool: legacy}
+	}
+	entry := s.fleet.pools[id]
+	if entry.owned && entry.pool != nil && entry.address == address {
+		return entry
+	}
+	return remoteFleetPool{}
+}
+
+// An authenticated session is already charged to the relay's session count.
+// Reusing it still requires spare flow, packet, bit and OPEN budgets. No local
+// count is subtracted from the signed aggregate load.
+func fleetReusableWeight(limits, used security.FleetResources) float64 {
+	if !limits.ValidLimit() || !used.Valid() {
+		return 0
+	}
+	spare := func(capacity, occupied uint64) float64 {
+		if occupied >= capacity {
+			return 0
+		}
+		return float64(capacity-occupied) / float64(capacity)
+	}
+	return min(spare(limits.Flows, used.Flows), spare(limits.Packets, used.Packets), spare(limits.Bits, used.Bits), spare(limits.Opens, used.Opens))
 }
 
 func (s *remoteState) updateFleetAdmissionSources() {

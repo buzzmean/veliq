@@ -343,6 +343,7 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 		if pool := s.clients[node.ID]; pool != nil {
 			changed := s.addresses[node.ID] != node.Address
 			if changed {
+				c.fleet.denyPoolAdmission(pool)
 				c.Engine.SetExactRelay(node.ID, "", nil)
 			}
 			pool.UpdateFactory(factory, changed)
@@ -365,6 +366,7 @@ func (s *remoteState) apply(ctx context.Context, cfg security.Config) error {
 			if entry.pool != nil && entry.address == node.Address {
 				pool = entry.pool
 				entry.owned = false
+				c.fleet.shareSessionCreationWithLegacy(pool)
 				s.fleet.pools[node.ID] = entry
 			}
 		}

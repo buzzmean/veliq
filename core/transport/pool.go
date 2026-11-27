@@ -154,6 +154,8 @@ type Pool struct {
 	admissionToken   uint64
 	admissionGuard   func() bool
 	creatingToken    uint64
+	creatingFleet    bool
+	fleetCreation    fleetSessionCreation
 	createCancel     context.CancelFunc
 	waiters          int
 	nextID           uint64
@@ -272,15 +274,19 @@ func (p *Pool) maintain() {
 		}
 	}
 }
-func (p *Pool) create(reason string, factory SessionFactory, epoch, token uint64, releaseSlot func()) {
+func (p *Pool) create(reason string, factory SessionFactory, epoch, token, policyEpoch uint64, fleet bool, releaseSlot func()) {
 	defer p.wg.Done()
 	start := time.Now()
 	p.mu.Lock()
 	p.creation.begin(start, reason)
-	ctx, cancel := context.WithTimeout(p.ctx, p.cfg.CreateTimeout)
+	deadline := start.Add(p.cfg.CreateTimeout)
+	if (fleet || p.fleetCreation.allCreates) && p.fleetCreation.configured && p.fleetCreation.until.Before(deadline) {
+		deadline = p.fleetCreation.until
+	}
+	ctx, cancel := context.WithDeadline(p.ctx, deadline)
 	p.createCancel = cancel
 	guard := p.admissionGuard
-	permitted := token == 0 || p.cfg.FleetBudget.priorityValid(token)
+	permitted := (token == 0 || p.cfg.FleetBudget.priorityValid(token)) && p.fleetCreationCurrentLocked(fleet, policyEpoch)
 	p.mu.Unlock()
 	var c *Client
 	var err error
@@ -294,7 +300,7 @@ func (p *Pool) create(reason string, factory SessionFactory, epoch, token uint64
 	p.createCancel = nil
 	p.creating = false
 	p.creation.finish(time.Now(), start, reason, c, err)
-	if p.closed || p.ctx.Err() != nil || p.draining || epoch != p.admissionEpoch || !permitted || token != 0 && !p.cfg.FleetBudget.priorityValid(token) {
+	if p.closed || p.ctx.Err() != nil || p.draining || epoch != p.admissionEpoch || !permitted || !p.fleetCreationCurrentLocked(fleet, policyEpoch) || token != 0 && !p.cfg.FleetBudget.priorityValid(token) {
 		if c != nil {
 			c.Close()
 		}
@@ -349,10 +355,14 @@ func (p *Pool) create(reason string, factory SessionFactory, epoch, token uint64
 	}()
 }
 func (p *Pool) acquire(ctx context.Context, probe bool) (*poolSession, error) {
-	return p.acquireToken(ctx, probe, 0)
+	return p.acquireScoped(ctx, probe, 0, false)
 }
 
 func (p *Pool) acquireToken(ctx context.Context, probe bool, token uint64) (*poolSession, error) {
+	return p.acquireScoped(ctx, probe, token, true)
+}
+
+func (p *Pool) acquireScoped(ctx context.Context, probe bool, token uint64, fleet bool) (*poolSession, error) {
 	waiting := false
 	var releaseWaiter func()
 	defer func() {
@@ -380,6 +390,10 @@ func (p *Pool) acquireToken(ctx context.Context, probe bool, token uint64) (*poo
 		if token != 0 && (p.admissionToken != token || !p.cfg.FleetBudget.priorityValid(token)) {
 			p.mu.Unlock()
 			return nil, &OpenError{"fleet_admission_cancelled", ErrCapacity}
+		}
+		if !p.fleetReuseAllowedLocked(fleet) {
+			p.mu.Unlock()
+			return nil, &OpenError{"fleet_policy_unavailable", ErrCapacity}
 		}
 		if p.draining {
 			p.mu.Unlock()
@@ -414,6 +428,10 @@ func (p *Pool) acquireToken(ctx context.Context, probe bool, token uint64) (*poo
 			best.lastUsed = now
 			p.mu.Unlock()
 			return best, nil
+		}
+		if !p.fleetCreationAllowedLocked(fleet) {
+			p.mu.Unlock()
+			return nil, &OpenError{"fleet_session_quota", ErrCapacity}
 		}
 		if !waiting && len(p.sessions) > 0 {
 			p.stats.SaturationEvents++
@@ -455,8 +473,9 @@ func (p *Pool) acquireToken(ctx context.Context, probe bool, token uint64) (*poo
 			}
 			p.creating = true
 			p.creatingToken = p.admissionToken
+			p.creatingFleet = fleet || p.fleetCreation.allCreates
 			p.wg.Add(1)
-			go p.create(reason, p.factory, p.admissionEpoch, p.admissionToken, releaseSlot)
+			go p.create(reason, p.factory, p.admissionEpoch, p.admissionToken, p.fleetCreation.epoch, p.creatingFleet, releaseSlot)
 		}
 		if !p.creating && !blocked {
 			p.mu.Unlock()
@@ -561,7 +580,7 @@ func (p *Pool) open(ctx context.Context, dst netip.AddrPort, tcp, probe, singleA
 	}()
 	for {
 		acquireStart := time.Now()
-		s, err := p.acquire(ctx, probe)
+		s, err := p.acquireScoped(ctx, probe, 0, singleAttempt)
 		acquireTime += time.Since(acquireStart)
 		if err != nil {
 			final = &OpenError{FailureReason(err), err}
@@ -825,4 +844,14 @@ func (p *Pool) admissionError(err error) error {
 		}
 	}
 	return err
+}
+
+// OpenFleetProbeDatagram uses the fleet creation gate even when this pool is also
+// an exact legacy provider. Existing authenticated sessions remain reusable.
+func (p *Pool) OpenFleetProbeDatagram(ctx context.Context, dst netip.AddrPort) (routing.Datagram, error) {
+	_, d, err := p.open(ctx, dst, false, true, true)
+	if err != nil {
+		return nil, err
+	}
+	return &poolProbe{Datagram: d, pool: p, session: d.(*pooledDatagram).session}, nil
 }
