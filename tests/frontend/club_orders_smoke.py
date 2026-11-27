@@ -7,7 +7,7 @@ OUT=Path(os.environ['VELIQ_UI_OUTPUT'])
 OUT.mkdir(parents=True,exist_ok=True)
 cases=0
 with sync_playwright() as pw:
- browser=pw.chromium.launch(headless=True)
+ browser=pw.chromium.launch(headless=True,executable_path=os.environ.get('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'))
  for width in [390,1440]:
   page=browser.new_page(viewport={'width':width,'height':1000})
   errors=[];page.on('pageerror',lambda e:errors.append(str(e)))

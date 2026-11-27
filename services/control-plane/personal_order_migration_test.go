@@ -10,7 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func TestPersonalOrderMigration13To15PreservesFinancialRightsAndDiagnostics(t *testing.T) {
+func TestPersonalOrderMigration13To16PreservesFinancialRightsAndDiagnostics(t *testing.T) {
 	base := codeStore(t)
 	ctx := context.Background()
 	id, _ := security.NewID()
@@ -59,6 +59,7 @@ INSERT INTO payments(id,subscription_id,provider,provider_payment_id,amount_kope
  VALUES(repeat('f',32),repeat('b',32),'platega','fixture-historical-provider-id',399,30,'succeeded','historical-terms-preserved');
 INSERT INTO payment_review_events(payment_id,provider_status,refund_id,refund_status,refunded_kopecks)
  VALUES(repeat('f',32),'PARTIALLY_REFUNDED','fixture-refund','Succeeded',395);
+INSERT INTO audit_log(actor,action,entity_id) VALUES('fixture','historical.finance.audit',repeat('f',32));
 INSERT INTO club_health_persistent_devices(device_id,account_id,pc,software_version,source)
  VALUES(repeat('d',32),repeat('a',32),'PC13','0.3.792','fixture');`
 	if _, err = pool.Exec(ctx, seed); err != nil {
@@ -75,10 +76,11 @@ INSERT INTO club_health_persistent_devices(device_id,account_id,pc,software_vers
 		t.Helper()
 		var out string
 		if err := pool.QueryRow(ctx, `SELECT jsonb_build_object(
- 'subscriptions',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM subscriptions t),
+ 'subscriptions',(SELECT jsonb_agg(to_jsonb(t)-'personal_optimization_lease_stage' ORDER BY id) FROM subscriptions t),
  'payments',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM payments t),
  'reviews',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM payment_review_events t),
- 'devices',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM devices t),
+ 'devices',(SELECT jsonb_agg(to_jsonb(t)-'personal_optimization_lease_v1' ORDER BY id) FROM devices t),
+ 'audit',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM audit_log t),
  'codes',(SELECT jsonb_agg(to_jsonb(t) ORDER BY id) FROM activation_codes t),
  'slots',(SELECT jsonb_agg(to_jsonb(t) ORDER BY code_id,machine_hash) FROM activation_slots t),
  'bindings',(SELECT jsonb_agg(to_jsonb(t) ORDER BY device_id) FROM account_device_bindings t),
@@ -104,10 +106,14 @@ INSERT INTO club_health_persistent_devices(device_id,account_id,pc,software_vers
 	if err != nil || perpetualErr != nil || after != paid || !perpetual.Lifetime {
 		t.Fatal("migration changed active/lifetime entitlement", err, perpetualErr)
 	}
+	var stageDevices, stageSubscriptions int
+	if e := pool.QueryRow(ctx, "SELECT (SELECT count(*) FROM devices WHERE personal_optimization_lease_v1),(SELECT count(*) FROM subscriptions WHERE personal_optimization_lease_stage)").Scan(&stageDevices, &stageSubscriptions); e != nil || stageDevices != 0 || stageSubscriptions != 0 {
+		t.Fatal("migration enrolled legacy into stage", e)
+	}
 	var version, orders int
 	var diagnosticsSupported bool
 	if err = pool.QueryRow(ctx, `SELECT (SELECT max(version) FROM schema_migrations),
- EXISTS(SELECT 1 FROM schema_migrations WHERE version=13),(SELECT count(*) FROM personal_payment_orders)`).Scan(&version, &diagnosticsSupported, &orders); err != nil || version != 15 || !diagnosticsSupported || orders != 0 {
+ EXISTS(SELECT 1 FROM schema_migrations WHERE version=13),(SELECT count(*) FROM personal_payment_orders)`).Scan(&version, &diagnosticsSupported, &orders); err != nil || version != 16 || !diagnosticsSupported || orders != 0 {
 		t.Fatal("schema13 contract or clean additive order table missing", version, orders, err)
 	}
 }

@@ -34,19 +34,20 @@ type Account struct {
 	Email string `json:"email"`
 }
 type Subscription struct {
-	Lifetime         bool       `json:"lifetime"`
-	CanConnect       bool       `json:"can_connect"`
-	ID               string     `json:"id"`
-	PlanID           string     `json:"plan_id"`
-	Kind             string     `json:"kind"`
-	Seats            int        `json:"seats"`
-	PaidUntil        *time.Time `json:"paid_until"`
-	TrialUntil       *time.Time `json:"trial_until,omitempty"`
-	AutoRenew        bool       `json:"auto_renew"`
-	Active           bool       `json:"active"`
-	Used             int        `json:"used_seats"`
-	Devices          []SeatInfo `json:"devices"`
-	ClubVerification string     `json:"club_verification,omitempty"`
+	PersonalOptimizationLeaseStage bool       `json:"personal_optimization_lease_stage,omitempty"`
+	Lifetime                       bool       `json:"lifetime"`
+	CanConnect                     bool       `json:"can_connect"`
+	ID                             string     `json:"id"`
+	PlanID                         string     `json:"plan_id"`
+	Kind                           string     `json:"kind"`
+	Seats                          int        `json:"seats"`
+	PaidUntil                      *time.Time `json:"paid_until"`
+	TrialUntil                     *time.Time `json:"trial_until,omitempty"`
+	AutoRenew                      bool       `json:"auto_renew"`
+	Active                         bool       `json:"active"`
+	Used                           int        `json:"used_seats"`
+	Devices                        []SeatInfo `json:"devices"`
+	ClubVerification               string     `json:"club_verification,omitempty"`
 }
 type SeatInfo struct {
 	Name       string     `json:"name"`
@@ -245,7 +246,7 @@ func (s *Store) CreateSubscription(ctx context.Context, account Account, p Plan,
 	return s.createSubscription(ctx, account, p, seats, false)
 }
 
-func (s *Store) createSubscription(ctx context.Context, account Account, p Plan, seats int, requireClubVerification bool) (string, error) {
+func (s *Store) createSubscription(ctx context.Context, account Account, p Plan, seats int, requireClubVerification bool, leaseStage ...bool) (string, error) {
 	if !p.supportsSeats(seats) {
 		return "", errors.New("SUBSCRIPTION_INVALID")
 	}
@@ -264,7 +265,7 @@ func (s *Store) createSubscription(ctx context.Context, account Account, p Plan,
 	if accountKind != "" && accountKind != p.Kind {
 		return "", errors.New("SUBSCRIPTION_INVALID")
 	}
-	id, e := subscriptionForAccountTx(ctx, tx, account, p, seats)
+	id, e := subscriptionForAccountTx(ctx, tx, account, p, seats, leaseStage...)
 	if e != nil {
 		return "", e
 	}
@@ -277,7 +278,7 @@ func (s *Store) createSubscription(ctx context.Context, account Account, p Plan,
 }
 
 // The caller holds the account lock.
-func subscriptionForAccountTx(ctx context.Context, tx pgx.Tx, account Account, p Plan, seats int) (string, error) {
+func subscriptionForAccountTx(ctx context.Context, tx pgx.Tx, account Account, p Plan, seats int, leaseStage ...bool) (string, error) {
 	var total, personalCount, personalSeats int
 	var personalID string
 	if e := tx.QueryRow(ctx, `
@@ -298,6 +299,9 @@ WHERE account_id=$1`, account.ID).Scan(&total, &personalCount, &personalID, &per
 			}
 			return personalID, nil
 		}
+	}
+	if p.Kind == "player" && len(leaseStage) > 0 && leaseStage[0] && seats != 1 {
+		return "", errors.New("SUBSCRIPTION_INVALID")
 	}
 	if total >= maxAccountSubscriptions {
 		return "", errors.New("SUBSCRIPTION_LIMIT")
@@ -323,7 +327,7 @@ WHERE account_id=$1`, account.ID).Scan(&total, &personalCount, &personalID, &per
 	if len(name) > 128 {
 		name = name[:128]
 	}
-	if _, e = tx.Exec(ctx, "INSERT INTO subscriptions(id,account_id,plan_id,kind,seats) VALUES($1,$2,$3,$4,$5)", id, account.ID, p.ID, p.Kind, seats); e != nil {
+	if _, e = tx.Exec(ctx, "INSERT INTO subscriptions(id,account_id,plan_id,kind,seats,personal_optimization_lease_stage) VALUES($1,$2,$3,$4,$5,$6)", id, account.ID, p.ID, p.Kind, seats, len(leaseStage) > 0 && leaseStage[0] && p.Kind == "player" && seats == 1); e != nil {
 		return "", e
 	}
 	if _, e = tx.Exec(ctx, "INSERT INTO activation_codes(id,code_hash,kind,seat_limit,name,expires_at,subscription_id) VALUES($1,$2,$3,$4,$5,$6,$7)", codeID, placeholder, kind, seats, name, time.Now().Add(subscriptionCodeLifetime), id); e != nil {
@@ -369,7 +373,7 @@ func (s *Store) IssueSubscriptionCode(ctx context.Context, account Account, subs
 	// codes cannot carry its hard deadline to the local service.
 	tag, e := tx.Exec(ctx, `UPDATE activation_codes SET code_hash=$1
 		WHERE NOT revoked AND subscription_id=(SELECT id FROM subscriptions WHERE id=$2
-			AND account_id=$3 AND (trial_until IS NULL OR lifetime OR paid_until + $4::interval > now()))`,
+			AND account_id=$3 AND NOT personal_optimization_lease_stage AND (trial_until IS NULL OR lifetime OR paid_until + $4::interval > now()))`,
 		hash, subscription, account.ID, SubscriptionGrace)
 	if e != nil {
 		return "", e
@@ -444,7 +448,7 @@ func (s *Store) SetAutoRenew(ctx context.Context, account Account, subscription 
 }
 
 func (s *Store) AccountSubscriptions(ctx context.Context, account Account, now time.Time) ([]Subscription, error) {
-	rows, e := s.DB.Query(ctx, `SELECT s.id,s.plan_id,s.kind,s.seats,s.paid_until,s.auto_renew,s.lifetime,s.trial_until,coalesce(v.state,'')
+	rows, e := s.DB.Query(ctx, `SELECT s.id,s.plan_id,s.kind,s.seats,s.paid_until,s.auto_renew,s.lifetime,s.trial_until,coalesce(v.state,''),s.personal_optimization_lease_stage
 		FROM subscriptions s LEFT JOIN club_verification_status v ON v.subscription_id=s.id
 		WHERE s.account_id=$1 ORDER BY s.created_at`, account.ID)
 	if e != nil {
@@ -453,7 +457,7 @@ func (s *Store) AccountSubscriptions(ctx context.Context, account Account, now t
 	out := []Subscription{}
 	for rows.Next() {
 		var sub Subscription
-		if e = rows.Scan(&sub.ID, &sub.PlanID, &sub.Kind, &sub.Seats, &sub.PaidUntil, &sub.AutoRenew, &sub.Lifetime, &sub.TrialUntil, &sub.ClubVerification); e != nil {
+		if e = rows.Scan(&sub.ID, &sub.PlanID, &sub.Kind, &sub.Seats, &sub.PaidUntil, &sub.AutoRenew, &sub.Lifetime, &sub.TrialUntil, &sub.ClubVerification, &sub.PersonalOptimizationLeaseStage); e != nil {
 			rows.Close()
 			return nil, e
 		}
@@ -562,6 +566,15 @@ func (s *Store) RecordPayment(ctx context.Context, subscription, provider, provi
 	e = tx.QueryRow(ctx, "SELECT status FROM payments WHERE provider=$1 AND provider_payment_id=$2 FOR UPDATE", provider, providerID).Scan(&old)
 	switch {
 	case errors.Is(e, pgx.ErrNoRows):
+		if paymentKind == "player" {
+			unresolved, err := unresolvedPersonalPayment(ctx, tx, paymentAccount)
+			if err != nil {
+				return time.Time{}, false, err
+			}
+			if unresolved {
+				return time.Time{}, false, errors.New("PROMO_RECONCILIATION_REQUIRED")
+			}
+		}
 		if paymentKind == "club" {
 			var reserved bool
 			if e = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM promotion_reservations WHERE account_id=$1 AND state='reserved') OR EXISTS(SELECT 1 FROM club_payment_orders WHERE account_id=$1 AND entitlement_account_id IS NOT NULL AND state='open')", paymentAccount).Scan(&reserved); e != nil {

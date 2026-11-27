@@ -161,7 +161,7 @@ func TestPilotMigration004PreservesSchema3IdentityAndCertificate(t *testing.T) {
 		t.Helper()
 		var out string
 		err := pool.QueryRow(ctx, `SELECT jsonb_build_object(
-'devices',(SELECT jsonb_agg(to_jsonb(d) ORDER BY id) FROM devices d),
+'devices',(SELECT jsonb_agg(to_jsonb(d)-'personal_optimization_lease_v1' ORDER BY id) FROM devices d),
 'codes',(SELECT jsonb_agg(to_jsonb(c)-'subscription_id' ORDER BY id) FROM activation_codes c),
 'slots',(SELECT jsonb_agg(to_jsonb(s) ORDER BY code_id,machine_hash) FROM activation_slots s),
 'nonces',(SELECT jsonb_agg(to_jsonb(n) ORDER BY device_id,nonce) FROM auth_nonces n),
@@ -182,7 +182,7 @@ func TestPilotMigration004PreservesSchema3IdentityAndCertificate(t *testing.T) {
 		}
 	}
 	var version int
-	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 15 {
+	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 16 {
 		t.Fatal("Миграция до схемы 15 не применена", err, version)
 	}
 	after, err := os.ReadFile(path)

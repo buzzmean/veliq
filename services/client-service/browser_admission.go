@@ -77,6 +77,15 @@ func (c *Controller) browserOpenPlan(ctx context.Context, q browserproxy.Request
 	return c.openBrowserPlan(ctx, cur, q, p, c.browserOpen)
 }
 func (c *Controller) openBrowserPlan(ctx context.Context, current profilesResult, q browserproxy.Request, p browserproxy.Plan, open func(context.Context, browserproxy.Request, browserproxy.Plan) (net.Conn, error)) (net.Conn, browserproxy.Plan, error) {
+	if err := c.personalLeaseOpenError(p.Enabled); err != nil {
+		if p.Policy.Action == flowpolicy.Direct && !p.FirstFlightManaged && p.Policy.Strategy == "" && !protectedBrowserDomain(q.Host) && c.browserOriginPolicy(q.Host).Kind != "RELAY" {
+			// A healthy OS DIRECT socket is not optimization. Do not enter any
+			// recovery ladder or transform when the test lease is not current.
+			conn, openErr := open(ctx, q, p)
+			return conn, p, openErr
+		}
+		return nil, p, err
+	}
 	if generation := c.youtubeLocalBetaOriginScope(q); generation != p.YouTubeLocalGeneration {
 		return nil, p, errYouTubeLocalScopeChanged
 	}

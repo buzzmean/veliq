@@ -13,11 +13,12 @@ import (
 // SubscriptionStatus is what a computer learns about its own access. It carries
 // no personal data: no email, plan price or other computers.
 type SubscriptionStatus struct {
-	Managed    bool       `json:"managed"`
-	Enforced   bool       `json:"enforced"`
-	Active     bool       `json:"active"`
-	PaidUntil  *time.Time `json:"paid_until,omitempty"`
-	GraceUntil *time.Time `json:"grace_until,omitempty"`
+	OptimizationLease *OptimizationLeasePolicy `json:"optimization_lease,omitempty"`
+	Managed           bool                     `json:"managed"`
+	Enforced          bool                     `json:"enforced"`
+	Active            bool                     `json:"active"`
+	PaidUntil         *time.Time               `json:"paid_until,omitempty"`
+	GraceUntil        *time.Time               `json:"grace_until,omitempty"`
 }
 
 func (a *API) trust() map[string]string {
@@ -41,7 +42,7 @@ func statusFor(ent Entitlement, enforced bool, now time.Time) SubscriptionStatus
 // subscriptionStatus answers a signed, single-use device proof bound to its own audience.
 func (a *API) subscriptionStatus(w http.ResponseWriter, r *http.Request) {
 	var p security.Proof
-	if body(r, &p) != nil || p.RelayID != security.SubscriptionAudience {
+	if body(r, &p) != nil || (p.RelayID != security.SubscriptionAudience && p.RelayID != security.SubscriptionPersonalLeaseAudience) {
 		a.fail(w, 400, "invalid subscription proof")
 		return
 	}
@@ -67,7 +68,16 @@ func (a *API) subscriptionStatus(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 503, "SUBSCRIPTION_UNAVAILABLE")
 		return
 	}
-	respond(w, 200, statusFor(ent, a.Settings.EnforceSubscription || ent.AccountBound, time.Now()))
+	out := statusFor(ent, a.Settings.EnforceSubscription || ent.AccountBound, time.Now())
+	if p.RelayID == security.SubscriptionPersonalLeaseAudience {
+		policy, err := a.optimizationLeasePolicy(r.Context(), d.ID)
+		if err != nil {
+			a.fail(w, 503, "SUBSCRIPTION_UNAVAILABLE")
+			return
+		}
+		out.OptimizationLease = &policy
+	}
+	respond(w, 200, out)
 }
 
 // adminSubscriptions: GET list, GET ?cutoff=1 preview of devices enforcement

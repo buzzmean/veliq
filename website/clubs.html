@@ -31,6 +31,7 @@
   <link rel="stylesheet" href="assets/header-account.css?v=20261105-1">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 <link rel="stylesheet" href="/assets/club-application.css?v=d925cadcc80e">
+  <link rel="stylesheet" href="/assets/offers.css?v=20261127-stage1">
 </head>
 <body>
 <script src="assets/icons.js"></script>
@@ -69,7 +70,8 @@
     <div class="crumbs"><a href="/">Главная</a> / Клубам</div>
     <h1 class="h1" style="max-width:15ch">VELIQ для компьютерных клубов</h1>
     <p class="lede">Гости приходят играть, общаться в голосовых чатах и смотреть стримы между матчами. Когда игра лагает или связь рвётся, они уходят туда, где всё в порядке.</p>
-    <div class="hero__actions" style="margin-top:32px"><a class="btn btn--lg" href="#apply">Оставить заявку</a><a class="btn btn--lg btn--ghost" href="#calc">Посчитать выгоду</a></div>
+    <div class="offer offer--club" data-offer-public="club" hidden><p><strong>Первые 20 подтверждённых клубов: −30%</strong>На первые 90 дней для исходных мест. Условия и право клуба проверяются перед оплатой.</p></div>
+    <div class="hero__actions" style="margin-top:20px"><a class="btn btn--lg" href="#apply">Оставить заявку</a><a class="btn btn--lg btn--ghost" href="#calc">Посчитать выгоду</a></div>
   </div>
 </section>
 
@@ -201,6 +203,7 @@
         <label class="club-apply__comment">Что хотите решить <span class="club-apply__optional">необязательно</span><textarea name="comment" rows="4" maxlength="600" placeholder="Какие игры или сервисы работают нестабильно? Что важно учесть при подключении?"></textarea><small>До 600 символов. Пароли и коды доступа не нужны.</small></label>
         <label class="club-apply__consent"><input type="checkbox" name="consent" required><span>Согласен на обработку данных заявки для связи и подключения клуба по <a href="/privacy" target="_blank" rel="noopener">политике конфиденциальности</a>. Заявка передаётся команде VELIQ через Telegram.</span></label>
         <p id="club-application-error" class="club-apply__error" role="alert" hidden></p>
+        <div class="offer offer--club" data-offer-public="club" hidden><p><strong>Первые 20 подтверждённых клубов: −30%</strong>На первые 90 дней для исходных мест. Условия и право клуба проверяются перед оплатой.</p></div>
         <button class="btn btn--lg club-apply__submit" type="submit">Отправить заявку <span aria-hidden="true">↗</span></button>
         <p class="club-apply__footnote">Ответим по выбранному контакту. Переписка также будет доступна в чате поддержки на сайте.</p>
       </form>
@@ -257,5 +260,6 @@
 <script src="assets/release.js?v=20261105-prices1"></script>
 <script src="/assets/club-application.js?v=03d157e7533c" defer></script>
 <script src="/assets/pricing-policy.js?v=20261107"></script>
+<script src="/assets/offers.js?v=20261127-stage1"></script>
 </body>
 </html>

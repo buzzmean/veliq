@@ -2,6 +2,9 @@ package controlplane
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"strings"
@@ -47,8 +50,28 @@ func TestClubReferralMigration015PreservesSchema13(t *testing.T) {
 			t.Fatal(entry.Name(), err)
 		}
 	}
-	store := &Store{pool}
-	owner, device, _ := persistentDeviceFixture(t, store, "PC13")
+	// Seed the exact historical schema13 shape, independent of current runtime
+	// subscription creation (which legitimately expects the latest migration).
+	owner, device, sub, code := strings.Repeat("a", 32), strings.Repeat("d", 32), strings.Repeat("b", 32), strings.Repeat("c", 32)
+	public, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, seed := range []struct {
+		sql  string
+		args []any
+	}{
+		{"INSERT INTO accounts(id,email) VALUES($1,'schema13-owner@example.test')", []any{owner}},
+		{"INSERT INTO subscriptions(id,account_id,plan_id,kind,seats) VALUES($1,$2,'player','player',1)", []any{sub, owner}},
+		{"INSERT INTO activation_codes(id,code_hash,kind,seat_limit,name,expires_at,subscription_id) VALUES($1,decode(repeat('11',32),'hex'),'personal',1,'Schema13 fixture',now()+interval '20 years',$2)", []any{code, sub}},
+		{"INSERT INTO devices(id,user_id,name,public_key) VALUES($1,'owner','PC13',$2)", []any{device, base64.RawURLEncoding.EncodeToString(public)}},
+		{"INSERT INTO account_device_bindings(device_id,subscription_id) VALUES($1,$2)", []any{device, sub}},
+		{"INSERT INTO activation_slots(code_id,machine_hash,device_id) VALUES($1,repeat('a',64),$2)", []any{code, device}},
+	} {
+		if _, err = pool.Exec(ctx, seed.sql, seed.args...); err != nil {
+			t.Fatal("historical schema13 seed", err)
+		}
+	}
 	for _, statement := range []struct {
 		sql  string
 		args []any

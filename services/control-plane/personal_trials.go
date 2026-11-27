@@ -34,7 +34,7 @@ func (s *Store) trialOffer(ctx context.Context, account Account) (string, error)
 	return code, err
 }
 
-func (s *Store) activateTrial(ctx context.Context, account Account, plan Plan, code string) (time.Time, error) {
+func (s *Store) activateTrial(ctx context.Context, account Account, plan Plan, code string, leaseStage ...bool) (time.Time, error) {
 	tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return time.Time{}, err
@@ -85,7 +85,7 @@ func (s *Store) activateTrial(ctx context.Context, account Account, plan Plan, c
 	if _, err = tx.Exec(ctx, "UPDATE activation_codes SET code_hash=$2 WHERE subscription_id=$1", id, placeholder[:]); err != nil {
 		return time.Time{}, err
 	}
-	if err = tx.QueryRow(ctx, "UPDATE subscriptions SET trial_until=clock_timestamp()+interval '24 hours' WHERE id=$1 RETURNING trial_until", id).Scan(&until); err != nil {
+	if err = tx.QueryRow(ctx, "UPDATE subscriptions SET trial_until=clock_timestamp()+interval '24 hours',personal_optimization_lease_stage=$2 WHERE id=$1 RETURNING trial_until", id, len(leaseStage) > 0 && leaseStage[0]).Scan(&until); err != nil {
 		return time.Time{}, err
 	}
 	if _, err = tx.Exec(ctx, "INSERT INTO audit_log(actor,action,entity_id) VALUES($1,'subscription.trial.activate',$2)", "account:"+account.ID, id); err != nil {
@@ -133,7 +133,7 @@ func (a *API) trialActivate(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, http.StatusConflict, errTrialUnavailable.Error())
 		return
 	}
-	until, err := a.Store.activateTrial(r.Context(), account, plan, req.Code)
+	until, err := a.Store.activateTrial(r.Context(), account, plan, req.Code, a.Settings.PersonalOptimizationLeases)
 	switch {
 	case errors.Is(err, errTrialUnavailable):
 		a.fail(w, http.StatusConflict, errTrialUnavailable.Error())

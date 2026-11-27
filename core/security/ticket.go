@@ -119,6 +119,14 @@ const RenewalAudience = "certificate-renewal"
 // SubscriptionAudience is the Proof.RelayID value reserved for subscription status checks.
 const SubscriptionAudience = "subscription-status"
 
+// SubscriptionPersonalLeaseAudience explicitly negotiates the additive test
+// status fields; deployed strict older clients keep the original response shape.
+const SubscriptionPersonalLeaseAudience = "subscription-status:personal-lease-v1"
+
+// PersonalOptimizationLeaseAudience isolates test personal optimization leases
+// from relay tickets, enrollment and subscription-status proofs.
+const PersonalOptimizationLeaseAudience = "personal-optimization-lease"
+
 type Proof struct {
 	DeviceID  string    `json:"device_id"`
 	RelayID   string    `json:"relay_id"`

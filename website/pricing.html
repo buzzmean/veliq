@@ -30,6 +30,7 @@
   <link rel="stylesheet" href="assets/site.css?v=d597281e7e2b">
   <link rel="stylesheet" href="assets/header-account.css?v=20261105-1">
   <script>document.documentElement.classList.add('js');try{var t=localStorage.getItem('veliq-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+  <link rel="stylesheet" href="/assets/offers.css?v=20261127-stage1">
 </head>
 <body class="pricing-page">
 <script src="assets/icons.js"></script>
@@ -68,25 +69,29 @@
     <div class="crumbs"><a href="/">Главная</a> / Цены</div>
     <h1 class="h1">Цены</h1>
     <p class="lede">Личная подписка — за аккаунт. Для клуба стоимость зависит от количества подключённых ПК.</p>
+    <div class="offer offer--compact pricing-early-club" data-offer-public="club" data-pricing-early-club hidden><a href="#club-plan"><strong>Клубам: −30% первым 20 подтверждённым клубам</strong></a><p>На первые 90 дней для исходных мест.</p></div>
   </div>
 </section>
 <section class="sec sec--tight">
   <div class="wrap">
-    <div class="note" style="margin-bottom:var(--sp-6)"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg><div><strong>Тарифы VELIQ.</strong> Личный аккаунт — 399 ₽ за 30 дней и одно место. Клуб — 299 ₽ за каждый подключённый ПК за 30 дней.</div></div>
+
     <div class="plans">
       <div class="plan">
         <h2 class="h3">Игрок</h2>
         <div class="plan__price">399 ₽ <small>за 30 дней</small></div>
-        <p class="muted" style="margin:0">Для личного использования. Одно место — один компьютер.</p>
+        <p class="muted" style="margin:0">Для личного использования.</p>
+<div class="offer" data-offer-public="personal" hidden><p class="offer__title">−30% на первую подписку от 3 месяцев</p><p class="offer__total" data-offer-total></p><p class="offer__note">Если первая покупка на месяц, скидка не сохраняется. Не суммируется с другими скидками. Один активный ПК, компьютер можно менять.</p></div>
+<a class="btn btn--ghost" href="/account">Перейти в личный кабинет</a>
         <ul><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Выбор маршрута для поддерживаемых игр</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Маршрутизация голосовых чатов и стримов</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Собственная сеть серверов</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Управление подключением в личном кабинете</li></ul>
-        <a class="btn btn--ghost" href="/account">Перейти в личный кабинет</a>
+
       </div>
-      <div class="plan plan--main">
+      <div class="plan plan--main" id="club-plan">
         <h2 class="h3">Клуб</h2>
         <div class="plan__price">299 ₽ <small>за ПК / 30 дней</small></div>
         <p class="muted" style="margin:0">Для компьютерных клубов. Число мест выбирается при подключении.</p>
-        <ul><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Всё из тарифа «Игрок»</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Подключение компьютеров из личного кабинета</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Гость не может изменить настройки</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Подбор подключения для клуба</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Помощь с установкой</li></ul>
+<div class="offer offer--club" data-offer-public="club" hidden><p><strong>Первые 20 подтверждённых клубов: −30%</strong>На первые 90 дней для исходных мест. Условия и право клуба проверяются перед оплатой.</p></div>
         <a class="btn" href="/clubs#apply">Оставить заявку</a>
+        <ul><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Всё из тарифа «Игрок»</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Подключение компьютеров из личного кабинета</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Гость не может изменить настройки</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Подбор подключения для клуба</li><li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Помощь с установкой</li></ul>
       </div>
       <div class="plan">
         <h2 class="h3">Организациям</h2>
@@ -96,6 +101,7 @@
         <a class="btn btn--ghost" href="/contacts#partnership">Предложить сотрудничество</a>
       </div>
     </div>
+    <div class="note" style="margin-bottom:var(--sp-6)"><svg class="i" aria-hidden="true"><use href="#i-info"/></svg><div><strong>Тарифы VELIQ.</strong> Личный аккаунт — 399 ₽ за 30 дней и одно место. Клуб — 299 ₽ за каждый подключённый ПК за 30 дней.</div></div>
     <p class="faint" style="font-size:var(--fs-sm);margin:var(--sp-4) 0 0">Цены указаны в рублях. Расчётный месяц — 30 дней. Автоматических списаний нет. Полные условия — в <a href="/terms">пользовательском соглашении</a>.</p>
   </div>
 </section>
@@ -146,5 +152,6 @@
 <script src="assets/site.js?v=20261105-prices2"></script>
 <script src="assets/release.js?v=20261105-prices1"></script>
 <script src="/assets/pricing-policy.js?v=20261107"></script>
+<script src="/assets/offers.js?v=20261127-stage1"></script>
 </body>
 </html>

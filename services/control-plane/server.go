@@ -43,13 +43,15 @@ type Settings struct {
 	ServerCertificate    *x509.Certificate
 	// Accounts and subscriptions. The cabinet API stays off until AccountOrigin
 	// is set; subscription periods are only enforced with EnforceSubscription.
-	AccountOrigin         string
-	Mailer                Mailer
-	Plans                 []Plan
-	Payments              PaymentProvider
-	EnforceSubscription   bool
-	PersonalTrials        bool
-	ClubVerificationToken string
+	AccountOrigin              string
+	Mailer                     Mailer
+	Plans                      []Plan
+	Payments                   PaymentProvider
+	EnforceSubscription        bool
+	PersonalTrials             bool
+	PersonalFirstPurchase      bool
+	PersonalOptimizationLeases bool
+	ClubVerificationToken      string
 }
 type API struct {
 	relayTrafficMu                            sync.Mutex
@@ -168,6 +170,9 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("POST /api/v1/account/logout", a.logout)
 	m.HandleFunc("GET /api/v1/account", a.accountView)
 	m.HandleFunc("POST /api/v1/account/club-invitations/{action}", a.clubInvitation)
+	m.HandleFunc("GET /api/v1/offers", a.publicOffers)
+	m.HandleFunc("GET /api/v1/account/offers", a.accountOffers)
+	m.HandleFunc("POST /api/v1/subscription/optimization-lease", a.optimizationLease)
 	m.HandleFunc("GET /api/v1/account/trial", a.trialAvailability)
 	m.HandleFunc("POST /api/v1/account/trial/activate", a.trialActivate)
 	m.HandleFunc("POST /api/v1/account/subscriptions", a.subscriptionCreate)
@@ -226,6 +231,11 @@ func (a *API) auth(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, 402, "SUBSCRIPTION_EXPIRED")
 		return
 	}
+	leaseUntil, e := a.currentOptimizationLease(r.Context(), d.ID)
+	if e != nil {
+		a.fail(w, 409, "OPTIMIZATION_LEASE_REQUIRED")
+		return
+	}
 	relays, e := a.Store.Relays(r.Context())
 	if e != nil {
 		a.fail(w, 503, "registry unavailable")
@@ -269,6 +279,9 @@ func (a *API) auth(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now().UTC()
 	ticket := security.Ticket{ID: id, DeviceID: d.ID, DeviceKey: security.Fingerprint(key), RelayID: p.RelayID, IssuedAt: now, ExpiresAt: now.Add(2 * time.Minute)}
+	if leaseUntil != nil && ticket.ExpiresAt.After(*leaseUntil) {
+		ticket.ExpiresAt = *leaseUntil
+	}
 	if !ent.TrialUntil.IsZero() && !ent.paidActive(now) {
 		if !now.Before(ent.TrialUntil) {
 			a.fail(w, 402, "SUBSCRIPTION_EXPIRED")

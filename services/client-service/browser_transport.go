@@ -200,6 +200,16 @@ func (c *Controller) browserOpenUnobserved(ctx context.Context, q browserproxy.R
 	return c.openBrowser(ctx, q, plan, false)
 }
 func (c *Controller) openBrowser(ctx context.Context, q browserproxy.Request, plan browserproxy.Plan, observe bool) (conn net.Conn, err error) {
+	optimized := plan.Enabled && (plan.Policy.Action != flowpolicy.Direct || plan.FirstFlightManaged || plan.Policy.Strategy != "")
+	if err := c.personalLeaseOpenError(optimized); err != nil {
+		return nil, err
+	}
+	defer func() {
+		if gateErr := c.personalLeaseOpenError(optimized); gateErr != nil && conn != nil {
+			_ = conn.Close() // This new OPEN has not been admitted to its caller.
+			conn, err = nil, gateErr
+		}
+	}()
 	if scope, ok := ctx.Value(automaticScopeKey{}).(profilesResult); ok {
 		// Automatic recovery has no cached-PAC DIRECT compatibility entitlement.
 		if !c.automaticScopeCurrent(scope) {

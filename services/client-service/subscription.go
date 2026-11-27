@@ -19,10 +19,11 @@ const (
 // UNKNOWN until the control plane answered; UNMANAGED for installations
 // without a code (never limited); ACTIVE or EXPIRED otherwise.
 type SubscriptionView struct {
-	State      string     `json:"state"`
-	PaidUntil  *time.Time `json:"paid_until,omitempty"`
-	GraceUntil *time.Time `json:"grace_until,omitempty"`
-	CheckedAt  *time.Time `json:"checked_at,omitempty"`
+	OptimizationLease *PersonalLeaseView `json:"optimization_lease,omitempty"`
+	State             string             `json:"state"`
+	PaidUntil         *time.Time         `json:"paid_until,omitempty"`
+	GraceUntil        *time.Time         `json:"grace_until,omitempty"`
+	CheckedAt         *time.Time         `json:"checked_at,omitempty"`
 }
 
 // An ended subscription suspends optimization reversibly: identity, certificate
@@ -60,6 +61,7 @@ func (c *Controller) subscriptionStatus() SubscriptionView {
 	if out.State == "" {
 		out.State = "UNKNOWN"
 	}
+	out.OptimizationLease = c.personalLeaseView()
 	return out
 }
 
@@ -102,6 +104,7 @@ func (c *Controller) runSubscription(ctx context.Context, cp subscriptionSource)
 }
 
 func (c *Controller) applySubscription(st controlclient.SubscriptionStatus, now time.Time) {
+	c.applyPersonalLeasePolicy(st.OptimizationLease)
 	view := SubscriptionView{State: "ACTIVE", PaidUntil: st.PaidUntil, GraceUntil: st.GraceUntil, CheckedAt: &now}
 	expired := st.Enforced && !st.Active
 	switch {
