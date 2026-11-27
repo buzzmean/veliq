@@ -33,15 +33,24 @@ func TestFleetAdmissionOldAllowedCannotBecomeTokenZeroWarm(t *testing.T) {
 		t.Fatal("constructor did not reserve free-slot priority")
 	}
 	// No scheduler chance for the worker is needed to protect the last slot.
-	legacy, ok := budget.reserve(fleetSession)
-	if !ok {
-		t.Fatal("unreserved legacy slot was blocked")
+	var legacy []func()
+	for range FleetSessionLimit - 1 {
+		release, ok := budget.reserve(fleetSession)
+		if !ok {
+			t.Fatal("unreserved legacy slot was blocked")
+		}
+		legacy = append(legacy, release)
+	}
+	if got := budget.Snapshot().Sessions; got != FleetSessionLimit-1 {
+		t.Fatalf("did not fill all unreserved session slots: %d", got)
 	}
 	if unexpected, ok := budget.reserve(fleetSession); ok {
 		unexpected()
 		t.Fatal("legacy stole constructor priority")
 	}
-	legacy()
+	for _, release := range legacy {
+		release()
+	}
 	cancelled := make(chan struct{})
 	go func() { a.Cancel(); close(cancelled) }()
 	select {
