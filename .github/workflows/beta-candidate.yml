@@ -9,6 +9,7 @@ on:
       - 'apps/desktop/**'
       - 'apps/desktop-core/**'
       - 'services/client-service/**'
+      - 'platform/windows/**'
       - 'tools/beta_acceptance.py'
       - 'docs/BETA*'
       - 'installer/**'
