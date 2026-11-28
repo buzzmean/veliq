@@ -124,7 +124,10 @@ func (c *Controller) authorityPlanForOwner(ctx context.Context, id wp.ProcessIde
 	if resolver == nil {
 		resolver = net.DefaultResolver
 	}
-	lookup, cancel := context.WithTimeout(ctx, time.Second)
+	// The shared listener already bounds planning to three seconds. A separate
+	// one-second DNS cutoff rejects cold lookups before AUTO/rule evaluation and
+	// can leave the application's own login retry/backoff waiting much longer.
+	lookup, cancel := context.WithTimeout(ctx, 3*time.Second)
 	addresses, err := resolver.LookupNetIP(lookup, "ip", q.Host)
 	cancel()
 	if err != nil || len(addresses) == 0 {

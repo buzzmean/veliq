@@ -49,7 +49,7 @@ jobs:
       - uses: actions/setup-go@v5
         with: {go-version: '1.25.x'}
       - name: Native ordinary DIRECT game login and owner isolation
-        run: go test -race ./services/client-service -run '^TestWindowsDirectGameProxyFullAuthorityAndOwnerRecheck$' -count=1 -timeout=60s
+        run: go test -race ./services/client-service -run '^(TestWindowsDirectGameProxyFullAuthorityAndOwnerRecheck|TestGameLoginSystemProxyColdDNSKeepsPolicy)$' -count=1 -timeout=60s
       - name: Native delegation lifecycle and ingress proof race regressions
         shell: pwsh
         run: |

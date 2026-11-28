@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -245,5 +246,91 @@ func TestDirectGameProxyRetainsProtectedAndExplicitPolicies(t *testing.T) {
 	}
 	if _, ok := c.applicationProxyDirectPlan(id, q); ok {
 		t.Fatal("required fallback bypassed")
+	}
+}
+
+func coldDNSResolverGA17(t *testing.T, address [4]byte) *net.Resolver {
+	t.Helper()
+	listener, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	var workers sync.WaitGroup
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		buffer := make([]byte, 2048)
+		for {
+			n, peer, err := listener.ReadFrom(buffer)
+			if err != nil {
+				return
+			}
+			var q dnsmessage.Message
+			if q.Unpack(buffer[:n]) != nil || len(q.Questions) != 1 {
+				continue
+			}
+			workers.Add(1)
+			go func(q dnsmessage.Message, peer net.Addr) {
+				defer workers.Done()
+				timer := time.NewTimer(1100 * time.Millisecond)
+				defer timer.Stop()
+				select {
+				case <-done:
+					return
+				case <-timer.C:
+				}
+				question := q.Questions[0]
+				answer := dnsmessage.Message{Header: dnsmessage.Header{ID: q.Header.ID, Response: true, Authoritative: true, RecursionAvailable: true}, Questions: q.Questions}
+				if question.Type == dnsmessage.TypeA {
+					answer.Answers = []dnsmessage.Resource{{Header: dnsmessage.ResourceHeader{Name: question.Name, Type: dnsmessage.TypeA, Class: dnsmessage.ClassINET, TTL: 30}, Body: &dnsmessage.AResource{A: address}}}
+				}
+				if raw, err := answer.Pack(); err == nil {
+					_, _ = listener.WriteTo(raw, peer)
+				}
+			}(q, peer)
+		}
+	}()
+	t.Cleanup(func() { close(done); listener.Close(); workers.Wait() })
+	return &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "udp4", listener.LocalAddr().String())
+	}}
+}
+
+func TestGameLoginSystemProxyColdDNSKeepsPolicy(t *testing.T) {
+	for _, kind := range []string{"automatic", "required-rule", "protected"} {
+		t.Run(kind, func(t *testing.T) {
+			c, id, p, q := directProxyFixture(t)
+			p.Mode, p.Custom = profiles.Auto, true
+			q.Host, q.Port = "cold.game.invalid", 443
+			want := flowpolicy.Direct
+			if kind == "required-rule" {
+				p.Rules = []flowpolicy.Rule{{ID: "required-login", Domains: []string{q.Host}, Protocol: "tcp", Action: flowpolicy.RelayRequired, RelayID: "VPS-01", Fallback: flowpolicy.Required}}
+				want = flowpolicy.RelayRequired
+			}
+			if kind == "protected" {
+				q.Host = "chatgpt.com"
+				want = flowpolicy.RelayRequired
+			}
+			if err := c.Profiles.Upsert(p); err != nil {
+				t.Fatal(err)
+			}
+			c.network.Store(&wp.NetworkContext{Fingerprint: strings.Repeat("a", 64), ObservedAt: time.Now()})
+			c.BrowserResolver = coldDNSResolverGA17(t, [4]byte{203, 0, 113, 10})
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			start := time.Now()
+			plan, err := c.authorityPlanForOwner(ctx, id, q)
+			elapsed := time.Since(start)
+			if err != nil || plan.Policy.Action != want {
+				t.Fatalf("cold DNS prevented normal policy: elapsed=%s action=%s want=%s err=%v", elapsed, plan.Policy.Action, want, err)
+			}
+			if want == flowpolicy.RelayRequired && plan.Policy.Fallback != flowpolicy.Required {
+				t.Fatal("required policy weakened", plan.Policy)
+			}
+			if elapsed < time.Second || elapsed >= 3*time.Second {
+				t.Fatal("unexpected cold DNS budget", elapsed)
+			}
+		})
 	}
 }
