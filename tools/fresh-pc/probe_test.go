@@ -8,6 +8,8 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -15,8 +17,10 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -114,16 +118,12 @@ func TestFreshProbeRealPinnedTLSMTLSTicketTCPUDP(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer server.Close()
-	tcp, e := net.Listen("tcp4", "127.0.0.1:0")
+	tcp, udp, e := listenEchoPair(func(address string) (net.Listener, error) { return net.Listen("tcp4", address) })
 	if e != nil {
 		t.Fatal(e)
 	}
 	defer tcp.Close()
 	target := tcp.Addr().String()
-	udp, e := net.ListenUDP("udp4", net.UDPAddrFromAddrPort(netip.MustParseAddrPort(target)))
-	if e != nil {
-		t.Fatal(e)
-	}
 	defer udp.Close()
 	stats := &e2eprobe.EchoStats{}
 	go e2eprobe.ServeTCP(ctx, tcp, []byte(response.EchoToken), stats)
@@ -134,5 +134,75 @@ func TestFreshProbeRealPinnedTLSMTLSTicketTCPUDP(t *testing.T) {
 	// Same trust/key, wrong relay name: TLS must reject instead of returning a PASS.
 	if e = probeEndpoints(state, "127.0.0.2", cp.URL, server.Addr().String(), target); e == nil {
 		t.Fatal("wrong TLS identity accepted")
+	}
+}
+
+// TCP:0 does not prove that the chosen port is available for UDP on Windows.
+// Hold both sockets together; retry only actual socket-availability errors.
+// This is fixture preparation, never a transport/TLS assertion retry.
+func listenEchoPair(listenTCP func(string) (net.Listener, error)) (net.Listener, *net.UDPConn, error) {
+	var last error
+	for attempt := 0; attempt < 16; attempt++ {
+		udp, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+		if err != nil {
+			return nil, nil, err
+		}
+		tcp, err := listenTCP(udp.LocalAddr().String())
+		if err == nil {
+			return tcp, udp, nil
+		}
+		udp.Close()
+		if !echoPortUnavailable(err) {
+			return nil, nil, err
+		}
+		last = err
+	}
+	return nil, nil, fmt.Errorf("no paired loopback TCP/UDP echo port after 16 attempts: %w", last)
+}
+
+func echoPortUnavailable(err error) bool {
+	if errors.Is(err, syscall.EADDRINUSE) || errors.Is(err, syscall.EACCES) {
+		return true
+	}
+	// Winsock errors are not the POSIX-shaped syscall errno constants on Windows.
+	var native syscall.Errno
+	return runtime.GOOS == "windows" && errors.As(err, &native) && (native == 10013 || native == 10048)
+}
+
+func TestFreshProbeEchoPairAvailabilityIsBounded(t *testing.T) {
+	availability := []error{syscall.EACCES, syscall.EADDRINUSE}
+	if runtime.GOOS == "windows" {
+		availability = append(availability, syscall.Errno(10013), syscall.Errno(10048))
+	}
+	for _, denied := range availability {
+		t.Run(denied.Error(), func(t *testing.T) {
+			attempts := 0
+			tcp, udp, err := listenEchoPair(func(address string) (net.Listener, error) {
+				attempts++
+				if attempts == 1 {
+					return nil, &net.OpError{Op: "listen", Net: "tcp4", Err: denied}
+				}
+				return net.Listen("tcp4", address)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tcp.Close()
+			defer udp.Close()
+			if attempts < 2 || attempts > 16 || tcp.Addr().String() != udp.LocalAddr().String() {
+				t.Fatal("unpaired fixture sockets", attempts)
+			}
+		})
+	}
+	for _, cause := range []error{syscall.EACCES, errors.New("unexpected fixture error")} {
+		attempts := 0
+		tcp, udp, err := listenEchoPair(func(string) (net.Listener, error) { attempts++; return nil, cause })
+		wanted := 1
+		if errors.Is(cause, syscall.EACCES) {
+			wanted = 16
+		}
+		if tcp != nil || udp != nil || !errors.Is(err, cause) || attempts != wanted {
+			t.Fatal("error bypassed or retried without bound", attempts, err)
+		}
 	}
 }
