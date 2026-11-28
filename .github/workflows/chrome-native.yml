@@ -13,6 +13,7 @@ on:
       - 'platform/windows/socket*'
       - 'platform/windows/capture*'
       - 'services/client-service/browser*'
+      - 'services/client-service/application_proxy_direct*'
       - 'services/client-service/activation*'
       - 'services/client-service/account*'
       - 'services/client-service/subscription*'
@@ -31,6 +32,7 @@ on:
       - 'platform/windows/socket*'
       - 'platform/windows/capture*'
       - 'services/client-service/browser*'
+      - 'services/client-service/application_proxy_direct*'
       - 'services/client-service/activation*'
       - 'services/client-service/account*'
       - 'services/client-service/subscription*'
@@ -46,6 +48,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: {go-version: '1.25.x'}
+      - name: Native ordinary DIRECT game login and owner isolation
+        run: go test -race ./services/client-service -run '^TestWindowsDirectGameProxyFullAuthorityAndOwnerRecheck$' -count=1 -timeout=60s
       - name: Native delegation lifecycle and ingress proof race regressions
         shell: pwsh
         run: |

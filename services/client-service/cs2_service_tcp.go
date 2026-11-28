@@ -38,8 +38,7 @@ func (c *Controller) cs2NativeTCP(id wp.ProcessIdentity, t wp.Tuple, p profiles.
 		return d
 	}
 	d.Network, d.Flow.Network = n.Fingerprint, n.Fingerprint
-	e := c.browser.domains.profileEvidenceFor(n.Fingerprint, p.ID, t.Destination.Addr(), "", time.Now(), c.cs2RestrictedOrigin)
-	if e.Restricted {
+	if c.directProxyRestrictedAddress(p, t) {
 		d.Block, d.BlockOnFailure = true, true
 		d.Flow.PinnedPolicy = &routing.Policy{Block: true, BlockOnFailure: true}
 		d.Policy = flowpolicy.Result{Action: flowpolicy.Block, Fallback: flowpolicy.FailBlock, Source: "cs2_auto", Reason: "known relay-only service excluded by CS2 direct-only mode"}

@@ -93,7 +93,15 @@ func (c *Controller) authorityPlan(ctx context.Context, q browserproxy.Request) 
 	if err != nil {
 		return browserproxy.Plan{}, err
 	}
+	return c.authorityPlanForOwner(ctx, id, q)
+}
+
+// The public authority entry authenticates PID, birth and SID before planning.
+func (c *Controller) authorityPlanForOwner(ctx context.Context, id wp.ProcessIdentity, q browserproxy.Request) (browserproxy.Plan, error) {
 	if plan, ok := c.cs2ProxyPlan(id, q); ok {
+		return plan, nil
+	}
+	if plan, ok := c.applicationProxyDirectPlan(id, q); ok {
 		return plan, nil
 	}
 	if c.isLanGameProcess(id) {
@@ -171,6 +179,12 @@ func (c *Controller) authorityOpen(ctx context.Context, q browserproxy.Request, 
 			return nil, errors.New("CS2_PROXY_DIRECT_UNAVAILABLE")
 		}
 		return c.openCS2ProxyDirect(ctx, id, q)
+	}
+	if current, ok := c.applicationProxyDirectPlan(id, q); ok || plan.Policy.Source == applicationProxyDirectSource {
+		if !ok || plan.Enabled || current.Policy != plan.Policy || current.Policy.Action != flowpolicy.Direct {
+			return nil, errApplicationProxyDirectChanged
+		}
+		return c.openApplicationProxyDirect(ctx, q)
 	}
 	if c.isLanGameProcess(id) {
 		policy := c.lanGameProxyPolicy(q.Host)
