@@ -55,6 +55,18 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Background update GUI resume (Windows PowerShell)
+        run: '& ./tests/windows-tools/installer-background-resume-checks.ps1'
+        shell: powershell
+      - name: Background update GUI resume (PowerShell 7)
+        run: '& ./tests/windows-tools/installer-background-resume-checks.ps1'
+        shell: pwsh
+      - name: Club update policy script (Windows PowerShell)
+        run: '& ./tests/windows-tools/club-update-policy-checks.ps1'
+        shell: powershell
+      - name: Club update policy script (PowerShell 7)
+        run: '& ./tests/windows-tools/club-update-policy-checks.ps1'
+        shell: pwsh
       - run: '& ./tests/windows-tools/resource-checkout-checks.ps1'
         shell: powershell
       - run: '& ./tests/windows-tools/resource-checkout-checks.ps1'

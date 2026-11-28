@@ -360,15 +360,26 @@ func main(){
   Assert-InstalledCandidate
  }finally{Set-ItemProperty -LiteralPath $registration -Name DisplayVersion -Value $previousVersion}
  Write-Output 'BETA_DOWNGRADE_REFUSED_PASS installed files and service preserved'
- # The shipping updater launches detached as SYSTEM with UPDATE=1. Exercise
- # that exact installer context without changing Latest or contacting the CP.
+ # Managed updates use the same SYSTEM transaction during an active desktop
+ # session. Exercise its actual GUI resume argument as well as service recovery.
+ $backgroundGuiPath=Join-Path $app 'VELIQ.exe'
+ $backgroundGui=Start-Process -FilePath $backgroundGuiPath -ArgumentList '--autostart' -PassThru
+ $backgroundSession=$backgroundGui.SessionId;$backgroundPid=$backgroundGui.Id
+ $backgroundDeadline=[DateTime]::UtcNow.AddSeconds(15)
+ $backgroundReady=$false
+ do{
+  $probe=[IO.Pipes.NamedPipeClientStream]::new('.','NeExitLag-activate-'+$owner+'-'+$backgroundSession,[IO.Pipes.PipeDirection]::Out)
+  try{$probe.Connect(300);$backgroundReady=$true}catch [TimeoutException]{}finally{$probe.Dispose()}
+  if(!$backgroundReady){Start-Sleep -Milliseconds 200}
+ }while(!$backgroundReady -and [DateTime]::UtcNow -lt $backgroundDeadline)
+ if(!$backgroundReady){throw 'BACKGROUND_GUI_BASELINE_NOT_READY'}
  $systemTask='VELIQ-Setup-System-Fixture-'+[guid]::NewGuid().ToString('N')
  $systemLog=Join-Path $env:RUNNER_TEMP ('beta-inno-system-update-'+[guid]::NewGuid().ToString('N')+'.log')
  $beforeSystem=@{}
  foreach($name in @('service.json','ipc.token')){$beforeSystem[$name]=(Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash}
  $started=[DateTime]::UtcNow
  try{
-  $action=New-ScheduledTaskAction -Execute $setup -Argument ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCLOSEAPPLICATIONS /UPDATE=1 /RESTARTEXITCODE=3010 /LOG="'+$systemLog+'"')
+  $action=New-ScheduledTaskAction -Execute $setup -Argument ('/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOCLOSEAPPLICATIONS /UPDATE=1 /BACKGROUNDUPDATE=1 /RESTARTEXITCODE=3010 /LOG="'+$systemLog+'"')
   $principal=New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
   $settings=New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::FromMinutes(3))
   Register-ScheduledTask -TaskName $systemTask -Action $action -Principal $principal -Settings $settings|Out-Null
@@ -383,10 +394,20 @@ func main(){
   if(!$completed -or $info.LastTaskResult -ne 0){throw 'SYSTEM_UPDATE_INSTALLER_FAILED'}
   Assert-InstalledCandidate
   foreach($name in $beforeSystem.Keys){if((Get-FileHash -LiteralPath (Join-Path $installed $name)).Hash -cne $beforeSystem[$name]){throw 'SYSTEM_UPDATE_CHANGED_OWNER_OR_TOKEN'}}
+  $backgroundResumed=@(Get-CimInstance Win32_Process -Filter "Name='VELIQ.exe'"|Where-Object {$_.ExecutablePath -ieq $backgroundGuiPath})
+  if($backgroundResumed.Count -ne 1 -or $backgroundResumed[0].ProcessId -eq $backgroundPid -or $backgroundResumed[0].CommandLine -notmatch '(?:^|\s)--autostart(?:\s|$)'){throw 'BACKGROUND_UPDATE_GUI_NOT_RESUMED_IN_TRAY_MODE'}
+  $backgroundOwner=Invoke-CimMethod -InputObject $backgroundResumed[0] -MethodName GetOwnerSid
+  if($backgroundOwner.ReturnValue -ne 0 -or $backgroundOwner.Sid -cne $owner -or $backgroundResumed[0].SessionId -ne $backgroundSession){throw 'BACKGROUND_UPDATE_GUI_OWNER_CHANGED'}
+  Write-Output ('BETA_BACKGROUND_UPDATE_PASS SYSTEM Setup/exit0; actual replacement GUI --autostart/same owner+session; total_transaction_ms='+[int]([DateTime]::UtcNow-$started).TotalMilliseconds+'; not measured service outage or visual tray proof')
   Write-Output 'BETA_SYSTEM_UPDATE_PASS real SYSTEM Setup UPDATE=1; original owner/config/token and running service preserved'
  }finally{
   Unregister-ScheduledTask -TaskName $systemTask -Confirm:$false -ErrorAction SilentlyContinue
+  $backgroundGui.Dispose()
  }
+ # Close only the GUI belonging to this isolated fixture before uninstallation.
+ $backgroundClose=[IO.Pipes.NamedPipeClientStream]::new('.','NeExitLag-activate-'+$owner+'-'+$backgroundResumed[0].SessionId,[IO.Pipes.PipeDirection]::Out)
+ try{$backgroundClose.Connect(5000);$backgroundClose.WriteByte(2)}finally{$backgroundClose.Dispose()}
+ try{$p=[Diagnostics.Process]::GetProcessById([int]$backgroundResumed[0].ProcessId);try{if(!$p.WaitForExit(15000)){throw 'BACKGROUND_FIXTURE_GUI_CLOSE_TIMEOUT'}}finally{$p.Dispose()}}catch [ArgumentException]{}
  $uninstaller=Join-Path $app 'unins000.exe'
  if(!(Test-Path -LiteralPath $uninstaller)){throw 'REAL_UNINSTALLER_REQUIRED'}
  Invoke-OwnedInstaller $uninstaller 'uninstall'

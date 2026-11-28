@@ -12,7 +12,19 @@ import (
 func launchUpdateSetup(path string) error { return launchUpdateSetupObserved(path, nil) }
 
 func launchUpdateSetupObserved(path string, exited func()) error {
-	cmd := exec.Command(path, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCLOSEAPPLICATIONS", "/UPDATE=1")
+	return startUpdateSetup(path, false, exited)
+}
+
+func launchManagedUpdateSetupObserved(path string, exited func()) error {
+	return startUpdateSetup(path, true, exited)
+}
+
+func startUpdateSetup(path string, managed bool, exited func()) error {
+	args := []string{"/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOCLOSEAPPLICATIONS", "/UPDATE=1"}
+	if managed {
+		args = append(args, "/BACKGROUNDUPDATE=1")
+	}
+	cmd := exec.Command(path, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x00000008 | 0x00000200} // DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
 	if err := cmd.Start(); err != nil {
 		return err

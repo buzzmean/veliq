@@ -2,7 +2,7 @@
 param([ValidateSet('Prepare','ReplaceGui','Rollback','Commit','ResumeCommit','ResumeRollback')][string]$Action,
  [string]$AppDirectory,[string]$TransactionDirectory,[string]$DiagnosticFile,[string]$ErrorFile='',
  [string]$IncomingService='',[string]$OwnerProxyHelper='',
- [string]$IncomingGui='',[string]$IncomingGuiSha256='',[switch]$DeferGuiResume)
+ [string]$IncomingGui='',[string]$IncomingGuiSha256='',[switch]$DeferGuiResume,[switch]$ResumeGuiInTray)
 $ErrorActionPreference='Stop';Set-StrictMode -Version Latest
 if($PSVersionTable.PSEdition -eq 'Desktop'){
  $env:PSModulePath=[IO.Path]::Combine($PSHOME,'Modules')+';'+[Environment]::GetEnvironmentVariable('PSModulePath','Machine')
@@ -126,7 +126,7 @@ function Resume-OwnedGui($Record) {
   $name='VELIQ-Setup-Resume-'+[guid]::NewGuid().ToString('N')
   $principal=New-ScheduledTaskPrincipal -UserId $gui.sid -LogonType Interactive -RunLevel Limited
   $settings=New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
-  $action=New-ScheduledTaskAction -Execute $path
+  $action=if($ResumeGuiInTray){New-ScheduledTaskAction -Execute $path -Argument '--autostart'}else{New-ScheduledTaskAction -Execute $path}
   try{
    Register-ScheduledTask -TaskName $name -Action $action -Principal $principal -Settings $settings|Out-Null
    Start-ScheduledTask -TaskName $name

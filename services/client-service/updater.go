@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -29,6 +30,7 @@ const updateRepository = "buzzmean/veliq"
 const updateInterval = 6 * time.Hour
 
 type UpdateStatus struct {
+	Managed    bool      `json:"managed_auto_install,omitempty"`
 	Downloaded int64     `json:"downloaded_bytes,omitempty"`
 	Total      int64     `json:"total_bytes,omitempty"`
 	State      string    `json:"state"`
@@ -41,24 +43,27 @@ type UpdateStatus struct {
 }
 
 type updater struct {
-	op        sync.Mutex // Serializes checks and owner-authorized installation.
-	ready     release.Manifest
-	readyPath string
-	mu        sync.Mutex
-	status    UpdateStatus
-	http      *http.Client
-	relay     *http.Client // optional: same requests through the VELIQ relay
-	viaRelay  bool
-	keys      map[string]ed25519.PublicKey
-	dir       string // service install directory, e.g. %ProgramData%\VELIQ
-	api       string
-	launch    func(path string) error
-	current   uint64
+	op            sync.Mutex // Serializes checks and owner-authorized installation.
+	ready         release.Manifest
+	readyPath     string
+	mu            sync.Mutex
+	status        UpdateStatus
+	http          *http.Client
+	relay         *http.Client // optional: same requests through the VELIQ relay
+	viaRelay      bool
+	keys          map[string]ed25519.PublicKey
+	dir           string // service install directory, e.g. %ProgramData%\VELIQ
+	api           string
+	launch        func(path string) error
+	launchManaged func(path string) error
+	current       uint64
+	isClub        func() bool
+	managedPolicy func() (bool, error)
 }
 
 func newUpdater(keys map[string]ed25519.PublicKey, dir string, launch func(string) error) *updater {
 	current, _ := strconv.ParseUint(BuildSequence, 10, 64)
-	return &updater{status: UpdateStatus{State: "IDLE", Current: BuildSequence}, http: &http.Client{Timeout: 30 * time.Minute}, keys: keys, dir: dir, api: "https://api.github.com/repos/" + updateRepository + "/releases/latest", launch: launch, current: current}
+	return &updater{status: UpdateStatus{State: "IDLE", Current: BuildSequence}, http: &http.Client{Timeout: 30 * time.Minute}, keys: keys, dir: dir, api: "https://api.github.com/repos/" + updateRepository + "/releases/latest", launch: launch, current: current, managedPolicy: readManagedUpdatePolicy}
 }
 
 func (u *updater) snapshot() UpdateStatus {
@@ -80,20 +85,41 @@ func (u *updater) set(state, failure string, m *release.Manifest) {
 	}
 }
 
-// Club images are frozen and diskless: an update would be downloaded again on
-// every boot and lost. The owner updates the image instead.
-func (u *updater) disabled() string {
+func (u *updater) clubInstallation() bool {
+	if u.isClub != nil && u.isClub() {
+		return true
+	}
+	_, err := os.Stat(filepath.Join(u.dir, "club-mode.json"))
+	return err == nil || !errors.Is(err, os.ErrNotExist)
+}
+
+// Club updates require an explicit machine administrator policy. A guest IPC
+// call, club marker alone or a cached package never grants this permission.
+func (u *updater) updateMode() (managed bool, disabled string) {
 	if u.current == 0 {
-		return "DEVELOPER_BUILD"
+		return false, "DEVELOPER_BUILD"
 	}
-	if _, e := os.Stat(filepath.Join(u.dir, "club-mode.json")); e == nil {
-		return "CLUB_IMAGE_MANAGED"
+	if !u.clubInstallation() {
+		return false, ""
 	}
-	return ""
+	allowed, err := u.managedPolicy()
+	if err != nil {
+		return false, "UPDATE_POLICY_UNTRUSTED"
+	}
+	if !allowed {
+		return false, "CLUB_IMAGE_MANAGED"
+	}
+	return true, ""
+}
+
+func (u *updater) disabled() string {
+	_, reason := u.updateMode()
+	return reason
 }
 
 func (u *updater) run(ctx context.Context) {
-	timer := time.NewTimer(time.Minute)
+	// Stagger club boot storms; no new network worker or recurring process.
+	timer := time.NewTimer(time.Minute + time.Duration(rand.IntN(30000))*time.Millisecond)
 	defer timer.Stop()
 	for {
 		select {
@@ -106,7 +132,7 @@ func (u *updater) run(ctx context.Context) {
 		// instead of waiting for the next regular check.
 		if s := u.snapshot(); s.State == "DOWNLOAD_FAILED" && s.Error == "UPDATE_DOWNLOAD_SLOW" {
 			timer.Reset(10 * time.Second)
-		} else if s.State == "DOWNLOAD_FAILED" {
+		} else if s.State == "DOWNLOAD_FAILED" || s.State == "CHECK_FAILED" {
 			timer.Reset(downloadRetry)
 		} else {
 			timer.Reset(updateInterval)
@@ -139,7 +165,11 @@ func (u *updater) check(ctx context.Context) {
 	if u.snapshot().State == "INSTALLING" {
 		return
 	}
-	if reason := u.disabled(); reason != "" {
+	managed, reason := u.updateMode()
+	u.mu.Lock()
+	u.status.Managed = managed
+	u.mu.Unlock()
+	if reason != "" {
 		u.set("DISABLED", reason, nil)
 		return
 	}
@@ -155,7 +185,7 @@ func (u *updater) check(ctx context.Context) {
 	u.readyPath = ""
 	u.progress(0, m.SetupSize)
 	u.set("DOWNLOADING", "", &m)
-	path, e := u.download(ctx, setupURL, m)
+	path, e := u.download(ctx, setupURL, m, managed)
 	if e != nil {
 		// Throttled or blocked direct path: the next attempt alternates to the relay.
 		u.mu.Lock()
@@ -167,15 +197,23 @@ func (u *updater) check(ctx context.Context) {
 	u.ready, u.readyPath = m, path
 	u.progress(m.SetupSize, m.SetupSize)
 	u.set("READY", "", &m)
+	if managed && ctx.Err() == nil {
+		_ = u.installManagedLocked()
+	}
 }
 
-// Only this authenticated owner IPC action can launch an installer. A timer,
-// download retry, GUI reopen or service restart never implies consent.
+// Personal installations require an authenticated owner action. Managed clubs
+// instead use the separate machine administrator policy, never guest IPC.
 func (u *updater) install(build uint64) error {
 	if !u.op.TryLock() {
 		return errors.New("UPDATE_BUSY")
 	}
 	defer u.op.Unlock()
+	// Even when the administrator enables background installation, club users
+	// cannot trigger SYSTEM Setup through the personal owner IPC path.
+	if u.clubInstallation() {
+		return errors.New("CLUB_IMAGE_MANAGED")
+	}
 	if reason := u.disabled(); reason != "" {
 		u.set("DISABLED", reason, nil)
 		return errors.New(reason)
@@ -184,14 +222,26 @@ func (u *updater) install(build uint64) error {
 	if (state != "READY" && state != "INSTALL_FAILED") || u.readyPath == "" || build != u.ready.Build || build <= u.current {
 		return errors.New("UPDATE_NOT_READY")
 	}
+	return u.launchReadyLocked(false)
+}
+
+func (u *updater) launchReadyLocked(managed bool) error {
 	// Recheck the verified manifest's size/hash immediately before launch.
 	if ok, _ := fileMatches(u.readyPath, u.ready); !ok {
 		u.readyPath = ""
 		u.set("DOWNLOAD_FAILED", "UPDATE_DOWNLOAD_MISMATCH", &u.ready)
 		return errors.New("UPDATE_DOWNLOAD_MISMATCH")
 	}
+	launch := u.launch
+	if managed {
+		launch = u.launchManaged
+	}
+	if launch == nil {
+		u.set("INSTALL_FAILED", "UPDATE_LAUNCH_FAILED", &u.ready)
+		return errors.New("UPDATE_LAUNCH_FAILED")
+	}
 	u.set("INSTALLING", "", &u.ready)
-	if err := u.launch(u.readyPath); err != nil {
+	if err := launch(u.readyPath); err != nil {
 		u.set("INSTALL_FAILED", "UPDATE_LAUNCH_FAILED", &u.ready)
 		return errors.New("UPDATE_LAUNCH_FAILED")
 	}
@@ -273,7 +323,7 @@ func (u *updater) latest(ctx context.Context) (release.Manifest, string, error) 
 	return m, setupURL, nil
 }
 
-func (u *updater) download(ctx context.Context, url string, m release.Manifest) (string, error) {
+func (u *updater) download(ctx context.Context, url string, m release.Manifest, managed bool) (string, error) {
 	dir := filepath.Join(u.dir, "updates")
 	if e := os.MkdirAll(dir, 0o700); e != nil {
 		return "", e
@@ -352,7 +402,11 @@ func (u *updater) download(ctx context.Context, url string, m release.Manifest) 
 			}
 		}()
 	}
-	n, e := io.Copy(io.MultiWriter(f, h), body)
+	var reader io.Reader = body
+	if managed {
+		reader = &pacedUpdateReader{ctx: work, reader: body, started: time.Now()}
+	}
+	n, e := io.Copy(io.MultiWriter(f, h), reader)
 	if ce := f.Close(); e == nil {
 		e = ce
 	}

@@ -156,6 +156,7 @@ begin
  if Action='ReplaceGui' then Command := Command + ' -IncomingGui "' + ExpandConstant('{tmp}\veliq-incoming-gui.exe') +
   '" -IncomingGuiSha256 "' + Lowercase(GetSHA256OfFile(ExpandConstant('{tmp}\veliq-incoming-gui.exe'))) + '"';
  if (Action='Commit') or (Action='Rollback') then Command := Command + ' -DeferGuiResume';
+ if ExpandConstant('{param:BACKGROUNDUPDATE|0}')='1' then Command := Command + ' -ResumeGuiInTray';
  if Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'), Command, '', SW_HIDE, ewWaitUntilTerminated, Code) then Result := Code;
  Log('VELIQ transaction ' + Action + ' exit=' + IntToStr(Result));
 end;

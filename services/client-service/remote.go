@@ -142,6 +142,8 @@ func (c *Controller) ConnectRemote(ctx context.Context, m Manifest) error {
 	if m.StateDirectory != "" && c.updater.Load() == nil {
 		u := newUpdater(keys, filepath.Dir(m.StateDirectory), nil)
 		u.launch = func(path string) error { return launchUpdateSetupObserved(path, u.installExited) }
+		u.launchManaged = func(path string) error { return launchManagedUpdateSetupObserved(path, u.installExited) }
+		u.isClub = c.clubMode.Load
 		u.relay = c.relayHTTPClient()
 		c.updater.Store(u)
 		c.wg.Add(1)
