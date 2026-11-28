@@ -34,25 +34,27 @@ type queuedDatagram struct {
 	enqueued time.Time
 }
 type captureFlow struct {
-	game         *gameudp.Flow
-	quicNotified bool
-	recovering   atomic.Bool
-	policyEpoch  uint64
-	cancelOpen   context.CancelFunc
-	retired      bool
-	opening      bool
-	localState   localstrategy.State
-	decision     Decision
-	dropCause    telemetry.Category
-	queue        chan queuedDatagram
-	done         chan struct{}
-	once         sync.Once
-	datagram     routing.Datagram
-	template     []byte
-	address      [80]byte
-	identity     ProcessIdentity
-	endpoint     uint64
-	lastSeen     time.Time
+	directUDPFlowID   uint64
+	directUDPEndpoint uint64
+	game              *gameudp.Flow
+	quicNotified      bool
+	recovering        atomic.Bool
+	policyEpoch       uint64
+	cancelOpen        context.CancelFunc
+	retired           bool
+	opening           bool
+	localState        localstrategy.State
+	decision          Decision
+	dropCause         telemetry.Category
+	queue             chan queuedDatagram
+	done              chan struct{}
+	once              sync.Once
+	datagram          routing.Datagram
+	template          []byte
+	address           [80]byte
+	identity          ProcessIdentity
+	endpoint          uint64
+	lastSeen          time.Time
 }
 type WinDivertBackend struct {
 	dnsSlots chan struct{}
@@ -93,10 +95,12 @@ type WinDivertBackend struct {
 	cache                    *ProcessCache
 	tcp                      *tcpRedirect
 	evidence                 *EvidenceLedger
+	directReplies            udpReplyObserverState
+	directUDPAssociations    *FlowAssociations
 }
 
 func NewWinDivert(files DriverFiles, engine *routing.Engine) *WinDivertBackend {
-	return &WinDivertBackend{dnsSlots: make(chan struct{}, 16), Files: files, Engine: engine, status: CaptureStatus{Backend: "WinDivert", Capabilities: Capabilities{UDP: true, TCP: true, IPv4: true, Transparent: true}}, flows: make(map[Tuple]*captureFlow), associations: NewAssociations(8192), hotRequests: make(chan struct{}, 1), openWorkers: make(chan struct{}, 64), cache: NewProcessCache(NewDiscovery(), IsCurrent), evidence: NewEvidenceLedger()}
+	return &WinDivertBackend{dnsSlots: make(chan struct{}, 16), Files: files, Engine: engine, status: CaptureStatus{Backend: "WinDivert", Capabilities: Capabilities{UDP: true, TCP: true, IPv4: true, Transparent: true}}, flows: make(map[Tuple]*captureFlow), associations: NewAssociations(8192), directUDPAssociations: NewAssociations(8192), hotRequests: make(chan struct{}, 1), openWorkers: make(chan struct{}, 64), cache: NewProcessCache(NewDiscovery(), IsCurrent), evidence: NewEvidenceLedger()}
 }
 func (b *WinDivertBackend) Status() CaptureStatus { b.mu.Lock(); defer b.mu.Unlock(); return b.status }
 func (d *divertDLL) openHandle(filter string, layer uintptr, flags uintptr) (uintptr, error) {
@@ -192,6 +196,7 @@ func (b *WinDivertBackend) Start(parent context.Context, classify Classifier) (r
 	// ordinary networking/capture backend. Open REFLECT before the final sniff
 	// handle: its own priority marker fences the replayed initial handle list.
 	b.gameGuard.reset()
+	b.directReplies.set(false, "STARTING", 0)
 	reflectHandle, reflectErr := dll.openHandle(captureReflectFilter, 4, 1|4)
 	var replyHandle uintptr
 	eval, evalErr := dll.dll.FindProc("WinDivertHelperEvalFilter")
@@ -199,6 +204,11 @@ func (b *WinDivertBackend) Start(parent context.Context, classify Classifier) (r
 		replyHandle, reflectErr = dll.openHandlePriority(gameUDPReplyFilter, 0, 1|4, gameReplyPriority)
 	}
 	if reflectErr != nil || evalErr != nil {
+		nativeError := udpReplyNativeError(reflectErr)
+		if nativeError == 0 {
+			nativeError = udpReplyNativeError(evalErr)
+		}
+		b.directReplies.set(false, "OBSERVER_UNAVAILABLE", nativeError)
 		b.gameGuard.fail("UDP_CONFLICT_DETECTOR_UNAVAILABLE")
 		if reflectHandle != 0 {
 			dll.close.Call(reflectHandle)
@@ -337,6 +347,12 @@ func (b *WinDivertBackend) trackFlowEvent(address [80]byte, classify Classifier)
 		}
 	}
 
+	if data[56] == 17 {
+		// Independent passive metadata: never feeds routing or GameUDP first-flight proof.
+		if tuple := cs2IPv4FlowTuple(data, ipv6); tuple.Destination.IsValid() {
+			b.trackDirectUDPReplyIdentity(Association{Identity: identity, Tuple: tuple, Endpoint: endpoint}, remove)
+		}
+	}
 	if data[56] == 17 && (remove || isCS2Image(identity)) {
 		tuple := cs2IPv4FlowTuple(data, ipv6)
 		if tuple.Destination.IsValid() {
@@ -721,6 +737,7 @@ func (b *WinDivertBackend) processUDP(d *divertDLL, packet []byte, address [80]b
 		return
 	}
 	if !decision.udpWorker() || !known {
+		b.noteDirectUDP(tuple, f)
 		if e = SendLocal(decision, &f.localState, identity, tuple, packet, func(q []byte) error { return b.inject(d, q, LocalPacketAddress(q, address)) }, b.evidence); e != nil {
 			b.fail(e)
 			return
@@ -1098,7 +1115,8 @@ func (b *WinDivertBackend) Diagnostics(pid uint32) CaptureEvidence {
 }
 func (b *WinDivertBackend) CaptureChangeMarker() ChangeCursor { return b.evidence.ChangeMarker() }
 func (b *WinDivertBackend) CaptureChanges(q ChangeQuery) (ChangePage, error) {
-	return b.evidence.ChangePage(q)
+	observer := b.directReplies.snapshot()
+	return b.evidence.changePageWithUDPObserver(q, &observer)
 }
 func (b *WinDivertBackend) CaptureMarker() EvidenceMarker { return b.evidence.Marker() }
 func (b *WinDivertBackend) DiagnosticsTarget(pid uint32, destination string) CaptureEvidence {
@@ -1119,7 +1137,8 @@ func (b *WinDivertBackend) DiagnosticsScoped(query EvidenceQuery) (CaptureEviden
 		}
 		tcp.state.mu.Unlock()
 	}
-	out, err := b.evidence.SnapshotQuery(query, active)
+	observer := b.directReplies.snapshot()
+	out, err := b.evidence.snapshotQueryWithUDPObserver(query, active, &observer)
 	if err != nil {
 		return out, err
 	}

@@ -18,11 +18,12 @@ type ChangeQuery struct {
 	Cursor ChangeCursor `json:"cursor"`
 }
 type ChangePage struct {
-	Cursor       ChangeCursor    `json:"cursor"`
-	More         bool            `json:"more"`
-	EvidenceLost bool            `json:"evidence_lost"`
-	Flows        []FlowEvidence  `json:"flows"`
-	Counters     CaptureCounters `json:"counters"`
+	UDPReplyObserver *UDPReplyObserverStatus `json:"udp_reply_observer,omitempty"`
+	Cursor           ChangeCursor            `json:"cursor"`
+	More             bool                    `json:"more"`
+	EvidenceLost     bool                    `json:"evidence_lost"`
+	Flows            []FlowEvidence          `json:"flows"`
+	Counters         CaptureCounters         `json:"counters"`
 }
 
 func cloneFlow(v FlowEvidence) FlowEvidence {
@@ -67,8 +68,12 @@ func (l *EvidenceLedger) ChangeMarker() ChangeCursor {
 // concurrent later update moves to a later cursor, never behind the consumer.
 // Consumers upsert by ledger_id/flow_id; they must not sum successive snapshots.
 func (l *EvidenceLedger) ChangePage(q ChangeQuery) (ChangePage, error) {
+	return l.changePageWithUDPObserver(q, nil)
+}
+func (l *EvidenceLedger) changePageWithUDPObserver(q ChangeQuery, observer *UDPReplyObserverStatus) (ChangePage, error) {
 	l.mu.Lock()
 	out := ChangePage{Cursor: q.Cursor, Flows: []FlowEvidence{}, Counters: l.totals}
+	out.UDPReplyObserver = observer
 	if q.Cursor.LedgerID != l.ledgerID || q.Cursor.AfterUpdate > l.nextUpdate {
 		l.mu.Unlock()
 		return out, errors.New("invalid change cursor; service restarted or cursor is stale")
@@ -94,6 +99,9 @@ func (l *EvidenceLedger) ChangePage(q ChangeQuery) (ChangePage, error) {
 	}
 	for _, v := range all[:count] {
 		out.Flows = append(out.Flows, cloneFlow(v))
+	}
+	if observer != nil {
+		decorateDirectUDPReplies(out.Flows, *observer)
 	}
 	for len(out.Flows) > 0 {
 		count = len(out.Flows)

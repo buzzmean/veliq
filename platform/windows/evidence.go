@@ -44,6 +44,7 @@ type TCPAdmissionEvidence struct {
 }
 
 type FlowEvidence struct {
+	DirectUDPReply  DirectUDPReplyEvidence  `json:"direct_udp_reply,omitzero"`
 	LocalTCP        *localstrategy.TCPTrace `json:"local_tcp_packets,omitempty"`
 	GameUDP         *gameudp.Evidence       `json:"game_udp,omitempty"`
 	TCPAdmission    *TCPAdmissionEvidence   `json:"tcp_admission,omitempty"`
@@ -104,10 +105,11 @@ type EvidenceQuery struct {
 	Since        *EvidenceMarker `json:"since,omitempty"`
 }
 type CaptureEvidence struct {
-	Ingress      *CaptureIngressSnapshot `json:"ingress,omitempty"`
-	Marker       EvidenceMarker          `json:"marker"`
-	Since        *EvidenceMarker         `json:"since,omitempty"`
-	EvidenceLost bool                    `json:"evidence_lost,omitempty"`
+	UDPReplyObserver *UDPReplyObserverStatus `json:"udp_reply_observer,omitempty"`
+	Ingress          *CaptureIngressSnapshot `json:"ingress,omitempty"`
+	Marker           EvidenceMarker          `json:"marker"`
+	Since            *EvidenceMarker         `json:"since,omitempty"`
+	EvidenceLost     bool                    `json:"evidence_lost,omitempty"`
 
 	Counters   CaptureCounters             `json:"counters"`
 	Flows      []FlowEvidence              `json:"flows"`
@@ -276,9 +278,13 @@ func (l *EvidenceLedger) snapshotTarget(pid uint32, destination string, active m
 	return out
 }
 func (l *EvidenceLedger) SnapshotQuery(q EvidenceQuery, active map[evidenceKey]bool) (CaptureEvidence, error) {
+	return l.snapshotQueryWithUDPObserver(q, active, nil)
+}
+func (l *EvidenceLedger) snapshotQueryWithUDPObserver(q EvidenceQuery, active map[evidenceKey]bool, observer *UDPReplyObserverStatus) (CaptureEvidence, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	out := CaptureEvidence{Counters: l.totals, Flows: []FlowEvidence{}, Marker: l.markerLocked(), Since: q.Since}
+	out.UDPReplyObserver = observer
 	if q.Since != nil && (q.Since.LedgerID != l.ledgerID || q.Since.AfterFlowID > l.nextFlowID || q.Since.LostRecords > l.lostRecords) {
 		return out, errors.New("invalid or expired capture marker; restart trial")
 	}
@@ -295,6 +301,9 @@ func (l *EvidenceLedger) SnapshotQuery(q EvidenceQuery, active map[evidenceKey]b
 			v = cloneFlow(v)
 			out.Flows = append(out.Flows, v)
 		}
+	}
+	if observer != nil {
+		decorateDirectUDPReplies(out.Flows, *observer)
 	}
 	sort.Slice(out.Flows, func(i, j int) bool {
 		if out.Flows[i].Active != out.Flows[j].Active {

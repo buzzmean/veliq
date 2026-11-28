@@ -74,15 +74,19 @@ func (b *WinDivertBackend) observeGameReflect() {
 }
 func (b *WinDivertBackend) observeGameReplies() {
 	defer b.wg.Done()
+	b.directReplies.set(true, "PASSIVE_SNIFF", 0)
 	d := b.proc()
 	buf := make([]byte, 65535)
 	for {
 		var n uint32
 		var a [80]byte
-		ok, _, _ := d.recv.Call(b.gameReplies, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), uintptr(unsafe.Pointer(&n)), uintptr(unsafe.Pointer(&a[0])))
+		ok, _, recvErr := d.recv.Call(b.gameReplies, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), uintptr(unsafe.Pointer(&n)), uintptr(unsafe.Pointer(&a[0])))
 		if ok == 0 {
+			b.directReplies.set(false, "RECEIVE_FAILED", udpReplyNativeError(recvErr))
 			if b.ctx.Err() == nil {
 				b.gameGuard.fail("UDP_REPLY_OBSERVER_FAILED")
+			} else {
+				b.directReplies.set(false, "STOPPED", 0)
 			}
 			return
 		}
@@ -94,6 +98,9 @@ func (b *WinDivertBackend) observeGameReplies() {
 			continue
 		}
 		tuple.Source, tuple.Destination = tuple.Destination, tuple.Source
+		if b.recordPassiveDirectReply(tuple, int(n), time.Now()) {
+			continue
+		}
 		b.mu.Lock()
 		f := b.flows[tuple]
 		if f == nil || f.game == nil || f.decision.GameUDP == nil || !f.decision.Route.Direct() || f.decision.cs2LocalSocket || f.retired {
