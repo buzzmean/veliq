@@ -62,7 +62,7 @@ func TestNativeBrowserDriverHandshake(t *testing.T) {
 		if err = os.WriteFile(child, binary, 0700); err != nil {
 			t.Fatal(err)
 		}
-		run, stop := context.WithTimeout(context.Background(), 60*time.Second)
+		run, stop := context.WithTimeout(context.Background(), 90*time.Second)
 		defer stop()
 		command := exec.CommandContext(run, child, "-test.run", "^TestNativeBrowserDriverHandshake$", "-test.v")
 		command.Env = append(os.Environ(), "VELIQ_NATIVE_APP_FIREWALL_CHILD=1")
@@ -82,6 +82,29 @@ func TestNativeBrowserDriverHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 	files.Directory = dir
+	admitNativeApplicationFixture(t)
+	// NetSecurity provider initialization is fixture setup, not part of the
+	// transport deadline. Require the actual embedded query to prove this EXE's
+	// effective app-scoped rule; UNKNOWN must never satisfy this prerequisite.
+	setup, stopSetup := context.WithTimeout(context.Background(), 20*time.Second)
+	actual := inspectNativeFirewall(setup)
+	stopSetup()
+	if actual.State != "APPLIED" || !actual.Known || !actual.Effective || !actual.ProgramMatches {
+		t.Fatal("actual embedded firewall prerequisite", actual)
+	}
+	t.Log("APPLIED: embedded read-only firewall query matches this EXE and effective ActiveStore")
+	// The product deliberately bounds this optional diagnostic to five seconds.
+	// A cold/slow query can report UNKNOWN while native transport still works.
+	// Keep that observation visible and run the actual handshake below.
+	firewall := InspectNativeFirewall(context.Background())
+	if firewall.State == "UNKNOWN_QUERY_TIMEOUT" {
+		if firewall.Known || firewall.Effective || firewall.ProgramMatches || firewall.CheckedAt.IsZero() || firewall.Scope == "" {
+			t.Fatal("timeout diagnostic claimed knowledge", firewall)
+		}
+		t.Log("UNKNOWN_QUERY_TIMEOUT: bounded diagnostic, actual rule independently verified; transport acceptance still required")
+	} else if firewall.State != "APPLIED" || !firewall.Known || !firewall.Effective || !firewall.ProgramMatches {
+		t.Fatal("actual bounded firewall status", firewall)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 	b := NewBrowserLoopbackFixture(files, routing.New(16))
@@ -89,12 +112,6 @@ func TestNativeBrowserDriverHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer b.Stop()
-	admitNativeApplicationFixture(t)
-	firewall := InspectNativeFirewall(ctx)
-	if firewall.State != "APPLIED" || !firewall.Known || !firewall.Effective || !firewall.ProgramMatches {
-		t.Fatal("actual embedded firewall status", firewall)
-	}
-	t.Log("APPLIED: embedded read-only firewall query matches this EXE and effective ActiveStore")
 	id, err := NewDiscovery().Lookup(uint32(os.Getpid()))
 	if err != nil {
 		t.Fatal(err)
@@ -141,6 +158,19 @@ func TestNativeBrowserDriverHandshake(t *testing.T) {
 	dump()
 	_ = conn.Close()
 	testNativeColdStallRetry(t, b, id)
+}
+
+func TestNativeFirewallCancelledQueryIsUnknown(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	started := time.Now()
+	status := InspectNativeFirewall(ctx)
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("cancelled diagnostic exceeded cancellation bound: %v", elapsed)
+	}
+	if status.State != "UNKNOWN_QUERY_TIMEOUT" || status.Known || status.Effective || status.ProgramMatches || status.CheckedAt.IsZero() || status.Scope == "" {
+		t.Fatalf("cancelled query must remain unknown with observation metadata: %+v", status)
+	}
 }
 
 // Exercises the actual opt-in production helper against this isolated copied
