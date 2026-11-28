@@ -4,6 +4,21 @@ namespace Veliq.Tests;
 
 public sealed class WelcomeServiceClientTests
 {
+    sealed class PersonalStart : IServiceClient
+    {
+        public async Task<T> Call<T>(string method, object? payload = null, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(50, cancellationToken);
+            return (T)(object)new AccountConnectionView { State = "STARTING" };
+        }
+    }
+    [Fact]
+    public async Task PersonalApprovalCreationKeepsItsExistingDeadline()
+    {
+        var client = new WelcomeServiceClient(new PersonalStart(), TimeSpan.FromMilliseconds(1));
+        var result = await client.Call<AccountConnectionView>("account.link.start").WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal("STARTING", result.State);
+    }
     sealed class Delayed : IServiceClient
     {
         public readonly TaskCompletionSource<ActivationView> SetReply = new(TaskCreationOptions.RunContinuationsAsynchronously);
