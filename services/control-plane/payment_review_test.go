@@ -28,6 +28,10 @@ type reviewFixture struct {
 }
 
 func newReviewFixture(t *testing.T) *reviewFixture {
+	return newReviewFixtureHistory(t, "")
+}
+
+func newReviewFixtureHistory(t *testing.T, prior string) *reviewFixture {
 	t.Helper()
 	a, s, m := accountAPI(t, true)
 	c := &call{api: a}
@@ -42,6 +46,24 @@ func newReviewFixture(t *testing.T) *reviewFixture {
 		t.Fatal(err)
 	}
 	ev := PaymentEvent{ProviderID: "review-tx", Subscription: sub, AmountKopecks: 399, Status: "review", ProviderStatus: "PARTIALLY_REFUNDED", RefundID: "refund-1", RefundStatus: "Succeeded", RefundedKopecks: 395}
+	if prior != "" {
+		old := ev
+		switch prior {
+		case "DISPUTED", "CHARGEBACKED":
+			old.ProviderStatus = prior
+		case "other_refund":
+			old.RefundID = "earlier-refund"
+		case "other_amount":
+			old.RefundedKopecks = 394
+		case "same_pending":
+			old.RefundStatus = "Pending"
+		default:
+			t.Fatal("unsupported fixture history")
+		}
+		if _, _, err := s.RecordProviderPayment(ctx, "platega", ev.ProviderID, sub, 399, "review", "fixture", time.Now(), old); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, _, err := s.RecordProviderPayment(ctx, "platega", ev.ProviderID, sub, 399, "review", "fixture", time.Now(), ev); err != nil {
 		t.Fatal(err)
 	}
@@ -291,5 +313,27 @@ func TestPaymentReviewCompletionCancelledApplyLeavesReviewOpen(t *testing.T) {
 	state, err := f.store.paymentReview(context.Background(), f.before.Payment)
 	if err != nil || !state.Required {
 		t.Fatal("cancelled review disappeared", state, err)
+	}
+}
+
+func TestPaymentReviewCompletionNeverClosesDifferentHistoricalCase(t *testing.T) {
+	for _, prior := range []string{"DISPUTED", "CHARGEBACKED", "other_refund", "other_amount", "same_pending"} {
+		t.Run(prior, func(t *testing.T) {
+			f := newReviewFixtureHistory(t, prior)
+			created, err := f.store.resolvePaymentReview(context.Background(), f.before, f.q, f.fresh)
+			if prior == "same_pending" {
+				if !created || err != nil {
+					t.Fatal("same confirmed refund did not supersede its pending observation", created, err)
+				}
+				return
+			}
+			if created || err == nil || err.Error() != "PAYMENT_REVIEW_FINANCIAL_DECISION_REQUIRED" {
+				t.Fatal("different historical case silently resolved", created, err)
+			}
+			var count int
+			if err = f.store.DB.QueryRow(context.Background(), "SELECT count(*) FROM payment_review_resolutions").Scan(&count); err != nil || count != 0 {
+				t.Fatal("unsafe resolution audit written", count, err)
+			}
+		})
 	}
 }

@@ -89,6 +89,18 @@ func (s *Store) resolvePaymentReview(ctx context.Context, before paymentReviewSn
 	if last != q.LastEventID || last != before.LastEventID || status != before.Status || provider != before.Provider || providerID != before.ProviderID || subscription != before.Subscription || amount != before.Amount || eventStatus != before.ProviderStatus || refundID != before.RefundID || refundStatus != before.RefundStatus || refunded != before.Refunded {
 		return false, errors.New("PAYMENT_REVIEW_CHANGED")
 	}
+	// The watermark covers earlier observations too. A final partial refund
+	// cannot silently resolve an earlier dispute, another refund or an ambiguous
+	// amount. Only this one refund's matching history is within this outcome.
+	var differentCase bool
+	err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payment_review_events WHERE payment_id=$1
+ AND (provider_status<>'PARTIALLY_REFUNDED' OR refund_id<>$2 OR refunded_kopecks<>$3))`, before.Payment, before.RefundID, before.Refunded).Scan(&differentCase)
+	if err != nil {
+		return false, err
+	}
+	if differentCase {
+		return false, errors.New("PAYMENT_REVIEW_FINANCIAL_DECISION_REQUIRED")
+	}
 	var oldEvidence, oldOutcome string
 	err = tx.QueryRow(ctx, "SELECT evidence_sha256,outcome FROM payment_review_resolutions WHERE payment_id=$1 AND through_event_id=$2", before.Payment, last).Scan(&oldEvidence, &oldOutcome)
 	if err == nil {
