@@ -37,7 +37,16 @@ jobs:
         with: {dotnet-version: '8.0.x'}
       - run: dotnet test tests/desktop/Veliq.Client.Tests.csproj --nologo
       - run: go build ./...
-      - run: go test -race -timeout 120s ./...
+      - name: Validate complete race test partitioning
+        run: python3 -m unittest discover -s tests/ci -v
+      - name: Full race, all packages and control-plane shards (120s each)
+        run: python3 tools/ci/go_race_shards.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: complete-go-race-plan
+          path: .e2e/go-race-shards.json
+          if-no-files-found: error
       - run: go vet ./...
       - name: Approved brand source and UI compatibility
         run: python3 -m unittest discover -s tests/branding -v

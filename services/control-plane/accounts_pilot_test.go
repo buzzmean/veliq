@@ -182,7 +182,7 @@ func TestPilotMigration004PreservesSchema3IdentityAndCertificate(t *testing.T) {
 		}
 	}
 	var version int
-	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 16 {
+	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 17 {
 		t.Fatal("Миграция до схемы 15 не применена", err, version)
 	}
 	after, err := os.ReadFile(path)

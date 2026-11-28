@@ -61,14 +61,16 @@ type SeatInfo struct {
 }
 
 type Payment struct {
-	ReviewRequired bool      `json:"review_required"`
-	ID             string    `json:"id"`
-	Subscribed     string    `json:"subscription_id"`
-	Provider       string    `json:"provider"`
-	Amount         int64     `json:"amount_kopecks"`
-	PeriodDays     int       `json:"period_days"`
-	Status         string    `json:"status"`
-	Created        time.Time `json:"created_at"`
+	ReviewRequired  bool      `json:"review_required"`
+	ReviewCompleted bool      `json:"review_completed"`
+	ReviewedRefund  int64     `json:"reviewed_refund_kopecks"`
+	ID              string    `json:"id"`
+	Subscribed      string    `json:"subscription_id"`
+	Provider        string    `json:"provider"`
+	Amount          int64     `json:"amount_kopecks"`
+	PeriodDays      int       `json:"period_days"`
+	Status          string    `json:"status"`
+	Created         time.Time `json:"created_at"`
 }
 
 // Entitlement is the access decision for one device. Unmanaged devices (no
@@ -505,7 +507,7 @@ func (s *Store) AccountSubscriptions(ctx context.Context, account Account, now t
 }
 
 func (s *Store) AccountPayments(ctx context.Context, account Account) ([]Payment, error) {
-	rows, e := s.DB.Query(ctx, "SELECT p.id,p.subscription_id,p.provider,p.amount_kopecks,p.period_days,p.status,p.created_at,EXISTS(SELECT 1 FROM payment_review_events e WHERE e.payment_id=p.id) FROM payments p JOIN subscriptions sub ON sub.id=p.subscription_id WHERE sub.account_id=$1 ORDER BY p.created_at DESC LIMIT 100", account.ID)
+	rows, e := s.DB.Query(ctx, "SELECT p.id,p.subscription_id,p.provider,p.amount_kopecks,p.period_days,p.status,p.created_at,payment_review_required(p.id), NOT payment_review_required(p.id) AND EXISTS(SELECT 1 FROM payment_review_resolutions r WHERE r.payment_id=p.id), coalesce((SELECT r.reviewed_refund_kopecks FROM payment_review_resolutions r WHERE r.payment_id=p.id ORDER BY r.through_event_id DESC LIMIT 1),0) FROM payments p JOIN subscriptions sub ON sub.id=p.subscription_id WHERE sub.account_id=$1 ORDER BY p.created_at DESC LIMIT 100", account.ID)
 	if e != nil {
 		return nil, e
 	}
@@ -513,7 +515,7 @@ func (s *Store) AccountPayments(ctx context.Context, account Account) ([]Payment
 	out := []Payment{}
 	for rows.Next() {
 		var p Payment
-		if e = rows.Scan(&p.ID, &p.Subscribed, &p.Provider, &p.Amount, &p.PeriodDays, &p.Status, &p.Created, &p.ReviewRequired); e != nil {
+		if e = rows.Scan(&p.ID, &p.Subscribed, &p.Provider, &p.Amount, &p.PeriodDays, &p.Status, &p.Created, &p.ReviewRequired, &p.ReviewCompleted, &p.ReviewedRefund); e != nil {
 			return nil, e
 		}
 		out = append(out, p)

@@ -75,7 +75,7 @@ func (a *API) paymentRefresh(w http.ResponseWriter, r *http.Request) {
 	// Report the authoritative stored status, which may have advanced concurrently.
 	var status string
 	var review bool
-	e = a.Store.DB.QueryRow(r.Context(), `SELECT status,EXISTS(SELECT 1 FROM payment_review_events WHERE payment_id=$1) FROM payments WHERE id=$1`, id).Scan(&status, &review)
+	e = a.Store.DB.QueryRow(r.Context(), `SELECT status,payment_review_required(id) FROM payments WHERE id=$1`, id).Scan(&status, &review)
 	if e != nil {
 		a.fail(w, 503, "ACCOUNT_UNAVAILABLE")
 		return

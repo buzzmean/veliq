@@ -95,7 +95,7 @@ func lockClubAccount(ctx context.Context, tx pgx.Tx, account string) error {
 func clubOpenOrder(ctx context.Context, tx pgx.Tx, account string) (bool, error) {
 	var open bool
 	e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM payments p JOIN subscriptions s ON s.id=p.subscription_id
- WHERE s.account_id=$1 AND (p.status IN ('pending','canceled') OR EXISTS(SELECT 1 FROM payment_review_events e WHERE e.payment_id=p.id)))`, account).Scan(&open)
+ WHERE s.account_id=$1 AND (p.status IN ('pending','canceled') OR payment_review_required(p.id)))`, account).Scan(&open)
 	return open, e
 }
 func clubQuoteLocked(ctx context.Context, tx pgx.Tx, acc Account, requested Subscription, p Plan, months int, code string, now time.Time) (ClubQuote, error) {
@@ -311,7 +311,7 @@ func (s *Store) ReserveClubOrder(ctx context.Context, acc Account, sub Subscript
 	requestHash := clubRequestHash(sub.ID, months, code)
 	var oldHash string
 	var raw []byte
-	e = tx.QueryRow(ctx, `SELECT o.payment_id,o.request_hash,o.snapshot,o.redirect_url,p.status,EXISTS(SELECT 1 FROM payment_review_events e WHERE e.payment_id=p.id) FROM club_payment_orders o JOIN payments p ON p.id=o.payment_id WHERE o.account_id=$1 AND o.idempotency_key=$2`, acc.ID, key).Scan(&out.ID, &oldHash, &raw, &out.Redirect, &out.Status, &out.ReviewRequired)
+	e = tx.QueryRow(ctx, `SELECT o.payment_id,o.request_hash,o.snapshot,o.redirect_url,p.status,payment_review_required(p.id) FROM club_payment_orders o JOIN payments p ON p.id=o.payment_id WHERE o.account_id=$1 AND o.idempotency_key=$2`, acc.ID, key).Scan(&out.ID, &oldHash, &raw, &out.Redirect, &out.Status, &out.ReviewRequired)
 	if e == nil {
 		if oldHash != requestHash {
 			return out, errors.New("PAYMENT_IDEMPOTENCY_CONFLICT")
@@ -468,7 +468,7 @@ func (a *API) payClub(w http.ResponseWriter, r *http.Request, acc Account, sub S
 
 // Account-owned snapshots are returned alongside history, never by an unscoped ID.
 func (s *Store) AccountClubOrders(ctx context.Context, acc Account) ([]ClubOrder, error) {
-	rows, e := s.DB.Query(ctx, `SELECT o.payment_id,o.snapshot,o.redirect_url,p.status,EXISTS(SELECT 1 FROM payment_review_events e WHERE e.payment_id=p.id) FROM club_payment_orders o JOIN payments p ON p.id=o.payment_id WHERE o.account_id=$1 ORDER BY o.created_at DESC LIMIT 100`, acc.ID)
+	rows, e := s.DB.Query(ctx, `SELECT o.payment_id,o.snapshot,o.redirect_url,p.status,payment_review_required(p.id) FROM club_payment_orders o JOIN payments p ON p.id=o.payment_id WHERE o.account_id=$1 ORDER BY o.created_at DESC LIMIT 100`, acc.ID)
 	if e != nil {
 		return nil, e
 	}

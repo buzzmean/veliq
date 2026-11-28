@@ -113,7 +113,7 @@ INSERT INTO club_health_persistent_devices(device_id,account_id,pc,software_vers
 	var version, orders int
 	var diagnosticsSupported bool
 	if err = pool.QueryRow(ctx, `SELECT (SELECT max(version) FROM schema_migrations),
- EXISTS(SELECT 1 FROM schema_migrations WHERE version=13),(SELECT count(*) FROM personal_payment_orders)`).Scan(&version, &diagnosticsSupported, &orders); err != nil || version != 16 || !diagnosticsSupported || orders != 0 {
+ EXISTS(SELECT 1 FROM schema_migrations WHERE version=13),(SELECT count(*) FROM personal_payment_orders)`).Scan(&version, &diagnosticsSupported, &orders); err != nil || version != 17 || !diagnosticsSupported || orders != 0 {
 		t.Fatal("schema13 contract or clean additive order table missing", version, orders, err)
 	}
 }

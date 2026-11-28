@@ -215,10 +215,57 @@ def dark_layout(origin, output):
     print(json.dumps({"dark_real_backend_layout": evidence}, ensure_ascii=False))
 
 
+def refund_review_layout(origin, output):
+    results = []
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path="/usr/bin/chromium", headless=True, args=["--no-sandbox"])
+        for width, height in [(1440, 900), (390, 844), (360, 800)]:
+            context = browser.new_context(ignore_https_errors=True, viewport={"width": width, "height": height}, locale="ru-RU")
+            context.request.post(origin + "/__fixture/config", data={"enabled": False})
+            headers = {"Origin": origin}
+            email = "refund-browser-" + uuid.uuid4().hex[:12] + "@example.test"
+            assert context.request.post(origin + "/api/v1/account/login/start", data={"email": email}, headers=headers).ok
+            code = context.request.get(origin + "/__fixture/code", params={"email": email}).json()["code"]
+            assert context.request.post(origin + "/api/v1/account/login/verify", data={"email": email, "code": code}, headers=headers).ok
+            assert context.request.post(origin + "/api/v1/account/profile", data={"kind": "player", "name": "Проверка возврата"}, headers=headers).ok
+            assert context.request.post(origin + "/api/v1/account/subscriptions", data={"plan_id": "player-month", "seats": 1}, headers=headers).ok
+            cookie = next(c for c in context.cookies(origin + "/api/v1/account") if c["name"] == "veliq_session")
+            fixture_headers = {"Cookie": cookie["name"] + "=" + cookie["value"]}
+            seeded = context.request.post(origin + "/__fixture/partial-refund-review", data={"resolve": False}, headers=fixture_headers)
+            assert seeded.ok, (seeded.status, seeded.text())
+            page = context.new_page()
+            errors = []
+            page.on("pageerror", lambda error: errors.append(str(error)))
+            page.goto(origin + "/account")
+            row = page.locator("[data-payments] li:not(:has(ul))").filter(has_text="3,99")
+            expect(row).to_contain_text("требуется проверка")
+            resolved = context.request.post(origin + "/__fixture/partial-refund-review", data={"resolve": True}, headers=fixture_headers)
+            assert resolved.ok, (resolved.status, resolved.text())
+            page.reload()
+            page.locator("[data-payments] details > summary").click()
+            expect(row).to_be_visible()
+            expect(row).to_contain_text("Частичный возврат 3,95")
+            expect(row).to_contain_text("проверка завершена")
+            expect(row).not_to_contain_text("требуется проверка")
+            assert row.get_by_role("button", name="Проверить оплату").count() == 0
+            assert not page.evaluate("document.documentElement.scrollWidth > innerWidth") and not errors
+            row.scroll_into_view_if_needed()
+            page.screenshot(path=str(output / f"refund-review-{width}.png"))
+            results.append({"width": width, "height": height, "refund_395_of_399_preserved": True, "review_completed": True, "stale_check_button_absent": True, "no_overflow": True, "console_errors": errors})
+            context.close()
+        browser.close()
+    (output / "REVIEW-RESULT.json").write_text(json.dumps(results, ensure_ascii=False, indent=2) + "\n")
+    print(json.dumps({"review_layout": results}, ensure_ascii=False))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--scenario", choices=["offers", "refund"], default="offers")
     parser.add_argument("--origin", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    run(args.origin.rstrip("/"), args.output)
-    dark_layout(args.origin.rstrip("/"), args.output)
+    if args.scenario == "offers":
+        run(args.origin.rstrip("/"), args.output)
+        dark_layout(args.origin.rstrip("/"), args.output)
+    else:
+        refund_review_layout(args.origin.rstrip("/"), args.output)

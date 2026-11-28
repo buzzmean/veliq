@@ -527,6 +527,7 @@
     row.style.overflowWrap='anywhere';
     row.appendChild(el('span', null, date(p.created_at)+' · '+rub(p.amount_kopecks/100)+' · '+p.period_days+' дней'));
     var status = p.review_required ? 'Возврат или спор · требуется проверка' :
+      p.review_completed ? 'Частичный возврат '+rub(p.reviewed_refund_kopecks/100)+' · проверка завершена' :
       p.status==='succeeded' ? 'оплачено' : p.status==='pending' ? 'ожидает оплаты' : 'отменено';
     row.appendChild(el('span','muted',status));
     if(p.provider==='platega' && (p.status==='pending' || p.review_required)){
