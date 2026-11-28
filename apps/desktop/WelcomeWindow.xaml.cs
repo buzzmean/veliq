@@ -168,6 +168,13 @@ public partial class WelcomeWindow : Window
     void RestartSignIn(object sender, RoutedEventArgs e) { if (busy) return; ResetNative(); Render(); EmailField.Focus(); }
     async Task RunAsync(Func<Task> operation)
     {
+        // A delayed IPC reply must resume on this window's dispatcher even
+        // when onboarding was invoked before an application message loop.
+        if (!Dispatcher.CheckAccess() || SynchronizationContext.Current is not DispatcherSynchronizationContext)
+        {
+            await Dispatcher.InvokeAsync(() => RunAsync(operation)).Task.Unwrap();
+            return;
+        }
         if (busy || refreshing || lifetime.IsCancellationRequested) return;
         busy = true; Feedback.Text = ""; Render();
         try { await operation(); }
