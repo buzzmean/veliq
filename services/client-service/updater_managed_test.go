@@ -113,12 +113,25 @@ func TestManagedUpdaterMissingInvalidAndWithdrawnPolicy(t *testing.T) {
 	}
 }
 
-func TestManagedUpdaterPersonalRemainsManualEvenWithMachinePolicy(t *testing.T) {
+func TestManagedUpdaterPersonalRemainsManualWithoutAdministratorOptIn(t *testing.T) {
 	u, launched := managedUpdaterFixture(t)
 	u.isClub = func() bool { return false }
+	u.managedPolicy = func() (bool, error) { return false, nil }
 	u.check(context.Background())
 	if len(*launched) != 0 || u.snapshot().Managed || u.snapshot().State != "READY" {
 		t.Fatal(u.snapshot())
+	}
+}
+
+func TestManagedUpdaterAdministratorOptInDoesNotRequireClubImage(t *testing.T) {
+	u, launched := managedUpdaterFixture(t)
+	u.isClub = func() bool { return false }
+	u.check(context.Background())
+	if len(*launched) != 1 || !u.snapshot().Managed || u.snapshot().State != "INSTALLING" {
+		t.Fatal("code-activated managed PC was excluded", u.snapshot())
+	}
+	if err := u.install(120); err == nil {
+		t.Fatal("owner IPC bypassed managed policy")
 	}
 }
 
@@ -135,8 +148,10 @@ func TestManagedUpdaterCancellationNoLaunch(t *testing.T) {
 func TestManagedUpdaterRechecksPolicyAndBytesAfterPreparation(t *testing.T) {
 	u, launched := managedUpdaterFixture(t)
 	u.isClub = func() bool { return false }
+	u.managedPolicy = func() (bool, error) { return false, nil }
 	u.check(context.Background())
 	u.isClub = func() bool { return true }
+	u.managedPolicy = func() (bool, error) { return true, nil }
 	if err := os.WriteFile(u.readyPath, []byte("tampered"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -168,8 +183,10 @@ func TestManagedUpdaterRejectsBadSignatureAndDeveloper(t *testing.T) {
 func TestManagedUpdaterClaimErrorCannotLaunch(t *testing.T) {
 	u, launched := managedUpdaterFixture(t)
 	u.isClub = func() bool { return false }
+	u.managedPolicy = func() (bool, error) { return false, nil }
 	u.check(context.Background())
 	u.isClub = func() bool { return true }
+	u.managedPolicy = func() (bool, error) { return true, nil }
 	claim := filepath.Join(u.dir, "updates", "auto-install-120.attempt")
 	if err := os.Mkdir(claim, 0700); err != nil {
 		t.Fatal(err)

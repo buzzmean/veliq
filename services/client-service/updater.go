@@ -99,22 +99,19 @@ func (u *updater) updateMode() (managed bool, disabled string) {
 	if u.current == 0 {
 		return false, "DEVELOPER_BUILD"
 	}
-	if !u.clubInstallation() {
-		return false, ""
-	}
 	allowed, err := u.managedPolicy()
 	if err != nil {
 		return false, "UPDATE_POLICY_UNTRUSTED"
 	}
-	if !allowed {
+	if allowed {
+		// This administrator policy marks a managed club PC independently of
+		// how it was activated. Ordinary code activation need not use ClubImage.
+		return true, ""
+	}
+	if u.clubInstallation() {
 		return false, "CLUB_IMAGE_MANAGED"
 	}
-	return true, ""
-}
-
-func (u *updater) disabled() string {
-	_, reason := u.updateMode()
-	return reason
+	return false, ""
 }
 
 func (u *updater) run(ctx context.Context) {
@@ -214,7 +211,11 @@ func (u *updater) install(build uint64) error {
 	if u.clubInstallation() {
 		return errors.New("CLUB_IMAGE_MANAGED")
 	}
-	if reason := u.disabled(); reason != "" {
+	managed, reason := u.updateMode()
+	if managed {
+		return errors.New("CLUB_ADMIN_MANAGED")
+	}
+	if reason != "" {
 		u.set("DISABLED", reason, nil)
 		return errors.New(reason)
 	}
