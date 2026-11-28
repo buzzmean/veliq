@@ -20,6 +20,7 @@ public partial class WelcomeWindow : Window
     SignInStage stage;
     string email = "";
     DateTime resendAfter;
+    DateTime? activationWaitingSince;
     bool refreshing, busy, codeSelected, transitioned, started, registration, forceSignIn, nativeApproved;
     System.Windows.Forms.NotifyIcon? startupTray;
     System.Drawing.Icon? startupIcon;
@@ -35,7 +36,8 @@ public partial class WelcomeWindow : Window
             personalSession.Forget();
             return new NativeAccountClient(uri, cookies: personalSession.Cookies);
         });
-        account = new(service); activation = new(service); subscription = new(service);
+        var welcomeService = new WelcomeServiceClient(service);
+        account = new(welcomeService); activation = new(welcomeService); subscription = new(welcomeService);
         InitializeComponent(); WindowTheme.UseDarkCaption(this); Render();
         Loaded += async (_, _) => { if (!started) { started = true; await RefreshAsync(); if (!transitioned) timer.Start(); } };
         timer.Tick += async (_, _) => await RefreshAsync();
@@ -83,10 +85,11 @@ public partial class WelcomeWindow : Window
         refreshing = true;
         try
         {
-            await activation.RefreshAsync(lifetime.Token);
-            await account.RefreshAsync(lifetime.Token);
-            await subscription.RefreshAsync(recheck, lifetime.Token);
+            await Task.WhenAll(activation.RefreshAsync(lifetime.Token),
+                account.RefreshAsync(lifetime.Token), subscription.RefreshAsync(recheck, lifetime.Token));
             access = WelcomeAccess.Evaluate(activation.Status, account.Status, subscription.Status);
+            if (activation.Status.State is "ACTIVATED" or "ACTIVATION_ERROR" or "CODE_REQUIRED") activationWaitingSince = null;
+            timer.Interval = TimeSpan.FromSeconds(activationWaitingSince is not null || activation.Status.State == "ACTIVATING" ? 1 : 2);
             if (Ready) Enter();
         }
         catch (OperationCanceledException) when (lifetime.IsCancellationRequested) { }
@@ -141,6 +144,15 @@ public partial class WelcomeWindow : Window
         }
         if (access.State == "UNAVAILABLE" && Feedback.Text.Length == 0)
             Feedback.Text = "Служба VELIQ недоступна. Повторите проверку.";
+        if (codeSelected && activationWaitingSince is {} waiting)
+        {
+            Feedback.Text = access.State is "ERROR" or "BLOCKED" or "EXPIRED" or "UNAVAILABLE" ? access.Message :
+                DateTime.UtcNow - waiting >= TimeSpan.FromSeconds(30) ?
+                "Активация занимает больше времени. Проверка продолжается автоматически — перезапускать VELIQ не нужно. Можно повторить попытку." :
+                "Активируем VELIQ… Проверяем состояние каждую секунду.";
+        }
+        if (codeSelected && access.State is "ERROR" or "BLOCKED" or "EXPIRED" or "UNAVAILABLE")
+            Feedback.Text = access.Message;
         if (stage == SignInStage.Connecting && access.State is "ERROR" or "EXPIRED" or "BLOCKED")
             Feedback.Text = access.Message;
         FooterNote.Text = codeSelected ? "Личный аккаунт игрока не требуется." : "Без пароля. Подключение сохранится на этом ПК.";
@@ -165,7 +177,7 @@ public partial class WelcomeWindow : Window
         finally
         {
             busy = false;
-            if (!lifetime.IsCancellationRequested) { await RefreshAsync(); Render(); }
+            if (!lifetime.IsCancellationRequested) { await RefreshAsync(); if (!lifetime.IsCancellationRequested) Render(); }
         }
     }
     async Task EnsureNativeAsync()
@@ -259,6 +271,8 @@ public partial class WelcomeWindow : Window
         if (busy || refreshing) return;
         string code = ConnectionCode.Password.Trim(); ConnectionCode.Clear();
         if (code.Length == 0) { Feedback.Text = "Введите код администратора."; return; }
+        activationWaitingSince = DateTime.UtcNow;
+        timer.Interval = TimeSpan.FromSeconds(1);
         await RunAsync(async () => { try { await activation.ActivateAsync(code, lifetime.Token); Feedback.Text = activation.Status.Message; } finally { code = ""; } });
     }
     async void Retry(object sender, RoutedEventArgs e) { Feedback.Text = ""; await RefreshAsync(true); }

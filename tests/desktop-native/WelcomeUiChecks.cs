@@ -125,7 +125,57 @@ internal static class WelcomeUiChecks
         fixture.AcceptCode=true;window.CodeInput.Password="fixture-valid-code";Click(window,"ActivateButton");
         if(!entered||window.IsVisible)throw new Exception("Legacy code connection not recognized");
         Startup();
+        ActivationCompletion();
         Console.WriteLine("PASS native welcome: email/OTP/profile/approval/service gate/club code; fixture only, no live credentials");
+    }
+    sealed class CodeCompletion : IServiceClient
+    {
+        internal string State = "CODE_REQUIRED";
+        internal bool LoseSetReply;
+        internal int Sets;
+        internal TaskCompletionSource<ActivationView> Reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<T> Call<T>(string method,object? payload=null,CancellationToken cancellationToken=default)
+        {
+            if(method=="activation.set")
+            {
+                Sets++; State=LoseSetReply?"ACTIVATED":"ACTIVATING";
+                if(LoseSetReply)return (Task<T>)(object)Reply.Task;
+            }
+            object value=method switch{
+                "activation.status" or "activation.set"=>new ActivationView{State=State,HasIdentity=State=="ACTIVATED"},
+                "account.status"=>new AccountConnectionView(),
+                "subscription.status" or "subscription.refresh"=>new SubscriptionView(),
+                _=>throw new InvalidOperationException(method)
+            };
+            return Task.FromResult((T)value);
+        }
+    }
+    static void PumpUntil(Func<bool> ready)
+    {
+        var until=DateTime.UtcNow.AddSeconds(6);
+        while(!ready()&&DateTime.UtcNow<until){Pump();Thread.Sleep(10);}
+        Pump();if(!ready())throw new Exception("Activation did not complete without a manual refresh/restart");
+    }
+    static void ActivationCompletion()
+    {
+        foreach(bool lostReply in new[]{false,true})
+        {
+            var fixture=new CodeCompletion{LoseSetReply=lostReply};int entries=0;
+            var window=new WelcomeWindow(fixture,()=>entries++,false);
+            try
+            {
+                window.Show();Pump();Click(window,"CodeTab");
+                window.CodeInput.Password="fixture-private-code";Click(window,"ActivateButton");
+                if(window.CodeInput.SecurePassword.Length!=0)throw new Exception("Activation input retained");
+                if(!lostReply)fixture.State="ACTIVATED";
+                PumpUntil(()=>entries==1);
+                if(window.IsVisible||fixture.Sets!=1)throw new Exception("Activation required resubmission/restart");
+                fixture.Reply.TrySetResult(new(){State="ACTIVATING"});Pump();
+                if(entries!=1||!window.Access.CanContinue)throw new Exception("Late activation reply regressed ready state");
+            }
+            finally{fixture.Reply.TrySetCanceled();window.Close();Pump();}
+        }
+        Console.WriteLine("PASS activation: automatic poll after pending, lost set reply, late reply, one submission/entry, no restart");
     }
     static void Startup()
     {
