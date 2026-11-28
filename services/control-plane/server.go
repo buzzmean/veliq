@@ -52,6 +52,7 @@ type Settings struct {
 	PersonalFirstPurchase      bool
 	PersonalOptimizationLeases bool
 	ClubVerificationToken      string
+	PaymentReviewResolution    bool
 }
 type API struct {
 	relayTrafficMu                            sync.Mutex
@@ -179,6 +180,8 @@ func (a *API) Handler() http.Handler {
 	m.HandleFunc("POST /api/v1/account/subscriptions/", a.subscriptionAction)
 	m.HandleFunc("POST /api/v1/payments/webhook", a.paymentWebhook)
 	m.HandleFunc("POST /api/v1/account/payments/{id}/refresh", a.paymentRefresh)
+	m.HandleFunc("GET /api/v1/admin/payments/{id}/review", a.paymentReviewAdmin)
+	m.HandleFunc("POST /api/v1/admin/payments/{id}/review/resolve", a.paymentReviewAdmin)
 	m.HandleFunc("GET /api/v1/admin/subscriptions", a.adminSubscriptions)
 	m.HandleFunc("GET /api/v1/admin/subscriptions/cutoff", a.adminSubscriptions)
 	m.HandleFunc("POST /api/v1/admin/subscriptions/payments", a.adminSubscriptions)

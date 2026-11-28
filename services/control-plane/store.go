@@ -54,7 +54,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	if _, e = tx.Exec(ctx, string(b)); e != nil {
 		return e
 	}
-	for _, name := range []string{"migrations/002_activation_codes.sql", "migrations/003_temporary_test_codes.sql", "migrations/004_accounts_subscriptions.sql", "migrations/005_account_device_links.sql", "migrations/006_lifetime_subscriptions.sql", "migrations/007_payment_review.sql", "migrations/008_promotions.sql", "migrations/009_club_promotion_orders.sql", "migrations/010_personal_trials.sql", "migrations/011_club_verification.sql", "migrations/012_device_details.sql", "migrations/013_persistent_club_health.sql", "migrations/014_personal_payment_orders.sql", "migrations/015_club_referrals.sql", "migrations/016_personal_optimization_leases.sql"} {
+	for _, name := range []string{"migrations/002_activation_codes.sql", "migrations/003_temporary_test_codes.sql", "migrations/004_accounts_subscriptions.sql", "migrations/005_account_device_links.sql", "migrations/006_lifetime_subscriptions.sql", "migrations/007_payment_review.sql", "migrations/008_promotions.sql", "migrations/009_club_promotion_orders.sql", "migrations/010_personal_trials.sql", "migrations/011_club_verification.sql", "migrations/012_device_details.sql", "migrations/013_persistent_club_health.sql", "migrations/014_personal_payment_orders.sql", "migrations/015_club_referrals.sql", "migrations/016_personal_optimization_leases.sql", "migrations/017_payment_review_resolutions.sql"} {
 		b, e := migrations.ReadFile(name)
 		if e != nil {
 			return e

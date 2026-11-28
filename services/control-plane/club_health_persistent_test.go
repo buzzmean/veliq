@@ -168,7 +168,7 @@ func TestPersistentMigration8To15PreservesIdentity(t *testing.T) {
 		}
 	}
 	var version int
-	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 16 {
+	if err = pool.QueryRow(ctx, "SELECT max(version) FROM schema_migrations").Scan(&version); err != nil || version != 17 {
 		t.Fatal(version, err)
 	}
 	d, err := store.Device(ctx, id)

@@ -60,6 +60,55 @@ func TestStagingBrowserAcceptanceServer(t *testing.T) {
 		if strings.HasPrefix(r.URL.Path, "/__fixture/") {
 			w.Header().Set("Content-Type", "application/json")
 			switch r.URL.Path {
+			case "/__fixture/partial-refund-review":
+				// Only the opt-in loopback test server exposes deterministic financial
+				// fixtures. The account API and browser rendering remain real.
+				var input struct {
+					Resolve bool `json:"resolve"`
+				}
+				cookie, cookieErr := r.Cookie(sessionCookie)
+				if r.Method != "POST" || cookieErr != nil || json.NewDecoder(r.Body).Decode(&input) != nil {
+					w.WriteHeader(400)
+					return
+				}
+				account, err := store.SessionAccount(r.Context(), cookie.Value, time.Now())
+				if err != nil || !strings.HasSuffix(account.Email, "@example.test") {
+					w.WriteHeader(403)
+					return
+				}
+				var sub string
+				if err = store.DB.QueryRow(r.Context(), "SELECT id FROM subscriptions WHERE account_id=$1 AND kind='player' ORDER BY created_at LIMIT 1", account.ID).Scan(&sub); err != nil {
+					http.Error(w, "fixture subscription required", 409)
+					return
+				}
+				txid := "review-fixture-" + account.ID
+				if _, _, err = store.RecordPayment(r.Context(), sub, "platega", txid, 399, 30, "succeeded", "", "fixture", time.Now()); err != nil {
+					http.Error(w, "fixture payment", 500)
+					return
+				}
+				ev := PaymentEvent{ProviderID: txid, Subscription: sub, AmountKopecks: 399, Status: "review", ProviderStatus: "PARTIALLY_REFUNDED", RefundID: "fixture-refund", RefundStatus: "Succeeded", RefundedKopecks: 395}
+				if _, _, err = store.RecordProviderPayment(r.Context(), "platega", txid, sub, 399, "review", "fixture", time.Now(), ev); err != nil {
+					http.Error(w, "fixture refund", 500)
+					return
+				}
+				var payment string
+				if err = store.DB.QueryRow(r.Context(), "SELECT id FROM payments WHERE provider='platega' AND provider_payment_id=$1", txid).Scan(&payment); err != nil {
+					http.Error(w, "fixture payment read", 500)
+					return
+				}
+				if input.Resolve {
+					before, readErr := store.paymentReview(r.Context(), payment)
+					if readErr != nil {
+						http.Error(w, "fixture review read", 500)
+						return
+					}
+					_, err = store.resolvePaymentReview(r.Context(), before, paymentReviewResolutionRequest{LastEventID: before.LastEventID, EvidenceSHA256: strings.Repeat("a", 64), Outcome: "review_completed_no_access_change"}, ev)
+					if err != nil {
+						http.Error(w, "fixture resolution", 500)
+						return
+					}
+				}
+				_ = json.NewEncoder(w).Encode(map[string]any{"payment_id": payment, "resolved": input.Resolve})
 			case "/__fixture/code":
 				email := strings.ToLower(r.URL.Query().Get("email"))
 				if r.Method != "GET" || !strings.HasSuffix(email, "@example.test") {

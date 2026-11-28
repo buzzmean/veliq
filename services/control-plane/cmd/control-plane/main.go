@@ -72,6 +72,7 @@ func main() {
 	plategaMerchantID := flag.String("platega-merchant-id", "", "Platega merchant id; enables online payments in the cabinet")
 	plategaSecretFile := flag.String("platega-secret-file", "", "Platega API secret file (required with -platega-merchant-id)")
 	plategaBaseURL := flag.String("platega-base-url", "", "Platega API base URL override; testing only, default https://app.platega.io")
+	paymentReviewResolution := flag.Bool("payment-review-resolution", false, "enable audited administrator completion of confirmed partial refund reviews")
 	personalTrials := flag.Bool("personal-trials", false, "enable personal trial offers after upgrading all relays")
 	enforce := flag.Bool("enforce-subscription", false, "stop relay access for devices whose subscription or code period ended (review GET /api/v1/admin/subscriptions/cutoff first)")
 	flag.Parse()
@@ -226,7 +227,7 @@ func main() {
 		fail(fmt.Errorf("account origin must look like https://host"))
 	}
 	api, e := controlplane.New(store, controlplane.Settings{LocalCatalogFile: *localCatalogFile, LocalLearningFile: *localLearningFile, RelayTrafficFile: *relayTrafficFile, EnrollmentProbeToken: enrollProbeToken, AdminToken: adminToken, FleetRegistryToken: fleetRegistryToken, KeyID: *kid, SigningKey: key, CA: cert, CAKey: cak, ServerCertificate: serverLeaf,
-		AccountOrigin: *accountOrigin, Mailer: mailer, Plans: plans, Payments: payments, EnforceSubscription: *enforce, PersonalTrials: *personalTrials, ClubVerificationToken: clubVerificationToken})
+		AccountOrigin: *accountOrigin, Mailer: mailer, Plans: plans, Payments: payments, EnforceSubscription: *enforce, PersonalTrials: *personalTrials, PaymentReviewResolution: *paymentReviewResolution, ClubVerificationToken: clubVerificationToken})
 	if e != nil {
 		fail(e)
 	}

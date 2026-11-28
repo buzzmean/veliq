@@ -31,7 +31,7 @@ type PersonalOrder struct {
 }
 
 const personalOrderSelect = `SELECT o.payment_id,o.request_hash,o.snapshot,o.redirect_url,p.status,p.provider,
- EXISTS(SELECT 1 FROM payment_review_events e WHERE e.payment_id=p.id)
+ payment_review_required(p.id)
  FROM personal_payment_orders o JOIN payments p ON p.id=o.payment_id`
 
 func scanPersonalOrder(row pgx.Row) (out PersonalOrder, hash, provider string, err error) {
@@ -154,7 +154,7 @@ func unresolvedPersonalPayment(ctx context.Context, tx pgx.Tx, account string) (
  EXISTS(SELECT 1 FROM personal_payment_orders WHERE account_id=$1 AND state='open') OR
  EXISTS(SELECT 1 FROM payments p JOIN subscriptions s ON s.id=p.subscription_id
   WHERE s.account_id=$1 AND s.kind='player' AND
-   (p.status IN ('pending','canceled') OR EXISTS(SELECT 1 FROM payment_review_events e WHERE e.payment_id=p.id))) OR
+   (p.status IN ('pending','canceled') OR payment_review_required(p.id))) OR
  EXISTS(SELECT 1 FROM promotion_reservations WHERE account_id=$1 AND state='reserved')`, account).Scan(&unresolved)
 	return unresolved, err
 }

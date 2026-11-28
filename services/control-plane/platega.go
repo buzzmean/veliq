@@ -182,10 +182,13 @@ func (p *PlategaProvider) CheckPayment(ctx context.Context, id string) (PaymentE
 		return PaymentEvent{}, errors.New("PAYMENT_UNAVAILABLE")
 	}
 	var result struct {
-		ID             string `json:"id"`
-		Status         string `json:"status"`
-		Payload        string `json:"payload"`
-		MerchantID     string `json:"mechantId"` // Spelling from the provider contract.
+		RefundID       string  `json:"refundId"`
+		RefundStatus   string  `json:"refundStatus"`
+		RefundedAmount float64 `json:"refundedAmount"`
+		ID             string  `json:"id"`
+		Status         string  `json:"status"`
+		Payload        string  `json:"payload"`
+		MerchantID     string  `json:"mechantId"` // Spelling from the provider contract.
 		PaymentDetails struct {
 			Amount   float64 `json:"amount"`
 			Currency string  `json:"currency"`
@@ -195,7 +198,7 @@ func (p *PlategaProvider) CheckPayment(ctx context.Context, id string) (PaymentE
 	if e != nil || len(raw) > 64<<10 || json.Unmarshal(raw, &result) != nil || result.ID != id || result.MerchantID != p.MerchantID {
 		return PaymentEvent{}, errors.New("PAYMENT_EVENT_REJECTED")
 	}
-	cb := plategaCallback{ID: result.ID, Status: result.Status, Payload: result.Payload, Amount: result.PaymentDetails.Amount, Currency: result.PaymentDetails.Currency}
+	cb := plategaCallback{ID: result.ID, Status: result.Status, Payload: result.Payload, Amount: result.PaymentDetails.Amount, Currency: result.PaymentDetails.Currency, RefundID: result.RefundID, RefundStatus: result.RefundStatus, RefundedAmount: result.RefundedAmount}
 	// PENDING is valid for a poll, but must never credit or regress an order.
 	if result.Status == "PENDING" {
 		cb.Status = "CONFIRMED"
