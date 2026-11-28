@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest import mock
 
 spec = importlib.util.spec_from_file_location("go_race_shards", Path(__file__).resolve().parents[2] / "tools/ci/go_race_shards.py")
 ci = importlib.util.module_from_spec(spec)
@@ -8,6 +9,11 @@ spec.loader.exec_module(ci)
 
 
 class RaceShardContract(unittest.TestCase):
+    def test_discovery_uses_same_race_build_and_keeps_examples_and_seeds(self):
+        with mock.patch.object(ci.subprocess, "check_output", return_value="TestRaceOnly\nExample\nFuzz\nBenchmarkOne\nok package\n") as listing:
+            self.assertEqual(ci.list_cases(ci.CP), ["TestRaceOnly", "Example", "Fuzz"])
+        self.assertIn("-race", listing.call_args.args[0])
+
     def test_every_test_example_and_seed_is_in_exactly_one_shard(self):
         names = ["TestPayment", "TestPostgres5000", "TestActivation", "ExampleAccount", "FuzzInput", "Test", "Example", "Fuzz"]
         shards = ci.partition(names)

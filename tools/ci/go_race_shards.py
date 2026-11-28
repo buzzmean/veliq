@@ -34,6 +34,12 @@ def check_coverage(planned, observed, failed, code):
                            " unexpected=" + repr(sorted(set(observed) - set(planned))))
 
 
+def list_cases(package):
+    # Match execution's race build tags, including any race-only test files.
+    listed = subprocess.check_output(["go", "test", "-race", "-list", ".", package], text=True)
+    return [line for line in listed.splitlines() if re.fullmatch(r"(?:Test|Example|Fuzz)\w*", line)]
+
+
 def run(packages, names=None):
     command = ["go", "test", "-race", "-count=1", "-json", "-timeout", "120s"]
     if names is not None:
@@ -75,8 +81,7 @@ def main():
     packages = subprocess.check_output(["go", "list", "./..."], text=True).splitlines()
     if CP not in packages or len(packages) != len(set(packages)):
         raise RuntimeError("CONTROL_PLANE_PACKAGE_NOT_LISTED")
-    listed = subprocess.check_output(["go", "test", "-list", ".", CP], text=True)
-    names = [line for line in listed.splitlines() if re.fullmatch(r"(?:Test|Example|Fuzz)\w*", line)]
+    names = list_cases(CP)
     shards = partition(names)
     out = Path(".e2e/go-race-shards.json")
     out.parent.mkdir(parents=True, exist_ok=True)
